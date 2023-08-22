@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+TMP="$(mktemp "INDEX.tmp.XXXXXX")"
+
+trap 'rm -f "$TMP"; exit 1' HUP INT QUIT TERM
+
+set -e -u -o pipefail
+
+CMD="$(basename $0)"
+function usage {
+    echo "Usage: $CMD [-hnv] meeting-number..." 1>&2
+    echo "-h        Print this help message." 1>&2
+    echo "-n        Dry run. Don't execute commands." 1>&2
+    echo "-v        Verbose. Print extra information if appropriate." 1>&2
+    echo "Create INDEX of papers under the specified meeting directory." 1>&2
+}
+
+DRY_RUN=
+VFLAG=
+while getopts b:hnv\? OPTCHAR; do
+    case $OPTCHAR in
+        h)  usage; exit 0;;
+        n)  DRY_RUN=1;;
+        v)  VFLAG=1;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+case $# in
+    0)  usage; exit 1;;
+    *)  ;;
+esac
+
+# Put the data in a temporary file, and copy it out
+# at the end. This leaves original intact if we
+# interrupt this long-running command.
+find "$@" \( -type f -o -type l \) \
+      '(' -name "*.ascii" \
+          -o -name "*.doc*" \
+          -o -name "*.dvi" \
+          -o -name "*.f" \
+          -o -name "*.f90" \
+          -o -name "*.fif" \
+          -o -name "*.frm" \
+          -o -name "*.gif" \
+          -o -name "*.htm*" \
+          -o -name "*.ignore" \
+          -o -name "*.jpg" \
+          -o -name "*.JPG" \
+          -o -name "*.make" \
+          -o -name "*.msw" \
+          -o -name "*.o" \
+          -o -name "*.pdf" \
+          -o -name "*.png" \
+          -o -name "*.ppt*" \
+          -o -name "*.ps" \
+          -o -name "*.rtf" \
+          -o -name "*.tex" \
+          -o -name "*.t" \
+          -o -name "*.troff" \
+          -o -name "*.txt" \
+          -o -name "*.wpd" \
+          -o -name "*.xsl*" ')' \
+      -print0 \
+| xargs -0 bin/print-index-line \
+| sort -t $'\t' -k 1 -k 4 >"$TMP"
+cat "$TMP" >INDEX
+rm "$TMP"

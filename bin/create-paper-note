@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+
+trap "exit 1" HUP INT QUIT TERM
+
+set -u -o pipefail
+
+CMD="$(basename $0)"
+function usage {
+    echo "Usage: $CMD [-hnv] ..." 1>&2
+    echo "-h        Print this help message." 1>&2
+    echo "-n        Dry run. Don't execute commands." 1>&2
+    echo "-o        Open the new file when created." 1>&2
+    echo "-t        Print org-mode style TODO for the entry." 1>&2
+    echo "-v        Verbose. Print extra information if appropriate." 1>&2
+}
+
+. $(dirname "$0")/vecho
+
+DRY_RUN=
+ECHO=
+OFLAG=
+TFLAG=
+VFLAG=
+while getopts hnotv\? OPTCHAR; do
+    case $OPTCHAR in
+        h)  usage; exit 0;;
+        n)  DRY_RUN=1 ECHO=echo;;
+        o)  OFLAG=1;;
+        t)  TFLAG=1;;
+        v)  VFLAG=1;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+case $# in
+    0)  usage; exit 1;;
+    *)  ;;
+esac
+
+if [[ ! -d "papers" ]]; then
+    echo "$CMD: Expected to be run in a directory with J3 'papers'" 1>&2
+    exit 1
+fi
+
+
+for P in "$@"; do
+    PAPER_MATCHES="$(builtin cd papers && /bin/ls *"$P"* 2>/dev/null)"
+    vecho 1 "Matches: $PAPER_MATCHES"
+    if [[ "$PAPER_MATCHES" =~ "*" ]] || [[ "$PAPER_MATCHES" = "" ]]; then
+        echo "$CMD: No match for '$P'" 1>&2
+        continue
+    fi
+
+    BASE_NAME="$(echo "$PAPER_MATCHES" | sed -n -e 's/r[0-9]*\././' -e '1s/\.[^.]*//p')"
+    vecho 1 "  BASE_NAME='$BASE_NAME'"
+
+    if [[ -f "$BASE_NAME.txt" ]]; then
+        PREFERRED_SUFFIX=txt
+    elif [[ -f "$BASE_NAME.pdf" ]]; then
+        PREFERRED_SUFFIX=pdf
+    else
+        PREFERRED_SUFFIX=txt
+    fi
+    vecho 1 "  PREFERRED_SUFFIX='$PREFERRED_SUFFIX'"
+
+
+    MEETING="$(ls meetings/*/"$BASE_NAME".* 2>/dev/null | sed -n -e '1s;.*/\(.*\)/.*;\1;p')"
+    vecho 1 "  MEETING='$MEETING'"
+
+    if [[ "$MEETING" =~ "*" ]]; then
+        echo "$CMD: Can't identify meeting number for '$PAPER'" 1>&2
+        continue
+    fi
+
+
+    if [[ "$PREFERRED_SUFFIX" = "txt" ]]; then
+        SUBJECT="$(grep Subject: papers/$BASE_NAME.txt | sed -e 's/Subject:  *//' -e 's/  *$//' -e 's;[/:][/:]*;-;g')"
+    else
+        SUBJECT=
+    fi
+    vecho 1 "  SUBJECT='$SUBJECT'"
+
+    if [[ "$SUBJECT" = "" ]]; then
+        ZK_FILE="J3 #$MEETING Paper $BASE_NAME.org"
+    else
+        ZK_FILE="J3 #$MEETING Paper $BASE_NAME $SUBJECT.org"
+    fi
+
+    if [[ -e ~/Documents/ZK/"$ZK_FILE" ]]; then
+        echo "$ZK_FILE already exists"
+        UUID="$(sed -n -e 's/^:[Ii][Dd]: *//p' ~/Documents/ZK/"$ZK_FILE" | head -1)"
+    else
+        UUID="$(uuidgen)"
+
+        TEXT="$(echo ":PROPERTIES:
+:ID:       $UUID
+:END:
+#+title: ${ZK_FILE/.org}
+#+date: [$(date '+%F %a %H:%M')]
+#+setupfile: setupfile.org
+#+filetags: :#$MEETING:
+
+* Summary
+
+
+* Discussion
+Move:
+Second:
+
+
+* References
+$(echo "$PAPER_MATCHES" | sed -e "s/\(.*\)\(r.*\)*\.*/- [[j3-paper:&][\1\2 $SUBJECT]]/")
+
+
+* Links")"
+
+        if [[ -n "$DRY_RUN" ]]; then
+            echo "echo \"$TEXT\" >\"~/Documents/ZK/$ZK_FILE\""
+        else
+            echo "$TEXT" >~/Documents/ZK/"$ZK_FILE"
+        fi
+
+    fi
+
+    echo "[[id:$UUID][$(basename "$ZK_FILE" .org)]]"
+
+    if [[ -n "$OFLAG" ]]; then
+        $ECHO open "$ZK_FILE"
+    fi
+done
+
+$ECHO emacsclient -e "(when (fboundp 'org-roam-update-org-id-locations) (org-roam-update-org-id-locations))"

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+trap "exit 1" HUP INT QUIT TERM
+
+set -e -u -o pipefail
+
+CMD="$(basename $0)"
+function usage {
+    echo "Usage: $CMD [-hnv] J3-doc..." 1>&2
+    echo "-h        Print this help message." 1>&2
+    echo "-n        Dry run. Don't execute commands." 1>&2
+    echo "-v        Verbose. Print extra information if appropriate." 1>&2
+    echo "Try to find author and subject metadata for J3 documents." 1>&2
+}
+
+DRY_RUN=
+VFLAG=
+while getopts hnv\? OPTCHAR; do
+    case $OPTCHAR in
+        h)  usage; exit 0;;
+        n)  DRY_RUN=1;;
+        v)  VFLAG=1;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+case $# in
+    0)  usage; exit 1;;
+    *)  ;;
+esac
+
+
+for F in "$@"; do
+    EXT="$(echo "$F" | sed -e 's/\.\([^.]*\)$/\1/')"
+    BASE="$(echo "$F" | sed -e 's/\.[^.]*$//')"
+    echo "$F:"
+    if [[ -f "$BASE.txt" ]]; then
+        LC_ALL=C sed -n -e 's/Subject:[ \t]*\(..*\)$/Subject: \1/p' \
+            -e 's/Author:[ \t]*\(..*\)$/Author: \1/p' \
+            -e 's/From:[ \t]*\(..*\)$/Author: \1/p' \
+            -e '1s/          *\([^ ].*\)/Subject: \1/p' \
+            -e '3s/         *by /Author: /p'  "$BASE.txt"
+    elif [[ -f "$BASE.tex" ]]; then
+        LC_ALL=C sed -n -e 's/Subject:[ \t]*/Subject: /p' -e 's/Author:[ \t]*/Author: /p' -e 's/From:[ \t]*/Author: /p'  "$BASE.tex" \
+            | sed -e 's/>//g' -e 's/\\\\//g'
+    elif [[ -f "$BASE.msw" ]]; then
+        LC_ALL=C strings "$BASE.msw" \
+            | LC_ALL=C sed -n -e 's/Subject:[ \t]*/Subject: /p' \
+            -e 's/Author:[ \t]*/Author: /p' \
+            -e 's/From:[ \t]*/Author: /p'
+    fi 2>&1 | sed -e 's/^/    /'
+done

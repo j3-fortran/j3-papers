@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+trap "exit 1" HUP INT QUIT TERM
+
+set -e -u -o pipefail
+
+CMD="$(basename $0)"
+function usage {
+    echo "Usage: ls -d [012]*/* \\
+    | sed -e '/INDEX/d' -e 's;/;\t;' \\
+    | sort -k2 -k1 \\
+    | uniq -D -f 1 \\
+    | tr '\t' '/' \\
+    | 0 \\
+    | xargs -0 md5 -r \\
+    | tr '/' ' \\
+    | $CMD [-hnv]" 1>&2
+    echo "-h        Print this help message." 1>&2
+    echo "-n        Dry run. Don't execute commands." 1>&2
+    echo "-v        Verbose. Print extra information if appropriate." 1>&2
+}
+
+DRY_RUN=
+VFLAG=
+while getopts hnv\? OPTCHAR; do
+    case $OPTCHAR in
+        h)  usage; exit 0;;
+        n)  DRY_RUN=1;;
+        v)  VFLAG=1;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+#echo "$CMD: Remaining arguments are: $*"
+
+case $# in
+    0)  ;;
+    *)  usage; exit 1;;
+esac
+
+awk '
+BEGIN {
+    prev_line="";
+    prev_md5="";
+    prev_filename="";
+}
+
+$1 == prev_md5 && $3 != prev_filename {
+    print prev_line;
+    print;
+    print "";
+}
+
+prev_md5 != $1 && $3 == prev_filename {
+    print prev_line;
+    print;
+    print "";
+}
+
+{
+    prev_line = $0;
+    prev_md5 = $1;
+    prev_filename = $3;
+}'

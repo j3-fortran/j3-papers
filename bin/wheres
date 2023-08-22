@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+trap "exit 1" HUP INT QUIT TERM
+
+set -e -u -o pipefail
+
+CMD="$(basename $0)"
+function usage {
+    echo "Usage: $CMD [-fhnv] paper..." 1>&2
+    echo "-a        Print INDEX data, not just paper and directory." 1>&2
+    echo "-e        Use exact arguments in search, not just paper number." 1>&2
+    echo "-h        Print this help message." 1>&2
+    echo "-n        Dry run. Don't execute commands." 1>&2
+    echo "-v        Verbose. Print extra information if appropriate." 1>&2
+    echo "Prints filename and location of every file that matches paper." 1>&2
+    echo "Full INDEX line contains the paper, line count, md5 hash and location." 1>&2
+}
+
+FIELDS="-f 1,4"
+EXACT=
+DRY_RUN=
+VFLAG=
+while getopts aehnv\? OPTCHAR; do
+    case $OPTCHAR in
+        a)  FIELDS="-f 1-9";;
+        e)  EXACT=1;;
+        h)  usage; exit 0;;
+        n)  DRY_RUN=1;;
+        v)  VFLAG=1;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+case $# in
+    0)  usage; exit 1;;
+    *)  ;;
+esac
+
+for P in "$@"; do
+    if [[ -n "$EXACT" ]]; then
+        BASE="$(basename "$P")"
+    else
+        BASE="$(basename "$P")"
+        BASE="${BASE/.*}"
+        BASE="${BASE/r[0-9]}"
+    fi
+
+    echo "$BASE:"
+    case "$BASE" in
+        *.)   egrep -h "^$BASE([r[0-9]+)*[^\t]*" INDEX;;
+        *.*)  grep -h "^$BASE\t" INDEX;;
+        *)    egrep -h "^$BASE([r[0-9]+)*\.[^\t]*" INDEX;;
+    esac \
+    | cut $FIELDS \
+    | sed -e 's/^/  /'
+done

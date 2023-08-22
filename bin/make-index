@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+set -u -o pipefail
+
+CMD="$(basename "$0")"
+CMD_DIR="$(dirname "$0")"
+function usage {
+    echo "Usage: $CMD [-hnv] meeting-number..." 1>&2
+    echo "-h        Print this help message." 1>&2
+    echo "-n        Dry run. Don't execute commands." 1>&2
+    echo "-v        Verbose. Print extra information if appropriate." 1>&2
+    echo "Create INDEX of papers under the specified meeting directory." 1>&2
+}
+
+DRY_RUN=
+VFLAG=
+while getopts b:hnv\? OPTCHAR; do
+    case $OPTCHAR in
+        h)  usage; exit 0;;
+        n)  DRY_RUN=1;;
+        v)  VFLAG=1;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+case $# in
+    0)  usage; exit 1;;
+    *)  ;;
+esac
+
+# Approach:
+#   1. Identify new or updated files (shouldn't they all be new?)
+#   2. Concatenate
+#      a. Old index with updated entries removed.
+#      b. Index lines for new or updated files.
+#   3. Sort by 1st and last fields and place result in temp index.
+#   4. If -v, show the diff.
+#   5. Replace the INDEX with the updated temp index.
+
+NEW_OR_UPDATED="$(find -L "$@" \( -type f -o -type l \) \
+                       -a \! \( -name "*.zip" -o -name "*.gz" \) \
+                       -a -newer INDEX \
+                       -print)"
+if [[ "$NEW_OR_UPDATED" = "" ]]; then
+    echo "INDEX is up to date."
+    exit 0
+fi
+
+DELETES="$(echo "$NEW_OR_UPDATED" \
+           | sed -e 's;.*/;;' -e 's;.*;-e /^&/d;g')"
+
+TMP="$(mktemp "INDEX.tmp.XXXXXX")"
+trap 'rm -f "$TMP"; exit 1' HUP INT QUIT TERM
+
+(sed $DELETES <INDEX; apply "$CMD_DIR/print-index-line" $NEW_OR_UPDATED) \
+    | sort -t $'\t' -k 1 -k 4 >"$TMP"
+
+if [[ -n "$VFLAG" ]]; then
+    echo "Diff: INDEX $TMP"
+    diff INDEX "$TMP"
+fi
+
+if [[ -z "$DRY_RUN" ]]; then
+    mv "$TMP" INDEX
+fi

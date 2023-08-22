@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+
+trap "exit 1" HUP INT QUIT TERM
+
+set -e -u -o pipefail
+
+CMD="$(basename $0)"
+function usage {
+    echo "Usage: $CMD [-hnv] J3-doc..." 1>&2
+    echo "-h        Print this help message." 1>&2
+    echo "-n        Dry run. Don't execute commands." 1>&2
+    echo "-v        Verbose. Print extra information if appropriate." 1>&2
+    echo "Try to find author and subject metadata for J3 documents." 1>&2
+}
+
+DRY_RUN=
+VFLAG=
+while getopts hnv\? OPTCHAR; do
+    case $OPTCHAR in
+        h)  usage; exit 0;;
+        n)  DRY_RUN=1;;
+        v)  VFLAG=1;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+case $# in
+    0)  usage; exit 1;;
+    *)  ;;
+esac
+
+(for F in "$@"; do
+     BASE="$(basename "$F")"
+     case "$BASE" in
+         papers*.txt)
+             MEETING="$(echo "$F" | sed -e 's/.*papers\(.*\)\.txt/\1/')"
+             echo "Scanning $MEETING"
+             sed -n -e '/^Subject: /p' -e '/^Paper Number/,$p' "$F";;
+         papers.[0-1][0-9][0-9])
+             MEETING="$(echo "$F" | sed -e 's/.*papers\.\(.*\)/\1/')"
+             echo "Scanning $MEETING $F"
+             sed -n -e '/^Subject: /p' -e '/^Paper Number/,$p' "$F";;
+     esac
+ done
+
+
+ for F in "$@"; do
+     echo "Lookup $(basename "$F")"
+ done) \
+| awk 'BEGIN {
+    scanning = 0
+    this_paper = ""
+}
+
+$1 == "Lookup" {
+    if (scanning) {
+        scanning = 0
+        for (base in subject) {
+            printf "dump: \"%s\",\"%s\",\"%s\",\"%s\"\n",
+                   base, subjects[base], meetings[base], authors[base]
+        }
+    }
+    base = gensub(/\..*/, "", "g", $2)
+    if ($2 in subject) {
+        printf "\"%s\",\"%s\",\"%s\",\"%s\"\n",
+               $2, subjects[$2], meetings[$2], authors[$2]
+    } else if (base in subject) {
+        printf "\"%s\",\"%s\",\"%s\",\"%s\"\n",
+               $2, subjects[base], meetings[base], authors[base]
+    } else {
+        printf "Cannot find info for \"%s\" (%s)\n", $2, base
+    }
+    next
+}
+
+/^Scanning/ {
+    scanning = 1
+    this_meeting = $2
+    this_paper = gensub(/.*\//, "", "g", $3)
+    subjects[this_paper] = "Papers for meeting " $2
+    authors[this_paper] = ""
+    meetings[this_paper] = $2
+    next
+}
+
+scanning && /^Subject:/ {
+    subjects[this_paper] = gensub(/ *$/, "", "g",
+                                    gensub(/Subject:  */, "", "g", $0))
+}
+
+scanning && $0 ~ /^[^ ]/ && this_subject != "" {
+    # Complete the previous subject
+    base = gensub(/\..*/, "", "g", this_paper)
+    subjects[base] = this_subject
+    authors[base] = this_author
+    meetings[base] = this_meeting
+
+    printf "add: \"%s\",\"%s\",\"%s\",\"%s\"\n",
+            base, subjects[base], meetings[base], authors[base]
+
+    this_subject = ""
+}
+
+scanning && $1 ~ /J3/ {
+    this_paper = gensub(/.*\//, "", "g", $1)
+    this_author = $3
+    this_subject = gensub(/  *$/, "", "g", substr($0, 38))
+    this_subject = gensub(/^  */, "", "g", this_subject)
+    this_subject = gensub(/  */, " ", "g", this_subject)
+    next
+}
+
+scanning && $0 ~ /^  / && this_subject != "" {
+    if (substr(this_subject, length(this_subject), 1) == "-")
+        this_subject = gensub(/   */, " ", "g",
+                                  substr(this_subject, length(this_subject)-1) \
+                                  gensub(/  *$/, "", "g", substr($0, 38)))
+    else
+        this_subject = this_subject " " substr($0, 38)
+    this_subject = gensub(/   */, " ", "g",
+                          gensub(/  *$/, "", "g",
+                                 gensub(/^  */, "", "g", this_subject)))
+    next
+}
+'

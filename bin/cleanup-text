@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+
+set -e -u -o pipefail
+
+CMD="$(basename $0)"
+CMD_DIR="$(dirname $0)"
+function usage {
+    echo "Usage: $CMD [-hnrv]" 1>&2
+    echo "-h        Print this help message." 1>&2
+    echo "-n        Dry run. Don't execute commands." 1>&2
+    echo "-r        Raw text; no special character processing at all (default)." 1>&2
+    echo "-b        Basic character processing." 1>&2
+    echo "          Clean up CRLF, 'safe' 0xFF2D -> + and ^L, ^Z." 1>&2
+    echo "-u        Full Unicode character processing." 1>&2
+    echo "-v        Verbose. Print extra information if appropriate." 1>&2
+    echo "Filter to clean up J3 paper .txt files." 1>&2
+    echo "Convert to UNIX line endings." 1>&2
+    echo "Convert '<FF>2D' to '-'." 1>&2
+    echo "Convert odd ^R, ^S, ^T to proper apostrophe and quote characters." 1>&2
+    echo "Convert extended ASCII characters to quoting characters." 1>&2
+    echo "Convert non-ASCII box-drawing characters to |' -' +." 1>&2
+    # echo "Leave extended ASCII characters as they are (don't use Unicode)." 1>&2
+    echo "Remove NUL, ^Z." 1>&2
+}
+
+TMP="$(mktemp "/tmp/$CMD.XXXXXX")"
+
+trap "rm -f '$TMP'; exit 1" HUP INT QUIT TERM ERR
+
+# File years/1997/97-149.txt seems to have DOS encoding for
+# umlauted characters. Special char must be taken to
+# only change for names, as there are many other
+# files that use \x94 as a quote character.
+# So, CLEAN_DOS should come before most other changes.
+
+# In the settings below, if a variable is set and
+# a similar line is commented out, the first line
+# is used to fix up ASCII 0x80-0xFF. The second line tries
+# to leave those characters as they found them.
+# But that doesn't seem to work well with modern editors.
+CLEAN_DOS1="-e s/Z\x81rn/Zürn/ -e s/M\x84h\x94nen/Mähönen/"
+
+CLEAN_DOS2="-e s/H\x94gskolan/Högskolan/ -e s/\x99sterman/Österman/"
+
+CLEAN_DOS3="-e s/Trollh\x84ttan/Trollhättan/ -e s/TROLLH\x8ETTAN/TROLLHÄTTAN/"
+
+#                  ^+            +$
+# CLEAN_BOX1="-e 2,\$s/^\xc3/+/ -e s/\xb4\$/+/"
+CLEAN_BOX1=
+
+#                      |   +   +   -   +   +   -   -   +   +   +
+# CLEAN_BOX2="-e 2,\$y/\xb3\xb4\xbf\xc0\xc1\xc2\xc3\xc4\xc5\xd9\xda/|-++++--+++/"
+CLEAN_BOX2=
+
+CLEAN_NUL="-e s/\x00//g"
+CLEAN_CRLF="-e s/\x0d\$//"
+CLEAN_TRAILING_FF="-e \$s/\x0C//"
+CLEAN_TRAILING_SP="-e s/\x20*\$//"
+CLEAN_CTRL_ST="-e s/\x13/“/g -e s/\x14/”/g"
+CLEAN_CTRL_Z="-e \$s/\x1A//g"
+
+CLEAN_ELLIPSES="-e s/\x85/…/g"
+CLEAN_9192="-e s/\x91/\x27/g -e s/\x92/’/g"
+CLEAN_9394="-e s/\x93([[:print:]])/“\1/g -e s/([[:print:]])\x94/\1”/g"
+CLEAN_BULLET1="-e s/\x95/•/g"
+CLEAN_N_DASH="-e s/\x96/–/g"
+CLEAN_NBSP="-e s/\xA0/\x20/g"
+CLEAN_A1BF="-e s/\xA1/¡/g -e s/\xBF/¿/g"
+CLEAN_WP_LESS_EQ="-e s/\xA3/≤/g"
+CLEAN_SECTION="-e s/\xA7/§/g"
+CLEAN_COPYRIGHT="-e s/\xA9/©/g"
+CLEAN_R_GUILLEMET="-e s/\xAB//g"
+CLEAN_SOFT_HYPHEN="-e s/\xAD/-/g"
+CLEAN_PLUS_MINUS1="-e s/\xB1/±/g"
+CLEAN_PARAGRAPH="-e s/\xB6/¶/g"
+CLEAN_BULLET2="-e s/\xB7/•/g"
+CLEAN_E_ACUTE="-e s/\xC9/É/g"
+CLEAN_D5_APOSTROPHE="-e s/\xD5/'/g"
+CLEAN_DADB="-e s/\xDA/'/g -e s/\xDB/'/g"
+CLEAN_C_CEDILLA="-e s/\xE7/ç/g"
+CLEAN_PLUS_MINUS2="-e s/\xF1/±/g"
+
+CLEAN_HEX_FF2D="-e s/\xFF2D/+/g"
+
+CHAR_PROC="-r"
+DRY_RUN=
+ECHO=
+VFLAG=
+while getopts bhnruv\? OPTCHAR; do
+    case $OPTCHAR in
+        b)  CHAR_PROC="-b";;
+        h)  usage; exit 0;;
+        n)  DRY_RUN=1 ECHO=echo;;
+        r)  CHAR_PROC="-r";;
+        u)  CHAR_PROC="-u";;
+        v)  VFLAG=1;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+case $# in
+    0)  ;;
+    *)  usage; exit 1;;
+esac
+
+# "sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'" is an idiom
+# for deleting trailing blank lines.
+
+# Pass 1: Do all the common transformations for raw and non-raw.
+export LC_ALL=C
+if [[ "$CHAR_PROC" = "-r" ]]; then
+    cat
+elif [[ "$CHAR_PROC" = "-b" ]]; then
+    tr -d '\000' \
+    | sed -E $CLEAN_CRLF \
+        $CLEAN_NUL \
+        $CLEAN_TRAILING_FF \
+        $CLEAN_TRAILING_SP \
+        $CLEAN_CTRL_Z \
+        $CLEAN_HEX_FF2D \
+    | tr '\r' '\n' \
+    | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
+elif [[ "$CHAR_PROC" = "-u" ]]; then
+    tr -d '\000' \
+    | sed -E $CLEAN_CRLF \
+        $CLEAN_NUL \
+        $CLEAN_TRAILING_FF \
+        $CLEAN_TRAILING_SP \
+        $CLEAN_CTRL_Z \
+        $CLEAN_HEX_FF2D \
+    | tr '\r' '\n' \
+    | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' >"$TMP"
+
+    case "$(file "$TMP")" in
+        Unicode\ text.*UTF-8*)
+            # Already OK, as already Unicode and UTF-8
+        ;;
+        *)
+    esac
+
+    NON_ASCII="$("$CMD_DIR/non-ascii-histo" "$TMP")"
+
+    case "$NON_ASCII" in
+        *x01*x02*x04*x05*)    # min-124.txt is trash
+            echo "This file needs to be cleaned up manually" 1>&2
+            exit 1;;
+
+        *xb3*xb4*xc3*xc4*)
+            sed -E $CLEAN_BOX1 $CLEAN_BOX2 \
+                $CLEAN_CTRL_ST \
+                $CLEAN_DOS1 \
+                $CLEAN_DOS2 \
+                $CLEAN_DOS3 \
+                $CLEAN_ELLIPSES \
+                $CLEAN_BULLET1 \
+                $CLEAN_N_DASH \
+                $CLEAN_9192 \
+                $CLEAN_9394 \
+                $CLEAN_NBSP \
+                $CLEAN_A1BF \
+                $CLEAN_SECTION \
+                $CLEAN_COPYRIGHT \
+                $CLEAN_R_GUILLEMET \
+                $CLEAN_SOFT_HYPHEN \
+                $CLEAN_PLUS_MINUS1 \
+                $CLEAN_PARAGRAPH \
+                $CLEAN_BULLET2 \
+                $CLEAN_E_ACUTE \
+                $CLEAN_D5_APOSTROPHE \
+                $CLEAN_DADB \
+                $CLEAN_C_CEDILLA \
+                $CLEAN_PLUS_MINUS2 \
+                <"$TMP" ;;
+        *)
+            sed -E \
+                $CLEAN_CTRL_ST \
+                $CLEAN_DOS1 \
+                $CLEAN_DOS2 \
+                $CLEAN_DOS3 \
+                $CLEAN_ELLIPSES \
+                $CLEAN_BULLET1 \
+                $CLEAN_N_DASH \
+                $CLEAN_9192 \
+                $CLEAN_9394 \
+                $CLEAN_NBSP \
+                $CLEAN_A1BF \
+                $CLEAN_SECTION \
+                $CLEAN_COPYRIGHT \
+                $CLEAN_R_GUILLEMET \
+                $CLEAN_SOFT_HYPHEN \
+                $CLEAN_PLUS_MINUS1 \
+                $CLEAN_PARAGRAPH \
+                $CLEAN_BULLET2 \
+                $CLEAN_E_ACUTE \
+                $CLEAN_D5_APOSTROPHE \
+                $CLEAN_DADB \
+                $CLEAN_C_CEDILLA \
+                $CLEAN_PLUS_MINUS2 \
+                < "$TMP";;
+    esac
+    rm -f "$TMP"
+    exit 0
+else
+    echo "$CMD: Can't happen: \$CHAR_PROC = '$CHAR_PROC'" 1>&2
+    exit 1
+fi

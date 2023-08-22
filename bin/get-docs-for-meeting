@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+
+trap 'rm -f $DOCS_HTML; exit 1' HUP INT QUIT TERM ERR
+
+set -e -u -o pipefail
+
+CMD="$(basename $0)"
+BIN="$(dirname "$0")"
+
+DOCS_HTML="$(mktemp /tmp/docs-html-XXXXXX)"
+
+case $? in
+  0)  ;;
+  *)  echo "$CMD: Can't create temporary file" 1>&2
+      exit 1;;
+esac
+
+
+trap "rm -f $DOCS_HTML; exit 1" HUP INT QUIT TERM
+
+function usage {
+    echo "Usage: $CMD [-dhNnv] meeting-number..." 1>&2
+    echo "-b        Basic character processing." 1>&2
+    echo "-d        Verbose. Report file diffs on changed files." 1>&2
+    echo "-h        Print this help message." 1>&2
+    echo "-N        Don't rebuild the INDEX file." 1>&2
+    echo "-n        Dry run. Don't execute commands." 1>&2
+    echo "-r        Raw text; no special character processing at all (default)." 1>&2
+    echo "          Clean up CRLF, 'safe' 0xFF2D -> + and ^L, ^Z." 1>&2
+    echo "-u        Full Unicode character processing." 1>&2
+    echo "-v        Verbose. Print extra information if appropriate." 1>&2
+    echo "Get documents for 'meeting-number'..." 1>&2
+    echo "'meeting-number' should be the name of a directory with meeting files." 1>&2
+}
+
+function vecho {
+    local N=$1
+    shift
+    if [[ $VFLAG -ge "$N" ]]; then
+        echo "$@"
+    fi
+}
+
+CHAR_PROC=-r
+DOPT=
+DRY_RUN=
+ECHO=
+INDEX=1
+VFLAG=0
+VOPT=
+while getopts bdhNnruv\? OPTCHAR; do
+    case $OPTCHAR in
+        b)  CHAR_PROC="-b";;
+        d)  DOPT=-d;;
+        h)  usage; exit 0;;
+        N)  INDEX=;;
+        n)  DRY_RUN=1 ECHO=echo;;
+        r)  CHAR_PROC="-r";;
+        u)  CHAR_PROC="-u";;
+        v)  VFLAG=$((VFLAG+1))
+            if [[ -z "$VOPT" ]]; then
+                VOPT=-v
+            else
+                VOPT=${VOPT}v
+            fi;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+case $# in
+    0)  usage; exit 1;;
+    *)  ;;
+esac
+
+if [[ ! -d "meetings/" ]]; then
+    echo "$CMD: 'meetings/' is not a directory with meeting files" 1>&2
+    exit 1
+fi
+
+if [[ ! -d "years/" ]]; then
+    echo "$CMD: 'years/' is not a directory with yearly files" 1>&2
+    exit 1
+fi
+
+ERR=0
+for M in "$@"; do
+    case "$M" in
+        [0-9][0-9]) M="0$M";;
+        [0-9][0-9][0-9]) ;;
+        [0-9][0-9][0-9][a-d]) ;;
+        *)  echo "Invalid meeting number $M" 2>&1
+            ERR=1
+            continue;;
+    esac
+
+    MEETING_DIR="meetings/$M"
+    MEETING_NO=${M/#0/}
+    mkdir -p "$MEETING_DIR"
+
+    vecho 1 $MEETING_DIR:
+    vecho 2 "    MEETING_DIR=$MEETING_DIR MEETING_NO=$MEETING_NO"
+
+    vecho 1 "  Fetching document list..."
+    vecho 2 "    curl -s -o \"$DOCS_HTML\" \"https://j3-fortran.org/doc/meeting/$MEETING_NO\""
+    curl -s -o "$DOCS_HTML" "https://j3-fortran.org/doc/meeting/$MEETING_NO"
+
+    if grep "No documents" "$DOCS_HTML" >/dev/null; then
+        echo "  No documents"
+        continue
+    fi
+
+    # For each file mentioned in $DOCS_HTML:
+
+    sed -n -e "s;.*<tr.*href=\"/doc/year/\([^\"]*\).*;\1;p" <"$DOCS_HTML" \
+    | while read FILENAME; do \
+        PAPER_NAME="$(basename "$FILENAME")"
+        vecho 1 "  $PAPER_NAME"
+        vecho 2 "    FILENAME=$FILENAME"
+
+        # Figure out the correct 4-digit year number
+        case "$FILENAME" in
+            [0-5]*)  Y4="20$(dirname "$FILENAME")";;
+            [89]*)   Y4="19$(dirname "$FILENAME")";;
+            *)  echo "$CMD: Can't find 4-digit year for '$FILENAME'" 1>&2
+                continue;;
+        esac
+
+        mkdir -p "years/$Y4"
+
+        # Fetch the file into the papers directory
+        URL="https://j3-fortran.org/doc/year/$FILENAME"
+        YTARGET="years/$Y4/$PAPER_NAME"
+        MTARGET="$MEETING_DIR/$PAPER_NAME"
+        PTARGET="papers/$PAPER_NAME"
+        if ! $BIN/update-paper $CHAR_PROC $VOPT \
+                  $"$URL" "$YTARGET" "$MTARGET" "$PTARGET"; then
+            ERR=1
+        fi 2>&1 | sed -e 's/^/  /'
+    done
+done
+
+rm -f $DOCS_HTML
+
+if [[ -n "$INDEX" ]]; then
+    if  [[ "papers" -nt "INDEX" ]]; then
+        echo "Remaking INDEX..."
+        $BIN/make-index papers meetings years
+    else
+        echo "Everything is up to date."
+    fi
+fi
+
+exit $ERR
