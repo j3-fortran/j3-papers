@@ -1,0 +1,170 @@
+To:        J3                                      12-199
+From:      Bill Long
+Subject:   Coarray teams
+Date: 2012 October 18
+Reference: WG5/N1930, 12-170
+
+Discussion:
+-----------
+
+This paper proposes syntax and semantics for feature
+2. Teams
+
+Teams provide a capability to restrict the image set of remote memory
+references, coarray allocations, and synchronizations to a subset of
+all the images of the program. This simplifies writing programs that
+involve segregated activities (parts of a climate model, for example)
+that might be more easily be written independently or may have already
+been written as independent programs. Teams also provide a mechanism
+for subdividing the computation for the sake of better performance
+(such as within local SMP domains). Finally, teams provide the
+capability to execute procedures (such as library procedures) that use
+coarrays internally on a subset of the images of a program.
+
+
+T1: When a block of code is executed on images executing as a team, it
+    should execute on those images as if the program contained no
+    other images. This has the following implications:
+
+    1. Image indices shall be relative to the team, starting at 1 and
+       ending with the number of images in the team.  
+
+    2. Collective activities that would involve all images, such as
+       SYNC ALL, allocation and deallocation of coarrays, collective
+       subroutine execution, and inquiry intrinsics such as THIS_IMAGE
+       and NUM_IMAGES shall be relative to the team.
+
+T2: While an image executes a statement it shall be a member of one
+    and only one team. Access to variables on images outside the
+    current team is not permitted.
+
+T3: It should be possible to split a team into mutually exclusive
+    subsets that are themselves teams. This should be dynamic in order
+    to allow different groupings of images during different stages of
+    execution. It is desirable to have a compact mechanism for an
+    image to specify which team it wishes to belong.
+
+T4: There shall be a construct mechanism for changing the current
+    team, involving the synchronization of all members of the teams
+    at the beginning and end of the construct. The construct shall
+    support separate execution blocks based on team membership. The
+    construct shall make apparent (both to the system and the
+    programmer) where team execution begins and ends.
+
+T5: There shall be a type for variables identifying a team collection
+    (probably an opaque derived type defined in the intrinsic module
+    ISO_FORTRAN_ENV).
+
+T6: There needs to be a mechanism to find the image index relative to
+    the set of an ancestor team. This might best be done by adding an
+    optional argument to IMAGE_INDEX that specifies the ancestor team.
+
+T7: An allocatable coarray that is allocated within a team construct
+    shall be deallocated before execution of the team construct
+    terminates.  An coarray that was allocated in a parent team shall
+    not be deallocated within an child team construct.
+
+T8: The restriction that standard input is attached only to image 1 is
+    unchanged, and the designated image is image 1 of the original set
+    of images present at program startup.
+
+
+
+Syntax and Semantics
+--------------------
+
+
+The derived type TEAM_TYPE is defined in the ISO_FORTRAN_ENV intrinsic
+module. Its components are private; no component is allocatable or a
+pointer. It is an extensible type with no type parameters. A team
+variable is a variable of type TEAM_TYPE.
+
+A named variable of type TEAM_TYPE shall be a coarray. A named
+variable with a noncoarray subcomponent of type TEAM_TYPE shall be a
+coarray. A team variable shall not appear in a variable definition
+context except as an argument to the intrinsic subroutine
+PARTITION_TEAM or as an <allocate-object>.
+
+A variable ORIGINAL_TEAM is defined in the ISO_FORTRAN_ENV intrinsic
+module. It is a team variable with the PROTECTED attribute and the
+value of the team of all the images at the beginning of program
+execution.
+
+A variable FAILED_TEAM is defined in the ISO_FORTRAN_ENV intrinsic
+module. It is a team variable with the value of the team of all failed
+images. At the beginning of execution of the program this team is
+empty.
+
+Every image of the program begins execution as part of the
+ORIGINAL_TEAM team. At any point during execution of the program an
+image shall be part of one and only one team. That team is the current
+team. The result of the NUM_IMAGES() intrinsic function is the number
+of images in the current team. The image index values for images of
+the current team are in the set 1..NUM_IMAGES().
+
+
+-----------Part beginning here needs much work
+-----------Syntax to form and select the current team
+
+An intrinsic subroutine, PARTITION_TEAM (PARTITION_NAME, NEW_TEAM), is
+provided. The PARTITION_TEAM argument the name of the team partition
+being created. The NEW_TEAM argument is the team variable for the team
+to which the executing image belongs for this partitioning of the
+current team. [More work needed here.]  A call to PARTITION_TEAM is an
+image control statement an causes synchronization of all nonfailed
+images of the current team.
+
+The current team to which the execution image belongs is changed by
+execution of a SELECT TEAM construct:
+
+   SELECT TEAM (partition_name)
+
+    [TEAM (team_name)]
+
+    [TEAM DEFAULT]
+
+   END SELECT
+------------End of part needing much more work that the other parts.
+
+
+At the end of a SELECT TEAM construct, any unsaved allocated
+allocatable object that was not allocated at the beginning of the
+construct is deallocated. During execution of a SELECT TEAM construct
+an allocatable object that was allocated when the construct began
+execution shall not be deallocated.
+
+A new named constant, STAT_FAILED_IMAGE, is defined in the
+ISO_FORTRAN_ENV intrinsic module.  It shall have a nonzero value that
+is different from the value of STAT_STOPPED_IMAGE, STAT_LOCKED,
+STAT_LOCKED_OTHER_IMAGE, of STAT_UNLOCKED. The value STAT_FAILED_IMAGE
+becomes the value of the variable in a STAT= specifier, or STAT
+argument, in an image control statement if execution of the statement
+involves synchronization with, or accessing a variable on an image of
+the current team that has failed. A failed image is one for which
+references or definitions of data fail when that data should be
+accessible, or the image fails to respond as part of a collective
+activity.  What constitutes a failed image is processor dependent, but
+usually is associated with a hardware failure of the processor, memory
+system, or interconnection network.
+
+The scope of STAT_STOPPED_IMAGE and STAT_FAILED_IMAGE is the current
+team.
+
+The intrinsic function THIS_IMAGE() is extended to have an optional
+argument TEAM. The TEAM argument shall be a team variable for an
+ancestor team of the current team. The result value is the image index
+of the executing image in that team.
+
+The intrinsic function NUM_IMAGES() is extended to have an optional
+argument TEAM. The TEAM argument shall be a team variable for an
+ancestor team of the current team, or the team FAILED_TEAM in the
+ISO_FORTRAN_ENV intrinsic module. The result value is the number of
+images in that team.
+
+Access to the standard input unit is availalble only on image 1 of the
+ORIGINAL_TEAM. If the result of THIS_IMAGE(ORIGINAL_TEAM) is 1 on the
+executing image, the standard input unit is accessible; otherwise it
+is not.
+
+
+

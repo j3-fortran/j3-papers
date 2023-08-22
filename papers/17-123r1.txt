@@ -1,0 +1,136 @@
+                                                            J3/17-123r1
+To: J3
+From: Malcolm Cohen & Daniel Chen & Toon Moene
+Subject: Why are team specifiers always variables?
+Date: 2017 February 13
+
+
+1. Introduction
+---------------
+
+Team specifiers are required to be variables (nearly?) everywhere, even
+where they are not being modified.  This prevents the user from using a
+function that returns TYPE(TEAM_TYPE) in such places; instead, he needs
+to assign the value to a temporary variable.
+
+This restriction does not appear to be necessary or useful.
+
+
+2. Discussion
+-------------
+
+The most obvious places where this would be useful are CHANGE TEAM and
+SYNC TEAM.  In particular, the latter requires the user to write something
+like
+    tmp = GET_TEAM(PARENT_TEAM)
+    SYNC TEAM ( tmp )
+instead of the simpler
+    SYNC TEAM ( GET_TEAM(PARENT_TEAM) )
+
+Requiring the user to assign the value of GET_TEAM and any function he
+writes that returns a TEAM_TYPE value is inconvenient and arguably
+error-prone.
+
+Similarly, for CHANGE TEAM, if the user has a team selection function,
+he needs to write
+    tmp = select_team(...)
+    CHANGE TEAM ( tmp )
+instead of the simpler
+    CHANGE TEAM ( select_team(...) )
+
+Admittedly the use case for this is slightly weaker than SYNC TEAM, and
+CHANGE TEAM is where the team-variable BNF is defined, making edits to
+that slightly more complicated.
+
+Finally, the edits contain some cosmetic changes because team-variables do
+not "specify" a team, they "identify" a team, according to paragraph 2 of
+16.10.2.32 TEAM_TYPE.
+
+
+3. Image selectors
+------------------
+
+It might be unlikely that anyone will really want to use a function
+reference in the TEAM= specifier of an image selector, but it would be
+consistent and easy to change this as well.  Edits to do this are at
+the end of the paper.
+
+
+4. Edits to 17-007 to do both CHANGE TEAM and SYNC TEAM
+-------------------------------------------------------
+
+[187:8] 11.1.5.1 Purpose and form of the CHANGE TEAM construct,
+        R1112 change-team-stmt,
+        Change "<team-variable>" to "<team-value>".
+
+[187:12] Same subclause, R1115 team-variable,
+         Change "<team-variable> <<is>> <scalar-variable>"
+         to     "<team-value> <<is>> <scalar-expr>".
+
+[187:23] Same subclause, C1115 "A team-variable shall",
+         Change "A <team-variable> shall"
+         to     "A <team-value> shall".
+
+[188:6,8-9] 11.1.5.2 Execution of a CHANGE TEAM construct, p1
+  Change "The values of the <team-variable>s"
+  to     "The <team-value>s",
+  Change "specified by the value of <team-variable>"
+  to     "identified by <team-value>".
+{Note cosmetic change in the edit.}
+
+[188:9] 11.1.5.2 Execution of a CHANGE TEAM construct, pa, sentence 3,
+        change "The current team is not changed" to "If <team-value>
+        is a variable, the current team is not changed".
+
+[188:22] Same subclause, p6
+         Change "identified by <team-variable>"
+         to     "identified by <team-value>".
+
+[213:2] 11.6.6 SYNC TEAM statement, R1169 sync-team-stmt,
+        Change "<team-variable>" to "<team-value>".
+
+[213:3] Same subclause, p1,
+  Change
+    "The <team-variable> shall be defined with a value that represents"
+  to
+    "The <team-value> shall identify"
+  making the whole paragraph read
+    "The <team-value> shall identify an ancestor team, the current team,
+     or a team whose parent is the current team."
+{Note cosmetic change in the edit.}
+
+[213:5-6] Same subclause, p2,
+          Change "the team specified by <team-variable>"
+          to     "the team identified by <team-value>"
+{Note cosmetic change in the edit.}
+
+[214:17+] 11.6.9 FORM TEAM statement, after R1176 team-number,
+          insert new BNF and constraint
+  "R1176a <team-variable> <<is>> <scalar-variable>
+   C1176a A <team-variable> shall be of type TEAM_TYPE from the intrinsic
+          module ISO_FORTRAN_ENV."
+{Reinstate BNF for team-variable in the appropriate place.}
+[214:24] Change "specifies" to "identifier"
+
+
+5. Edits for the image selector TEAM= specifier
+-----------------------------------------------
+
+[139:19] 9.6 Image selectors, R926 image-selector-spec,
+  Change
+    "TEAM = <team-variable>"
+  to
+    "TEAM = <team-value>".
+
+[139:28-29] Same subclause, p3,
+  Change
+    "<team-variable>, which shall be defined with a value that represents"
+  to
+    "<team-value>, which shall identify"
+  making that sentence read
+    "If a TEAM= specifier appears in an image-selector, the team-value
+     shall identify the current or an ancestor team; the object shall be
+     an established coarray in that team or an ancestor thereof."
+{Note cosmetic change in the edit.}
+
+===END===

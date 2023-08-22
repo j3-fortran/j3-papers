@@ -1,0 +1,142 @@
+                                                            11-225r1
+To: J3
+From: Nick Maclaren / Bill Long / Malcolm Cohen
+Subject: Interop TR: Fixes to 11-167r2 and 11-175r2
+Date: 2011 July 01
+Reference: N1854, 11-167r2, 11-175r2
+
+
+Edits to 11-175r2:
+------------------
+
+This is now a rule that the programmer must obey, not a specification
+of the effect.
+
+In the last line of the edits to [17:26-28], replace "is source->rank"
+by "shall be source->rank".
+
+
+Edits to 11-167r2:
+------------------
+
+The rationale for these is to close certain loopholes where 'clever' C
+code could conflict with reasonable Fortran implementations.  Examples
+of such code are appended.
+
+
+In the replacement text of the edits to [15:32-35], replace:
+
+"It shall not point to a C descriptor that is pointed to by a formal
+parameter that corresponds to a Fortran actual argument."
+
+by:
+
+"It shall not point to a C descriptor that is pointed to by either a C
+formal parameter that corresponds to a Fortran actual argument or a C
+actual argument that corresponds to a Fortran dummy argument."
+
+
+In the replacement text of the edits to [17:12-15], replace:
+
+"If /result/ points to a C descriptor that is pointed to by a formal
+parameter that corresponds to a Fortran actual argument, the attribute
+member shall not have the value CFI_attribute_assumed."
+
+by:
+
+"If /result/ points to a C descriptor that is pointed to by either a C
+formal parameter that corresponds to a Fortran actual argument or a C
+actual argument that corresponds to a Fortran dummy argument, the
+attribute member shall have the value CFI_attribute_pointer.".
+
+
+In the replacement text of the edits to [18:9-12], replace:
+
+"If /result/ points to a C descriptor that is pointed to by a formal
+parameter that corresponds to a Fortran actual argument, the attribute
+member shall not have the value CFI_attribute_assumed."
+
+by:
+
+"If /result/ points to a C descriptor that is pointed to by either a C
+formal parameter that corresponds to a Fortran actual argument or a C
+actual argument that corresponds to a Fortran dummy argument, the
+attribute member shall have the value CFI_attribute_pointer.".
+
+
+Examples
+--------
+
+These are examples of the 'clever' C code that it is intended to forbid.
+
+
+Example 1:
+
+Subroutine sub(a)
+  Real a(:)
+  Interface
+    Subroutine csub(x) Bind(C)
+      Real x(:)
+    End Subroutine
+  End Interface
+  Call csub(a)
+  ... do something with a.
+End Subroutine
+void csub(CFI_desc_t *x)
+{
+  CFI_establish(x,...); // Zaps a?
+}
+
+
+Example 2:
+
+CFI_desc_t *x;
+void start(void)
+{
+  extern next(CFI_desc_t *y);
+  ...
+  CFI_establish(x,...);
+  ...
+  next(x);
+  ... do something more with x.
+}
+
+Subroutine next(y) Bind(C)
+  Real y(:)
+  Call zap
+  ... do something with y.
+End Subroutine
+
+void zap(void)
+{
+  CFI_establish(x,...); // Zaps Y?
+}
+
+
+Example 3:
+
+CFI_desc_t *x;
+void start(void)
+{
+  extern next1(CFI_desc_t *y);
+  ...
+  CFI_establish(x,...);
+  ...
+  next1(x);
+  ... do something more with x.
+}
+
+Subroutine next1(y) Bind(C)
+  Real,Pointer :: y(:)
+  Call next2(y)
+End Subroutine
+Subroutine next2(z) Bind(C)
+  Real z(:)
+  Call zap
+  ... do something with z.
+End Subroutine
+
+void zap(void)
+{
+  CFI_establish(x,...); // Zaps z?
+}

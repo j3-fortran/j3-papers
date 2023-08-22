@@ -1,0 +1,158 @@
+                                                            12-160
+To: J3
+From: Malcolm Cohen
+Subject: Interp Deallocation error handling
+Date: 2012 June 18
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0081
+TITLE: Deallocation error handling
+KEYWORDS: FINAL, DEALLOCATE, ALLOCATABLE
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Q1. Consider
+  Module m198_005a
+    Implicit None
+    Type t
+      Character(80) :: name = 'Nameless'
+    Contains
+      Final :: tzap
+    End Type
+    Private tzap
+  Contains
+    Subroutine tzap(x)
+      Type(t) x
+      Print *,'Goodbye ',Trim(x%name)
+    End Subroutine
+    Subroutine test(p)
+      Type(t),Pointer :: p
+      Integer istat
+      Deallocate(p,Stat=istat)
+      If (istat/=0) Print *,'Deallocation error',istat
+    End Subroutine
+  End Module
+  Program testprog
+    Use m198_005a
+    Type(t),Target :: x
+    Type(t),Pointer :: y
+    Allocate(y)
+    x%name = 'target_x'
+    y%name = 'allocated_y'
+    Call test(y)
+    y => x
+    Call test(y)
+  End Program
+
+Is this program standard-conforming, and if so, does it print
+ Goodbye target_x
+?
+
+Note that 4.5.6.3 says
+  "When a pointer is deallocated its target is finalized."
+This could be interpreted as meaning "successfully deallocated" in
+which case the finalizer would not be invoked, or it could be
+interpreted as including any unsuccessful deallocation attempt, in
+which case the finalizer would be invoked.
+
+Q2. Consider
+  Program m198_005b
+    Implicit None
+    Type t
+      Character(:) :: name
+    End Type
+    Type(t),Target :: x
+    Type(t),Pointer :: y
+    Allocate(y)
+    x%name = 'target_x'
+    y%name = 'allocated_y'
+    Deallocate(y)
+    y => x
+    Deallocate(y)
+    If (.Not.Allocated(x%name)) Print *,'x is now nameless'
+  End Program
+
+6.7.3.2 says
+  "When a variable of derived type is deallocated, any allocated
+   allocatable subobject is deallocated."
+
+Again, this does not specify whether this applies only to successful
+deallocation.
+
+Is this program standard-conforming, and does it print
+ x is now nameless
+?
+
+ANSWER:
+
+Straw Vote:
+ (a) successful deallocation only (edit required)
+ (b) both successful and unsuccessful (edit required)
+ (c) processor-dependent (edit required)
+ (d) not standard-conforming (no edit required)
+
+Argument for option (d):
+  No edit required.  OTOH, not a very useful answer.
+
+Argument for option (c):
+  These particular deallocation failures are not that difficult to
+  handle at runtime, but other kinds of deallocation failure might be
+  very difficult if not impossible to predict before calling the
+  finalizer or deallocating an allocatable subcomponent.  Since the
+  finalizer (or subcomponent deallocation) needs to occur before the
+  actual deallocation, it is arguably unreasonable to require the
+  processor to predict the future.
+
+Argument for option (b):
+  Even though we cannot predict the future, we can always do the
+  finalization or subcomponent deallocation first, and thus
+  guarantee portability.  OTOH, there might be some error conditions
+  that would preclude finalization or subcomponent deallocation...
+
+Argument for option (a):
+  Seems to be most likely to be what the user wants, even though it
+  requires a time machine.
+
+EDITS:
+
+for option (a):
+  [76:10] In 4.5.6.3p1, Before "deallocated" insert "successfully",
+          twice.
+  [131:12] In 6.7.3.2p8, Before "deallocated" insert "successfully".
+
+for option (b):
+  [76:10] Append new sentence to 4.5.6.3p1
+    "This finalization occurs even if an error condition occurs in the
+     deallocation."
+  [131:12] Append new sentence to 6.7.3.2p8
+    "The deallocation of allocated allocatable subobjects occurs even
+     if an error condition occurs in the deallocation."
+
+for option (c):
+  [76:10] Append new sentence to 4.5.6.3p1
+    "If an error condition occurs in deallocation, it is processor
+     dependent whether finalization occurs."
+  [131:12] Append new sentence to 6.7.3.2p8
+    "If an error condition occurs in deallocation, it is processor
+     dependent whether an allocated allocatable subobject is
+     deallocated."
+  [459:33+] In A.2,
+    After "whether and when an object is finalized ... (4.5.6.3);"
+    Insert new bullet point
+      "whether an object is finalized by a deallocation in which an
+       error condition occurs (4.5.6.3);"
+  [460:5+] In A.2,
+    After "the order ... event described in 6.7.3.2;"
+    Insert new bullet point
+      "whether an allocated allocatable subobject is deallocated when
+       an error condition occurs in the deallocation of an object
+       (6.7.3.2);"
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 12-nnn    m198  F03/0081 submitted
+
+----------------------------------------------------------------------

@@ -1,0 +1,187 @@
+
+                                                        J3/01-161
+                                                       Meeting 156
+
+Date:  5 March 2001
+To:    J3
+From:  Kurt W. Hirchert
+Subject: MOVE_ALLOC
+
+=========
+Rationale
+=========
+
+Regular readers of comp-fortran-90 will recognize that the initial
+impetus for this proposal came from the problem of reallocating
+ALLOCATABLE variables.  In Fortran 90 or Fortran 95, reallocating
+variables with the ALLOCATABLE attribute is approximately twice as
+expensive as reallocating variables with the POINTER attribute
+because there is no facility for ALLOCATABLE variables that is
+comparable to pointer assignment for POINTER variables.  The
+MOVE_ALLOC intrinsic subroutine proposed here would be that
+comparable facility and would allow reallocation of ALLOCATABLE
+variables to be expressed by sequences such as
+
+       ALLOCATE(temp(:size(A)+10))   ! Allocate new storage
+       temp(:size(A))=A              ! Copy values to retain
+       CALL MOVE_ALLOC(A,temp)       ! Deallocate old storage for A
+                                     !  and transfer new storage to
+                                     !  A
+
+MOVE_ALLOC differs from pointer assignment in that the "right hand
+side" is, in effect, "nullified" so only one ALLOCATABLE variable
+is associated with the allocation.  Additionally, the "left hand
+side" is described as INTENT(OUT) rather than INTENT(INOUT) to get
+an automatic deallocation of the "old" allocation before the
+transfer (see 6.3.3.1).  (These are part of the reason for _not_
+using the pointer assignment notation for this facility.)
+
+Although reallocation was the initial motivation for MOVE_ALLOC,
+it has many potential uses.  The allocatable components TR makes
+it possible to build data structures such as trees or lists with
+allocatable components, but it is cumbersome to modify the such
+structures once they are built.  MOVE_ALLOC makes such
+modifications more practical.  For example, a stack push might be
+coded as
+
+       CALL MOVE_ALLOC(temp,stack)
+       ALLOCATE(stack)
+       stack%value=the_value_being_pushed
+       CALL MOVE_ALLOC(stack%rest,temp)
+
+and a stack pop as
+
+       variable_to_receive_pop=stack%value
+       CALL MOVE_ALLOC(temp,stack%rest)
+       CALL MOVE_ALLOC(stack,temp)
+
+(The stack pop could not be reduced to
+
+       variable_to_receive_pop=stack%value
+       CALL MOVE_ALLOC(stack,stack%rest)
+
+because of the overlap between stack and stack%rest.)
+
+======
+Issues
+======
+
+1. Should we be doing this at all?
+
+    a. This proposal is "small" in terms of both textual changes to
+       the standard and implementation costs.
+
+    b. The potential performance benefits are extensive.
+
+    c. Some people (e.g., J. Giles) believe there are better
+       solutions to the reallocation problem, but this is better
+       than the status quo, it introduces no technical impediment
+       to later addition of a REALLOCATE statement, and it would
+       remain useful even if we should add REALLOCATE in a future
+       revision.
+
+    d. If one views the allocatable components TR as allowing
+       ALLOCATABLE to replace POINTER in problems where no aliasing
+       is needed, then this proposal can be argued to fill a gap in
+       the functionality provided by that TR, and on that basis can
+       be argued to be "in order" for consideration at this time.
+
+2. Type parameters agreement has been handled slightly differently
+    from pointer assignment.  In particular, there is no equivalent
+    to the requirement at [134:6-7].  This was done to allow a
+    "null" allocation to be transferred to a temporary with all
+    nonkind parameters deferred and then transferred back.
+
+3. The handling of the TARGET attribute and pointers was chosen
+    to reflect implementation reality and impose minimal additional
+    requirements.  In reality, a pointer FROM will always become a
+    pointer to TO, but if the compiler is not allowing for the
+    possibility of aliasing of TO, the pointer association status
+    becomes undefined to prevent the pointer from being used.
+    Other possibilities, such as requiring TO to have the TARGET
+    attribute if FROM does, would be possible, but could interfere
+    in some cases with reusing temporary allocatable for different
+    reallocations.
+
+========================
+Specification and Syntax
+========================
+
+13.17.79+1  MOVE_ALLOC(TO,FROM)
+
+Description. Transfers an allocation from one allocatable object
+to another.
+
+Class.  Subroutine.
+
+Arguments.
+
+TO      shall be type compatible (5.1.1.8) with FROM and have the
+         same rank.  It shall be allocatable.  It is an INTENT(OUT)
+         argument.  Its nondeferred type parameters shall have the
+         same values as the corresponding type parameters of the
+         current allocation, if any, of FROM.  No declared
+         nondeferred type parameter of TO shall differ in value
+         from a corresponding declared nondeferred type parameter
+         of FROM.
+
+FROM    may be of any type and rank.  It shall be allocatable.  It
+         is an INTENT(INOUT) argument.
+
+If FROM is not currently allocated, TO becomes not currently
+allocated; otherwise, the allocation of FROM is transferred to TO,
+including its bounds, type, and type parameters, and FROM becomes
+not currently allocated.
+
+If a pointer is associated with the allocation of FROM, it becomes
+associated with TO if TO has the TARGET attribute, and its pointer
+association status becomes undefined otherwise.
+
+Example.
+
+       REAL,ALLOCATABLE :: GRID(:),TEMPGRID(:)
+       ...
+       ALLOCATE(GRID(-N:N)       ! initial allocation of GRID
+       ...
+! "reallocation" of GRID to allow intermediate points
+       ALLOCATE(TEMPGRID(LBOUND(GRID,1)*2:UBOUND(GRID,1)*2))
+                         ! allocate bigger grid
+       TEMPGRID(::2)=GRID! distribute values to new locations
+       CALL MOVE_ALLOC(TO=GRID,FROM=TEMPGRID)
+                         ! old grid is deallocated because TO is
+                         ! INTENT(OUT), and GRID then "takes over"
+                         ! new grid allocation
+
+=====
+Edits
+=====
+
+Edits [page:line(s)] reference J3/01-007:
+[281:22] "subroutine MVBITS is" -> "subroutines MOVE_ALLOC and
+         MVBITS are"
+[281:25] "The" -> "MOVE_ALLOC has no elemental expression but its
+         effects are limited to its arguments.  The remaining"
+[282:10+] Insert "
+13.13.4+1 Allocation transfer subroutine
+
+The subroutine MOVE_ALLOC allows the allocation associated with
+one allocatable variable to be transferred to another."
+[286:21+] Insert "
+MOVE_ALLOC(TO,FROM)     Transfers an allocation from one
+                         allocatable object to another."
+[321:31+] Insert text from specification and syntax above.
+[353:16+] Insert "
+(2+1) The target of the pointer is transferred by MOVE_ALLOC to
+       an allocatable object without the TARGET attribute."
+[359:27+] Insert "
+(19+1) Transfer of an allocation by MOVE_ALLOC causes the
+        receiving object to be defined if the source object was."
+[361:8+] Insert "
+(10+1) When MOVE_ALLOC causes an allocatable entity to become not
+        currently allocated, it becomes undefined."
+
+                              - end -
+
+--
+Kurt W Hirchert                                  hirchert@atmos.uiuc.edu
+UIUC Department of Atmospheric Sciences                  +1-217-265-0327

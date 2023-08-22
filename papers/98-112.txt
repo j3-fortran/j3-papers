@@ -1,0 +1,147 @@
+
+                                                                J3/98-112
+
+To:       J3
+From:     Matthijs van Waveren
+Subject:  VOLATILE requirement
+Date:     January 30, 1998
+
+
+1.  RATIONALE
+
+The goal of this requirement is to be able to specify that variables
+or arrays need to be referenced from memory and not from local
+registers. The rationale is that for applications where the memory
+version of the variables might be different from the local version
+(e.g. asynchronous I/O, MPI asymmetric calls, device drivers, ... )
+this would be a quite useful feature. The history is that the DEC and
+Fujitsu Fortran compilers and the language C already have a similar
+feature implemented. This paper includes an example of usage of the
+VOLATILE attribute and a first attempt at the specification.
+
+2.  SYNTAX
+
+The declarations and specifications of data objects are dealt with in
+section 5 of the Fortran 95 standard. The following is a first attempt
+at the specification of the VOLATILE attribute and statement in the
+Fortran 2000 standard. R501, R503 and R504 are existing syntax
+rules. R533 is an addition.
+
+2.1  IMPLEMENTATION OF THE ATTRIBUTE FORM
+
+R501    type-declaration-stmt   is type-spec[[,attr-spec] ... :: ] entity-decl-list
+R503    attr-spec               is PARAMETER
+                                or access-spec
+                                or ALLOCATABLE
+                                or DIMENSION (array-spec)
+                                or EXTERNAL
+                                or INTENT (intent-spec)
+                                or INTRINSIC
+                                or OPTIONAL
+                                or POINTER
+                                or SAVE
+                                or TARGET
+                                or VOLATILE
+
+2.2  IMPLEMENTATION OF THE STATEMENT FORM
+
+R533    volatile-stmt   is VOLATILE [::] entity-decl-list
+R504    entity-decl     is object-name[(array-spec)] [* char-length][initialization]
+                        or function-name [* char-length]
+
+The VOLATILE statement and attribute declare that the objects
+expressed in the entity-decl-list are volatile objects.
+
+2.3  ILLUSTRATION
+
+Statement form:
+        VOLATILE [::] A
+
+Attribute form:
+        REAL, VOLATILE :: A
+
+3.  EXAMPLE OF USAGE
+
+The following example illustrates the usage of the VOLATILE attribute
+in the case of Remote Memory Access (RMA). RMA allows one process to
+specify all communication parameters, both for the sending side and
+for the receiving side. Since the other process may not know which
+data in its own memory might be accessed, we need the VOLATILE
+attribute in order to specify the "volatility" of the data. The
+example shows how to implement the generic indirect assignment A =
+B(map), where A, B, and map have the same distribution, and map is a
+permutation. We assume a block distribution with equal size
+blocks. The example originates from the MPI-2 Standard Document,
+Chapter 6 (July 18, 1997, Message Passing Interface Forum), with the
+addition of the VOLATILE attribute.
+
+        SUBROUTINE MAPVALS(A, B, map, m, comm, p)
+!
+!
+        USE MPI
+!
+! *** Subroutine arguments
+!
+        INTEGER m                       ! extent of index, target and
+                                        ! source arrays
+        INTEGER map(m)                  ! index array
+        INTEGER comm                    ! communicator, specifies group
+                                        ! of processes
+        INTEGER p                       !
+        REAL A(m)                       ! target array
+        REAL B(m), VOLATILE             ! source array
+!
+! *** Local variables
+!
+        INTEGER sizeofreal              ! size of real in bytes
+        INTEGER win                     ! handle to window in memory
+                                        ! accessible by other processes
+        INTEGER ierr                    ! error number
+        INTEGER i                       !
+        INTEGER j                       ! rank of target
+        INTEGER k                       ! displacement from window start
+                                        ! to the beginning of the target
+                                        ! buffer
+!
+! *** Executable code
+!
+! ***
+!
+        CALL MPI_TYPE_EXTENT(MPI_REAL, sizeofreal, ierr)
+!
+! *** Creation of a memory window of size m*sizeofreal by each
+! *** process in comm that is accessible by remote processes.
+!
+        CALL MPI_WIN_CREATE(B, m*sizeofreal, sizeofreal, &
+                MPI_INFO_NULL, comm, win, ierr)
+!
+! *** Synchronisation of Remote Memory Access calls on win within
+! *** the group comm.
+!
+        CALL MPI_WIN_FENCE(0, win, ierr)
+!
+! ***
+!
+        DO i = 1, m
+                j = map(i)/p          ! calculation of rank of target
+                k = MOD(map(i), p)    ! calculation of displacement
+!
+! *** Data transfer from the target memory [A(i)] to the caller
+! *** memory [win, B(map(i))].
+!
+                CALL MPI_GET(A(i), 1, MPI_REAL, j, k, 1, MPI_REAL, &
+                        win, ierr)
+        ENDDO
+!
+! *** Synchronisation of Remote Memory Access calls on
+! *** win within the group comm.
+!
+        CALL MPI_WIN_FENCE(0, win, ierr)
+!
+! *** Freeing of memory windows in each process.
+!
+        CALL MPI_WIN_FREE(win, ierr)
+
+        RETURN
+        END
+

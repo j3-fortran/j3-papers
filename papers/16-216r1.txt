@@ -1,0 +1,73 @@
+                                                           J3/16-216r1
+To: J3
+From: Bill Long & Malcolm Cohen
+Subject: Noncontiguous array with SHARED locality
+Date: 2016 June 07
+
+Discussion:
+-----------
+
+Para 3 of 8.1.7.5 Additional semantics for DO CONCURRENT constructs
+specifies limitations on how a program can use a variable with SHARED
+locality. Basically, the actions on the variable in one iteration
+should not affect the value seen in a different iteration.  However,
+there is a case that is not covered by explicit definition and
+reference of the shared variable.
+
+Suppose X is a discontiguous array that is specified to have SHARED( )
+locality.  If X is passed to a subroutine that has a dummy argument
+that is contiguous, there will be a copy-in/copy-out of the actual
+(discontiguous) actual argument. In particular, the copy-out has the
+effect of redefining all the values of the elements of X, some of
+which might have been also defined by a different iteration.  This
+results in unacceptable behavior, and needs to be avoided.  For example:
+
+subroutine outer (X)
+  real :: x(:)  ! Potentially discontiguous array
+  ...
+  do concurrent (i=1:n) shared(X)
+    ...
+    call sub (X,i,b)  ! Copy-in/copy-out of all of X here
+    c = X(i)
+    ...
+  end do
+  ...
+end subroutine outer
+
+pure subroutine sub (x,i,b)
+  real,intent(inout) :: x(*) ! Contiguous dummy array
+  integer,intent(in) :: i
+  real,intent(in) :: b
+  x(i) = b
+end subroutine sub
+
+Here the subroutine only disturbs X(i) in the do concurrent construct,
+so satisfies the current limitations.  However, the copy-out of ALL of
+the elements of X causes a problem.
+
+An edit is suggested to disallow this case.
+
+Additional Discussion
+---------------------
+
+The same thing happens with
+   REAL X(100)
+   ...
+   ...
+   CALL SUB(X(::2),I/2,1.5)
+The edit below also addresses this case.
+
+Similar bad things happen with unspecified locality,
+but this is even more hideous and difficult to fix.
+No edit is supplied.
+
+
+Edit to J3/16-007r1:
+--------------------
+
+[185:24] In 8.1.7.5 Additional semantics for DO CONCURRENT constructs,
+at the end of para 3, add a new sentence: "A noncontiguous array with
+SHARED locality shall not be supplied as an actual argument
+corresponding to a contiguous INTENT (INOUT) dummy argument.".
+
+===END===

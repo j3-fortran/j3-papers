@@ -1,0 +1,110 @@
+To:                                    J3
+Subject: Copy in/out and ASYNCHRONOUS/VOLATILE dummies
+From: Aleksandar Donev
+Date: 2008 April 28
+
+The text in Note 12.27 is confusing and in disagreement with the
+stated intention that the ASYNCHRONOUS/VOLATILE attributes can
+be specified for a given object in some scoping units but not in
+others. The note talks about the actual changing in asynchronous ways
+during the execution of the procedure, while it is the dummy that
+has the ASYNCHRONOUS attribute and not the actual. The reason for
+this confusion is that the actual constraints the note is explaining,
+C1238-9, require fixing. The main issue here is when copy in/out should
+be disallowed for dummies or actuals with the ASYNCHRONOUS/VOLATILE.
+
+I believe the intention in F2003 was and should be for F2008:
+
+1) If the asynchronous I/O is localized in a routine, only the dummy
+needs the ASYNCHRONOUS attribute, the actual does not. There is no
+problem with copying since that occurs outside of the routine itself.
+
+2) If the actual has the ASYNCHRONOUS attribute, but there is no
+pending I/O when the routine is called, the dummy does not need the
+attribute. There is no problem with copy in/out.
+
+3) Only when async I/O extends accross the procedure boundaries, for
+example, the I/O starts inside the routine but it completes after
+the routine completes execution, or it starts before the routine
+is executed and completes inside the routine or after the routine
+finishes, do both the dummy and the actual need the attribute
+(not enforced at compile time because it requires complex flow
+analysis). In this case copy in/out is a problem for the reasons
+explained in Note 12.27.
+
+Therefore, copy in/out should be disallowed by restricting the actuals
+to be simply contiguous when the dummy is not assumed-shape *only* when
+*both* the dummy and the actual have the ASYNCHRONOUS attribute. Edits
+for this are provided below.
+
+There are also prohibitions against combining the VALUE attribute
+with the ASYNCHRONOUS/VOLATILE attributes. Such a combination is only
+really a problem in case #3 above. The VALUE attribute may be useful
+together with ASYNCHRONOUS if the intention is to contain the async
+I/O only within the routine. In order to allow this we would need to
+add constraints that if the dummy is ASYNCHRONOUS/VOLATLE and VALUE,
+the actual shall not have the ASYNCHRONOUS/VOLATILE attribute. I do
+not provide edits for this, however, this option should be explicitly
+considered by J3 to ensure consistency in the standard.
+
+Edits against 08-007r2 (N1723)
+-------------------------
+
+[291] Section 12.5.2.4 Ordinary dummy variables, para. 18.
+In C1238 (R1223), after "nonpointer array that" add
+"has the ASYNCHRONOUS or VOLATILE attribute and".
+
+[291] Section 12.5.2.4 Ordinary dummy variables, para. 18.
+In C1239 (R1223), after "nonpointer array that" add
+"has the ASYNCHRONOUS or VOLATILE attribute and".
+
+----------
+Note 12.27 needs updating. I think it should also be expanded
+to clarify the intentions of the text, or maybe be split into
+two Notes. I give edits for both options below. I prefer a
+longer note or two separate notes.
+
+[291] Section 12.5.2.4 Ordinary dummy variables, para. 18.
+
+EITHER:
+
+In the first line of Note 12.27, change "actual arguments that correspond"
+to "an actual argument that has the ASYNCHRONOUS or VOLATILE attribute and
+corresponds".
+
+OR
+
+Replace Note 12.27 with:
+
+"Just because the dummy argument has the ASYNCHRONOUS attribute does
+not imply that the corresponding actual argument necessarily has the
+attribute, and vice versa. In particular, if during the execution of
+the procedure the actual argument is not a pending I/O storage sequence
+affector (9.6.2.5) the dummy argument is not required to have the
+ASYNCHRONOUS attribute. Similarly, if all asynchronous I/O involving
+the dummy argument completes before the procedure completes execution,
+the actual argument is not required to have the ASYNCHRONOUS attribute.
+
+If, however, the values of an actual argument can change due to
+an asynchronous I/O operation while the procedure is in execution,
+the dummy argument should also have the corresponding (ASYNCHRONOUS
+or VOLATILE) attribute. Similarly, if an asynchronous I/O operation
+involving the dummy argument begins during the execution of the
+procedure but does not complete before the procedure completes
+execution, the actual is required to have the ASYNCHRONOUS
+attribute. The constraints on actual arguments with the ASYNCHRONOUS
+attribute that correspond to a dummy argument with the ASYNCHRONOUS
+attribute are designed to avoid forcing a processor to use the
+so-called copy in/copy-out argument passing mechanism. If copy
+in/copy-out occurs then any changes to the values of the actual due
+to asynchronous I/O will be lost when the called procedure returns
+and the copy-out overwrites the actual argument, and any changes
+of the values of the actual argument will not be visible during the
+execution of the procedure. Similarly, if copy in/out occurs and an
+asynchronous I/O operation begins but does not complete during the
+execution of the procedure, the operation will fail when the copy is
+deallocated upon return from the procedure.
+
+Identical considerations apply to the VOLATILE attribute, with the
+only difference that the values of the dummy or actual argument change
+by means outside of the program, rather than asynchronous I/O."

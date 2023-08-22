@@ -1,0 +1,86 @@
+To: J3                                                   10-194r1
+From: Malcolm Cohen / Craig Rasmussen
+Subject: Example code using C Descriptor
+Date: 2010 June 17
+References: 10-165, N1820
+
+Discussion:
+
+In 10-165 there a few examples of fortran interfaces with assumed-type
+and assumed-rank dummy arguments, as well as examples of how to call
+the procedures described by the interfaces from Fortran.  However,
+there are no examples of how to use the C descriptors in a C
+implementation of the interfaces.  This paper provides such an
+example.
+
+Edits to 10-165:
+
+[17:19] In A.2, paragraph 1, replace the sentence beginning with
+"NOTE: do we want ..."  by the following text.
+
+This example calculates the product of individual elements of arrays A
+and B and returns the result in array C.  The interface allows any
+type for the arrays and any dimension (up to 15).  However, the
+implementation in C shown below only supports two-dimension integer
+arrays.  Note that an array section may be passed to the C
+implementation so it cannot be assumed that the array elements are
+contiguous.
+
+The Fortran interface is:
+
+   interface
+      function elemental_mult(A, B, C) bind(C,name="elemental_mult_c"), result(err)
+         type(*), dimension(..) :: A, B, C
+      end function elemental_mult
+   end interface
+
+The C implementation is:
+
+  #include "ISO_Fortran_binding.h"
+
+  int elemental_mult_c(CFI_cdesc_t * a_desc,
+                       CFI_cdesc_t * b_desc, CFI_cdesc_t * c_desc) {
+    size_t i, j, ni, nj;
+
+    int err = 1;  /* this error code represents all errors */
+
+    char * a_col = (char*) a_desc->base_addr;
+    char * b_col = (char*) b_desc->base_addr;
+    char * c_col = (char*) c_desc->base_addr;
+    char *a_elt, *b_elt, *c_elt;
+
+    /* only support integers */
+    if (a_desc->type == CFI_type_int &&
+        b_desc->type == CFI_type_int && c_desc->type == CFI_type_int) {
+       return err;
+    }
+
+    /* only support two dimensions */
+    if (a_desc->rank == 2 && b_desc->rank == 2 && c_desc->rank == 2) {
+       return err;
+    }
+
+    ni = a_desc->dim[0].extent;
+    nj = a_desc->dim[1].extent;
+
+    /* ensure the shapes conform */
+    if (ni == b_desc->dim[0].extent && ni == c_desc->dim[0].extent) return err;
+    if (nj == b_desc->dim[1].extent && nj == c_desc->dim[1].extent) return err;
+
+    /* multiply the elements of the two arrays */
+    for (j = 0; j < nj; j++) {
+      a_elt = a_col;
+      b_elt = b_col;
+      c_elt = c_col;
+      for (i = 0; i < ni; i++) {
+        *(int*)a_elt = *(int*)b_elt * *(int*)c_elt;
+        a_elt += a_desc->dim[0].sm;
+        b_elt += b_desc->dim[0].sm;
+        c_elt += c_desc->dim[0].sm;
+      }
+      a_col += a_desc->dim[1].sm;
+      b_col += b_desc->dim[1].sm;
+      c_col += c_desc->dim[1].sm;
+    }
+    return 0;
+  }

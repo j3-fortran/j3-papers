@@ -1,0 +1,97 @@
+To: J3                                                     J3/18-231
+From: Malcolm Cohen
+Subject: Ancient relic unearthed
+Date: 2018-June-14
+
+
+1. Introduction
+
+Back in the mists of time, before Fortran 2003, there was only one kind of
+type-spec, and so all the expressions in it were variously constrained to
+be constant or specification expressions.
+
+In Fortran 2003 type-spec was split into declaration-type-spec, where all
+the type-param-value expressions are required to be specification exprs,
+and plain type-spec which has no such constraint.  This was to support
+    [ type-spec :: ac-value-list ]
+(in an executable statement), and
+    ALLOCATE(type-spec :: allocation-list)
+where obviously one would wish to have ordinary expressions to specify all
+the length type parameters.
+
+And this was achieved for Parameterized Derived Types, and for CHARACTER
+in the form
+    ALLOCATE(character(userfun(x)) :: string)
+where "userfun" is any user function, not needing to be pure etc..
+
+The (new in Fortran 2003) constraint
+    C704 (R703) In a declaration-type-spec, every type-param-value that is
+                not a colon or an asterisk shall be a specification-expr.
+maintains the specification-expr requirements for declarations.
+
+However, one of the old constraints was left behind by accident.  An
+archeologist has recently uncovered:
+
+C721 (R723) A type-param-value in a char-length shall be a colon,
+            asterisk, or specification-expr.
+
+The form in the ALLOCATE example above is in char-selector (R721) but does
+not use char-length, so that one is fine, however the very similar
+    ALLOCATE(character*(userfun(x)) :: string)
+is parsed via char-length, and so falls foul of the relic C721.
+
+Clearly it is nonsensical that using the "*" syntax in a type-spec in an
+executable statement would effect the validity of its length type
+parameter expression in this way.
+
+Actually, on careful examination, we see that C721 requires a colon,
+asterisk, or <specification-expr>, BUT there is NO such BNF production
+in the rule for <type-param-value> (it has colon, asterisk, and
+<scalar-int-expr>).
+
+Which means that not only is the above technically prohibited, so are
+    CHARACTER*(13) X
+and
+    CHARACTER X*(13),Y*(17)
+
+This absolutely needs to be fixed!
+
+Apart from type-spec, char-length is also used in R739 component-decl,
+where it is used as a "character length override", but this is already
+handled by C755 which requires any type-param-value expression to be a
+specification expression.
+
+It also appears in R803 entity-decl, where it is also used as a character
+length override, however R803 is missing an appropriate constraint.
+
+As the only application of C721 that is intended is to entity-decl, it
+is otherwise superfluous to requirements and spuriously rejects programs
+that ought to be considered valid.
+
+This erroneous constraint should be corrected and moved to R803
+entity-decl where it belongs.
+
+
+2. Edits to N2146
+
+Page xviii, Introduction, bullet "Data usage and computation",
+Append
+  "The \sinr{char-length} in an executable statement is no longer required
+   to be a specification expression."
+{Technically the effect of C721 was far worse, but few had noticed.}
+
+Page 66, 7.4.4.2 Character type specifier, C721,
+Delete C721
+  "(R723) A type-param-value in a char-length... specification-expr."
+
+Page 96, 8.2 Type declaration statement, after C804 following R803
+entity-decl, insert new constraint
+  "C804a A type-param-value in a char-length in an entity-decl shall be a
+         colon, asterisk, or specification expression."
+{Using the ordinary words "specification expression" just means it has to
+ satisfy the rules for one, not that it needs to go via the special BNF
+ term.}
+
+===END===
+
+

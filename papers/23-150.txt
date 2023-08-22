@@ -1,0 +1,247 @@
+To: J3                                                     J3/23-150
+From: Van Snyder
+Subject: Add arguments to MOVE_ALLOC to revise bounds and cobounds
+Date: 2023-March-15
+References: 23-109
+
+Introduction
+------------
+
+MOVE_ALLOC could have other uses in addition to simply moving the
+allocation descriptor without changing it. An occasionally useful one
+would be to add LBOUND and COLBOUND arguments to change the lower bounds
+and/or cobounds while retaining the shape and value.
+
+Without this ability, to change the bounds while retaining the shape and
+value requires explicitly to allocate a new array, copy the contents,
+and then MOVE_ALLOC the new array. Avoiding this copy was the purpose
+that Kurt originally used to justify introducing MOVE_ALLOC. Moving the
+array requires that all elements of FROM be defined.
+
+One alternative is to give the array the TARGET attribute and make it
+the target of a pointer that has the desired bounds. But pointers can
+sabotage optimizers.
+
+Another alternative is to encapsulate all workings on the array that
+want to use the different bounds into procedures, probably a different
+one for each job. If the procedures aren't inlined, this can also impact
+performance.
+
+This tiny enhancement to MOVE_ALLOC appears to be a better solution than
+the two alternatives.
+
+A step further would be to add UBOUND and COUBOUND, giving MOVE_ALLOC
+essentially all the functionality of pointer assignment (actually a bit
+more because pointer assignment cannot affect cobounds). Constraints
+about contiguity are not needed because allocated objects are
+contiguous.
+
+If the SECTION type described in Sections 2.2.2, 2.2.3, 2.3, and 2.15
+... 2.18 of 23-109 is added, the argument names should be BOUNDS and
+COBOUNDS, with the arguments being arrays of type SECTION, not integers.
+Either all or none of the elements of BOUNDS would be required to
+specify upper bounds, and no strides, as in the case for pointer
+assignment. Either all or none of all but the last of the elements of
+COBOUNDS would be required to specify upper cobounds, and the last one
+would be prohibited to specify an upper cobound. This would give
+MOVE_ALLOC essentially all the functionality of pointer assignment, with
+more similar syntax (actually a bit more functionality because pointer
+assignment cannot affect cobounds). Constraints about contiguity are not
+needed because allocated objects are contiguous.
+
+Either of the last two might be too much to swallow in one gulp. If
+either of the first two is done, the third could still be done as a
+compatible extension by providing an additional interface.
+
+Edits are proposed only to illustrate the strategy and magnitude of the
+change to the standard.
+
+Proposed edits for the simplest case
+------------------------------------
+
+[16.9.147 MOVE_ALLOC] Add an interface
+
+"MOVE_ALLOC ( FROM, TO, LBOUND [, LCOBOUND, STAT, ERRMSG] )"
+
+[16.9.147p3+ MOVE_ALLOC]
+
+Append to the paragraph that describes the arguments:
+
+"LBOUND (optional) shall be a noncoindexed integer array having the same
+         extent as the rank of TO. It is an INTENT (IN) argument.
+
+"LCOBOUND (optional) shall be a noncoindexed integer array having the
+         same extent as the corank of TO. It is an INTENT (IN) argument.
+         LCOBOUND shall not appear if TO is not a coarray."
+
+[16.9.147p4(1) MOVE_ALLOC]
+
+Within "TO becomes allocated... MOVE_ALLOC" replace "bounds, cobounds"
+with "shape, coshape".
+
+Between "... on entry to MOVE_ALLOC" and "Note that..." insert
+
+"If LBOUND is not present, TO has the same bounds as FROM had on entry
+to MOVE_ALLOC. If LBOUND is present, each dimension of TO has the lower
+bound specified by the corresponding element of LBOUND. If LCOBOUND is
+not present, TO has the same cobounds as FROM had on entry to
+MOVE_ALLOC. If LCOBOUND is present, each codimension of TO has the lower
+cobound specified by the corresponding element of LCOBOUND."
+
+Edits for the second case
+-------------------------
+
+[16.9.147 MOVE_ALLOC] Add an interface
+
+"MOVE_ALLOC ( FROM, TO, LBOUND [, UBOUND, LCOBOUND, UCOBOUND, STAT,
+              ERRMSG] )"
+
+[16.9.147p3 MOVE_ALLOC]
+
+In the description of TO replace "and have the same rank and corank"
+with ". If UBOUND does not appear, TO shall have the same rank as FROM.
+If UCOBOUND does not appear, TO shall have the same corank as FROM."
+
+[16.9.147p3+ MOVE_ALLOC]
+
+Append to the paragraph that describes the arguments:
+
+"LBOUND (optional) shall be an integer array having the same extent as
+         the rank of TO. It is an INTENT (IN) argument.
+
+"UBOUND (optional) shall be a noncoindexed integer array array having
+         the same extent as the rank of TO. It is an INTENT (IN)
+         argument. UBOUND shall be absent if LBOUND is absent.
+
+"LCOBOUND (optional) shall be a noncoindexed integer array having the
+         same extent as the corank of TO. It is an INTENT (IN) argument.
+         LCOBOUND shall not appear if TO is not a coarray.
+
+"UCOBOUND (optional) shall be a noncoindexed integer array having an
+         extent one less than the corank of TO. It is an INTENT (IN)
+         argument. UCOBOUND shall be absent if LCOBOUND is absent.
+         UCOBOUND shall not appear if TO is not a coarray."
+
+[16.9.147p4(1) MOVE_ALLOC]
+
+Within "TO becomes allocated... MOVE_ALLOC" remove "bounds, cobounds".
+
+Between "... on entry to MOVE_ALLOC" and "Note that..." insert
+
+"If LBOUND is not present, then TO has the same bounds as FROM had on
+entry to MOVE_ALLOC. If LBOUND is present and UBOUND is absent, then
+each dimension of TO has the lower bound specified by the corresponding
+element of LBOUND and the same extent of the corresponding dimension of
+FROM had on entry to MOVE_ALLOC. If LBOUND and UBOUND are both present
+then MAX(PRODUCT(UBOUND-LBOUND+1),0) shall be equal to the size of FROM,
+and the bounds of TO are specified by LBOUND and UBOUND. If LCOBOUND is
+not present, TO has the same cobounds as FROM had on entry to
+MOVE_ALLOC. If LCOBOUND is present and UCOBOUND is not, then each
+codimension of TO has the lower cobound specified by the corresponding
+element of LCOBOUND and the same extent as the corresponding codimension
+as FROM had on entry to MOVE_ALLOC. If LCOBOUND and UCOBOUND are both
+present, then the lower cobound of each codimension is specified by the
+corresponding element of LCOBOUND, and the upper cobound of each
+codimension other than the last is specified specified by the
+corresponding element of UCOBOUND."
+
+Edits for the third case
+------------------------
+
+[16.9.147 MOVE_ALLOC] Add an interface
+
+"MOVE_ALLOC ( FROM, TO, BOUNDS [, COBOUNDS, STAT, ERRMSG] )"
+
+[16.9.147p3 MOVE_ALLOC]
+
+In the description of TO replace "and have the same rank and corank"
+with ". If BOUNDS does not appear, TO shall have the same rank as FROM.
+If COBOUNDS does not appear, TO shall have the same corank as FROM."
+
+[16.9.147p3+ MOVE_ALLOC]
+
+Append to the paragraph that describes the arguments:
+
+"BOUNDS (optional) shall be a noncoindexed array of type SECTION having
+        the same extent as the rank of TO. It is an INTENT (IN)
+        argument. All elements of BOUNDS%LOWER_BOUNDED shall be true.
+        Either all elements of BOUNDS%UPPER_BOUNDED shall be true, or
+        all shall be false. All elements of BOUNDS%STRIDE shall be equal
+        to 1.
+
+"COBOUNDS (optional) shall be a noncoindexed array of type SECTION
+        having the same extent as the rank of TO. It is an INTENT (IN)
+        argument. All elements of COBOUNDS%LOWER_BOUNDED shall be true.
+        Either all but the last element of COBOUNDS%UPPER_BOUNDED shall
+        be true, or all shall be false. The last element of
+        COBOUNDS%UPPER_BOUNDED shall be false. All elements of
+        COBOUNDS%STRIDE shall be equal to 1."
+
+{See sections 2.2.2 and 2.2.3 of 23-109.}
+
+
+[16.9.147p4(1) MOVE_ALLOC]
+
+Within "TO becomes allocated... MOVE_ALLOC" remove "bounds, cobounds".
+
+Between "... on entry to MOVE_ALLOC" and "Note that..." insert
+
+"If BOUNDS is not present, then TO has the same bounds as FROM had on
+entry to MOVE_ALLOC. If BOUNDS is present and all elements of
+BOUNDS%UPPER_BOUNDED are false, then each dimension of TO has the lower
+bound specified by the corresponding element of BOUNDS%LBOUND and the
+same extent as the corresponding dimension of FROM had on entry to
+MOVE_ALLOC. If BOUNDS is present and all elements of
+BOUNDS%UPPER_BOUNDED are true, then
+MAX(PRODUCT(BOUNDS%UBOUND-BOUNDS%LBOUND+1),0) shall be equal to the size
+of FROM, and each dimension of TO has the bounds specified by the
+corresponding element of BOUNDS. If COBOUNDS is not present, then TO has
+the same cobounds as FROM had on entry to MOVE_ALLOC. If COBOUNDS is
+present and all elements of COBOUNDS%UPPER_BOUNDED are false, then
+each codimension of TO has the lower cobound specified by the
+corresponding element of COBOUNDS%LBOUND and the same extent of the
+corresponding codimension of FROM had on entry to MOVE_ALLOC. If
+COBOUNDS is present and all elements of COBOUNDS%UPPER_BOUNDED other
+than the last are true, then each codimension of TO other then the last
+has the cobounds specified by the corresponding element of COBOUNDS and
+the same extent as the corresponding codimension of FROM had on entry to
+MOVE_ALLOC, and the lower bound of the last codimension is specified by
+the last element of COBOUNDS%LBOUND."
+
+{See sections 2.2.2 and 2.2.3 of 23-109.}
+
+Appendix -- Description type SECTION from 2.2.2 in 23-109
+---------------------------------------------------------
+
+The purpose of type SECTION is to allow variables, constants, named
+constants, and dummy arguments that represent array section descriptors.
+
+The identifier of type SECTION is defined in the intrinsic module
+ISO_Fortran_Env.
+
+The behavior of objects of type SECTION is as if SECTION were a derived
+type with one kind type parameter and five protected components.  The
+effect is as if it were declared using the following type declaration,
+which assumes existence of the PROTECTED attribute:
+
+  type :: SECTION ( IK )
+    integer, kind :: IK = kind(0)
+    integer(ik), protected :: LBOUND = -huge(0_IK)
+    logical, protected :: LOWER_BOUNDED
+    integer(ik), protected :: UBOUND = huge(0_IK)
+    logical, protected :: UPPER_BOUNDED
+    integer(ik), protected :: STRIDE = 1
+  end type SECTION
+
+The integer parts are the lower bound, the upper bound, and the stride. 
+The logical parts indicate whether a value appeared in the type
+constructor, for the lower bound or the upper bound.  The type SECTION is
+not a sequence derived type.  Therefore, objects of type SECTION cannot be
+storage associated.  A processor might represent one differently from a
+derived type.  For example, the LOWER_BOUNDED and UPPER_BOUNDED components
+might be represented by two bits within one byte, or a reference to
+UPPER_BOUNDED (LOWER_BOUNDED) might be implemented as a reference to a
+zero-argument inlined function for which the result is true if and only if
+UBOUND == huge(0_kind) (LBOUND == -huge(0_kind)).
+
+

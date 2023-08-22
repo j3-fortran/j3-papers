@@ -1,0 +1,104 @@
+To: J3                                                     10-208r1
+From: Malcolm Cohen
+Subject: Executing a type-bound procedure on a coindexed object
+Date: 2010 October 11
+
+------------------------------------------------------------------------
+
+NUMBER: F08/0043
+TITLE:  Executing a type-bound procedure on a coindexed object
+KEYWORDS: coarrays, polymorphism
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following program:
+
+  module m
+    type :: foo
+      integer :: i = 0
+    contains
+      procedure, pass :: op
+    end type
+  contains
+    subroutine op(this, i)
+      class(foo) :: this
+      this%i = i
+    end subroutine
+  end module m
+  program p
+    use m
+    class(foo), allocatable :: o_foo[:]
+    integer :: me
+    allocate(foo :: o_foo[*])
+  
+    me = this_image()
+    if (me == 1) then
+      call o_foo[2]%op(1)             ! Type-bound call.
+    end if
+    sync all
+    if (me == 2) write(*,*) o_foo%i
+  end program p
+
+This program is not standard-conforming, as it violates one of the
+requirements of 12.5.2.4p2, viz
+  "If the actual argument is a polymorphic coindexed object,
+   the dummy argument shall not be polymorphic."
+
+However, if the type-bound call were replaced by
+
+  SELECT TYPE(o_foo)
+  TYPE IS (foo)
+    CALL o_foo[2]%op(1)
+  END SELECT
+
+appears to be standard-conforming.
+
+The example program appears to be harmless, so the requirement appears
+to be unnecessary.  It is conjectured that the requirement is
+misworded and should instead be
+  "If the actual argument is a polymorphic subobject of a coindexed
+   object, the dummy argument shall not be polymorphic."?
+
+Q1. Is this requirement intentional?
+
+Furthermore, constraint C1229 says of a <data-ref> that is the object
+for a type-bound procedure reference, that it
+  "shall not be a polymorphic subobject of a coindexed object";
+however, C617 already prohibits any <data-ref> from being a
+polymorphic subobject of a coindexed object except as the subject of
+a type parameter inquiry or as the actual argument in an intrinsic
+inquiry function reference, so C1229 appears to be completely
+redundant.
+
+Q2. Is constraint C1229 redundant?
+
+ANSWER:
+
+A1. The requirement is intentional, and needed to avoid a potential
+    type enquiry of an object on another image.  Consider
+
+      TYPE,EXTENDS(foo) :: badfoo
+        CLASS(*),ALLOCATABLE :: badcomponent(:)
+      END TYPE
+
+    If the dynamic type of object "o_foo" were "badfoo", the call to
+    the type-bound procedure cannot be resolved without enquiring the
+    type of o_foo%badcomponent on image 2 (because it needs to know
+    how much to copy, and how); this type is not necessarily the
+    same type as that of o_foo%badcomponent on image 1.
+
+A2. Yes, constraint C1229 is redundant.  An edit is supplied to remove
+    this unnecessary redundancy.
+
+EDITS to 10-007:
+
+[290:1] Delete C1229.
+
+SUBMITTED BY: R. Bader
+
+HISTORY: 10-208   m193  Submitted
+         10-208r1 m193  Revised
+
+------------------------------------------------------------------------

@@ -1,0 +1,110 @@
+
+
+                                                        J3/98-198
+
+Date:        12 Aug 98
+To:          J3
+From:        R. Maine
+Subject:     Mixed public/private components specs/syntax
+
+This paper proposes specs and syntax for the former item
+B3, which was moved to MTE status by vote on 11 Aug 98.  This
+functionality is also needed for integration of R6a, inheritance;
+this is because inheritance already provides a way for such a
+mixture of accessibilities to arise, so such a mixture needs to
+be handled consistently.
+
+SPECS
+
+It shall be possible to separately specify the accessibility of
+each individual component of a derived type.  The existing
+specification of the accessibility of components shall become a
+default accessibility for the components, overridable by the
+individual specifications.
+
+In an extension type, it shall be possible to separately specify
+the accessibility of the subobject name that has the same name as
+the parent type.
+
+In an extension type, a component inherited from the parent type
+has public accesibility if it has public accessibility in the
+parent type and if the subobject name that is the same as the
+parent type name also has public accessibility.  This rule in
+essence says that the short form of the name is accessible
+if and only if the long form is accessible.
+
+Where we currently have requirements that the components
+of a derived type be accessible, those requirements generally
+shall be rephrased to say that all components of the
+derived type shall be accessible.  In any cases where only
+a particular component is relevant, the requirement shall
+become that the component in question be accessible.
+
+Note that we already passed specs and syntax allowing
+the accessibility of each type-bound procedure to be
+separately specified, so we don't need to add anything
+new there.
+
+And change extends to extends(public :: whatever)
+
+SYNTAX
+
+An optional access-spec will be added to the list of possible
+component-attr-specs (R429) and likewise to the list of possible
+attribute specifications for procedure pointer components (needs
+to be added as a new bnf item in 4.5.1).  Note that it is not
+added to type-param-attr-spec (R427); type parameters are always
+acessible wherever an object of the type is accessible.
+
+The EXTENDS type-attr-spec (R425) will be enhanced to allow
+the form "EXTENDS ( [attr-spec ::] parent-type-name )".  The
+attr-spec in this form specifies the accessibility of the
+subibject of the same name as the parent type.
+
+Examples:
+
+  module types
+    type, extensible :: base_type
+      private                !-- Sets default accessibility
+      integer :: i           !-- a private component
+      integer, private :: j  !-- another private component
+      integer, public :: k   !-- a public component
+    end type my_type
+
+    type, extends(public :: base_type) :: my_type
+      private               !-- Sets default for components of my_type
+      integer :: l          !-- A private component.
+      integer, public :: m  !-- A public component.
+    end type my_type
+
+    type, extends(private :: my_type) :: another_type
+      !-- No new components.
+    end type another_type
+
+  end module types
+
+  subroutine sub
+    use types
+    type (my_type) :: x
+    type (another_type) :: y
+
+    ....
+
+    x%base_type    !-- ok because base_type is a public subobject of x
+
+    x%base_type%k  !-- ok because x%base_type is ok and has k as a
+                   !-- public component.
+
+    x%k            !-- ok because it is shorthand for x%base_type%k
+
+    x%base_type%i  !-- Illegal because i is private.
+
+    x%i            !-- Illegal because it is shorthand for x%base_type%i
+
+    y%my_type      !-- Illegal because my_type is a private subobject.
+
+    y%my_type%m    !-- Illegal because my_type is a private subobject.
+
+    y%m            !-- Illegal because it is shorthand for x%my_type%m.
+
+  end subroutine sub

@@ -1,0 +1,98 @@
+                                                             J3/14-227
+To:      J3
+From:    Nick Maclaren
+Subject: Impure elemental functions
+Date: 2014 August 11
+
+----------------------------------------------------------------------
+
+NUMBER: TBD
+TITLE: Impure elemental functions
+KEYWORD: ELEMENTAL, IMPURE, coarrays
+DEFECT TYPE: Clarification
+STATUS: J3 consideration in progress
+
+QUESTION 1:
+
+Is the following program required to set some elements of array_1 to 10
+times those of array_2 and the rest to zero?
+
+PROGRAM Main
+    INTEGER :: array_1(9), array_2(9)
+    array_2 = (/ 1, 2, 3, 4, 5, 6, 7, 8, 9 /)
+    array_1 = Fred(array_2)
+    PRINT *, array_1
+CONTAINS
+    IMPURE ELEMENTAL FUNCTION Fred (arg)
+        INTEGER, INTENT(IN), TARGET :: arg
+        Fred = 10*arg
+        IF (arg == 4) array_2 = 0
+     END FUNCTION Fred
+END PROGRAM Main
+
+
+QUESTION 2:
+
+Is the following program intended to be conforming?  And, if so, is it
+required to set some elements of array to 10 times those of coarray and
+the rest to zero?
+
+
+PROGRAM Main
+    INTEGER :: coarray(9)[*], array(9)
+    array = (/ 1, 2, 3, 4, 5, 6, 7, 8, 9 /)
+    coarray = 0
+    IF (THIS_IMAGE() == 1) THEN
+        array = Fred(coarray)
+    ELSE IF (THIS_IMAGE() == 2) THEN
+        SYNC ALL
+        coarray = 0
+        SYNC ALL
+    END IF
+    SYNC ALL
+    IF (THIS_IMAGE() == 1) PRINT *, array
+CONTAINS
+    IMPURE ELEMENTAL FUNCTION Fred (arg)
+        INTEGER, INTENT(IN) :: arg
+        Fred = 10*coarray(arg)[2]
+        IF (arg == 4) THEN
+            SYNC ALL
+            SYNC ALL
+        END IF
+     END FUNCTION Fred
+END PROGRAM Main
+
+
+DISCUSSION:
+
+There are many similar examples that could be written, but the generic
+question is what the standard requires (if anything) if the restrictions
+C1276 to C1288 for pure subprograms are broken in impure elemental
+procedures.  One possible option would be to state explicitly that the
+effects of breaking any of those rules in an impure elemental procedure
+is processor-dependent.  I believe that is what is intended.
+
+Restricting the question to just the coarray issues, the answer to this
+will affect the data consistency and progress models considerably,
+especially in combination with atomic accesses.  The question then
+becomes whether those models need take account of impure elemental
+procedures, or can simply ignore them.
+
+The best answer would be "no", but the standard needs to make that clear
+in some way.
+
+
+ANSWER:
+
+Awaiting statement of direction.
+
+
+EDITS:
+
+Awaiting statement of direction.
+
+
+SUBMITTED BY: Nick Maclaren
+
+
+HISTORY: m205   14-nnn   Submitted

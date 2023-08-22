@@ -1,0 +1,186 @@
+To: J3                                                     J3/15-190
+From:       Nick Maclaren
+Subject:    Follow-up to 15-186
+Date: 2015 August 01
+References: 15-186
+
+
+I apologise for the lateness, but this paper is NOT for discussion.  It
+is provided as background to counter some arguments that will be
+probably made against 15-186.  If they are not made, it need not even be
+read.
+
+
+
+Atomics per se
+--------------
+
+The following example shows that entirely relaxed consistency and the
+wording in 15-139 allows behaviours that will be completely
+incomprehensible and unacceptable to almost all programmers.  The
+simplistic and relatively sane examples in TS 18508 A.4.2, 15-139 and
+15-186 are just about explicable to users, but ones like the following
+are not.  People will claim that this sort of thing won't happen, and
+may be right, but equally incomprehensible behaviour can and does occur,
+especially when transfers need to be retried.
+
+
+    PROGRAM Atomic_Zero
+    ! Is this allowed to print '42'?  The value read from one atomic
+    ! is used to set another, in a circular order.  Note that no image
+    ! uses any atomic more than once, and each atomic is referenced and
+    ! defined precisely once, from other images, so that NO constraint
+    ! on the behaviour of a single atomic variable or a single image
+    ! will fail.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: temp
+        IF (NUM_IMAGES() /= 3) STOP
+        CALL ATOMIC_REF(temp,atom[MOD(THIS_IMAGE()+1,3)+1])
+        CALL ATOMIC_DEFINE(atom[MOD(THIS_IMAGE()+1,3)+2,temp)
+        IF (THIS_IMAGE() == 1) PRINT *, temp
+    END PROGRAM Atomic_Zero
+
+Explication:
+
+Image 1                  Image 2                  Image 3
+temp = atom[2] = 42      temp = atom[3] = 42      temp = atom[1] = 42
+atom[3] = temp = 42      atom[1] = temp = 42      atom[2] = temp = 42
+
+Ordering as seen from image 1:  image 3 before image 1 before image 2
+Ordering as seen from image 2:  image 1 before image 2 before image 3
+Ordering as seen from image 3:  image 2 before image 3 before image 1
+
+Note that all atomics are set before they are read, so there is no
+incoherence involved.
+
+
+
+Locks
+-----
+
+These are just atomic examples from 15-186 converted to use locks.
+Fortran 2008 2.3.5p1 states that these are NOT allowed, but there is
+nothing in 8.5.6 making it clear that lock variables have radically
+different consistency semantics from atomic ones.
+
+The problem here is not the intent, but how we specify the constraints
+we want, clearly and precisely.
+
+
+    PROGRAM Lock_One
+    ! Is this allowed to print '0' from both images?
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(LOCK_TYPE) :: lock[*]
+        INTEGER :: data[*] = 0
+        INTEGER :: temp
+        IF (NUM_IMAGES() /= 4) STOP
+        IF (THIS_IMAGE() <= 2) THEN
+            LOCK(lock[THIS_IMAGE()+2])
+            data[THIS_IMAGE()+2] = 1
+            UNLOCK(lock[THIS_IMAGE()+2])
+            LOCK(lock[5-THIS_IMAGE()]
+            temp = [5-THIS_IMAGE()]
+            UNLOCK(lock[5-THIS_IMAGE()])
+            PRINT *, temp
+        END IF
+    END PROGRAM Lock_One
+
+
+    PROGRAM Lock_Three
+    ! Is this allowed to print '1' from both images?  The value read
+    ! from one atomic is used to set the other.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(LOCK_TYPE) :: lock[*]
+        INTEGER :: data[*] = 0
+        INTEGER :: temp
+        IF (NUM_IMAGES() /= 4) STOP
+        IF (THIS_IMAGE() <= 2) THEN
+            LOCK(lock[5-THIS_IMAGE()]
+            temp = [5-THIS_IMAGE()]
+            UNLOCK(lock[5-THIS_IMAGE()])
+            LOCK(lock[THIS_IMAGE()+2])
+            data[THIS_IMAGE()+2] = temp
+            UNLOCK(lock[THIS_IMAGE()+2])
+            PRINT *, temp
+        END IF
+    END PROGRAM Lock_Three
+
+
+
+Collectives
+-----------
+
+In the following, the question is whether a processor is allowed to
+print either '0' or '1'.  The point about these is to show, as 15-186
+says, that the consistency issue does NOT need atomics.  Note that
+Collective_Six_A is causally inconsistent.
+
+
+    PROGRAM Collective_One_A
+! Does a collective imply any ordering?  The implication of Note 8.4
+! is that it does, and this must print '1' - but is that so?
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(LOCK_TYPE) :: lock[*]
+        INTEGER :: data = 0, remote, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            LOCK(lock[3])
+            remote[3] = 1
+            UNLOCK(lock[3])
+        END IF
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 2) THEN
+            LOCK(lock[3])
+            temp = remote[3]
+            UNLOCK(lock[3])
+            PRINT *, temp
+        END IF
+    END PROGRAM Collective_One_A
+
+
+    PROGRAM Collective_Three_A
+! Is a collective allowed to not block?  The implication of Note 8.4
+! is that it is, and this may print either '0' or '1' - but is that so?
+! Note that the first locked section is not executed for image 1, and
+! the question is whether image 1 can send and forget.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(LOCK_TYPE) :: lock[*]
+        INTEGER :: data[*] = 0, remote, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 2) THEN
+            LOCK(lock[3])
+            temp = remote[3]
+            UNLOCK(lock[3])
+            PRINT *, temp
+        END IF
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 1) THEN
+            LOCK(lock[3])
+            remote[3] = 1
+            UNLOCK(lock[3])
+        END IF
+    END PROGRAM Collective_Three_A
+
+
+   PROGRAM Collective_Six_A
+! Can a segment that precedes a 'send' see a value that is set after
+! a segment that succeeds a 'receive'?  This uses the locked value as
+! an argument to the collective.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(LOCK_TYPE) :: lock[*]
+        INTEGER :: data[*] = 0, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            LOCK(lock[3])
+            data = remote[3]
+            UNLOCK(lock[3])
+        END IF
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 2) THEN
+            LOCK(lock[3])
+            remote[3] = 1
+            UNLOCK(lock[3])
+            PRINT *, data
+        END IF
+    END PROGRAM Collective_Six_A

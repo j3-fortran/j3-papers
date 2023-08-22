@@ -1,0 +1,190 @@
+                                                                    J3/99-110r1
+Date:    4th March 1999
+To:      J3
+From:    Malcolm Cohen
+Subject: Stream I/O - suggested changes (Unresolved issue 68)
+
+INTRODUCTION:
+-------------
+A part of the rationality for "stream i/o" is the desire to portably read C
+stream files.  These suggestions are based on the observation that C has two
+classes of stream - binary stream and text stream - and the existing stream i/o
+facility only handles binary streams.  There are also a few notes on the stream
+i/o facility independent of this proposal.
+
+TEXT STREAM CHARACTERISTICS:
+----------------------------
+There are two characteristics of C text streams which make portable handling
+difficult in Fortran:
+(1) there is no "maximum record length" concept - and although implementations
+    are allowed to put their own limitations on such things (I think), general
+    practice is not to do so.
+(2) random access to previously visited points in the text stream is allowed
+    (via ftell and fseek).
+(3) writing a newline character to a text stream results in a new record being
+    created (this is definitely not portable in Fortran, though it does happen
+    on most if not all Unix systems).
+
+UNCONNECTED RAMBLINGS:
+----------------------
+ALSO: If this proposal is rejected, 9.8.1.11 needs to be fixed otherwise
+      it does not work (result of FORM= in INQUIRE).
+
+ALSO: Typo [170:27] "tt" -> "t"
+
+ALSO: Typo [191:36] "rr" -> "r"
+
+PROPOSAL:
+---------
+Basically,
+
+(1) change the existing streams to be explicitly unformatted, removing
+    formatted i/o capability (this was only a shortcut anyway - the user can
+    always use a character buffer and internal i/o to achieve the same effect).
+
+(2) add formatted streams that
+    - can only be read/written with formatted READ/WRITE
+    - the normal handling of format reversion, slash, end of advancing READ/
+      WRITE - viz a new record is begun
+    - can be positioned via POS= (like unformatted streams) but only to
+      positions that have been remembered via INQUIRE(POS=).
+    - writing an ACHAR(10) character terminates the current record and begins
+      a new one, just as if the format had included a slash.
+
+(3) make FORM='UNFORMATTED' the default for ACCESS='STREAM'.
+
+EDITS:
+------
+9.2.2.3 Stream access
+[168:21+] Add
+"When connected for stream access, if it is connected for unformatted
+input/output it is an <<unformatted stream file>>; otherwise it is a
+<<formatted stream file>>."
+[168:22] Change "stream" to "unformatted stream"
+
+{I would find it clearer to change item (2) to say what we mean (rather than
+ having to prove it from later text), viz:}
+[168:26] Replace the second sentence with:
+"The first file storage unit in the file is at position 1.  The position of
+ each file storage unit is one greater than that of its preceding unit."
+{i.e. when I read the previous version, it did not say to me that every
+ positive integer was a legal position, nor what the first one was.  I had to
+ deduce this from [170:15-16] which is talking about alignment restrictions!}
+
+[168:31+] Add
+"When connected for formatted stream access, an external file has the following
+properties:
+(1) The file consists of file storage units.  Some file storage units may
+    contain record markers; this imposes a record structure on the file.  There
+    may or may not be a record marker at the end of the file.  If there is no
+    record marker at the end of the file the final record is incomplete.
+(2) No maximum length (see 9.4.4.5) is applicable to these records.
+(3) The records of the file shall be read or written only by formatted stream
+    access input/output statements.
+(4) Each file storage unit in the file is uniquely identified by a positive
+    integer.  The first file storage unit is at position 1.  The relationship
+    between positions of successive file storage units is processor-determined;
+    not all positive integers need correspond to valid positions.
+(5) The file position can be set to a position that was previously visited and
+    the position number remembered."
+
+9.2.3.2 File position prior to data transfer
+{ - looks ok as is}
+
+9.2.3.3 File position after data transfer
+[169:34] Change "stream" to "unformatted stream"
+[169:35] Change "a stream output" to "an unformatted stream output"
+[169:41] Change "stream" to "unformatted stream"
+[169:42+] Add new paragraph
+"If no error condition occurred during the execution of a formatted stream
+ output statement, the terminal point of the file is changed to be the highest
+ position to which data was transferred by that statement."
+[169:42++] Create new note and move [169:41-42] here.
+
+{ - to me it looks like the rest of the text here covers what we want for
+    formatted streams.}
+
+9.2.4 File storage units
+[170:15] Change "stream" to "unformatted stream"
+
+9.4.4.4 FORM= specifier in the OPEN statement
+[175:7] Change "direct access" to "direct access or stream access"
+[175:11-12] Delete. (about being connected for both; we don't do this now).
+[175:13-18] Delete. (the Unresolved issue).
+
+9.4.4.10 PAD= specifier in the OPEN statement
+{ - looks ok as is}
+
+9.5.1.4 File position
+[181:27+] Add
+"If the file is connected for formatted stream access the file position
+ specified by POS= shall be equal to 1 (the beginning of the file) or shall be
+ equal to a value that was returned by INQUIRE(POS=) for that file."
+
+9.5.4.4.1 Unformatted data transfer
+{ - looks ok as is}
+
+9.5.4.4.2 Formatted data transfer
+[191:28-34] Replace with
+"The current record and possibly additional records are read or written."
+[191:35-37] Delete.
+[191:44] Delete "record"
+[192:1] Ditto.
+[192:4] Ditto.
+[192:7] Ditto.
+
+9.5.4.4.3 User-defined derived-type input/output procedures
+[196:1] Delete "record"
+[196:8] Delete "record"
+
+9.7 File positioning statements
+[199:5] Change "stream" to "unformatted stream"
+
+9.7.2 ENDFILE statement
+{ - looks ok as is}
+
+9.8.1.16 POS= specifier in the INQUIRE statement
+{I find it confusing to use "position" to mean where the file is positioned -
+ always between units, never on them - and the position number that a file
+ storage unit has.  Mutter, mutter.
+
+ If we don't add formatted streams, I would suggest that the text be changed
+ to take advantage of the fact that unformatted streams have the "+1"
+ characteristic by referring to the previous fsu - viz
+ "if at the beginning, POS=1, else POS=number of preceding fsu + 1".}
+
+10.4 Positioning by format control
+[213:26+] Add new sentence to the same paragraph
+"During formatted stream output, processing of an A edit descriptor may cause
+file positioning to occur (10.5.3)."
+
+10.5 Data edit descriptors
+[213:32] Before "." insert
+"; during formatted stream output, file positioning may also be caused by the A
+ data edit descriptor"
+
+10.5.3 Character editing
+[218:43+] Add (new paragraph?)
+"If the file is connected for stream access, the output field may be split
+across several records if it contains newline characters.  A newline character
+is the character returned by the intrinsic function ACHAR with the argument 10.
+Beginning with the first character of the output field, each character that is
+not a newline is written to the current record in successive positions and each
+newline character causes file positioning at that point, as if by slash editing
+(i.e. the current record is terminated at that point, a new empty record is
+created following the current record, this new record becomes the last and
+current record of the file, and the file is positioned to the beginning of this
+new record).
+
+Note 10.13a: Output field splitting by newline characters can only occur on
+those processors which can represent the result of the intrinsic function
+reference ACHAR(10)."
+
+10.6.2 Slash editing
+[221:37] Replace "For a file  connected for sequential or direct access, the"
+         with "The".
+[221:39] Change "sequential" to "sequential or stream"
+[221:41] Change "sequential" to "sequential or stream"
+[222:8] Delete.
+
+***************************************************END

@@ -1,0 +1,109 @@
+
+                                                               J3/03-115
+
+To: J3
+From: UK Fortran panel
+Subject: Edits for UK comment E8 (Description of DT i/o)
+Date: 11 February 2003
+ 
+Comment E8 of the UK vote was:
+    E8  Sections 9.5.3.7 and 10.6.5
+    The description of user-defined derived-type input/output at
+    9.5.3.7, although lengthy, is not very clear.  The description at
+    10.6.5 is inadequate.  In both cases further examples would be
+    helpful, either in the text or in Annex C. 
+
+ 
+On further consideration we think that putting examples into section
+9.5.3.7 would be adequate and that there would then be no need to
+amplify 10.6.5.
+ 
+Our proposed edits are:
+
+202:29+  Add two new Notes:
+
+Note 9.48a
+A simple example of derived type formatted output follows.  The derived
+type variable <<chairman>> has two components.  The type and an
+associated write formatted procedure are defined in a module so as to be
+accessible from wherever they might be needed.  It would also be
+possible to check that <<iotype>> indeed has the value 'DT' and to set
+<<iostat>> and <<iomsg>> accordingly. 
+
+
+MODULE p
+
+  TYPE :: person
+    CHARACTER (LEN=20) :: name
+    INTEGER :: age
+  CONTAINS
+    GENERIC :: WRITE(FORMATTED) => pwf
+  END TYPE person
+
+CONTAINS
+
+  SUBROUTINE pwf (dtv,unit,iotype,vlist,iostat,iomsg)
+! argument definitions
+    TYPE(person) , INTENT(IN) :: dtv
+    INTEGER, INTENT(IN) :: unit
+    CHARACTER (LEN=*), INTENT(IN) :: iotype
+    INTEGER, INTENT(IN) :: vlist(:)
+    INTEGER, INTENT(OUT) :: iostat
+    CHARACTER (LEN=*), INTENT(INOUT) :: iomsg
+! local variable
+    CHARACTER (LEN=9) :: pfmt
+
+!   vlist(1) and (2) are to be used as the field widths of the two
+!   components of the derived type variable.  First set up the format to
+!   be used for output. 
+    WRITE(pfmt,'(A,I2,A,I2,A)' ) '(A',  vlist(1), ',I',  vlist(2),  ')'
+
+!   now the basic output statement
+    WRITE(unit, FMT=pfmt, IOSTAT=iostat) dtv_name, dtv_age
+
+  END SUBROUTINE pwf
+
+END MODULE p
+
+PROGRAM
+  USE p
+  INTEGER id, members
+  TYPE (person) :: chairman
+  ...
+  WRITE(6, FMT="(I2, DT (15,6), I5)" ) id, chairman, members
+! this writes a record with four fields, with lengths 2, 15, 6, 5
+! respectively
+
+END PROGRAM
+
+
+Note 9.48b
+In the following example, the variables of the derived type <<node>>
+form a linked list, with a single value at each node.  The subroutine
+<<pwf>> is used to write the values in the list, one per line. 
+
+MODULE p
+
+  TYPE node                
+    INTEGER :: value = 0
+    TYPE (NODE), POINTER :: next_node => NULL ( )
+  CONTAINS
+    GENERIC :: WRITE(FORMATTED) => pwf
+  END TYPE node
+
+CONTAINS
+
+  RECURSIVE SUBROUTINE pwf (dtv,unit,iotype,vlist,iostat,iomsg)
+! Write the chain values, each on a separate line in I9 format.
+    TYPE(node) , INTENT(IN) :: dtv
+    INTEGER, INTENT(IN) :: unit
+    CHARACTER (LEN=*), INTENT(IN) :: iotype
+    INTEGER, INTENT(IN) :: vlist(:)
+    INTEGER, INTENT(OUT) :: iostat
+    CHARACTER (LEN=*), INTENT(INOUT) :: iomsg
+
+    WRITE(unit,'(i9 /)') dtv%value
+    IF(ASSOCIATED(dtv%next_node)) WRITE(unit,'(dt)') dtv%next_node
+  END SUBROUTINE pwf
+
+END MODULE p

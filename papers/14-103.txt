@@ -1,0 +1,163 @@
+To:      J3                                                 J3/14-103
+From:    John Reid
+Subject: Events
+Date: 2014 January 19
+References: N1971, N1996, N1999, 13-359
+
+Discussion
+----------
+
+In his vote (see N1999), Bill Long says
+
+"The MAX_COUNT feature in EVENT POST has problems (expanded from
+13-359).
+
+The intention is that operations on the count variable of an event be
+atomic. That is easy for a plain EVENT POST (atomic add 1) and EVENT
+WAIT (atomic add -1).  This also is the case for an EVENT POST with a
+COUNT= specifier (atomic fetch-and-add 1) which would provide
+potentially useful information to the executing image. Similarly, and
+EVENT CLEAR statement could be implemented as (atomic and
+0). Alternatively, an EVENT CLEAR could be implemented as an EVENT
+WAIT with a CLEAR="yes' qualifier, for example.  Or, with richer
+semantics as an EVENT WAIT (UNTIL_COUNT = <scalar-int-expr>) form that
+would wait until the count got to the indicated level and then
+subtract the UNTIL_COUNT value from the event variable count and
+complete. These alternatives need consideration, as they provide
+useful functionality and can still be implemented atomically.
+
+However, including a MAX_COUNT specifier in an EVENT POST statement
+can lead to a race condition. This is fundamentally two operations - a
+fetch of the current value, followed by a decision on whether to
+increment.  It is possible to get around this with repeated retries
+with a compare-and-swap operation, but the implementation will be
+significantly slower and potentially deadlock. Therefore, I think the
+current MAX_COUNT= specifier is problematic and needs repair or
+removal.  Note that there is a special case that would work - a binary
+only version that only sets the count to 1 if it is currently 0
+(atomic compare-and-swap). As long as the user never executes a
+'non-binary' event post on that event variable this could be usable.
+That involves either restricting MAX_COUNT to be 1 if it is specified,
+or to change the spelling to something line BINARY='yes', with the
+default 'no'."
+
+This paper contains edits to implement Bill's final suggestion. This
+is a change that was advocated by Nick Maclaren in N1971 and at the
+WG5 meeting in Delft in June 2013.
+
+Edits to N1996:
+---------------
+
+[15:8-10] Replace the sentences "An event variable ... HUGE(0)." by
+"An event variable has a record of its state, which is either posted or
+unposted. The initial state of an event variable is unposted."
+
+[15:24-27] In R601, replace "<post-spec-list>" by "<sync-stat>" and
+delete R603.
+
+[15:29-32] Replace the sentences "Successful execution ... EVENT POST
+statement." by
+"Successful execution of an EVENT POST statement changes the state of
+the event variable from unposted to posted. If an error condition
+occurs during the execution of an EVENT POST statement, the state does
+not change. If the state is posted, an error condition occurs in the
+EVENT POST statement."
+
+[15:34] After "posts" add "and waits".
+
+[16:5-6] Change "count of the event variable is positive" to
+"state of the event variable is posted".
+
+[16:6-7] Change "count of the event variable is decreased by 1" to
+"state of the event variable becomes unposted".
+
+[16:8] Change "count" to "state".
+
+[16:10] Change "count of an event variable increases" to
+"state of an event variable becomes posted".
+
+[16:11] Change "decreases" to "becomes unposted".
+
+[16:17-18] Change "count of the event variable ... specifier" to
+"state of the event variable is posted".
+
+[23:24] Change "COUNT" to "POSTED".
+
+[23:25] Change "count" to "state".
+
+[23:30-33] Replace decription of COUNT by
+POSTED   shall be scalar and of type default logical. It is an
+         INTENT(OUT) argument. It is assigned the value true if the
+         state of EVENT is posted and false otherwise.
+
+[23:39-43] Replace "CALL ... value 8." by
+CALL EVENT_QUERY ( EVENT, POSTED )
+the logical variable POSTED has the value false. If there have been 10
+successful posts and 9 successful waits to EVENT[2], after the
+invocation
+CALL EVENT_QUERY ( EVENT[2], POSTED )
+POSTED has the value true.
+
+[32:1-] In the line for EVENT_QUERY, change "COUNT" to "POSTED" and
+"Count" to "State".
+
+[37:31] Change to
+INTEGER :: i, status
+LOGICAL :: posted
+
+[37:46] Change "count" to "posted".
+
+[38:7] Change "count > 0" to "posted".
+
+[38:46-39:17] Replace A.2.2 by
+
+A.2.2 A calculation involving a tree
+
+A tree is a graph in which every node except one has a single "parent"
+node to which it is connected by an edge. The node without a parent is
+the "root". The nodes that have a given node as parent are the "children"
+of that node. The root is a level 1, its children are at level 2, etc.
+
+A multifrontal code to solve a sparse set of linear equations involves
+a tree. Work at a node starts after work at all its children is complete
+and their data has been passed to it.
+
+Here we assume that all the nodes have been assigned to images. Each
+image has a list of its nodes and these are ordered in decreasing tree
+level (all those at level L preceding those at level L-1). For each
+node, array elements hold the number of children, details about the
+parent and an event variable. This allows the processing to proceed
+asynchrononously subject to the rule that a parent must wait for all
+its children.
+
+
+PROGRAM TREE
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+INTEGER,ALLOCATABLE :: NODE(:) ! Tree nodes that this image handles
+INTEGER,ALLOCATABLE :: NC(:)   ! NC(I) is the number children of NODE(I)
+INTEGER,ALLOCATABLE :: IPARENT(:) ! IPARENT(I) is the image that
+                                  ! handles the parent of NODE(I)
+INTEGER,ALLOCATABLE :: PPARENT(:) ! PPARENT(I) is the position of the
+                                  ! parent of NODE(I) in IPARENT(I)
+INTEGER,ALLOCATABLE :: PFAMILY(:) ! PFAMILY(I) is the position of
+                                  ! NODE(I) in its family
+TYPE(EVENT_TYPE),ALLOCATABLE :: DONE(:,:)[*] ! DONE(I,J) refers to
+                                             ! child J of NODE(I)
+INTEGER :: I, J, STATUS
+: ! Set up the tree, including allocation of all arrays.
+DO I = 1, SIZE(NODE)
+   DO J = 1, NC(I)
+      ! Wait for child J to complete
+      EVENT_WAIT(DONE(I,J),STAT=STATUS)
+      IF (STATUS/=0) EXIT
+   END DO
+   : ! Process node, using data from children
+   IF (PPARENT(I)>0) THEN
+      ! Node is not the root.
+      : ! Place result on image IPARENT(I)
+      ! Tell IPARENT(I) that this has been done.
+      EVENT_POST(DONE(PPARENT(I),PFAMILY(I))[IPARENT(I)],STAT=STATUS)
+      IF (STATUS/=0) EXIT
+   END IF
+END DO
+END PROGRAM TREE

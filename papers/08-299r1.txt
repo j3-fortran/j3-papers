@@ -1,0 +1,114 @@
+                                                           08-299r1
+To: J3
+From: Malcolm Cohen
+Subject: Elemental interpretation and feature request
+Date: 2008 November 18
+
+1. Introduction
+
+This paper contains an interpretation request (for Fortran 2003) as well as
+edits to perform a feature change to Fortran 2008.
+
+
+2. Interp Request
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0119
+TITLE: Elemental procedures and deferred length character components
+KEYWORDS: deferred length, elemental
+DEFECT TYPE: Interpretation
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Constraint C1279 says
+  "In the scoping unit of an elemental subprogram, an object
+   designator with a dummy argument as the base object shall not
+   appear in a <specification-expr> except as the argument to one of
+   the intrinsic functions BIT_SIZE, KIND, LEN, or the numeric inquiry
+   functions (13.5.6)."
+
+It has been stated in previous J3 papers that the reason for this
+restriction is to ensure that every iteration of a single invocation
+of an elemental procedure will have the same stack size: and this
+desire was achieved in Fortran 95.
+
+However, the situation changes with deferred-length character
+components.  For example, with the type
+  TYPE T
+    CHARACTER(:),ALLOCATABLE :: CP
+  END TYPE
+and the elemental procedure
+  SUBROUTINE ZAP(X)
+    TYPE(T),INTENT(INOUT) :: x
+    REAL WORK(LEN(X%CP))
+    ...
+and the variable
+  TYPE(T) ARRAY(100)
+initialized as
+  DO I=1,100; ARRAY(I)%CP = REPEAT('x',I); END DO
+then in the invocation
+  CALL ZAP(ARRAY)
+the invoked procedure will have a different size for its WORK array
+for every element of ARRAY.  Thus the restriction no longer achieves
+its aim (though this aim is not actually stated in the standard).
+
+Is this restriction still correct and useful?  That is,
+(a) is the above example standard-conforming,
+(b) is the below example standard-conforming.
+
+Program below_example
+  Integer :: ARRAY(100) = (/ (I,I=1,100) /)
+  Call ES(ARRAY)
+  Print *,ARRAY
+Contains
+  Elemental Subroutine ES(X)
+    Integer,Intent(Inout) :: X
+    Real WORK(X)
+    ...
+  End Subroutine
+End Program
+
+ANSWER:
+
+Although the restriction is not as useful as before, the standard is not
+in error.  The first example is standard-conforming (as per the quoted
+text) but the second is not, because it violates constraint C1279.
+
+EDITS:
+
+None.
+
+SUBMITTED BY:  Malcolm Cohen
+
+HISTORY: 08-258      m185   Submitted
+         08-299r1    m186   Revised
+
+----------------------------------------------------------------------
+
+3. Feature Change
+
+DISCUSSION:
+
+The original purpose of the constraint was to facilitate the optimisation
+of moving the loop traversal into the elemental procedure, and then
+hoisting the stack frame setup outside the loop.  Few processors do this
+optimisation right now.
+
+In fact, even in the absence of the constraint the optimisation can still
+be done for all the previously-valid cases: the analysis required is no
+more complicated than the analysis the constraint requires for producing
+the error message.
+
+Thus this constraint is no longer useful, and should be removed.
+
+4. Edits to 08-007r2
+
+[xiii p2] Append to the bullet "Data usage and computation:",
+  "Some restrictions on the use of dummy arguments in elemental subprograms
+   have been removed."
+
+[310:12.8.1 C1288] Delete this constraint and the following Note 12.53.
+
+===END===

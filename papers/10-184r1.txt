@@ -1,0 +1,96 @@
+                                                            J3/10-184r1
+To: J3
+From: Malcolm Cohen
+Subject: Final interp 8: ELEMENTAL INTENT(OUT)
+Date: 2010 June 17
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0034
+TITLE: ELEMENTAL INTENT(OUT) finalization
+KEYWORDS: PURE INTENT(OUT) FINAL
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+  MODULE m
+    TYPE t1
+      REAL,POINTER :: vec(:)
+    CONTAINS
+      FINAL f1
+    END TYPE
+    TYPE t2
+      REAL,POINTER :: vec(:)
+    CONTAINS
+      FINAL f2
+    END TYPE
+  CONTAINS
+    PURE SUBROUTINE f1(x)
+      TYPE(t1),INTENT(INOUT) :: x
+      IF (ASSOCIATED(x%vec)) DEALLOCATE(x%vec)
+    END SUBROUTINE
+    PURE SUBROUTINE f2(y)
+      TYPE(t2),INTENT(INOUT) :: y(:)
+      INTEGER i
+      DO i=1,SIZE(y)
+        IF (ASSOCIATED(y(i)%vec)) DEALLOCATE(y(i)%vec)
+      END DO
+    END SUBROUTINE
+    ELEMENTAL SUBROUTINE zap1(z1)
+      TYPE(t1),INTENT(OUT) :: z1
+    END SUBROUTINE
+    ELEMENTAL SUBROUTINE zap2(z2)
+      TYPE(t2),INTENT(OUT) :: z2
+    END SUBROUTINE
+  END MODULE
+  ...
+  TYPE(t1) a,aa(10)
+  TYPE(t2) b,bb(10)
+  ...
+  CALL zap1(a)    ! (1)
+  CALL zap1(aa)   ! (2)
+  CALL zap2(b)    ! (3)
+  CALL zap2(bb)   ! (4)
+
+The question is which CALL statements result in finalization and thus
+deallocation of the various vec components.
+
+If the finalization of an INTENT(OUT) argument is considered to happen
+"on invocation" in the caller, then presumably the CALL statements
+marked (1) and (4) will result in deallocation.
+
+On the other hand, if the finalization of an INTENT(OUT) argument is
+considered to be done in the called procedure, then arguably it is the
+CALL statements marked (1) and (2) instead that will result in
+deallocation.
+
+In either case some clarification would seem to be useful.
+
+Q. Which statements result in deallocation of the vec components?
+
+ANSWER:
+
+A. The finalization is considered to occur in the called procedure,
+   so the statements marked (1) and (2) will result in deallocation of
+   the vec components.
+
+Note that this is consistent with the answer to interp F08/0031
+(10-181r1).
+
+EDITS to 10-007:
+
+[76:31] At the end of 4.5.6.3 paragraph 8, append new sentence
+  "The finalization caused by INTENT(OUT) is considered to occur
+   within the invoked procedure; so for elemental procedures, an
+   INTENT(OUT) argument will be finalized only if a scalar or
+   elemental final subroutine is available, regardless of the rank
+   of the actual argument."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 10-184   m192 F08/0034 Submitted
+         10-184r1 m192 Selected alternative answer, fixed example.
+
+----------------------------------------------------------------------

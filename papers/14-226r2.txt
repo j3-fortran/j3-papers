@@ -1,0 +1,111 @@
+                                                             J3/14-226r2
+To:      J3
+From:    Nick Maclaren & Bill Long
+Subject: Asynchronous progress
+Date: 2014 October 17
+
+This paper requests clarification on the principles for data
+consistency and asynchronous progress.  Five issues are raised and two
+questions are asked.
+
+The motivations are centered on concerns about performance and/or
+portability of coarrays to variant hardware implementations.  As such,
+the responses and answers are all essentially that the standard should
+refrain from specifying an explicit mechanism.
+
+1. Issues
+---------
+
+Implementation details are generally outside the scope of the
+standard. Whether an extra "helper thread" might be needed to
+correctly implement the semantics of the standard is an implementation
+detail.
+
+Generally, experts in MPI, as recently as the PGAS 2014 meeting, claim
+that the parallel computing requirements in Fortran (as well as SHMEM,
+UPC, Coarray-C++ and UPC++) can easily be provided by a runtime
+library based only on MPI-3. As this is now widely available, the
+concern about implementation is considerably reduced.  Two significant
+coarray implementations (Intel and gfortran) employ runtime code based
+on MPI.  Other implementations may take advantage of the OpenCoarray
+library.
+
+The correct place to handle details like the existence of helper
+threads or other software agents is in runtime libraries.
+
+
+2. Questions
+------------
+
+Question 1:
+
+Access to which classes of data should the standard require to progress
+asynchronously?
+
+A vendor might provide asynchronous access to more than is required, so
+we are considering only what the standard should require.  The obvious
+(but not necessarily correct) answer is one of:
+
+    a) Just atomic variables,
+
+    b) Atomic variables and events,
+
+    c) Atomic variables, events and locks,
+
+    d) All coarray data.
+
+
+Answer 1:
+
+a) Variable definitions and references by atomic subroutines are
+   specifically identified as exempt from the segment ordering rules
+   (f08:8.5.2p3). Asynchronous access is assumed for these cases.
+
+b) EVENT POST and EVENT WAIT are image control statements (TS: 6.3 and
+   6.4). The EVENT_QUERY intrinsic subroutine is an atomic
+   subroutine. To properly synchronize updates by EVENT POST and EVENT
+   WAIT with each other and with inquiries from EVENT_QUERY, updates
+   of the count of an event variable are atomic
+   (TS:6.2p2). Asynchronous access to the count of an event variable
+   is assumed.
+
+c) LOCK and UNLOCK statements are image control statements
+   (f08:8.5.1p2).  The first note (f08:8.5.6 Note 8.42) says that the
+   changes to a lock variable are atomic. (This should probably be
+   normative, similar to the EVENT case.)  For the lock system to work
+   the accesses to the lock variable need to be atomic. Asynchronous
+   access to a lock variable is assumed.
+
+d) There are many cases where simple code sequences imply that coarray
+   data movement occurs before the end of a segment. For example, the
+   statement
+
+      print *, x[4]
+
+   executed in image 2 will not complete until x from image 4 has
+   arrived at image 2.  Similarly,
+
+      x_local = x[4]
+      call big_sub (x_local, x_new) ! x_new is computed based in
+                                    ! the intent(in) first argument
+      print *, x_new
+
+   executed on image 2 cannot progress to the call until the value of
+   x from image 4 has arrived.
+
+   Because of data usage dependencies within a segment there are often
+   cases where asynchronous access is assumed for code to progress.
+
+
+Question 2:
+
+What extra restrictions on data use do we need for such classes of data?
+
+The obvious example to follow is ASYNCHRONOUS, but it is unclear whether
+that is appropriate.
+
+
+Answer 2:
+
+No extra restrictions on data use are needed.
+

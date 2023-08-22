@@ -1,0 +1,486 @@
+                                                  X3J3/95-026
+To:	        X3J3	
+From:		Jerry Wagener, with appreciation to John Reid
+Subject:	Floating Point Subset of ENABLE
+
+This paper is presented in the belief that handling floating point 
+exceptions is important to keeping Fortran competitive in high 
+performance numerical computation.
+
+It describes a highly restricted and simplified facility that is 
+(close to) a subset of the Edinburgh proposal on exception 
+handling.  It is believed to address and resolve the technical 
+concerns raised in response to that proposal.  While this subset 
+does not provide anywhere close to the functionality of the 
+Edinburgh proposal, it does provide the "80% solution" for 
+floating point exceptions (FPEs).  It also is extendible to 
+(something close to) the Edinburgh proposal and/or an exception 
+handling facility, such as discussed thus far, modeled on a 
+condition data type. 
+
+This subset deals only with FPE events, including floating 
+overflow and floating point divide-by-zero,  though the 
+processor may detect additional exceptions. Signaling outside 
+any enable construct are (allowed but are) processor dependent.  
+The enable construct has the general form
+         ENABLE		
+              enable block	
+         [ HANDLE	
+              handle block ]	
+         END ENABLE		
+which may be considered roughly functionally equivalent to 
+the Edinburgh form of
+         ENABLE (FLOATING_POINT)
+              enable block
+         HANDLE
+              handle block
+         END ENABLE
+If a future proposal needs the meaning that the Edinburgh 
+proposal had for the simple ENABLE and HANDLE statements, 
+the syntax ENABLE ( ) and HANDLE ( ) could be used. 
+
+If an FPE signals during the execution of the enable block, 
+control is transferred to the handle block; otherwise the handle 
+block is not executed.  Any FPE that triggers execution of a 
+handle block is cleared prior to entering a handle block. This is 
+not consistent with the Edinburgh proposal, which allowed 
+inquiries to be made about the specific nature of signaling prior 
+to handling. A future proposal could restore this functionality as 
+an option on the HANDLE statement.
+
+As in the Edinburgh proposal, the transfer to the handle block 
+after a signal is imprecise in order to allow for optimizations.  
+Any variable that is defined or redefined in such an "uncertainty 
+scope" becomes undefined.  The handler may specify returning 
+the signal to the calling program.
+
+A significant simplification over the Edinburgh proposal is that 
+if a signal is not handled in the procedure in which it was 
+generated, the processor is required to handle it in the caller only 
+if (1) the call to the procedure is itself in an enable construct and 
+(2) the signal is generated in an enable construct in the callee.  If 
+either of these two requirements is not met then the signal is 
+"lost" in the sense that the situation becomes processor 
+dependent.  For guaranteed handling up the call chain a 
+condition must be so "fully enabled" on both ends of each call.
+
+The SIGNAL statement, which can appear only in an enable 
+construct, allows the user to explicitly signal an FPE.  The signal 
+statement has the form  SIGNAL  which may be considered roughly equivalent to
+the Edinburgh form of  SIGNAL (FLOATING_POINT).
+
+This subset enables and handles floating point exceptions, and 
+allows the user to signal a floating point exception, but does not 
+provide any sort of "finer grained" treatment of exceptions.  In 
+particular, any notion of "condition value" is intentionally 
+omitted, so as not to unduly impact the nature of future 
+extension.
+
+
+EDITS TO X3J3/94-007r3
+----------------------
+
+Section 1.8 - at end of section, add new reference:  
+     	 IEC 559:1989, Binary floating-point arithmetic for 
+microprocessor systems 
+	(also ANSI/IEEE 754-1985, IEEE standard for binary 
+floating-point arithmetic).
+.......................................................................
+Section 2.1 - add to R215 (in alphabetical order) the line:  
+  	or    enable-construct
+.......................................................................
+Section 2.1 - add to R216 (in alphabetic position) the line:
+         	or    signal-stmt
+.......................................................................
+Section 2.3.4 - in list item(2), after 'CASE constructs,', add 
+'ENABLE constructs,'
+.......................................................................
+Section 2.3.4 - add a fourth list item:
+  	(4) Execution of a signal statement (8.1.5.4) may change 
+the execution sequence. 
+.......................................................................
+Section 2.5 - insert a new section just before 2.5:
+
+2.4.8 Condition
+
+Within an enable construct, a condition is signaled by the 
+processor upon occurrence of a floating point exception, such 
+as overflow, during program execution.  How the processor 
+represents such exception conditions is processor dependent.  
+Outside of enable constructs the meaning of exception 
+conditions is processor dependent.  The processor is required to 
+support the exceptions floating point overflow and floating 
+point divide-by-zero; the processor may detect and signal other 
+exceptions as well.
+
+[Footnote: In a multitasking environment each virtual processor 
+supports its own exception conditions. If an enable construct 
+contains statements that spawn tasks, enable, handle, and end-
+enable statements act as barriers at which such exception 
+condition values are merged.  Condition handling and the enable 
+construct are permitted in a pure procedure.]
+.....................................................................
+Section 3.3.1 - add to the Blanks Optional column (in 
+alphabetical position):
+            END ENABLE
+.......................................................................
+Section 7.1.7 - in fourth paragraph (which starts with 'Any'), 
+after 'program', add ', except in an enable block'
+.......................................................................
+Section 8.1 - add a fourth list item:
+         (4) ENABLE construct
+.......................................................................
+Section 8.1 - in paragraph starting with 'Any', delete 'three'
+........................................................................
+Section 8.2 - insert a new section just before 8.2:
+
+8.1.5 Condition handling
+
+The processor is required to signal a condition if a floating point 
+exception occurs during execution of an intrinsic operation 
+within an enable construct.   The processor is permitted, but not 
+required, to signal if a floating point exception occurs during 
+execution of an intrinsic function.  Within an enable construct, 
+the user may signal with the SIGNAL statement.  The processor 
+may signal outside of an enable construct, but the meaning of 
+such a signal is processor dependent.
+
+[Footnote:  Note that a SIGNAL statement may not appear 
+outside of an enable construct.]
+
+[Footnote: On many processors, it is expected that some 
+exception conditions will cause no alteration to the flow of 
+control when they are signaled and that they will be tested only 
+when the enable block completes.  On other processors, this may 
+be very expensive, and on them the handler may be invoked at 
+the time of signaling or soon thereafter.]
+
+In a sequence of statements that contains no condition handling 
+statements, if the execution of a process would cause signaling 
+but after execution of the sequence no value of a variable 
+depends on the process, whether signaling occurs is processor 
+dependent.  For example, when Y has the value zero, whether 
+the code
+           X = 1.0/Y
+           X = 3.0
+signals is processor dependent. 
+
+A signal must not occur if it could arise only during execution of 
+a process beyond those required or permitted by the standard.  
+For example, the division in the statement
+           IF (X>1.) Y = Z/X
+must not signal when X is less than 1.0, and for the statement
+           WHERE(A>0.) A = LOG (A)
+negative elements of A must not cause signaling. On the other 
+hand, when X has the value 1.0 and Y has the value 0.0, the 
+expression
+           X>0.00001 .OR. X/Y>0.00001
+is permitted to cause  signaling.
+
+[Footnote: In general, it is intended that implementations be free 
+within enable constructs to use the code motion techniques that 
+they use outside enable constructs.]
+
+8.1.5.1. The enable construct
+
+The enable construct contains an enable block, and (optionally) 
+a handle block.  The handle block is executed only if execution 
+of the enable block leads to signaling.
+
+R835a    enable-construct  	is  	enable-stmt
+                                     		enable-block
+                                 	[ handle-stmt
+                                     		handle-block ]
+                                 	end-enable-stmt
+ 
+R835b    enable-stmt         	is  	[ enable-construct-
+name : ]  ENABLE
+
+R835c    enable-block        	is  	block
+  
+R835d    handle-stmt         	is  	HANDLE  [ enable-
+construct-name ]
+
+R835e    handle-block        	is  	block
+
+R835f    end-enable-stmt     	is  	END ENABLE [ 
+enable-construct-name ]
+ 
+Constraint: If the enable-stmt of an enable-construct is 
+identified by an enable-construct-name, the corresponding end-
+enable-stmt must specify the same enable-construct-name. If the 
+enable-stmt of an enable-construct is not identified by an 
+enable-construct-name, the corresponding end-enable-stmt must 
+not specify an enable-construct-name. If the handle-stmt is 
+identified by an enable-construct-name, the corresponding 
+enable-stmt must specify the same enable-construct-name.
+
+Constraint: An enable-block must not contain a cycle-stmt, exit-
+stmt, or branch statement that would cause branching outside of 
+the enable-block. An alternate return specifier in an enable-
+block must not specify the label of a statement outside the block.  
+An ERR=, END=, or EOR= specifier in a statement in an 
+enable-block must not be the label of a statement outside the 
+block.
+
+Constraint: A handle-block must not contain a cycle-stmt, exit-
+stmt, or branch statement that would cause branching outside of 
+the handle-block. An alternate return specifier in an handle-
+block must not specify the label of a statement outside the block.  
+An ERR=, END=, or EOR= specifier in a statement in an 
+handle-block must not be the label of a statement outside the 
+block.
+
+If an enable construct has no handler, the effect is as if it had the 
+following handler:
+	HANDLE
+	SIGNAL
+
+An ENABLE statement may be a branch target statement (8.2). 
+
+[Footnote: Neither a HANDLE statement nor an END ENABLE 
+statement is permitted to be a branch target.  A handle block is 
+intended for execution only following signaling in its enable 
+block, and an END ENABLE statement is not a sensible target 
+because it would permit skipping the handling of an exception.]
+
+[Footnote: Nesting of enable constructs is permitted.  An enable 
+or handle block may itself contain an enable construct.  Also, 
+nesting with other constructs is permitted, subject to the usual 
+rules for proper nesting of constructs.]
+
+[Footnote: Note that in a function subprogram it is very 
+desirable to ensure that the function value is defined even if an 
+exception has occurred and is expected to be handled in the 
+calling subprogram.  If the function value is not defined, 
+additional exceptions may occur during evaluation of the 
+expression that gave rise to the function call.]
+
+8.1.5.2 Execution of an enable construct
+
+Execution of an enable construct begins with the first executable 
+construct of the enable block and continues to the end of the 
+block unless a condition is signaled.  An uncertainty scope 
+consists of a (possibly null) sequence of statements in an enable 
+construct between any pair of consecutive ENABLE, HANDLE, 
+and END ENABLE statements. If a signal is associated with 
+(occurs in) an uncertainty scope, there is a transfer of control 
+sometime during execution of the uncertainty scope subsequent 
+to the signaling.  If the uncertainty scope is in an enable block, 
+the (effect is as if the) transfer is to the associated HANDLE 
+statement.  If the uncertainty scope is in a handle block the 
+transfer is to the associated END ENABLE statement, thereby 
+completing execution of the enable construct with the condition 
+still signaling.  Any variable that might be defined or redefined 
+by execution of a statement of the uncertainty scope or of a 
+procedure invoked in such a statement is undefined, any pointer 
+whose pointer association might be altered has undefined 
+pointer association status, any allocatable array that might be 
+allocated or deallocated may have been allocated or become 
+unallocated, and the file position of any file specified in an 
+input/output statement that might be executed is processor 
+dependent.
+
+[Footnote: The transfer to the handle block is imprecise and 
+processor dependent in order to allow for optimizations such as 
+vectorization. As a consequence, some variables become 
+undefined. In Example 1 of 8.1.5.4, a copy of the matrix itself 
+would need to be available for the slow algorithm.]
+
+Although branching from within an enable construct to outside 
+of the construct is not allowed, a RETURN or STOP statement 
+is permitted in an enable construct.
+
+If execution of the enable block completes without any of its 
+uncertainty scopes signaling, the execution of the enable 
+construct is complete.
+
+If the handler is invoked, the signal(s) triggering the handler are 
+cleared by the HANDLE statement and then execution proceeds 
+with the first executable construct of the handle block.  
+Completion of execution of the handle block completes the 
+execution of the enable construct.
+
+If execution of an enable construct completes with a condition 
+still signaling (that is, the signal is not cleared by execution of a 
+HANDLE statement), an immediate transfer takes place.  For 
+the purposes of determining the nature of the transfer in the case 
+of a nested enable construct, the signal is considered to be 
+associated with the uncertainty scope immediately following the 
+enable construct.  In the case of an enable construct not nested in 
+another enable construct, the transfer is to return to the calling 
+program (or stop, if in a main program), propagating the signal 
+to the caller.
+
+[Footnote: Note that the mechanism by which a signal is 
+propagated to the caller is completion of execution of an (outer) 
+enable construct with a condition still signaling - that is, if a 
+signal has occurred in the enable construct and not cleared by a 
+HANDLE statement.  Note also that the statement pair  
+SIGNAL; RETURN  cannot be relied upon to propagate a signal 
+to the caller because of the uncertainty of when the effects of 
+signaling take place.  Finally, note that for guaranteed handling 
+of a signal propagated to the caller, the call must be in an enable 
+construct.  Examples 3 and 4 in 8.1.5.4 both illustrate signal 
+propagation back to the caller.]
+
+[Footnote:  Note that if the processor supports signaling outside 
+of enable constructs, and such a signal exists upon execution of 
+an enable statement, the effect is as if a return (or stop in a main 
+program) is executed with the signal propagating to the caller.]
+
+8.1.5.3 Signal statement
+
+R835g     signal-stmt   is  SIGNAL 
+
+Constraint: A signal-stmt may appear only in an enable-construct. 
+
+The SIGNAL statement signals a floating point exception.  The 
+effect of executing a SIGNAL statement is the same as if the 
+processor had signaled the condition.
+
+8.1.5.4 Examples of ENABLE constructs
+
+Example 1:
+
+   ENABLE 
+    ! First try the "fast" algorithm for inverting a matrix:
+      MATRIX1 = FAST_INV (MATRIX) 
+                        ! MATRIX is not altered during execution of 
+FAST_INV.
+   HANDLE 
+    ! "Fast" algorithm failed; try "slow" one:
+      ENABLE 
+         MATRIX1 = SLOW_INV (MATRIX)
+      HANDLE 
+         WRITE (*, *) 'Cannot invert matrix'
+         STOP
+      END ENABLE
+   END ENABLE
+ 
+In this example, the function FAST_INV may signal.  If it does, 
+another try is made with SLOW_INV.  If this still  fails, a 
+message is printed and the program stops.  Note the use of an  
+enable construct within a handler.  Note also that the relevant 
+code in both FAST_INV and SLOW_INV must enabled in order 
+to guarantee propagation of a signal.
+
+Example 2:
+
+   ENABLE 
+   ! First try a fast algorithm for the computation.
+    . . .  ! Code that cannot signal a condition.
+   DO K = 1, N
+      ENABLE
+      :
+      END ENABLE
+   END DO
+      ENABLE
+      :
+      END ENABLE
+   HANDLE 
+   ! Alternative code which knows that K-1 steps have executed 
+normally.
+   :
+   END ENABLE
+
+Here the code for a computation is in line and the transfer is 
+made more  precise by adding to the enable block two enable 
+constructs without handlers. 
+
+
+Example 3:
+ 
+      REAL FUNCTION CABS (Z)
+        COMPLEX Z
+! Calculate the complex absolute value, using a scaled algorithm
+!      if the straightforward calculation overflows. 
+! (See also the CABS example, page 225, ACM Transactions on 
+!      Mathematical Software, June 1994.)
+
+        REAL S, ZI, ZR
+        INTRINSIC REAL, AIMAG, SQRT, ABS, MAX
+
+        ZR = REAL(Z)
+        ZI = AIMAG(Z)
+
+quick: 	ENABLE
+
+!         	This is the quick and usual calculation.
+          	CABS = SQRT(ZR**2 + ZI**2) 
+
+  	HANDLE  quick
+
+!       	Will try again using a scaled equivalent method.
+       	S = MAX(ABS(ZR),ABS(ZI))
+
+  	slow: 	ENABLE
+            		      CABS = S*SQRT( (ZR/S)**2 + (ZI/S)**2 ) 
+          		END ENABLE  slow
+  
+ 	END ENABLE  quick
+
+      END FUNCTION CABS
+
+Note that a signal propagates back to the caller if the slow 
+algorithm fails also (but not if only the fast algorithm fails.
+
+
+Example 4:
+
+      MODULE LIBRARY
+      ...
+      CONTAINS
+         SUBROUTINE B
+            ...
+            ENABLE
+              	X = Y*Z(I) 
+               	IF (X>10.)  SIGNAL
+            END ENABLE
+            ...
+         END SUBROUTINE B
+      END MODULE LIBRARY
+
+      SUBROUTINE A
+         USE LIBRARY
+         ENABLE 
+            CALL B
+         HANDLE 
+            ...
+         END ENABLE
+      END SUBROUTINE A
+
+In this case the user has defined what constitutes a numeric 
+exception in the event that processor overflow has not occurred.  
+In either case the handling takes place in subroutine A.
+
+Example 5:
+
+   SUBROUTINE LONG
+      REAL, ALLOCATABLE A(:), B(:,:)
+      : ! Other specifications
+      ENABLE
+          :
+          ! Lots of code, including many procedure calls
+          :
+      HANDLE 
+          ! Fix-up, including deallocation of any allocated arrays, in 
+the event of any 
+          ! numeric exceptions that occur in enabled code in called 
+procedures.
+          IF(ALLOCATED(A)) DEALLOCATE (A)
+          IF(ALLOCATED(B)) DEALLOCATE (B)
+          :
+      END ENABLE
+   END SUBROUTINE LONG
+
+......................................................................
+Section 8.2 - in first paragraph, after 'end-do-stmt,' add 'an 
+enable-stmt,'.
+.......................................................................
+Section 8.4 - add a new sentence to end of last paragraph:
+	If the STOP statement is in an enable construct and a 
+condition is signaling, the processor must issue 
+	a warning on the unit identified by * in a WRITE 
+statement, indicating that an exception has occurred.
+.......................................................................

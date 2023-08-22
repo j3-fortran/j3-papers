@@ -1,0 +1,131 @@
+                                                            J3/14-236
+To:        J3
+From:      Van Snyder
+Subject:   Finish integrating new C_F_POINTER functionality from 29113
+Date: 2014 September 26
+Reference: 14-007r2, 14-135
+
+1. Discussion
+=============
+
+In 2008, there was no discussion in 15.2.3.3 concerning the case of the
+value of CPTR being the address of a storage sequence.  With the
+addition of that discussion, obvious questions arise: "What if the
+storage sequence is a sequence of characters, and FPTR has a deferred
+length parameter?"  "What if FPTR is of a parameterized derived type
+with length type parameters, and it has deferred length parameters?"
+
+Even in 2003, there was no prohibition against FPTR having deferred
+length parameters.  This wasn't needed because FPTR had to be
+interoperable, and a pointer of a parameterized type with length
+parameters is not interoperable.  After TS 29113, FPTR is no longer
+required to be of interoperable type.  How can FPTR have the same length
+parameter values as X if they're deferred?
+
+There are two ugly, and potentially nonconformant work arounds:
+Allocate an auxiliary pointer with the appropriate values of its length
+type parameters.  Copy its association status and length type parameter
+values to FPTR using pointer assignment.  Then call C_F_POINTER to
+establish the association status of FPTR.  Then deallocate the auxiliary
+pointer (I hope this doesn't make the values of the length type
+parameters of FPTR undefined).  Alternatively, if one has an accessible
+target or pointer with the appropriate values of its length type
+parameters, associate FPTR with it using pointer assignment (or perhaps
+intrinsic assignment if FPTR is a component).  Then call C_F_POINTER to
+establish the association status of FPTR.
+
+If we don't do something, deferred length parameters of FPTR are
+necessarily undefined, and there is thereafter apparently nothing
+conformant that can be done with FPTR other than copying its undefined
+length type parameter values using pointer assignment.
+
+What's wrong with noninteroperable arrays?
+
+2. Proposed new functionality
+=============================
+
+This is not a new feature request.  It is necessary work to complete
+integration of TS 29113, which allowed noninteroperable FPTR, but didn't
+finish it.
+
+Add an optional LEN argument to C_F_POINTER.  Require that it be absent
+if FPTR has no deferred length parameters.  Require that it be present
+if FPTR has a deferred length parameter and is not of type character.
+If FPTR is of type character with a deferred length parameter, and LEN
+is not present, the value of the length parameter of FPTR is one.
+
+3. Edits
+========
+
+[445:6 15.2.3.3p3] Insert ", LEN" after "SHAPE".
+
+[445:21 15.2.3.3p3] Delete "scalar".
+
+[445:21 15.2.3.3p3] Replace "and type parameters as X" with "as X, and
+FPTR and X shall have the same values of corresponding kind type
+parameters and nondeferred length type parameters."
+
+[446:2+ 15.2.3.3p3] Insert a paragraph in the description of the FPTR
+argument"
+
+        "If FPTR is not of character type and has deferred length
+         parameters, their values are specified in type parameter order
+         (4.5.3.2) by elements of the LEN argument in array element
+         order (6.5.3.2).  If FPTR is of character type and has a
+         deferred length parameter, its value is specified by the LEN
+         argument if it is present, else its value is one."
+
+[446:4+ 15.2.3.3p3] Insert a description of the new LEN argument
+
+"LEN (optional) shall be an integer scalar or an integer array with rank
+         one.  It is an INTENT(IN) argument.  It shall not be present if
+         FTPR does not have a deferred length parameter.  It shall be
+         present if FPTR has a deferred length parameter and is not of
+         type character.  If it is an array, its extent shall be the
+         same as the number of deferred length parameters of of FPTR.
+         If it is a scalar, FPTR shall have exactly one deferred length
+         parameter."
+
+4. Ugly Alternative Edits
+=========================
+
+[445:15 15.2.3.3p3] After "pointer" insert ", shall not have a deferred
+length parameter".
+
+[445:21 15.2.3.3p3] Replace "type parameters" with "type parameter
+values".
+
+5. Additional proposed new functionality
+========================================
+
+One can specify the lower bounds of a pointer during pointer assignment,
+but not during "pointer assignment" mediated by C_F_POINTER.  Add an
+optional LBOUND argument that specifies the lower bounds.  Specify that
+it shall not be present if FPTR is not an array.  If it is present, it
+shall have the same shape as SHAPE.  If it is not present, the lower
+bounds are all one.  This is not as important as the LEN argument
+because one can work around it using an auxiliary pointer and a pointer
+assignment statement.  Ugly, yes, but not as ugly as the work-arounds
+for assigning length parameters.
+
+6. Additional Edits
+===================
+
+[445:6 15.2.3.3p3] Insert ", LBOUND" after "SHAPE" (before or after
+"LEN" TBD).
+
+[445:26 15.2.3.3p3]  Replace "and" with ".  If LBOUND is present, it
+specifies the lower bounds; otherwise,"
+
+[446:4+ 15.2.3.3p3]  Insert a description of the new LBOUND argument
+(before or after description of "LEN" TBD):
+
+"LEN (optional) shall be a rank-one integer array.  It shall not be
+         present if FPTR is not an array.  If present, it shall have the
+         same shape as SHAPE."
+
+7. Purely Editorial Edit
+========================
+
+[446:3 15.2.3.3p3] Replace "of type integer and rank one" with
+"a rank-one integer array".

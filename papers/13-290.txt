@@ -1,0 +1,72 @@
+To:      J3                                                 13-290
+From:    John Reid
+Subject: POST/WAIT changes 
+Date:    26 June 2013
+References: N1967, N1968, N1971
+
+Discussion
+----------
+
+In N1971, Malcolm Cohen says:
+
+6.4 says
+"If the count of a event variable increases through the execution of an 
+EVENT POST statement on image M and later decreases through the 
+execution of an EVENT WAIT statement on image T, the segments preceding 
+the EVENT POST statement on image M precede the segments following the 
+EVENT WAIT statement on image T." which is all very well, but the very 
+definition of "later" can only be interpreted as have segments already 
+ordered, i.e. it is assuming a stronger fact than the result that it 
+requires.
+Consider
+  image 1 segment i does POST EVENT(x)
+  image 2 segment j does POST EVENT(x)
+  image 3 segment k does WAIT EVENT(x)
+for unordered segments i, j, k;
+then image 3 segment k+1 follows image 1 segment i or image 2 segment
+j, but which?  Both? 
+
+It is intended that the count of an event variable be modified 
+atomically in much the same way as a lock variable. Just as a lock 
+variable goes through a sequence of locked and unlocked states, see 
+F2008, 8.5.6, para 5, so the count of an event variable goes through 
+a sequence of values each differing from its predecessor by 1 or -1. 
+It is the position in this sequence that it being referenced by the 
+word "later".
+
+When image i posts an event on image k, it is signalling that the 
+action of the preceding segment is complete and that image k can
+start its related task. If image j posts similarly on image k, it too
+is indicating that its action is complete. If both of these posts 
+arrive on image k before it has executed waits for them the wait count
+will increase by 2. When the wait count next decreases, it is certain
+that both images i and j have completed their actions. Therefore, the
+answer to Malcolm's question is "both".
+
+Edits are provided for these points.
+
+Edits to N1967:
+---------------  
+
+[14:7-11]. In line 7, add "a sequence of" before "EVENT POST" and in
+line 9 after "later" add  "in the sequence". The whole paragraph then
+reads
+
+"During the execution of the program, the count of a event variable is 
+changed by the execution of a sequence of EVENT POST and EVENT WAIT 
+statements. If the count of a event variable increases through the 
+execution of an EVENT POST statement on image M and later in the 
+sequence decreases through the execution of an EVENT WAIT statement 
+on image T, the segments preceding the EVENT POST statement on image 
+M precede the segments following the EVENT WAIT statement on image T."
+
+[14:7-11+].  Add note:
+
+NOTE 
+The segment that follows the execution of an EVENT WAIT statement is 
+ordered with respect to all the segments that precede EVENT POST 
+statements that caused prior changes in the sequence of values
+of the event variable. 
+
+
+ 

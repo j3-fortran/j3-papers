@@ -1,0 +1,106 @@
+
+								J3/98-137
+
+Date:    19th February 1998
+To:      J3
+From:    Malcolm Cohen
+Subject: Access to Extended Components
+
+1. Introduction and Problem Statement
+
+97-183r2 (specs) and 97-196r2 (syntax) only provide one mechanism to access
+components of a type extended from a variable's declared type, that is via
+additional names.
+
+Example:
+  TYPE,EXTENSIBLE :: point_1d
+    REAL x
+  END TYPE
+  TYPE,EXTENDS(point_1d) :: point_2d
+    REAL y
+  END TYPE
+  TYPE,EXTENDS(point_2d) :: point_3d
+    REAL z
+  END TYPE
+  ...
+  SUBROUTINE print_point(p)
+    OBJECT(point_1d),TARGET :: p
+    TYPE(point_2d),POINTER :: p2
+    TYPE(point_3d),POINTER :: p3
+    IF (CONTAINS_TYPE_OF(p,p3)) THEN
+      p3 => p
+      PRINT *,p3%x,p3%y,p3%z
+    ELSE IF (CONTAINS_TYPE_OF(p,p2)) THEN
+      p2 => p
+      PRINT *,p2%x,p2%y
+    ELSE
+      PRINT *,p%x
+    END IF
+  END SUBROUTINE
+
+This is a little clumsy and has the disadvantages of:
+(1) requiring a pointer temp for each type test and access
+(2) requiring the TARGET attribute on the dummy argument, which then
+    leaks out to the caller
+(3) not robust against errors - it is the user's responsibility to ensure
+    that the IF-condition is appropriate for the access.
+Drawbacks (1) and (3) are not terribly serious when only a few type tests
+are involved, but can be onerous when many type tests occur.
+
+2. Proposed type-safe extension
+
+The following proposal is intended to supply a means for performing these
+type tests and accesses which is easier to use and maintain, and which is
+safe(r) against user errors.
+
+Therefore a scoped SELECT TYPE construct is proposed; this selects a block
+of code to be executed according to the runtime type of an expression, and
+associates a special name with the expression to provide guarded access to
+the extended components.
+
+<type-selection-construct> <<is>> <type-select-stmt>
+                                  [ <type-guard-stmt> <scoped-block> ] ...
+                                  <end-select-stmt>
+
+<type-select-stmt> <<is>> SELECT TYPE ( <expr> ) ASSOCIATE ( <associate-name> )
+
+<type-guard-stmt> <<is>> TYPE IS ( <type-name> )
+                  <<or>> TYPE IN ( <type-name> )
+                  <<or>> TYPE DEFAULT
+
+<scoped-block> <<is>> <block>
+
+A <type-selection-construct> is a nested scoping unit.  The <associate-name>
+is local to the <type-selection-construct>; this is not entirely dissimilar
+to FORALL, but in this case any outer entity with the same name is hidden
+(as with host association).  The <associate-name> becomes associated,
+similarly to argument association, to the object referred to by <expr>; if
+<expr> is a <variable> or a pointer-valued expression, <associate-name> is
+definable.
+
+There are three forms of type selector, "TYPE IN" which implicitly invokes the
+CONTAINS_TYPE_OF intrinsic, "TYPE IS" which implicitly invokes the
+SAME_TYPE_AS intrinsic, and "TYPE DEFAULT" which acts as an ELSE clause.
+
+In the <scoped-block> of a "TYPE IS (<type-name>)" guard, <associate-name>
+acts as if it were "TYPE(<type-name>)".
+In the <scoped-block> of a "TYPE IN (<type-name>)" guard, <associate-name>
+acts as if it were "OBJECT(<type-name>)".
+In the <scoped-block> of a "TYPE DEFAULT" guard, <associate-name>
+acts as if it were "OBJECT(<type-name>)" where in this case <type-name> is
+the type of the <expr>.
+
+In each case, <associate-name> is not a pointer, and its rank and shape are
+those of <expr>.
+
+The example above then becomes:
+
+  OBJECT(point_1d) p
+  SELECT TYPE(p) ASSOCIATE(tmp)
+    TYPE IN (point_3d)
+      PRINT *,tmp%x,tmp%y,tmp%z
+    TYPE IN (point_2d)
+      PRINT *,tmp%x,tmp%y
+    TYPE DEFAULT
+      PRINT *,tmp%x
+  END SELECT

@@ -1,0 +1,239 @@
+To: J3                                                     J3/21-162
+Subject: Conditional expressions and arguments - edits
+From: Malcolm Cohen
+Date: 2021-June-25
+Reference: 18-274, 20-142, 21-157.
+
+
+1. Introduction
+
+This paper contains the edits for the conditional expressions feature.
+For background, please see 18-274.
+For formal specifications, please see 20-142.
+For syntax, please see 21-157.
+
+Note that edits for the two syntax forms in 21-157 are provided.
+If a variation of one of the forms in 21-157 is chosen,
+it should be straightforward to modify the edits below.
+
+
+2. Edits to 21-007r1 for conditional expressions (only)
+
+2.1 Basic edits
+
+[xiii] Introduction, Data usage and computation bullet, append
+       "Conditional expressions provide selective evaluation of part of
+        an expression without evaluating other parts."
+
+[149:26+] 10.1.2.2 Primary, R1001 primary, add new production
+    "<<or>> <conditional-expr>"
+
+[150:1-] Before 10.1.2.3 Level-1 expressions, insert new subclause
+         (note: angle brackets omitted in the BNF as all lowercase is
+                either bold (is/or) or italic (BNF terms).
+
+    "10.1.2.2a Conditional expressions
+
+     A conditional expression is a primary that selectively evaluates a
+     chosen sub-expression.
+
+     R1001a conditional-expr is IF ( scalar-logical-expr  ) THEN ( expr )
+                                [ ELSE IF ( scalar-logical-expr )
+                                  THEN ( expr ) ]...
+                                ELSE ( expr ) END IF
+
+     C1003a Each <expr> of a <conditional-expr> shall have the same
+            declared type, kind type parameters, and rank.
+
+     NOTE 1
+     Examples of a conditional expression are:
+
+     IF( ABS(RESIDUAL)<=TOL )THEN( 'ok' )ELSE( 'did not converge' )ENDIF
+
+     IF( I>0 .AND. I<=SIZE(A) )THEN( A(I) )ELSE IF( PRESENT(VAL) )&
+     THEN( VAL )ELSE( 0.0 )ENDIF"
+{The opening paragraph is mere witter to introduce the syntax.}
+{This version of R1001a is for the keyword form; versions for other forms
+ appear in the next section.}
+{Note the constraint says "<expr> of" not "<expr> in", so we know which
+ expressions it applies to. If that's too subtle we could introduce a new
+ syntax term, but I think it is reasonably understandable as is.}
+{I think the last example will fit on one line in the standard.}
+
+[155:17+] 10.1.4 Evaluation of operations, end of subclause (after p5),
+         insert new paragraphs
+
+   "Evaluation of a <conditional-expr> evaluates each <scalar-logical-expr>
+    in order, until the value of a <scalar-logical-expr> is true, or there
+    are no more <scalar-logical-expr>s. If the value of a <scalar-logical-
+    expr> is true, its subsequent <expr> is chosen; otherwise, the last
+    <expr> of the <conditional-expr> is chosen. The chosen <expr> is
+    evaluated, and its value is the value of the conditional expression.
+
+    The declared type, kind type parameters, and rank of a <conditional-
+    expr> are the same as those of its <expr>s. The dynamic type, length
+    type parameters, and shape are those of the chosen <expr>. A
+    <conditional-expr> is polymorphic if and only if one or more of its
+    <expr>s is polymorphic.
+
+    NOTE 3
+    Only one <expr> of a conditional expression is evaluated, and any of
+    its <scalar-logical-expr>s subsequent to one that evaluates to true
+    are not evaluated."
+
+
+2.2 Edit modifications for concise syntax
+
+[47:10] 6.2.1 Tokens, p1,
+        after "..,"
+        insert "?, :?,"
+        making that whole sentence read
+            "A lexical token is a keyword, name, literal constant other
+             than a complex literal constant, operator, statement label,
+             delimiter, comma, =, =>, :, ::, ;, .., ?, :?, or %."
+
+[49:29] 6.2.6 Delimiters, p1,
+        change "or /)"
+        to "/), (?, or ?)",
+        making the whole paragraph read
+            "A lexical token that is a delimiter is a (, ), /, [, ], (/,
+             /), (?, or ?)."
+
+For concise syntax instead of keyword syntax, replace the BNF rule only
+(the rest of the edit remaining as is) in the edit for [145:1-]:
+
+    "R1001a conditional-expr is (? scalar-logical-expr | expr
+                                [ :? scalar-logical-expr | expr ]...
+                                : expr ?)"
+
+In the edit for [150:1-], change the examples to
+
+    "(? ABS(RESIDUAL)<=TOL ? 'ok' : 'did not converge' ?)
+
+     (? I>0 .AND. I<=SIZE(A) ? A(I) :? PRESENT(VAL) ? VAL : 0.0 ?)"
+
+
+3. Additional edits to 21-007 for conditional arguments
+
+3.1 Basic edits
+
+[xiii] Introduction, Program units and procedures bullet, append
+       "Conditional arguments provide inline selection of an actual
+        argument in a procedure reference."
+
+[315:26+] 15.5.1 Syntax of a procedure reference, R1524 actual-arg,
+          after "<<or>> proc-component-ref"
+          insert new production
+            "<<or>> <conditional-arg>"
+
+[316:4] C1535 replace "(R1524) <expr> shall not be a variable" entirely:
+    "C1535 An <actual-arg> that is an <expr> shall not be a variable or
+           a <conditional-expr>."
+{NOTE: This is a disambiguating constraint, not a "the processor must check
+       this" constraint.}
+
+[316:7+] After the last constraint in this subclause (C1537), insert new
+         BNF and constraints.
+
+    "R1525a conditional-arg is
+        IF ( scalar-logical-expr ) THEN ( consequent-arg )
+        [ ELSE IF ( scalar-logical-expr ) THEN ( consequent-arg ) ]...
+        [ ELSE ( else-consequent-arg ) ]
+        END IF
+     R1525b consequent-arg is expr
+                           or variable
+     R1535c else-consequent-arg is consequent-arg
+
+     C1537a Each <consequent-arg> in a <conditional-arg> shall have the
+            same declared type, and kind type parameters.
+
+     C1537b Either all <consequent-arg>s in a <conditional-arg> shall have
+            the same rank, or be assumed-rank.
+
+     C1537c If its corresponding dummy argument is not optional,
+            <conditional-arg> shall have an <else-consequent-arg>.
+
+     C1537d If its corresponding dummy argument is INTENT (OUT) or
+            INTENT (INOUT), each <consequent-arg> in a <conditional-arg>
+            shall be a variable.
+
+     C1537e If its corresponding dummy argument is allocatable, a pointer,
+            or a coarray, the attributes of each <consequent-arg> in a
+            <conditional-arg> shall satisfy the requirements of that dummy
+            argument.
+
+     C1537f A <consequent-arg> shall not be assumed-rank unless its
+            corresponding dummy argument is assumed-rank.
+
+     C1537g A <consequent-arg> that is an <expr> shall not be a variable.
+
+     C1537h In a reference to a generic procedure, each <consequent-arg> in
+            a <conditional-arg> shall have the same corank, and if any
+            <expr> in a <conditional-arg> has the allocatable or pointer
+            attribute, each <expr> shall have that attribute."
+{C1537f might be inferred from C838, so could be unnecessary.}
+{NOTE: C1537g is another disambiguating constraint.}
+
+[318:1-] Immediately before 15.5.2.3 Argument association, insert subclause
+    "15.5.2.2a Conditional argument correspondence
+
+     If an <actual-arg> is a <conditional-arg>, each <scalar-logical-expr>
+     is evaluated in order, until the value of a <scalar-logical-expr> is
+     true, or there are no more <scalar-logical-expr>s. If the value of a
+     <scalar-logical-expr> is true, its subsequent <consequent-arg> is
+     chosen; otherwise, if <else-consequent-arg> appears, its
+     <consequent-arg> is chosen.
+
+     If a <consequent-arg> is chosen, its <expr> or <variable> is the
+     actual argument for the corresponding dummy argument, and if it is an
+     <expr>, it is evaluated. If no <consequent-arg> is chosen, there is no
+     actual argument for that dummy argument.
+
+     Each <consequent-arg> in a <conditional-arg> shall satisfy any
+     requirements of the dummy argument on declared type, kind type
+     parameters, attributes, and properties that do not depend on
+     evaluation of the <consequent-arg> or any contained expressions.
+
+     The declared type, kind type parameters, rank, and corank of a
+     <conditional-arg> are those of its <consequent-arg>s. It has the
+     ALLOCATABLE or POINTER attribute if and only if all of its
+     <consequent-arg>s have that attribute. It is polymorphic if and only
+     if one or more of its <consequent-arg>s is polymorphic.
+
+     NOTE 1
+     An example of a conditional argument in a procedure reference is:
+
+     CALL sub( IF( x>0 )THEN( x )ELSE IF( y>0 )THEN( y )ELSE( z )ENDIF, &
+               IF( edge>0 )THEN( edge )ELSEIF( mode==3 )THEN( 1.0 )ENDIF, &
+               some, other, arguments)"
+{I omitted the stuff about not evaluating non-chosen things, as that would
+ just complicate the description without saying anything new. A note could
+ be added if thought useful.}
+{We could add these paragraphs to 15.5.2.1 Argument correspondence instead.
+ That subclause is one giant indigestible paragraph though, which would
+ warrant serious wordsmithing if we're going to add anything more.}
+{The penultimate paragraph is to enforce things like "allocatable dummies
+ require allocatable actuals" without listing them all.}
+{The last paragraph is there for generic resolution, which needs to know
+ these things. It's not necessary for a specific procedure reference as the
+ actual argument is the chosen consequent-arg, not the conditional-arg
+ itself.}
+
+
+3.2 Edit modifications for concise syntax
+
+Instead of the R1525a shown above, use this one:
+    "R1525a conditional-arg is
+        (? scalar-logical-expr ? consequent-arg
+        [ :? scalar-logical-expr ? consequent-arg ]...
+        [ : else-consequent-arg ]
+        ?)"
+
+In the edit for [318:1-], change the example to
+    "CALL sub( (? x>0 | x :? y>0 | y : z ?), &
+               (? edge>0 | edge :? mode==3 | 1.0 ?), &
+               some, other, arguments)"
+
+===END===
+
+

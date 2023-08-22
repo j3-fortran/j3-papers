@@ -1,0 +1,150 @@
+                                                             J3/16-104r1
+To:         J3 Members
+From:       Van Snyder & Stan Whitlock
+Subject:    No interp needed for MOVE_ALLOC with identical arguments
+Date: 2016 February 10
+
+There is no need for an F2008 interp for this issue.  The program does
+not conform because the allocation status of FROM is changed other than
+through its corresponding dummy argument: it is changed because the TO
+argument (which is identical to the FROM argument) has the INTENT(OUT)
+attribute.
+
+The issue described below is answered by the existing text so no interp
+is needed.  The unaltered text from 16-128 follows.
+
+----------------------------------------------------------------------
+
+NUMBER: F08/nnnn
+TITLE: What does MOVE_ALLOC with identical arguments do?
+KEYWORDS: MOVE_ALLOC
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+What does the following program print?
+
+  module M1
+    real, public, allocatable :: Z
+  end module M1
+  module M2
+    use M1
+  end module M2
+  program P
+    use M1, only : X => Z
+    use M2, only : Y => Z
+    allocate ( x )
+    call move_alloc ( x, y )
+    print *, allocated(y)
+  end program P
+
+Keep in mind that X and Y are different local names for the same
+variable.
+
+13.7.118p6 (in 10-007r2) says FROM (X) has become deallocated.  The TO
+argument description says it's INTENT(OUT), so the first thing that
+happens is to deallocate Y.  But 13.7.118p4 says that TO (Y) becomes
+allocated if FROM (X) is allocated "on entry."  Is "on entry" before
+or after INTENT(OUT) deallocates it?
+
+Is Y allocated or deallocated after the call?
+
+If Y is allocated after the call, was its allocation status
+"affected?"  This bears on the question whether the following program
+(with the same modules as above) conforms, i.e., is the allocation
+status of the dummy argument of subroutine S affected other than
+through the dummy argument?
+
+  program P
+    use M1, only : X => Z
+    use M2, only : Y => Z
+    allocate ( x )
+    call s ( y )
+    print *, allocated(y)
+  contains
+    subroutine S ( Y )
+      use M1, only: Z
+      integer, allocatable, intent(inout) :: Y
+      call move_alloc ( x, z )
+    end subroutine S
+  end program P
+
+ANSWER 1:
+
+Because the TO argument of MOVE_ALLOC has the INTENT(OUT) attribute,
+it becomes deallocated before the processor notices that the FROM
+argument had been allocated "on entry."  Therefore, the program prints
+F.  The allocation status of the single variable corresponding to TO
+and FROM is changed.
+
+Edits are provided to clarify this.
+
+ANSWER 2:
+
+Because the FROM argument was allocated "on entry," the TO argument is
+allocated upon return.  Therefore, the program prints T.  The
+allocation status of the single variable corresponding to TO and FROM
+is not changed.
+
+{This is the answer at least some users want.}
+
+Edits are provided to clarify this.
+
+ANSWER 3:
+
+The program does not conform because the allocation status of FROM is
+changed other than through its corresponding dummy argument: it is
+changed because the TO argument has the INTENT(OUT) attribute.
+
+{Intrinsic procedures are "magic," so this isn't necessarily required
+for consistency with procedures defined by the program.}
+
+EDIT 1:
+
+In subclause 13.7.118, paragraph 4 [10-007r2:372:23], after
+"unallocated on entry to MOVE_ALLOC" insert ", or if FROM and TO are
+the same variable".
+
+Alternative (or additional) EDIT 1:
+
+In subclause 13.7.118, after paragraph 4 [10-007r2:372:25+], insert a
+note:
+
+  "NOTE 13.18a
+     Because the TO argument has the INTENT(OUT) attribute, if it is
+     allocated it becomes unallocated on entry.  If TO and FROM are
+     the same variable, FROM is thereby unallocated on entry."
+
+EDITS 2:
+
+In subclause 13.7.118, in the description of the TO argument
+[10-007r2:372:20], replace "INTENT(OUT)" with "INTENT(INOUT)".
+
+Before paragraph 4 [10-007r2:372:23-] insert the following paragraph:
+
+"If FROM and TO are the same variable, the subroutine returns without
+taking any action; the allocation status of the variable is not
+affected, and the pointer association status of any pointer associated
+with the variable is not affected.  Otherwise, if TO is allocated on
+entry, it becomes unallocated."
+
+Possible additional EDITS 2:
+
+Within paragraph 5 [10-007r2:372:27], after "have the TARGET
+attribute" insert "and TO and FROM are not the same variable".
+
+Within paragraph 6 [10-007r2:372:29], replace "The" with "If TO and
+FROM are not the same variable, the".
+
+It is probably not necessary to adjust NOTE 13.19.
+
+EDIT 3:
+
+None.
+
+SUBMITTED BY: Van Snyder
+
+HISTORY: 15-nnn    m209  F08/nnnn submitted
+
+----------------------------------------------------------------------

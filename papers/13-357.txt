@@ -1,0 +1,110 @@
+                                                           J3/13-357
+To:      J3
+From:    Robert Corbett & Malcolm Cohen
+Subject: Interp re pointers to internal procedures
+Date: 2013 October 16
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0103
+TITLE: Pointers to internal procedures with different host instances
+KEYWORD: internal procedure, procedure pointer, host instance
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider:
+
+    MODULE TYPES
+      ABSTRACT INTERFACE
+        SUBROUTINE SUBROUTINE()
+        END SUBROUTINE SUBROUTINE
+      END INTERFACE
+      TYPE PPS
+        PROCEDURE(SUBROUTINE), POINTER, NOPASS :: SU_PTR
+      END TYPE PPS
+    END MODULE TYPES
+
+    SUBROUTINE CPPS(PPA)
+      USE TYPES
+      TYPE(PPS), DIMENSION(:) :: PPA
+      INTEGER I, J, N
+      N = SIZE(PPA)
+      DO I = 1, N
+        CALL PPA(I)%SU_PTR()
+      END DO
+      PRINT *,((ASSOCIATED(PPA(I)%SU_PTR,PPA(J)%SU_PTR),I=1,N),J=1,N)
+    END SUBROUTINE CPPS
+
+    RECURSIVE SUBROUTINE OUTER(PPA)
+      USE TYPES
+      TYPE(PPS), DIMENSION(:) :: PPA
+      INTERFACE
+        SUBROUTINE CPPS(PPA)
+          USE TYPES
+          TYPE(PPS), DIMENSION(:) :: PPA
+        END SUBROUTINE CPPS
+      END INTERFACE
+      IF (SIZE(PPA) .EQ. 3) THEN
+        CALL CPPS(PPA)
+      ELSE
+        CALL OUTER( (/ PPA, PPS(INNER) /) )
+      END IF
+    CONTAINS
+      SUBROUTINE INNER()
+        WRITE (*,*) 'SIZE(PPA) =', SIZE(PPA)
+      END SUBROUTINE INNER
+    END SUBROUTINE OUTER
+
+    PROGRAM MAIN
+      USE TYPES
+      INTERFACE
+        RECURSIVE SUBROUTINE OUTER(PPA)
+          USE TYPES
+          TYPE(PPS), DIMENSION(:) :: PPA
+        END SUBROUTINE OUTER
+      END INTERFACE
+      TYPE(PPS),DIMENSION(0) :: PPA
+      CALL OUTER(PPA)
+    END PROGRAM MAIN
+
+Does this program print all true values?
+
+The procedure pointers are all associated with the internal procedure
+INNER, which might lead one to believe that the answer is yes (that
+is, they are all associated with the same target), but each procedure
+pointer at each nesting level has a different host instance, which
+might lead one to believe that the answer is no (and that therefore
+only one of each of the 3-element sequences printed will be T).
+
+ANSWER:
+
+Four alternatives:
+(1) No, the program does not print all true values; two procedure
+    pointers to the "same" internal procedure are only associated
+    if the host instances are also the same.
+
+(2) Yes, the program does print all true values: two procedure
+    pointers are associated if they point to the same procedure,
+    the host instances of the pointers are immaterial.
+
+(3) It is processor dependent which values are true, as it depends
+    on the internal representation of the procedure pointers and this
+    depends on the implementation technique.
+
+(4) It is not meaningful to ask whether a procedure pointer is
+    associated with a particular internal procedure.  The standard
+    should forbid directly asking ASSOCIATED(pointer,internal), and
+    it is not conforming for ASSOCIATED(ptr1,ptr2) when ptr1 and ptr2
+    are associated with an internal procedure.
+
+EDITS:
+
+Awaiting decision as to direction.
+
+SUBMITTED BY: Robert Corbett.
+
+HISTORY: m202   13-nnn   Submitted
+
+----------------------------------------------------------------------

@@ -1,0 +1,143 @@
+To: J3                                                     J3/18-281
+From: Bill Long
+Subject: Templates
+Date: 2018-October-17
+References: J3/18-116
+
+Introduction:
+-------------
+
+As noted several times in WG5/N2147, programmers have long been
+frustrated with the prospect of generating almost identical code for
+multiple data types.  This problem has been solved in languages like
+C++ with the use of templates. Such a feature would be welcome in
+Fortran and is frequently cited as the most obvious shortcoming of the
+language.
+
+Use Cases:
+----------
+
+Suppose you are employing an iterative solver for a particular
+matrix-based problem, and are using the multiple-precision scheme of
+initially using lower precision and finishing off with higher
+precision.  The lower precision code might run faster because of the
+smaller memory footprint and potentially faster execution, especially
+for vector code.
+
+The template for the two solvers (one 32-bit and the other 64-bit)
+are in a module solver_mod. Writing them as a template involves only
+one version of the code, helping with maintenance.  For example, the
+declaration part of the solver template might look like
+
+  template subroutine solver (array, error)
+  real(*),intent(inout) :: array(:,:)
+  real(*),intent(out)   :: error
+
+  real(kind_of(array)) :: local_temp 
+
+...  
+
+!  Code to update array with an improved solution and compute an error
+! estimate
+
+  end subroutine solver
+
+
+The caller would look something like
+
+  use :: solver_mod, only: solver
+  use,intrinsic :: iso_fortran_env, only: real32, real64
+  integer,parameter :: n = 1000
+  real(real32) :: array32(n,n), error32
+  real(real64) :: array64(n,n), error64
+
+  error32 = threshold + 1.0
+  do while (error32 > threshold)
+      call solver (array32, error32)
+  end do
+  array64 = array32
+  call solver(array64, error64)
+
+! final result is in array64. 
+
+
+
+Feature suggestion and possible issues:
+---------------------------------------
+
+Fortran 2018 already has several features that could be extended to
+provide a template facility.  By reusing existing features, the
+implementation and programmer learning burdens are reduced.  The
+overall goal here is to make the feature intuitive, easy to use and
+understand, and easy to implement.
+
+Extensions to F2018:
+
+1) We already have the concept of a prefix {elemental, impure, module,
+   non_recursive, pure, and recursive} for the initial SUBROUTINE or
+   FUNCTION statement of a subprogram. Add "template" to this list,
+   which would make the subprogram a "template procedure".
+   Constraint: A template procedure shall appear only in a module. {To
+   ensure that a caller can find the correct template at compile
+   time.}
+
+2) For a template procedure, allow the following rule changes for
+   dummy arguments:
+
+   a) Arguments declared TYPE(*) can be used as ordinary variables.
+
+   b) Permit dummy arguments of intrinsic types to be declared
+      assumed-kind (INTEGER(*), REAL(*), COMPLEX(*), LOGICAL(*),
+      CHARACTER(KIND=*)), and allow assumed-kind (*) for a KIND
+      parameter in a derived-type dummy argument declaration if the
+      type has type parameters.
+
+   c) Add a new declaration "type" of NUMERIC to represent any of
+      INTEGER, REAL, or COMPLEX, that can appear in expressions that
+      involve arithmetic operations.
+
+   d) Alternative to (c) above, and more general, add a generic type
+      capability similar to that proposed by Paul Richard Thomas
+      like:
+
+      GENERIC TYPE(T) => integer(4), real(8), matrix_type...... etc.
+   
+      which would allow declarations of type(T) that share some
+      characteristic such as being valid operands for an operatorlike
+      +.
+
+   e) Provide a mechanism for declaring a local variable with the same
+      type and type parameters as one of the dummy arguments. {Useful
+      for local temps and function result variables.}
+
+3) Referencing a template procedure involves creation of a version of
+   the procedure with the dummy arguments assuming the type and kind
+   of the corresponding actual arguments to the extent allowed by the
+   declaration of the dummy argument.  Operations on the new dummy
+   arguments are required to be appropriate for their assumed type and
+   kind.  {For example, if the dummy is an argument to an intrinsic
+   procedure the effective type and kind shall be allowed for that
+   intrinsic. Similarly, a complex effective argument shall not appear
+   as an operand for a >, <, >=, or <= operator.}
+
+4) The technology for generating internal mangled names for the
+   created procedures, and for consolidating duplicates, can reuse
+   much of what already exists for C++.
+
+
+(Rough) Requirements:
+----------------------
+
+Add a template facility to Fortran with the capabilities noted above.
+It is important that calls with different types and kinds of actual
+arguments be allowed in the same scoping unit.
+
+Provide a method to declare a local variable with the same type and
+kind as a dummy argument.
+
+Ambitious extension: Specify a "Standard Template Library" similar to
+the C++ STL containing often used cases that are not redundant with
+existing Fortran syntax and semantics, and not covered by existing
+Fortran intrinsic procedures.
+
+

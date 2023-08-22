@@ -1,0 +1,163 @@
+                                                           J3/17-107r4
+To: J3
+From: John Reid & Bill Long & Jon Steidel & Malcolm Cohen
+Subject: STAT= wording clarification for ALLOCATE
+Date: 2017 February 15
+
+
+1. Discussion
+
+The text in 9.7.1.2 Execution of an ALLOCATE statement, p4, says
+    "no error condition other than STAT_STOPPED_IMAGE or
+     STAT_FAILED_IMAGE"
+however these are just words not error conditions (we don't even say they
+are the entities from ISO_FORTRAN_ENV, but even those are named constants
+not error conditions as such).  This should be clarified.  Similarly for
+the DEALLOCATE statement.
+
+The text in 9.7.4 STAT= specifier sometimes assumes that there is a
+STAT= specifier (not surprisingly).  However, the subclause heading
+does not have normative effect, so this should be more precisely
+stated.
+
+The STAT= specifier in ALLOCATE or DEALLOCATE is no longer unambiguously
+determined, due to the STAT= specifier in an image selector.  More
+specific wording is required.
+
+The text for handling failed images does not specify that it only applies
+when there is a coarray allocate-object.  It also does not specify that
+the failed image must be in the current team.
+
+The text for describing the stopped/failed image cases long-windedly
+elaborates the condition, instead of simply saying the current team
+"has a stopped/failed image".  We should use the simpler wording, like we
+do elsewhere.
+
+We should not redundantly specify that the value of STAT_STOPPED_IMAGE is
+positive, processor-dependent, and an integer, here; this is already
+correctly specified in 16.10.2.29.  Similarly STAT_FAILED_IMAGE.
+
+The long paragraph 3 would be clearer if split into two, one to handle
+the assignment of stat-variable, and one to handle the effects on the
+allocate-objects.
+
+Subclause 9.7.5 ERRMSG=, paragraph 2, has a similar flaw in that it
+definitively assigns a value to errmsg-variable without asking if ERRMSG=
+even appears in the statement.
+
+
+2. Edits to 17-007
+
+[142:33-34] 9.7.1.2 Execution of an ALLOCATE statement, p4, change
+              "On those images, if no error condition other than
+               STAT_STOPPED_IMAGE or STAT_FAILED_IMAGE occurs, execution"
+            to
+  "If the current team contains a stopped or failed image, an error
+   condition occurs.  If no other error condition occurs, execution
+   on the active images",
+making that whole paragraph read
+  "When an ALLOCATE statement is executed for which an <allocate-object>
+   is a coarray, there is an implicit synchronization of all active images
+   in the current team. If the current team contains a stopped or failed
+   image, an error condition occurs.  If no other error condition occurs,
+   execution on the active images of the segment (11.6.2) following the
+   statement is delayed until all other active images in the current team
+   have executed the same statement the same number of times in this team.
+   The coarray shall not become allocated on an image unless it is
+   successfully allocated on all active images in this team."
+{Properly specify the stopped/failed image error condition.}
+
+[146:5-6] 9.7.3.2 Deallocation of allocatable variables, p10, change
+            "On those images, if no error condition other than
+             STAT_STOPPED_IMAGE or STAT_FAILED_IMAGE occurs, execution"
+          to
+  "If the current team contains a stopped or failed image, an error
+   condition occurs.  If no other error condition occurs, execution
+   on the active images",
+making that whole paragraph read
+  "When a statement that deallocates a coarray is executed, there is an
+   implicit synchronization of all active images in the current team. If
+   the current team contains a stopped or failed image, an error condition
+   occurs.  If no other error condition occurs, execution on the active
+   images of the segment (11.6.2) following the statement is delayed until
+   all other active images in the current team have executed the same
+   statement the same number of times in this team."
+{Properly specify the stopped/failed image error condition.}
+
+[146:22+] 9.7.4 STAT= specifier, before existing para 1, insert new para
+  "This subclause applies where an <alloc-opt> or <dealloc-opt> that is
+   a STAT= specifier appears in an ALLOCATE or DEALLOCATE statement."
+{Limit the universe of discourse to when there is an appropriate STAT=
+ specifier, and establish the context.}
+
+[146:27] Same subclause, p2,
+         Change "If the STAT= specifier appears, successful"
+         to     "Successful".
+{Simplify.}
+
+[147:1-2] Same subclause, p3,
+          Change "one or more images of the current team has initiated
+                  normal termination of execution"
+          to "the current team contains a stopped image".
+{Simplify.  Hyperlink "stopped image".}
+
+[147:3] Same paragraph, change
+          "processor-dependent positive integer value of the constant"
+        to
+          "value".
+{Simplify.}
+
+[147:4] Same paragraph, change  "a failed image is detected" to
+          "an <allocate-object> is a coarray and the current team contains
+           a failed image".
+{Repair specificational defect.  Use standard wording.}
+
+[147:5-6] Same paragraph, delete
+  ", each allocate-object is successfully allocated or deallocated on all
+   active images of the current team and"
+{This will reappear when we split the paragraph into two.}
+
+[147:9-10] Same subclause, before "In any case,"
+           insert a paragraph break, and
+           change "In any case," to
+  "If <stat-variable> became defined with the value STAT_FAILED_IMAGE,
+   each <allocate-object> is successfully allocated or deallocated on all
+   the active images of the current team.  If any other error condition
+   occurs,".
+{Make a new paragraph for the effects on the allocate-objects.}
+
+[147:22] 9.7.5 ERRMSG= specifier, p2,
+         After "or DEALLOCATE statement"
+         insert "with an ERRMSG= specifier".
+{Don't make an assumption about errmsg-variable.}
+
+The edits for 9.7.4p3 create a new p3 and p4 as follows:
+    "If an ALLOCATE or DEALLOCATE statement with a coarray
+     <allocate-object> is executed when the current team contains a
+     stopped image, the <stat-variable> becomes defined with the value
+     STAT_STOPPED_IMAGE from the intrinsic module ISO_FORTRAN_ENV
+     (16.10.2).  Otherwise, if an <allocate-object> is a coarray and the
+     current team contains a failed image, and no other error condition
+     occurs, the <stat-variable> becomes defined with the value
+     STAT_FAILED_IMAGE from the intrinsic module ISO_FORTRAN_ENV. If any
+     other error condition occurs during execution of the ALLOCATE or
+     DEALLOCATE statement, the stat-variable becomes defined with a
+     processor-dependent positive integer value different from
+     STAT_STOPPED_IMAGE and STAT_FAILED_IMAGE.
+
+     If <stat-variable> became defined with the value STAT_FAILED_IMAGE,
+     each <allocate-object> is successfully allocated or deallocated on
+     all the active images of the current team.  If any other error
+     condition occurs, each <allocate-object> has a processor-dependent
+     status:
+        - each <allocate-object> that was successfully allocated shall
+          have an allocation status of allocated or a pointer association
+          status of associated;
+        - each <allocate-object> that was successfully deallocated shall
+          have an allocation status of unallocated or a pointer
+          association status of disassociated;
+        - each <allocate-object> that was not successfully allocated or
+          deallocated shall retain its previous allocation status or
+          pointer association status."
+
+===END===

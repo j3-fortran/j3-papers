@@ -1,0 +1,97 @@
+                                                             J3/15-101
+To:      J3
+Subject: Wart removal proposal -- Specification expressions
+From:    Van Snyder
+Date: 2014 December 01
+
+1. Introduction
+===============
+
+The question whether such things as
+
+  integer :: B = bit_size(B)
+
+are permitted or prohibited has recently recurred on comp_lang_fortran.
+
+Interp F95/000090 (why did we have six-digit interp numbers?) included
+the above example, and several others, including
+
+  character :: C(20)*(size(C,1))
+
+The answer to the interp was that both of these declarations (and
+several additional examples) were intended to be illegal.  This resulted
+in 7.1.11p8, which says, in part
+
+  "The prior specification may be to the left of the specification
+   inquiry in the same statement, but shall not be within the same
+   <entity-decl>..."
+
+which is somewhat ambiguous: It is reasonable that the extents of an
+array might not be established before before a <char-length> is
+examined, as in the second example, but certainly one knows the type and
+type parameters before processing any <entity-decl> in the statement.
+I.e., is the bit size specified by the <entity-decl> or the
+<declaration-type-spec>?
+
+By the way, 7.1.11p8 doesn't mention cobounds (but that's the subject of
+an interp).
+
+2. Proposal
+===========
+
+2.1 Straw vote
+--------------
+
+o Allow to reference properties of an object within an <initialization>
+  within its <entity-decl>, provided the properties depend only upon the
+  type and kind type parameters of the object, or
+
+o Allow to reference any properties of an object within an
+  <initialization> within its <entity-decl>, provided the properties are
+  specified by constant expressions, or
+
+o Allow to reference properties of an object within its <entity-decl>,
+  provided the properties are specified earlier than the reference
+  (i.e., to the left of the reference), or
+
+o Don't change anything.
+
+The first would allow such things as
+
+  integer :: B = bit_size(B)
+  real :: E = sqrt(sqrt(epsilon(E)))
+
+The second would allow such things as
+
+  integer :: Iota(10) = [ ( i, i = 1, size(iota,1) ) ]
+
+The third would allow such things as
+
+  character :: C(20)*(size(C,1))
+  real :: Z(10)[size(Z,1),*]
+  integer :: W(10,size(W,1)*2)
+
+2.2 More food for thought
+-------------------------
+
+It would be dangerous to allow such things as
+
+  character(len=42) :: G(len(g))
+
+especially if you contemplate something like
+
+  character(len=42) :: F(len(f))*(41)
+
+but assuming a type definition
+
+  type :: T(L)
+    integer, len :: L
+  end type T
+
+should this be allowed?
+
+  type(t(11)) :: V(v%l)
+
+and if D is a dummy argument, how about this one?
+
+  type(t(*)) :: D(d%l)

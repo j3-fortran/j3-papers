@@ -1,0 +1,205 @@
+                                                            08-260
+To: J3
+From: Robert Corbett (via Michael Ingrassia)
+Subject: J32031 : A semi-formal definition of type equivalence
+Date: 2008 July 28
+
+This is a follow-up to Public Comment J32031.
+
+Section 4.5.2.4 of the draft Fortran 2008 standard and the
+corresponding sections of the previous standards going back
+to Fortran 90 is perhaps the most poorly written part of
+the standard.  It is incomplete and inconsistent.  The
+definition given for what it means for data entities to
+have the same type allows for several different
+interpretations.  In Public Comment J32031 I [Bob]
+gave the example
+
+      MODULE MOD
+        TYPE T1
+          SEQUENCE
+          INTEGER I
+          TYPE(T2), POINTER :: P
+        END TYPE
+        TYPE T2
+          SEQUENCE
+          INTEGER I
+          TYPE(T1), POINTER :: P
+        END TYPE
+      END
+
+      PROGRAM MAIN
+        USE MOD, ONLY: T3 => T1, T4 => T2
+        TYPE T1
+          SEQUENCE
+          INTEGER I
+          TYPE(T2), POINTER :: P
+        END TYPE
+        TYPE T2
+          SEQUENCE
+          INTEGER I
+          TYPE(T1), POINTER :: P
+        END TYPE
+
+        TYPE(T1) :: X
+        TYPE(T3) :: Y
+
+        Y%I = 1
+        NULLIFY(Y%P)
+        X = Y
+      END
+
+In my comments, I said that a compiler from a major
+vendor considered the variables X and Y to be of
+different types and so gave an error for the
+assignment X = Y, while other compilers considered
+X and Y to be of the same type and so gave no error.
+I pointed out that either interpretation is
+consistent with the text of Section 4.5.2.4.
+
+Other language specifications for languages that
+define circular types to be equivalent if they are
+structurally equivalent either define type
+equivalence in terms of building a type graph and
+then doing a search of the type graph or build
+equivalence classes and then refine the equivalence
+classes.  Other specifications could be used, but I
+have yet to find a language specification that uses
+another approach.
+
+I shall present a specification of type equivalence
+based on refinement here.  I do not expect the
+committee to adopt my specification, but I hope it
+might suggest ways to improve Section 4.5.2.4.  My
+specification is clumsier than it would be if I had
+used standard mathematical notation instead of
+restricting myself to using ASCII text.
+
+A partition P of a set S is a set of subsets of S
+such that
+
+    1)  the null set is not an element of P,
+
+    2)  the union of the sets in P is S, and
+
+    3)  the intersection of any two distinct
+        sets in P is the null set.
+
+The sets in P are equivalence classes.
+
+A Fortran type t is a predefined type if and only if
+
+    1)  t is one of the intrinsic types (2.5.1.1),
+
+    2)  t is one of the five derived types
+	described in 14.2, or
+
+    3)  t is one of the two derived types
+        described in 15.3.3.
+
+For a given program, the program-defined types are
+the derived types defined by derived-type definitions
+that appear in the program.
+
+Two Fortran types t and t' are inherently equivalent
+if and only if t and t' are the same predefined type.
+
+Let S be the set of derived-type definitions that
+occur in a program and let P be a partition of S.
+Two type t and t' are P-equivalent if and only if
+
+    1)  t and t' are inherently equivalent, or
+
+    2)  t and t' are both program-defined types,
+	t is declared with reference to a
+	derived-type definition d in S, t' is
+	declared with reference to a derived-type
+	definition d' in S, and d and d' are
+	elements of the same equivalence class
+	in P.
+
+Let S be the set of derived-type definitions in a
+program.  Let P[1] be the partition of S such that
+for any two distinct type definitions d and d' in S,
+d and d' are in the same equivalence class in P[1]
+if and only if
+
+    1)  the type names of d and d' are the same,
+
+    2)  the type name of d does not have the
+	PRIVATE attribute in the scoping unit in
+	which d appears, and the type name of d'
+	does not have the PRIVATE attribute in
+	the scoping unit in which d' appears,
+
+    3)  d and d' have no components with PRIVATE
+	accessibility,
+
+    4)  either d and d' both have the SEQUENCE
+	attribute or d and d' both have the BIND
+	attribute,
+
+    5)  d and d' have the same number of type
+	parameters, and d and d' have the same
+	number of components,
+
+    6)  the corresponding type parameters and
+	components of d and d' have the same
+	names,
+
+    7)  the types of the corresponding type
+	parameters and components of d and d'
+	have the same number of type parameters.
+
+    8)  the corresponding type parameter values
+	specified implicitly or explicitly for
+	the types of the corresponding type
+	parameters and components of d and d'
+	are equal, and
+
+    9)  the attributes other than the types of
+        the corresponding type parameters and
+	components of d and d' agree.
+
+Given the partition P[k] of S, k >= 1, the partition
+P[k+1] is the partition of S such that for any two
+derived-type definitions d and d' in S, d and d' are
+in the same equivalence class in P[k+1] if and only
+if d and d' are in the same equivalence class in P[k]
+and the types of the corresponding type parameters
+and components of d and d' are P[k]-equivalent.
+
+Let n be the smallest positive integer such that
+P[n] = P[n+1].  For any two types t and t', t and t'
+are the same type if and only if t and t' are
+P[n]-equivalent.  If t and t' are not the same type,
+they are different types.
+
+As a regrettably simple example, consider the
+application of the definition of type equivalence
+to the example given at the start of this paper.
+Let d[1] and d[2] denote the derived-type definitions
+for T1 and T2 respectively in the module MOD, and let
+d[3] and d[4] denote the derived-type definitions for
+T1 and T2 respectively in the main program.  Then S is
+the set { d[1], d[2], d[3], d4] } and the partition
+P[1] is the set { { d[1], d[3] }, { d[2], d[4] } }.
+The types of the components named I in d[1] and d[3]
+are inherently equivalent and so they are
+P[1]-equivalent.  The types of the components named
+P in d[1] and d[3] are declared in reference to the
+derived-type definitions d[2] and d[4] respectively.
+Because d[2] and d[4] are in the same equivalence
+class in P[1], the types of the components named P in
+d[1] and d[3] are P[1]-equivalent.  Therefore, the
+equivalence class { d[1], d[3] } is a member of P[2].
+Similarly, the types of the corresponding components
+of d[2] and d[4] are P[1]-equivalent, and so the
+equivalence class { d[2], d[4] } is a member of P[2].
+Therefore, P[1] = P[2].  Therefore, the derived types
+defined by d[1] and d[3] are the same type and the
+types defined by d[2] and d[4] are the same types.
+The derived type defined by d[1] is a different type
+from the types defined by d[2] and d[4], and the
+derived type defined by d[2] is a different type
+from the type defined by d[1] and d[3].

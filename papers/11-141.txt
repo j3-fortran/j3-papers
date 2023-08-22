@@ -1,0 +1,130 @@
+                                                            11-141
+To: J3
+From: Malcolm Cohen
+Subject: Interpretation of private type-bound procedures.
+Date: 2011 January 31
+
+----------------------------------------------------------------------
+
+NUMBER:
+TITLE: Private type-bound procedures.
+KEYWORDS: Type extension, type-bound procedures, accessibility.
+DEFECT TYPE: Clarification.
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the program
+
+  MODULE example1_m1
+    TYPE t1
+    CONTAINS
+      PROCEDURE,PRIVATE,NOPASS :: p ! (1).
+    END TYPE
+  CONTAINS
+    SUBROUTINE p
+      PRINT *,'p'
+    END SUBROUTINE
+    SUBROUTINE do_p(x)
+      CLASS(t1) x
+      CALL x%p
+    END SUBROUTINE
+  END MODULE
+  MODULE example1_m2
+    USE example1_m1
+    TYPE,EXTENDS(t1) :: t2
+    CONTAINS
+      PROCEDURE,NOPASS :: p => p2 ! (2).
+    END TYPE
+  CONTAINS
+    SUBROUTINE p2(n)
+      PRINT *,'p2',n
+    END SUBROUTINE
+  END MODULE
+  PROGRAM example1
+    USE example1_m2
+    TYPE(t2),TARGET :: x
+    CLASS(t1),POINTER :: y
+    y => x
+    CALL do_p(x) ! (3): I expect this to print 'p'.
+    CALL do_p(y) ! (4): I expect this to print 'p'.
+    CALL x%p(13) ! (5): I expect this to print 'p2 13'.
+  END PROGRAM
+
+Question 1: does type-bound procedure overriding take account of
+accessibility; that is, is the type-bound procedure statement at (2)
+(a) a valid new type-bound procedure definition, or
+(b) an invalid overriding of the definition at (1)?
+
+Question 2: If the answer to question 1 was "yes" (a), and the example
+is standard-conforming, are the expectations at (3), (4), and (5)
+correct?
+
+For the next question, consider the following program fragment:
+
+  MODULE example2_m1
+    TYPE,ABSTRACT :: t1
+    CONTAINS
+      PROCEDURE(p),PRIVATE,DEFERRED,NOPASS :: hidden ! (6).
+    END TYPE
+  CONTAINS
+    SUBROUTINE p
+      PRINT *,'p'
+    END SUBROUTINE
+  END MODULE
+  MODULE example2_m2
+    USE example2_m1
+    TYPE,EXTENDS(t1) :: t2
+    CONTAINS
+      PROCEDURE,NOPASS :: hidden => exposed ! (7).
+    END TYPE
+  CONTAINS
+    SUBROUTINE exposed
+      PRINT *,'exposed'
+    END SUBROUTINE
+  END MODULE
+
+Question 3: If the answer to question 1 was "yes" (a), then the
+definition of type t2 would seem to be defective in that (7) must be
+defining a new type-bound procedure, and not overriding the type-bound
+procedure defined at (6), and that therefore t2 still has a deferred
+type-bound procedure.  That would mean that an abstract type with a
+private deferred type-bound procedure could not be extended outside of
+the module in which it is defined: is that correct?
+
+ANSWER:
+
+Q1. Yes, type-bound procedure overriding does take account of
+    accessibility.  This means that the type-bound procedure statement
+    at (2) is (a) a valid new type-bound procedure definition.
+
+    Subclause 4.5.7.3 says [78:4-6]
+      "If a specific type-bound procedure specified in a type
+       definition has the same binding name as a type-bound procedure
+       from the parent type then [it] overrides the [inherited one]."
+    If the inherited type-bound procedure is private, and the
+    extending type definition is not in the same module, then the
+    inherited type-bound procedure is not accessible by that name,
+    so the condition "has the same binding name" cannot be satisfied.
+
+    An edit is suggested for a future revision to make this wording
+    clearer.
+
+Q2. Yes, the comments at (3), (4), and (5) are accurate.
+
+Q3. Yes, an abstract type with a private deferred type-bound procedure
+    cannot be extended outside the defining module, because it is
+    otherwise impossible to override the private type-bound procedure.
+
+
+EDITS:
+
+[78:4] In 4.5.7.3p1,
+       change "as a type-bound"
+       to "as an accessible type-bound".
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 11-nnn   m194 Submitted
+
+----------------------------------------------------------------------

@@ -1,0 +1,421 @@
+To: J3                                                     J3/21-132
+From: Malcolm Cohen
+Subject: Simpler enumeration types, edits
+Date: 2021-March-01
+Reference: 21-120r2.
+
+
+1. Introduction
+
+This paper contains the edits to implement the specs and syntax of 21-120r2
+except that it suggests not allowing the B, O and Z edit descriptors. They
+don't make a lot of sense, and these are not bit-strings and don't have a
+specified "bit" representation, perhaps they are unnecessary?
+(Optional edits are included to expand i/o to include BOZ.)
+
+2. Edits to 21-007
+
+[intro] In "Data declaration", insert or append the sentence
+    "Noninteroperable enumeration types are available."
+{Vague, but sufficient for drawing attention.}
+
+[56:12+] 7.3.2.1 Type specifier syntax, <type-specifier>,
+         append new production
+    "<<or>> <enumeration-type-spec>"
+{Allow <enumeration-type-spec> in ALLOCATE and TYPE IS.
+ After <enum-type-spec> if 21-121 is done first.}
+
+[56:16+] <declaration-type-spec>,
+  After "<<or>> TYPE(<derived-type-spec>)" insert new production
+    "<<or>> TYPE ( <enumeration-type-spec> )".
+{And in declarations.}
+
+[56:39] p2, append
+    "An <enumeration-type-spec> specifies the named enumeration type."
+
+[57:7] 7.3.2.2 TYPE type specifier, p1,
+       Change "of an intrinsic or derived type"
+       to "of an intrinsic, derived, or other user-defined type"
+       making that whole paragraph read
+   "A TYPE type specifier is used to declare entities that are assumed-
+    type, or of an intrinsic, derived, or other user-defined type."
+{"other" will be both enum and enumeration types.
+ And possibly any other types should we add them later.}
+
+[72:15] 7.5.4.1 Component definition statement, C749,
+        After "previously defined derived type"
+        insert ", enum type, or enumeration type"
+        making the whole constraint read
+   "C749 (R737) If neither the POINTER nor the ALLOCATABLE attribute is
+         specified, the declaration-type-spec in the component-def-stmt
+         shall specify an intrinsic type or a previously defined derived,
+         enum, or enumeration type."
+{This assumed 21-121 is done first; if 21-121 is abandoned, the editor
+ should do the right thing here.}
+
+
+[88:1-] 7.6 Enumerations and enumerators,
+       Insert new second-level subclause "7.6 Other user-defined types",
+       and make the entire current 7.6 into the third-level subclause
+       "7.6.1 Interoperable enumerations and enum types".
+{Structuring the document.}
+
+[89:2-] Before 7.7 Binary, octal, and hexadecimal literal constants,
+        insert new subclause
+"
+7.6.2 Enumeration types
+
+An enumeration type is a user-defined type with no type parameter. It is
+not a derived type and is not interoperable. An enumeration type definition
+defines the name of the type and lists all the possible values of the type.
+
+R763a <enumeration-type-def> <<is>> <enumeration-type-stmt>
+                                       <enumeration-enumerator-stmt>
+                                       [ <enumeration-enumerator-stmt> ]...
+                                    <end-enumeration-type-stmt>
+
+R736b <enumeration-type-stmt> <<is>>
+    ENUMERATION TYPE [ [ , <access-spec> ] :: ] <enumeration-type-name>
+
+C7111a An <access-spec> on an <enumeration-type-stmt> shall only appear in
+       the specification part of a module.
+
+R736c <enumeration-enumerator-stmt> <<is>>
+    ENUMERATOR [ :: ] <enumerator-name-list>
+
+R736d <end-enumeration-type-stmt> <<is>>
+    END ENUMERATION TYPE [ <enumeration-type-name> ]
+
+C7111b If <enumeration-type-name> appears on an END ENUMERATION TYPE
+       statement, it shall be the same as on the ENUMERATION TYPE
+       statement.
+
+The <access-spec> on an ENUMERATION TYPE statement specifies the
+accessibility of the <enumeration-type-name> and the default accessibility
+of its enumerators. The accessibility of an enumerator may be confirmed or
+overridden by an <access-stmt>.
+
+Each enumerator in the definition is a named constant of the enumeration
+type. The order of the enumerator names in the definition defines the
+ordinal position of each enumerator.
+
+R736e <enumeration-type-spec> <<is>> <enumeration-type-name>
+
+C7111c The <enumeration-type-name> in an <enumeration-type-spec> shall be
+       the name of a previously defined enumeration type.
+
+An enumeration type specifier specifiers the type.
+Two data entities of enumeration type have the same type if they are
+declared with reference to the same enumeration type definition.
+
+R736f <enumeration-constructor> <<is>>
+        <enumeration-type-spec> ( <int-expr> )
+
+An enumeration constructor returns the value of the enumeration type whose
+ordinal position is the value of the <int-expr>. The <int-expr> shall have
+a value that is positive and less than or equal to the number of
+enumerators in the enumeration type's definition.
+
+NOTE 1
+Here is an example of a module defining two enumeration types.
+
+\begin{alltt}
+Module enumeration_mod
+  Enumeration Type :: v_value
+    Enumerator :: v_one, v_two, v_three
+    Enumerator v_four
+  End Enumeration Type
+  Enumeration Type :: w_value
+    Enumerator :: w1, w2, w3, w4, w5, wendsentinel
+  End Enumeration Type
+Contains
+  Subroutine sub(a)
+    Type(v_value),Intent(In) :: a
+    Print 1,a ! Acts similarly to Print *,Int(a).
+1   Format('A has ordinal value ',I0)
+  End Subroutine
+  Subroutine wcheck(w)
+    Type(w_value),Intent(In) :: w
+    Select Case(w)
+    Case(w1)
+      Print *,'w 1 selected'
+    Case (w2:w4)
+      Print *,'One of w2...w4 selected'
+    Case (wendsentinel)
+      Stop 'Invalid w selected'
+    Case Default
+      Stop 'Unrecognized w selected'
+    End Select
+  End Subroutine
+End Module
+\end{alltt}
+
+Here is an example of a program using that module.
+
+\begin{alltt}
+Program example
+  Use enumeration_mod
+  Type(v_value) :: x = v_one
+  Type(v_value) :: y = v_value(2)   ! Explicit constructor producing v_two.
+  Type(v_value) :: z,nz             ! Initially undefined.
+  Call sub(x)
+  Call sub(v_three)
+  z = v_value(1)                    ! First value.
+  Do
+    If (z==Huge(x)) Write (*,'(A)',Advance='No') ' Huge:'
+    Call sub(z)
+    nz = Next(z)
+    If (z==nz) Exit
+    z = nz
+  End Do
+End Program
+\end{alltt}
+
+Here is an example showing some invalid usages of enumerations.
+
+\begin{alltt}
+Program invalid
+  Use enumeration_mod
+  Type(v_value) :: a, b
+  a = 1         ! INVALID - wrong type (INTEGER).
+  b = w1        ! INVALID - wrong enumeration type.
+  Print *,a     ! INVALID - list-directed i/o not available.
+End Program
+\end{alltt}
+
+An enumeration type can be used to declare components, for example:
+\begin{alltt}
+Module example2
+  Use enumeration_mod
+  Type vw
+    Type(v_value) v
+    Type(w_value) w
+  End Type
+Contains
+  Subroutine showme(ka)
+    Type(vw),Intent(In) :: ka
+    Print 1,ka
+1   Format(1X,'v ordinal is ',I0,', w ordinal is ',I0)
+  End Subroutine
+End Module
+\end{alltt}
+END OF NOTE
+"
+{These examples are rather large, and use facilities defined later in the
+ standard. They could be cut down to just show the definitions, but then
+ we'd have no good place for the larger example, other than Annex C which
+ few people read.}
+
+[90:35+] 7.8 Construction of array values,
+         After C7117 "(R770) If <type-spec> specifies a derived type, ..."
+         insert new constraint
+"C7117a (R770) If <type-spec> specifies an enumeration type, each
+        <ac-value> shall be of that type."
+{This is simpler than the other type-spec requirements, so deserves a
+ correspondingly simpler constraint.}
+
+[113:20+] 8.6.7 DATA statement, R849 data-stmt-constant, append production
+    "<<or>> <enumeration-constructor>"
+{Allow in DATA.}
+
+[113:23] C888,
+         After "If a data-stmt-constant is a structure-constructor"
+         change "or enum-constructor"
+         to ", enum-constructor, or enumeration-constructor"
+         making the whole constraint read
+   "C888 (R849) If a data-stmt-constant is a structure-constructor,
+         enum-constructor, or enumeration-constructor, it shall be a
+         constant expression."
+{Assumed prior application of 21-121. Editor should fix if not so.}
+
+[122:10+] 8.9 NAMELIST statement,
+          After C8108 "(R873) A namelist-group-object shall not be..."
+          Insert new constraint
+  "C8108a A <namelist-group-object> shall not be of enumeration type, or
+          have a direct component that is of enumeration type."
+{Preserve for possible future use.}
+
+[145:20+] 10.1.2.2 Primary, R1001 primary,
+          After "<<or>> <structure-constructor>"
+          insert "<<or>> <enumeration-constructor>"
+{Allow enumeration constructors in expressions.}
+
+[151:14] 10.1.5.1 Intrinsic operation classification, p2,
+         Change "intrinsic types (7.4)"
+         to "intrinsic or enumeration types".
+{Allow enumeration types in intrinsic binary operations; this will just be
+ for relationals. The (7.4) is superfluous as it already appear three lines
+ earlier.}
+
+[152:1] Same subclause, p6, append
+        (after "character relational ... shall be the same.")
+   "An enumeration relational intrinsic operation is a relational intrinsic
+    operation for which both operands are the same enumeration type."
+{Specify enumeration relationals.}
+
+[152:3+various] Same subclause, Table 10.2,
+    In the entry for ".EQ., ...", insert new line "E & E & L",
+    In the entry for ".GT., ...", do likewise,
+    In the foot of the table,
+    after "logical, respectively.",
+    insert "The symbol E stands for the same enumeration type for both
+            operands."
+{Add to the table.}
+
+[157:17-] 10.1.5.5.1 Interpretation of relational intrinsic operations,
+          After NOTE 2 "The collating sequence" which follows p8
+            "For a character relational intrinsic operation..."
+          insert new paragraph
+   "An enumeration relational intrinsic operation is interpreted as having
+    the logical value true if and only if the ordinal values of the
+    operands satisfy the relation specified by the operator."
+{Specify the interpretation of enumeration relationals.}
+
+[162:10+] 10.1.11 Specification expression, p2,
+          After "(6) a structure constructor where each component is a
+                     restricted expression,"
+          insert
+    "(6a) an enumeration constructor whose <expr> is a restricted
+          expression,".
+{Allow in specification expressions.}
+
+[163:23+] 10.1.12 Constant expression, p1,
+          After item (3) "a structure constructor..."
+          insert new item
+    "(3a) an enumeration constructor whose <expr> is a constant
+          expression,"
+{Allow in constant expressions.}
+
+[165:23+8+] 10.2.1.2 Intrinsic assignment statement,
+            in Table 10.8 "Intrinsic assignment type conformance",
+            after the "derived type" entry, add new entry
+                "enumeration type & same enumeration type".
+{Type conformance for assignment.}
+
+[196:9] 11.1.9.1 Purpose and form of the SELECT CASE construct,
+        C1148 "case-expr"
+        "or logical" -> "or logical, or of enumeration type",
+        making the whole constraint read
+   "C1148 case-expr shall be of type character, integer, or logical,
+          or of enumeration type."
+{Allow in SELECT CASE. Just this one change is sufficient.}
+
+[239:2+] 12.6.3 Data transfer input/output list,
+         After p5 "A list item shall not be polymorphic..."
+         insert a new paragraph
+   "A list item that is of an enumeration type shall not appear in a
+    list-directed data transfer statement. In a formatted data transfer
+    statement, it shall correspond to an I edit descriptor."
+{Preserve everything else for possible future use.}
+OPTIONAL: "shall correspond to an I, B, O, or Z edit descriptor".
+
+[271:4] 13.7.2.1 General rules (in 13.7.2 Numeric editing), p1,
+        After the first sentence "The ... complex data."
+        insert new sentence
+            "The I edit descriptor can be used to specify input/output of
+             enumeration type data."
+OPTIONAL: "I, B, O, and Z edit descriptors".
+
+[272:4] 13.7.2.2 Integer editing, p1
+        after "type integer" insert "or of enumeration type".
+{Permit enumeration types to appear for the I edit descriptor.}
+
+[272:17+] at the end of the subclause, insert new paragraph
+   "If the list item for output is of enumeration type, the value output is
+    its ordinal position. If the list item for input is of enumeration
+    type, the value of the input field shall be positive and less than or
+    equal to the number of enumerators. The value assigned to the list item
+    is the enumeration value with that ordinal position."
+{Spell out the semantics for I editing of enumeration type.}
+
+OPTIONAL:
+[277:31-278:1] 13.7.2.4 B, O, and Z editing, p1,
+               After "of type integer, real, or complex"
+               insert "or of enumeration type",
+               TWICE (for both output and input).
+[278:9] p4, Append
+        "If the list item is of enumeration type ET, the value is
+         ET(INT(X))."
+{BOZ editing.}
+
+[389:21] 16.9.96 HUGE (X), p1 Description,
+         "model number" -> "model value".
+[389:23] p3 Argument, "or real" ->"or real, or of enumeration type".
+[389:27] p5 Result Value, append new sentence
+   "If X is of enumeration type, the result has the value of the last
+    enumerator in the type definition."
+{Make HUGE work}.
+
+[345:end-4] 16.7 Standard generic intrinsic procedures, Table 16.1, HUGE,
+            "Largest model number" -> "Largest model value".
+{Not actually a number for enumerations.}
+
+[347:...] Same table, in alphabetic order, insert
+   "NEXT (A) & E & Next enumeration value."
+and
+   "PREVIOUS (A) & E & Previous enumeration value."
+{This is for the clamps; for STAT, add "[, STAT]" to the args.
+ If a subroutine, change E to ES and insert verb "Get" into Description.}
+
+[395:16] 16.9.110 INT (A [, KIND]), p3 Arguments, argument A,
+         "or complex"
+         ->"complex, or enumeration type",
+         making that argument read
+   "A  shall be of type integer, real, complex, or enumeration type, or a
+       boz-literal-constant."
+
+[395:25+] p5 Result Value, after Case (iii) "If A is of type complex",
+          insert new case
+   "Case (iiii): If A is of enumeration type, INT(A) has the value of the
+                 ordinal position of A."
+{Specify that INT works.}
+
+[413:16+] Before 16.9.151 NINT, insert new intrinsic
+"
+16.9.150a NEXT (A)
+
+Description. Next enumeration value.
+
+Class. Elemental function.
+
+Argument. A shall be of enumeration type.
+
+Result Characteristics. Same as A.
+
+Result Value.
+If A is equal to the last enumerator of its type, the value of the result
+is that of A. Otherwise, the value of the result is the next enumerator
+following the value of A.
+
+Example. If the enumerators of an enumeration type are EN1, EN2, EN3, and
+EN4, NEXT(EN1) is equal to EN2, and NEXT(EN4) is equal to EN4.
+"
+{This is the clamp version. The editor should add more words if there is a
+ STAT argument, and even more if it is a subroutine.}
+
+[418:27+] Before 16.9.163 PRODUCT, insert new intrinsic
+"
+16.9.150a PREVIOUS (A)
+
+Description. Previous enumeration value.
+
+Class. Elemental function.
+
+Argument. A shall be of enumeration type.
+
+Result Characteristics. Same as A.
+
+Result Value.
+If A is equal to the first enumerator of its type, the value of the result
+is that of A. Otherwise, the value of the result is the enumerator
+preceding the value of A.
+
+Example. If the enumerators of an enumeration type are EN1, EN2, EN3, and
+EN4, PREVIOUS(EN1) is equal to EN1, and PREVIOUS(EN4) is equal to EN3.
+"
+{This is the clamp version. The editor should add more words if there is a
+ STAT argument, and even more if it is a subroutine.}
+
+===END===
+
+

@@ -1,0 +1,95 @@
+To:      J3                                        J3/13-350r1
+From:    Reinhold Bader, Daniel Chen
+Subject: Spare images example
+Date: 2013 October 18
+References: N1983
+
+Discussion:
+~~~~~~~~~~~
+
+This late paper (sorry) suggests a further example for the teams
+section of the TS' Annex.
+
+
+EDITs to N1983:
+~~~~~~~~~~~~~~~
+
+Add the following text to Annex A.1 after the first team example:
+
+"Parallel algorithms often use work sharing schemes based on a specific
+mapping between image indices and global data addressing. To allow
+such programs to continue when one or more images fail, spare
+images can be used to re-establish execution of the algorithm
+with the failed images replaced by spare images, while retaining
+the image mapping.
+
+The following example illustrates how this might be done.
+In this setup, failure cannot be tolerated for image 1 and the spare
+images, whose number is assumed to be small compared to the number of
+active images.
+
+PROGRAM possibly_recoverable_simulation
+  USE, INTRINSIC :: iso_fortran_env
+  IMPLICIT NONE
+  INTEGER, ALLOCATABLE :: failed_img(:)
+  INTEGER :: images_used, i, images_spare, id, me, status
+  TYPE(team_type) :: simulation_team
+  LOGICAL :: read_checkpoint, done[*]
+
+  images_used = ...  ! A value slightly less num_images()
+  images_spare = num_images() - images_used
+  read_checkpoint = .FALSE.
+
+  setup : DO
+    me = this_image()
+    id = 1
+    IF (me > images_used) id = 2
+!
+!   set up spare images as replacement for failed ones
+    failed_img = failed_images()
+    if (size(failed_img) > images_spare) ERROR STOP 'cannot recover'
+    DO i=1, size(failed_img)
+       IF (failed_img(i) > images_used .or. &
+           failed_img(i) == 1)  ERROR STOP 'cannot recover'
+       IF (me == images_used + i) THEN
+           me = failed_img(i)
+           id = 1
+       END IF
+    END DO
+!
+!   set up a simulation team of constant size.
+!   id == 2 does not participate in team execution
+    FORM SUBTEAM (id, simulation_team, NEW_INDEX=me, STAT=status)
+    simulation : CHANGE TEAM (simulation_team, STAT=status)
+      IF (TEAM_ID() == 1) THEN
+        iter : DO
+          CALL simulation_procedure(read_checkpoint, status, done)
+!         simulation_procedure:
+!           sets up required objects (maybe coarrays)
+!           reads checkpoint if requested
+!           returns status on its internal synchronizations
+!           returns .TRUE. in done once complete
+             read_checkpoint = .FALSE.
+          IF (status == STAT_FAILED_IMAGE) THEN
+             read_checkpoint = .TRUE.
+             EXIT simulation
+          ELSE IF (done)
+             EXIT iter
+          END IF
+        END DO iter
+      END IF
+    END TEAM simulation (STAT=status)
+    SYNC ALL (STAT=status)
+    IF (this_image() > images_used) done = done[1]
+    IF (done) EXIT setup
+  END DO setup
+END PROGRAM
+
+Supporting fail-safe execution imposes obligations on library writers
+who use the parallel language facilities. Every synchronization statement,
+allocation or deallocation of coarrays, or invocation of a collective
+procedure must specify a synchronization status variable, and implicit
+deallocation of coarrays must be avoided. In particular, coarray module
+variables that are allocated inside the team execution context are not
+persistent."
+

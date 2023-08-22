@@ -1,0 +1,139 @@
+
+                                                            J3/05-238
+
+To:      J3
+From:    Malcolm Cohen
+Subject: Maximum array rank enhancement
+Date:    2005/07/25
+
+1. Introduction
+
+It has been decided to increase the maximum rank of an array from 7 to 15.
+This is a good idea, unfortunately it makes an already-existing problem
+substantially worse.  This paper discusses the problem and proposes a solution.
+
+2. The problem - outline
+
+The problem lies in the (excessive) number of user procedures that need to be
+written to perform some operation on arrays of any dimension.  (I'm using
+"operation" in its most general sense here, not as a shortcut for algebraic
+operation.)
+
+These operations can be split into two classes:
+(1) operations that apply to each element individually (elementwise).
+(2) operations that act more globally, i.e. groups of elements affect one
+    another or each element of the result depends on some non-local quality
+    of the input arrays.
+
+Class (2) are relatively intractable, since the code for processing arrays of
+one rank usually differs substantially from the code for processing arrays of a
+different rank.  There is nothing simple and obvious we can do to help these.
+
+Class (1) already have a partial solution in ELEMENTAL procedures.  Where
+this fails is the not uncommon situation where a procedure cannot satisfy the
+PURE constraints even though it acts elementally.  This has been seen to be a
+problem in a number of situations.
+
+3. The problem - discussion
+
+The existing elemental procedure facility conflates two ideas:
+(1) multi-processor performance: a PURE procedure can be invoked on each
+    processor at the same time (assuming any runtime support routines such as
+    the memory allocator and internal i/o library are reentrant).
+(2) to define functions or operations which operate elementwise on conforming
+    arrays/scalars.
+
+Only the second is inherent in the concept of "elemental"; the first is little
+more than a potential performance enhancement.
+
+Defining elementwise functions/operations without using the ELEMENTAL facility
+requires the tedious creation of 8 almost identical procedures with differing
+ranks for unary operations, and 16 such procedures for binary operations.  This
+is not merely tiresome but also harder to maintain and understand.
+
+Increasing the maximum rank to 15 makes this substantially worse; for a unary
+operation we have 16 almost identical procedures, and for a binary operation we
+have 32 such (not 16**2, just 16*2; but it's still really bad).  Furthermore,
+not addressing this problem inhibits portability to processors which support
+higher rank than the standard-mandated minimum.
+
+The requirement on ELEMENTAL procedures of purity is disadvantageous in the
+following situations:
+  (i) Debugging is made more difficult, because of the impossibility of
+      inserting PRINT statements.
+ (ii) An elemental operation cannot update a global "operation count" variable,
+      so a suite of such procedures cannot be instrumented to do that kind of
+      performance analysis.
+(iii) A suite of elemental operations cannot write a log file documenting the
+      operations performed (this is similar to item 2).
+ (iv) An example of an application which finds it prohibitively difficult to
+      use elemental procedures is reverse mode automatic differentiation
+      (because of the need to produce an execution graph for the reverse mode
+      derivative evaluation).
+  (v) Error handling is forced into the model of returning the error state as
+      part of the result, complicating use of the such a function (and perhaps
+      losing error indications as a consequence).  Alternative models such as
+      executing a STOP statement or updating a global error indicator are
+      prohibited by the PURE requirements.
+ (vi) Although a global variable can be used to communicate information from a
+      non-PURE procedure to an ELEMENTAL operation, it cannot effectively be
+      used to do so from one PURE procedure to another.  This is particularly
+      germane to operators which by their nature have no optional arguments
+      which could be used to convey anciliary information (such as the accuracy
+      required).
+
+Again, none of this is new, it is just that the available workaround is made
+worse by increasing the maximum rank.
+
+4. The proposed solution - specification
+
+The solution is to allow the user to have impure elemental procedures.
+Indeterminacy can be avoided by specifying that these operate in array
+element order.
+
+This solves the problem without introducing very much new syntax.
+Furthermore, many other cases are evaluated in array element order
+(e.g. MAXLOC, i/o, ...) so this is a familiar concept.
+
+An impure elemental should be allowed in WHERE (the serialisation requirement
+might impact performance, but there is no semantic difficulty), but now allowed
+in FORALL (it would be inappropriate in FORALL: there, purity is the
+requirement, rather than elementalisability).
+
+5. Further discussion
+
+Another problematic case that would be solved by this is the problem of
+specifying final subroutines for a datatype.  In the not unlikely situation of
+the final subroutine being impure, this avoids the non-portable and tediously
+wordy explosion of subroutines based on rank.  (Indeed, the original proposed
+version of final subroutines contained an attempt to address this - via
+"pseudo-elemental" procedure - though this version proved too complicated and
+unsystematic to make it into F2003.  We should address the problem
+systematically now, before we make it worse.)
+
+5. Proposed solution - syntax
+
+Introduce a new keyword, IMPURE, which is the opposite of PURE.
+(A plausible alternative keyword would be SERIAL, as in SERIAL ELEMENTAL;
+but IMPURE seems attractive...)
+
+An ELEMENTAL procedure remains PURE by default but may be declared IMPURE.
+Such a procedure must still satisfy the "elemental" requirements but need
+not satisfy the "pure" requirements.
+
+As before, a non-ELEMENTAL procedure is IMPURE by default but may be declared
+PURE.  For consistency, since an ELEMENTAL procedure may redundantly be
+declared PURE, allow a non-ELEMENTAL procedure to be redundantly declared
+IMPURE.
+
+6. Proposed solution - impact
+
+On the standard, pretty minor.  On implementations, noticeable but not major.
+
+7. Proposed solution - edits
+
+Detailed edits will be provided if this proposal is accepted.
+
+Edits are relatively small; mostly in c12 with some in c07.
+
+===END

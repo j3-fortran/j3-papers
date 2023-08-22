@@ -1,0 +1,1669 @@
+                                                    J3/05-006T1.txt
+
+         Outstanding Fortran Interpretations, May 31, 2005
+
+                     Stan Whitlock for /interp
+
+> includes the Fortran 2003 interps that make up Technical Corrigendum
+> #1 (see N1636/N1640)
+
+
+[keep this text document to 70 characters per line]...................
+
+Table of Contents
+
+Part 0 contains the summary status of the Fortran interpretations
+       contained herein
+
+Part 1 contains F2003 interpretations that make make up Technical
+        Corrigendum #1
+
+----------------------------------------------------------------------
+
+======================================================================
+Part 0: Summary Status of these Fortran Interpretations
+======================================================================
+
+
+Note N:
+     d == done {if S = C1 | C2 | T1 then done is assumed}
+     * == active
+
+
+Status S:                              Defect Type T:
+       P == J3 consideration in progress           C == Clarification
+       M    Passed by J3 meeting                   E    Erratum
+       B    Passed by J3 letter ballot             I    Interpretation
+       W    Passed by WG5 ballot
+       T1   Included in F03 corrigendum 1 (see N1636/N1640)
+       X    Excluded for the reasons given
+
+N  S T number     title
+-  - - ------     -----
+
+  T1 I F03/0001   Generic type-bound procedures
+  T1 I F03/0002   Component value for pointer components
+  T1 E F03/0005   Argument association and the TARGET attribute
+  T1 E F03/0006   Intrinsic assignment and allocatable components
+  T1 E F03/0007   Finalization of structure constructors in
+                    specifications
+  T1 E F03/0009   VALUE attribute for passed-object dummy arguments
+  T1 E F03/0010   Unlimited polymorphic pointer/allocatable dummy
+                    arguments
+  T1 E F03/0011   Allocating objects of abstract types
+  T1 E F03/0013   VALUE attribute for polymorphic dummy arguments
+  T1 E F03/0014   Automatic arrays in interface bodies
+  T1 E F03/0015   TARGET attribute for associate names
+  T1 E F03/0016   Invoking type-bound procedures via array objects
+  T1 I F03/0031   IEEE invalid
+  T1 I F03/0032   Sign bit of IEEE NaN
+  T1 I F03/0033   IEEE_VALUE()
+  T1 I F03/0035   IEEE_NEXT_AFTER()
+  T1 I F03/0036   IEEE_REM()
+  T1 I F03/0037   IEEE_RINT()
+  T1 I F03/0038   IEEE_SCALB()
+  T1 I F03/0040   2.0+2.0 and IEEE
+  T1 I F03/0041   IEEE halting and exceptions
+  T1 E F03/0043   Passed-object arguments and procedure
+                    pointer components
+  T1 E F03/0044   Implicit interfaces and conflicting
+                    references
+  T1 I F03/0052   ADVANCE= specifier in child data
+                    transfer statements
+  T1 E F03/0054   Denormal inputs to EXPONENT, FRACTION,
+                    and SET_EXPONENT
+  T1 E F03/0055   Denormal inputs to SPACING and RRSPACING
+
+======================================================================
+Part 1: Fortran 2003 Interpretation Requests
+======================================================================
+
+NUMBER: F03/0001
+TITLE: Generic type-bound procedures
+KEYWORDS: generic, type-bound
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Section 12.4.5 discusses how a <binding-name>
+in a <procedure-designator> (R1219) is resolved if the <binding-name>
+is that of a generic type-bound procedure.  This seems to imply
+that it is intended to be possible to invoke a generic type-bound
+procedure (which one might have guessed anyway :-)).
+
+However, according to the bnf in 4.5.4, only a specific binding has a
+<binding-name>.  The <binding-name-list> in <generic-binding> is a
+list of specific binding names.  Thus the discussion of generic
+<binding-name>s in 12.4.5 is moot, there being no such things.
+
+Consequently, R1219 appears to provide no syntax for invoking
+generic type-bound procedures.
+
+Should R1219 and 12.4.5 be modified to allow a reference of the
+form "<data-ref> % <generic-name>" where <generic-name> is
+the name of a generic binding of the declared type of <data-ref>?
+
+ANSWER:
+
+No.  As is, the standard provides syntax for invoking a generic
+type-bound procedure.
+
+DISCUSSION:
+
+There is no explicit BNF definition of <binding-name> in 4.5.4 or
+elsewhere; therefore it's use in R1219 is, by our implicit BNF rules,
+simply equivalent to <name> with the only constraints being those
+specified for R1219.
+
+In R1219, <binding-name> is allowed and indeed required to be a
+"binding name".  This is a technical term defined in 4.5.4 (at
+[57:23-26]) to mean both the <binding-name> of a specific type-
+bound procedure and the <generic-name> of a generic type-bound
+procedure.
+
+Thus all of the analysis in the question is based on a false premise.
+
+EDITS:
+
+None.
+
+SUBMITTED BY: Richard Maine
+
+HISTORY: 04-320    m169  Submitted
+         04-320r1  m169  Passed by J3 meeting
+         04-418r1  m170  Passed J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0002
+TITLE: Component value for pointer components
+KEYWORDS: component, value, pointer
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+According to 4.5.7, the component value for an
+allocatable component includes the bounds if the component
+is allocated.  However, no mention is made of the bounds
+of pointer components.  It is possible for pointers with
+different bounds to be associated with the same target
+(13.7.13); therefore, I conclude that the bounds are not
+part of the association.
+
+Is it standard conforming for a processor to print 1 as
+a result of the following program?
+
+  program me
+    type t
+      integer, pointer :: p(:)
+    end type t
+    type(t) :: x
+    allocate(x%p(3:5))
+    call sub(x)
+  contains
+    subroutine sub(y)
+      type(t), value :: y
+      write (*,*) lbound(y%p)
+    end subroutine sub
+  end program me
+
+ANSWER:
+
+No, a processor is required to print 3 as a result of the above
+program.  The conclusion that the bounds are not part of a pointer's
+association is incorrect.
+
+DISCUSSION:
+
+The analysis appears to be based on the theory that the ASSOCIATED
+intrinsic function defines what is meant by "pointer association".
+In fact, the 1-argument form of that function only returns the
+pointer association *status*, and the 2-argument form only tests the
+association between a pointer and a target - it does not compare the
+pointer association of two pointers.
+
+If the bounds were not part of "pointer association", non-component
+pointers would be similarly faulty.
+
+Pointer association is established by the ALLOCATE statement (6.3.1.2)
+and pointer assignment (7.4.2.1).  Both of these specify array bounds
+for the association.  These are the defining sections for pointer
+association, and therefore, the bounds form part of that association.
+
+It is recommended that a future revision of the standard contain
+a more comprehensible definition of the term "pointer association".
+
+EDITS:
+
+None.
+
+SUBMITTED BY: Richard Maine
+
+HISTORY: 04-321    m169  Submitted
+         04-321r1  m169  Passed by J3 meeting
+         04-418r1  m170  Passed J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0005
+TITLE: Argument association and the TARGET attribute
+KEYWORDS: argument, association, target, pointer
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Fortran 95 allowed the following program to print "T".
+Fortran 2003 does not appear to allow this.
+
+      module m
+        integer, pointer :: i_ptr
+      contains
+        subroutine sub(j)
+          integer j
+          call sub2(j)
+        end subroutine
+        subroutine sub2(j2)
+          integer, target :: j2
+          print *, associated (i_ptr, j2)
+        end subroutine
+      end module
+
+      program foo
+        use m
+        integer, target :: i
+        i_ptr => i
+        call sub(i)
+      end program
+
+Fortran 95 stated, in section 12.4.1.1, on page 200:
+  If the dummy argument does not have the TARGET or POINTER
+  attribute, any pointers associated with the actual argument do
+  not become associated with the corresponding dummy argument on
+  invocation of the procedure.  If such a dummy argument is
+  associated with a dummy argument with the TARGET attribute,
+  whether any pointers associated with the original actual
+  argument become associated with the dummy argument with the
+  TARGET attribute is processor dependent.
+
+Fortran 2003 (04-007) states, in section 12.4.1.2, on page 269:
+  If the dummy argument does not have the TARGET or POINTER
+  attribute, any pointers associated with the actual argument do
+  not become associated with the corresponding dummy argument on
+  invocation of the procedure. If such a dummy argument is
+  associated with an actual argument that is a dummy argument
+  with the TARGET attribute, whether any pointers associated
+  with the original actual argument become associated with the
+  dummy argument with the TARGET attribute is processor
+  dependent.
+
+It's clear in this example that j is not associated with i_ptr,
+because it doesn't have the TARGET attribute.  The dummy argument
+j2 with the TARGET attribute falls into the case described by the
+second sentence quoted from Fortran 95.  It does not fall into the
+case described by the second sentence quoted from Fortran 2003,
+since j is not associated with an actual argument that is a dummy
+argument with the TARGET attribute.  It appears that the second
+sentence in Fortran 2003 gets things backwards.
+
+Was it intended in the example above that the program should be
+allowed to print "T"?
+
+ANSWER:
+
+Yes.  An edit is supplied to correct this error.
+
+EDITS:
+
+All edits refer to 04-007.
+
+[270:1-2] Change "associated with an actual argument that is" to
+          "used as an actual argument that is associated with".
+
+REFERENCES: 02-148r1 inserted this clarification but it is incorrect.
+
+SUBMITTED BY: Rob James
+
+HISTORY: 04-330    m169  Submitted
+         04-330r1  m169  Passed by J3 meeting
+         04-418r1  m170  Passed J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0006
+TITLE: Intrinsic assignment and allocatable components
+KEYWORDS: assignment, allocatable
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Consider the following code:
+
+      type t
+        integer, allocatable :: i
+      end type
+      type(t) :: x
+      allocate(x%i)
+      x = x
+      print *, allocated(x%i)
+      end
+
+In the intrinsic assignment, it is unclear whether the value of
+the expression on the right-hand side of the assignment should be
+determined before the any part of the left-hand side becomes
+defined.
+
+Section 7.4.1.3 of Fortran 2003 states:
+  The execution of the assignment shall have the same effect as
+  if the evaluation of all operations in <expr> and <variable>
+  occurred before any portion of <variable> is defined by the
+  assignment.
+
+In this case, there are no operations in <expr>, so this sentence
+does not apply.  There doesn't appear to be anything else to
+cover this situation, so it appears that in this case, <expr>
+does not have to be evaluated before any part of <variable> is
+defined.
+
+If x%i becomes deallocated before the <expr> is evaluated, then
+the call to the ALLOCATED intrinsic in this example would return
+the value .false.  Was it intended that this program could print
+"F"?
+
+ANSWER:
+
+No.  It was intended that the <expr> in an intrinsic assignment
+must be evaluated before any part of the <variable> is defined.
+An edit is supplied to correct this oversight.
+
+EDITS:
+
+All edits refer to 04-007.
+
+[139:17] Change "the evaluation of all operations in <expr> and
+         <variable>" to "the evaluation of <expr> and the
+         evaluation of all expressions in <variable>".
+
+[141:20,21,22] Before "<expr>" insert "the value of", thrice.
+
+SUBMITTED BY: Rob James
+
+HISTORY: 04-331    m169  Submitted
+         04-331r1  m169  Passed by J3 meeting
+         04-418r1  m170  Passed J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0007
+TITLE: Finalization of structure constructors in specifications
+KEYWORDS: finalization, structure constructor, specification
+          expression
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Paragraphs 3-5 of subclause 4.5.5.2 specify when
+finalization occurs for function results in executable constructs
+and in specification expressions.  They also specify
+when finalization occurs for structure constructors in executable
+constructs.  However, structure constructors in specification
+expressions do not appear to be mentioned.  The apparent
+conclusion would be that structure constructors in specification
+expressions are not finalized, which seems inconsistent and
+contrary to the purpose of finalization.
+
+Q1. Are structure constructors in specification expressions
+finalized?  If so, when?
+
+The phrase "before the first executable statement in a scoping
+unit" is used in two places in the standard (4.5.5.2 and at
+[116:8] after note 6.24) to describe the first thing executed in a
+scoping unit.  This phrase has two problems.
+
+First, not all executable statements can be executed
+as single statements; the description of execution sequence is
+in terms of executable constructs rather than executable
+statements.  (See 2.3.4, 8.1.1.3, and 12.5.2.0).  Although
+this distinction seems unlikely to lead to confusion, the
+terminology seems inconsistent.
+
+Second, and more problematic, is that the first executable
+statement or construct in a scoping unit is not necessarily the
+first thing executed in the scoping unit; nor is it necessarily
+executed only once.  An entry statement may cause execution to
+start at some other executable construct, in which case one might
+wonder whether the specified actions ever happen.  A goto might
+cause the construct to be executed multiple times, in which case
+one might wonder whether the specified actions happen again.  I
+seriously doubt that either of these represent the intent.
+
+Q2. If an event is specified to occcur before the first executable
+statement in a scoping unit, then for a single execution of that
+scoping unit, may the event happen zero times, multiple times, or
+after the execution of some other executable statement or
+construct in the scoping unit?
+
+ANSWER:
+
+A1. Yes, structure constructors in specification expressions are
+finalized.  Just as with function results in specification
+expressions, this finalization occurs before execution of the
+executable constructs in the scoping unit.  This was an accidental
+omission from the standard.  Edits are supplied to correct it.
+
+A2. No. The intent is to describe events that happen once and only
+once per execution of a procedure defined by a scoping unit.
+Edits are supplied to state this more precisely.
+
+EDITS:
+
+All edits refer to 04-007.
+
+[59:30] and [116:8] Change
+  "first executable statement" -> "executable constructs"
+
+[59:30+] Insert new para
+
+  "If a specification expression in a scoping unit references a
+   structure constructor, the entity created by the structure
+   constructor is finalized before execution of the executable
+   constructs in the scoping unit."
+
+SUBMITTED BY: Richard Maine
+
+HISTORY: 04-332    m169  Submitted; Passed by J3 meeting
+         04-418r1  m170  Passed J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0009
+TITLE: VALUE attribute for passed-object dummy arguments
+KEYWORDS: VALUE, passed-object, dummy argument
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Consider the following program:
+
+      module m
+        type t
+          integer :: id
+        contains
+          procedure :: doThings => doThingsT
+        end type
+      contains
+        subroutine doThingsT (a)
+          class(t), value :: a
+          a%id = 5
+        end subroutine
+      end module
+
+      program p
+        use m
+        type(t) :: z = t(1)
+        call z%doThings
+        print *, z%id
+      end program
+
+Section 12.4.1.1 of Fortran 2003 states:
+  In a reference to a type-bound procedure that has a passed-object
+  dummy argument (4.5.3.3), the <data-ref> of the <function-reference>
+  or <call-stmt> is associated, as an actual argument, with the
+  passed-object dummy argument.
+
+This seems to be contrary to the idea of the VALUE attribute.  For
+argument association where the dummy argument has the VALUE attribute,
+section 12.4.1.2 of Fortran 2003 states:
+  If the dummy argument has the VALUE attribute it becomes associated
+  with a definable anonymous data object whose initial value is that
+  of the actual argument. Subsequent changes to the value or
+  definition status of the dummy argument do not affect the actual
+  argument.
+
+It looks like the passed-object dummy argument is argument associated
+with the object z itself, rather than an anonymous data object whose
+initial value is that of z.
+
+What value should the above program print?
+
+ANSWER:
+
+This program was not intended to be standard-conforming; the VALUE
+attribute is not appropriate for a passed-object dummy argument.
+Edits are supplied to clarify this situation.
+
+DISCUSSION:
+
+As perhaps evidenced by its own name, the passed-object dummy argument
+was intended to be THE object through which the type-bound procedure
+was invoked.  It performs the same function as the "self" or "this"
+variable of other object-oriented languages.
+
+EDITS:
+
+All edits refer to 04-007.
+
+[53:1] Append to constraint "It shall not have the VALUE attribute."
+
+SUBMITTED BY: Rob James
+
+HISTORY: 04-334    m169  Submitted
+         04-334r1  m169  Revised
+         04-334r2  m169  Passed by J3 meeting
+         04-418r1  m170  Passed J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0010
+TITLE: Unlimited polymorphic pointer/allocatable dummy arguments
+KEYWORDS: polymorphism, POINTER, ALLOCATABLE, argument
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Consider the following program:
+      module m
+        type t
+          integer i
+        end type
+      contains
+        subroutine s (x)
+          class (*), pointer, intent(inout) :: x
+        end subroutine
+      end module
+
+      program p
+        use m
+        class (*), pointer :: up
+        class (t), pointer :: lp
+        call s (lp)
+        call s (up)
+      end program
+
+Section 12.4.1.2 states:
+
+    If a dummy argument is allocatable or a pointer, the associated
+    actual argument shall be polymorphic if and only if the dummy
+    argument is polymorphic, and the declared type of the actual
+    argument shall be the same as the declared type of the dummy
+    argument.
+
+Section 5.1.1.2 states:
+
+    An object declared with the CLASS(*) specifier is an unlimited
+    polymorphic object. An unlimited polymorphic entity is not
+    declared to have a type. It is not considered to have the same
+    declared type as any other entity, including another unlimited
+    polymorphic entity.
+
+Taken together, these two statements seem to imply that no unlimited
+polymorphic dummy argument that has the ALLOCATABLE or POINTER
+attribute can be associated with any actual argument.
+
+Are either of the procedure calls in the given example
+standard-conforming?
+
+ANSWER:
+
+The first procedure call is not standard-conforming.  The second
+procedure call was intended to be standard-conforming.  Edits are
+provided to correct this oversight.
+
+EDITS:
+
+All edits refer to 04-007.
+
+[268:23] Before "the declared", insert "either both the actual and
+         dummy argument shall be unlimited polymorphic, or".
+
+SUBMITTED BY: Rob James
+
+HISTORY: 04-335    m169  Submitted; Passed by J3 meeting
+         04-418r1  m170  Passed J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0011
+TITLE: Allocating objects of abstract types
+KEYWORDS: ALLOCATE, ABSTRACT
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Consider the following code:
+
+      module m
+        type, abstract :: t
+          integer :: i
+        end type
+        class(t), allocatable :: d
+      end module
+
+      program foo
+        use m
+        allocate(d)
+      end
+
+One cannot declare a non-polymorphic object of an abstract type.
+Similarly, a polymorphic object should not be allocated with a dynamic
+type that is abstract.
+
+A <type-spec> in an allocate statement cannot specify an abstract
+type.  But the effect of the allocate statement in the example above
+is the same as if a <type-spec> specifying an abstract type appeared
+in the allocate statement, which would not be standard-conforming.
+
+Was this example intended to be standard-conforming?
+
+ANSWER:
+
+No, this example was not intended to be standard-conforming.  An edit
+is provided to correct this oversight.
+
+EDITS:
+
+All edits refer to 04-007.
+
+[111:11-12] Change the words "unlimited polymorphic" in the constraint
+to "unlimited polymorphic or is of abstract type" so that it reads:
+
+  C625 (R623) If any <allocate-object> is unlimited polymorphic or is
+              of abstract type, either <type-spec> or SOURCE= shall
+              appear.
+
+SUBMITTED BY: Rob James
+
+HISTORY: 04-336    m169  Submitted
+         04-336r2  m169  Passed by J3 meeting
+         04-418r1  m170  Passed J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0013
+TITLE: VALUE attribute for polymorphic dummy arguments
+KEYWORDS: VALUE, CLASS
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+The VALUE attribute is not allowed for any dummy argument that has a
+(visible) nonconstant length type parameter.  (Or indeed for any
+array.) The intent appears to be to restrict VALUE arguments to being
+of constant size.
+
+However consider:
+
+   SUBROUTINE S(x)
+     CLASS(t),VALUE :: x
+     ...
+
+There is no requirement that X not be polymorphic, so this requires
+copying a variable (known only at runtime) sized value, in violation
+of the apparent intent of the other restrictions.  For example, X
+might have an invisible nonconstant length type parameter in its
+dynamic type; this allows the user to bypass that particular VALUE
+restriction simply by obfuscating his code so that the nonconstant
+length type parameter is in the dynamic type but not in the declared
+type.
+
+Should there be a restriction that a VALUE dummy argument not be
+polymorphic?
+
+ANSWER:
+
+Yes, this restriction was accidentally omitted.
+An edit is provided to fix this oversight.
+
+DISCUSSION:
+
+The deduced intent is apparent from the rejection of the UK comment C7
+on the FCD ballot.
+       WG5 agreed that the existing constraint was inconsistent, but
+       felt that there were potential implementation concerns with
+       deleting it completely.  Therefore, the constraint was
+       instead modified to a simpler and more consistent form.
+
+EDITS:
+
+All edits refer to 04-007.
+
+[72:23] Append "It shall not have the VALUE attribute."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 04-360    m169  Submitted; Passed by J3 meeting
+         04-418r1  m170  Passed J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0014
+TITLE: Automatic arrays in interface bodies
+KEYWORDS: automatic array, interface body
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Is the following program standard-conforming.
+
+  program main
+    interface
+      subroutine sub(n)
+        integer, intent(in) :: n
+        real :: x(n)
+      end subroutine sub
+    end interface
+    call sub(2)
+  end program main
+  subroutine sub(n)
+    integer, intent(in) :: n
+    real :: x(n)
+    write (*,*) size(x)
+  end subroutine sub
+
+The potential problem is the declaration of X in the
+interface body.
+
+According to C542
+
+  "An explicit-shape array whose bounds are not initialization
+  expressions shall be a dummy argument, a function result, or an
+  automatic array of a procedure."
+
+The definition of an automatic array is
+
+  "An automatic array is an explicit-shape array that is declared in a
+  subprogram, is not a dummy argument, and has bounds that are not
+  initialization expressions."
+
+Although the X in subroutine sub fits this definition, the X in the
+interface body does not because an interface body is not a subprogram.
+
+In 12.3.2.1, at [259:36-37], we have
+
+  "The specification part of an interface body may specify attributes
+  or define values for data entities that do not determine
+  characteristics of the procedure.  Such specifications have no
+  effect."
+
+The presumed reason for this is to allow the specification part of a
+procedure to be copied into an interface body.  If the declarations of
+automatic arrays cannot be so copied, that would appear to negate the
+reason for the feature.
+
+ANSWER:
+
+Yes.  This was intended to be standard conforming. Edits are provided
+to fix this error.
+
+EDITS:
+
+  [78:23] "subprogram" -> "subprogram or interface body"
+
+  [78:21-22] "shall be... procedure." ->
+             "shall be declared only in a subprogram or interface
+              body."
+
+SUBMITTED BY: Richard Maine
+
+HISTORY: 04-361    m169  Submitted; Passed by J3 meeting
+         04-418r1  m170  Passed by J3 letter ballot #9 with comment
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0015
+TITLE: TARGET attribute for associate names
+KEYWORDS: TARGET, POINTER, ASSOCIATE
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Consider the following code:
+
+      program assocTarget
+        integer, pointer :: first_ptr
+        integer, pointer :: second_ptr
+        integer, target  :: tgt
+
+        tgt       =  20
+        first_ptr => tgt
+
+        associate(aname => first_ptr)
+          second_ptr => aname
+        end associate
+      end
+
+Section 16.4.1.5 (Construct association) indicates that the
+associating entity aname is associated with the target of first_ptr.
+However, section 8.1.4.3 (Attributes of associate names) indicates
+that aname does not have the TARGET attribute, since this would only
+be true if the selector had the TARGET attribute.
+
+Was this example intended to be standard-conforming?
+
+ANSWER:
+
+Yes, this example was intended to be standard-conforming.  Edits are
+supplied to correct this oversight.
+
+EDITS:
+
+All edits refer to 04-007.
+
+[161:18-19] Remove ", TARGET,".
+[161:19]    After "attribute.", insert the following sentence:
+             The associating entity has the TARGET attribute if and
+             only if the selector is a variable and has either the
+             TARGET or POINTER attribute.
+
+SUBMITTED BY: Rob James
+
+HISTORY: 04-366    m169  Submitted
+         04-366r1  m169  Passed by J3 meeting
+         04-418r1  m170  Passed by J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0016
+TITLE: Invoking type-bound procedures via array objects
+KEYWORDS: elemental, type-bound procedure, NOPASS attribute
+DEFECT TYPE:Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Consider
+  INTERFACE
+    SUBROUTINE sub; END
+  END INTERFACE
+  TYPE t
+  CONTAINS
+    PROCEDURE,NOPASS :: p => sub
+  END TYPE
+  TYPE(t) x(100)
+  CALL x%p
+  END
+
+(1) Is this program-unit standard-conforming?
+    If so, how many times is SUB invoked?
+
+(2) If SUB has the ELEMENTAL attribute, does this change its standard
+    conformance?  If it is conforming, how many times is it executed?
+
+Consider:
+  TYPE t
+    ...
+  CONTAINS
+    PROCEDURE ep => emp
+  END TYPE
+  ...
+  ELEMENTAL SUBROUTINE emp(x)
+    CLASS(t),INTENT(INOUT) :: x
+    ...
+  END SUBROUTINE
+  ...
+  TYPE(t) a(10)
+  CALL a%ep
+
+(3) Is this fragment standard-conforming, and if so, is
+    "CALL a%ep" equivalent to "CALL emp(a)"?
+
+Consider:
+  INTERFACE
+    ELEMENTAL SUBROUTINE esub(r); REAL,INTENT(IN) :: r; END
+  END INTERFACE
+  TYPE t
+  CONTAINS
+    PROCEDURE,NOPASS :: ep => esub
+  END TYPE
+  TYPE(t) x(100)
+  REAL y(50)
+  CALL x%ep(y)
+  END
+
+(4) Is this standard-conforming?
+    If so, is ESUB invoked 50 times or 100 times?
+
+ANSWER:
+
+(1) No.
+(2) No.
+(3) Yes.
+(4) No.
+
+If the invoking object is an array, the type-bound procedure must be
+elemental and have the PASS attribute.  An edit is supplied to clarify
+this.
+
+DISCUSSION:
+
+The invoking object can only enable elementalisation if it is an
+actual argument, i.e. if the type-bound procedure has the PASS
+attribute.  If the type-bound procedure does not have both the PASS
+and ELEMENTAL attributes, the invoking object shall be scalar.
+
+EDITS:
+
+All edits refer to 04-007.
+
+[266:24+] Insert new constraint
+"C1224a (R1219) If <data-ref> is an array, the referenced type-bound
+        procedure shall have the PASS attribute."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 04-368    m169  Submitted; Passed by J3 meeting
+         04-418r1  m170  Passed by J3 letter ballot #9
+         05-180    m172  Passed by WG5 ballot N1617
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER:  F03/0031
+TITLE:  IEEE invalid
+KEYWORDS: IEEE-754, invalid exception
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+What exceptions (if any) are raised by the following:
+ infinity + (-infinity)
+ infinity - infinity
+ 0.0 * infinity
+ infinity / infinity
+ 0.0 / 0.0
+
+Fortran 2003 is silent on these expressions.
+IEEE-754 defines (in 7.1) those as invalid.
+
+ANSWER:
+
+The Fortran Standard and Technical Report ISO/IEC TR 15580 were
+written to supplement the IEEE International Standard and to allow
+for systems that do not fully support it. That the IEEE International
+Standard is a normative reference is made clear in 1.9.
+
+The questions related to infinity are answered by the third paragraph
+of 14.8, which states
+
+"The inquiry function IEEE_SUPPORT_INF is provided to inquire whether
+the processor supports IEEE infinities. Where these are supported,
+their behavior for unary and binary operations, including
+those defined by intrinsic functions and by functions in intrinsic
+modules, shall be consistent with the specifications in the IEEE
+International Standard."
+
+The expression 0.0 / 0.0 is defined as invalid by the IEEE
+International Standard and therefore causes the exception
+IEEE_INVALID to occur.
+
+EDITS: None
+
+SUBMITTED BY: Fred Tydeman
+
+HISTORY: 05-110    m171  Submitted
+         05-110r1  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER:  F03/0032
+TITLE:  Sign bit of IEEE NaN
+KEYWORDS: IEEE-754, NaN, sign bit, negative
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Do IEEE-754 NaNs have a sign bit?  Can they be negative?  Does a
+sign bit imply a value can be either positive or negative?
+
+Fortran 2003 in 14.10.2 (IEEE_COPY_SIGN) says that NaNs have a
+sign bit.  But, 14.10.10 (IEEE_IS_NEGATIVE) says NaNs are not
+negative.  This appears to be a contradiction between two parts
+of Fortran 2003.
+
+ANSWER:
+
+The representation of a NaN has a sign bit, and this is what is
+referred to in 14.10.2.  However, that bit is not interpreted as
+a sign (see IEEE standard, 6.3 "This standard does not interpret the
+sign of a NaN").  Thus 14.10.10 correctly says that a NaN is never
+negative.
+
+EDITS:  None
+
+SUBMITTED BY: Fred Tydeman
+
+HISTORY: 05-111    m171  Submitted
+         05-111r1  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER:  F03/0033
+TITLE:  IEEE_VALUE()
+KEYWORDS: IEEE-754, IEEE_VALUE
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+What does "Generate an IEEE value" in 14.9.2 mean?
+
+Fortran 2003 in 14.9.2 has: "Generate an IEEE value" without any
+explanation of what that means, nor any indication that it is
+defined elsewhere.
+
+ANSWER:
+
+14.9 contains tables of procedures with a short description of each,
+modeled on 13.5. Each procedure is specified in 14.10 and the
+reader should have no difficulty in finding its specification there.
+
+EDITS: None
+
+SUBMITTED BY: Fred Tydeman
+
+HISTORY: 05-112    m171  Submitted
+         05-112r1  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER:  F03/0035
+TITLE:  IEEE_NEXT_AFTER()
+KEYWORDS: IEEE-754, nextafter()
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+What is NEXT_AFTER(+0.0,-0.0)?  NEXT_AFTER(-0.0,+0.0)?
+
+What is NEXT_AFTER(X,Y) if X and/or Y is NaN?
+
+C99 and IEEE-754R (the revision of IEEE-754 now in progress)
+define NEXT_AFTER(X,Y) as Y (not X) when X == Y.
+
+NEXT_AFTER(X,Y) when both X and Y are NaN shall be a NaN, and
+should be one of NaN arguments.
+
+NEXT_AFTER(X,Y) when one of X and Y is a NaN shall be a NaN, and
+should the NaN argument.
+
+ANSWER:
+
+The first paragraph of 14.8 states "Complete conformance with the
+IEEE International Standard is not required, but ... the functions
+copysign, scalb, logb, nextafter, rem, and unordered shall be
+provided by the functions IEEE_COPY_SIGN, IEEE_SCALB, IEEE_LOGB,
+IEEE_NEXT_AFTER, IEEE_REM, and IEEE_UNORDERED."
+
+For NEXT_AFTER(X,Y) with X == Y == 0, the result is X, see 14.10.13,
+Case (i). This is the recommendation of the IEEE International
+Standard. The current draft revision of that Standard uses the
+definition copysign(x,y) in this case. We will reconsider the Fortran
+definition of NEXT_AFTER if a revised IEEE Standard is adopted
+with this change present.
+
+The case of NEXT_AFTER(X,Y) when one or both of X and Y is a NaN
+is as defined by the IEEE International Standard, see the words
+from 14.8 quoted above.
+
+EDITS: None
+
+SUBMITTED BY: Fred Tydeman
+
+HISTORY: 05-114    m171  Submitted
+         05-114r1  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER:  F03/0036
+TITLE:  IEEE_REM()
+KEYWORDS: IEEE-754, remainder()
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+What is REM(infinity,Y)?  REM(X,0.0)?
+
+What is REM(X,Y) if X and/or Y is NaN?
+
+IEEE-754 requires (in 7.1) both REM(infinity,Y) and REM(X,0.0)
+shall be a NaN and raise invalid.
+
+REM(X,Y) when both X and Y are NaN shall be a NaN, and should be
+one of the NaN arguments.
+
+REM(X,Y) when one of X and Y is a NaN shall be a NaN, and should
+be the NaN argument.
+
+ANSWER:
+
+The first paragraph of 14.8 states "Complete conformance with the
+IEEE International Standard is not required, but ... the IEEE
+operation rem shall be provided by the function IEEE_REM."
+
+The behaviour of IEEE_REM for the cases cited here is as defined
+for REM by the IEEE International Standard.
+
+EDITS: None
+
+SUBMITTED BY: Fred Tydeman
+
+HISTORY: 05-115    m171  Submitted
+         05-115r1  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER:  F03/0037
+TITLE:  IEEE_RINT()
+KEYWORDS: IEEE-754, rint()
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+What is RINT(+infinity)?  RINT(-infinity)?  RINT(NaN)?
+
+DISCUSSION:
+
+RINT(X) when X is an infinity shall be X.
+
+RINT(X) when X is a NaN shall be a NaN, and should be the NaN
+argument.
+
+ANSWER:
+
+The second and third paragraphs of 14.8 state
+
+"The inquiry function IEEE_SUPPORT_NAN is provided to inquire
+whether the processor supports IEEE NaNs. Where these are supported,
+their behavior for unary and binary operations, including
+those defined by intrinsic functions and by functions in intrinsic
+modules, shall be consistent with the specifications in the IEEE
+International Standard.
+
+The inquiry function IEEE_SUPPORT_INF is provided to inquire whether
+the processor supports IEEE infinities. Where these are supported,
+their behavior for unary and binary operations, including
+those defined by intrinsic functions and by functions in intrinsic
+modules, shall be consistent with the specifications in the IEEE
+International Standard. "
+
+Therefore, the behaviour of IEEE_RINT for the cases cited here is as
+defined by the IEEE International Standard in section 5.5.
+
+EDITS: None
+
+SUBMITTED BY: Fred Tydeman
+
+HISTORY: 05-116    m171  Submitted
+         05-116r1  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER:  F03/0038
+TITLE:  IEEE_SCALB()
+KEYWORDS: IEEE-754, scalb()
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+What is SCALB(NaN,Y)?
+
+DISCUSSION:
+
+SCALB(X,Y) when X is a NaN shall be a NaN, and should be the NaN
+argument.
+
+ANSWER:
+
+The second paragraph of 14.8 states
+
+"The inquiry function IEEE_SUPPORT_NAN is provided to inquire
+whether the processor supports IEEE NaNs. Where these are supported,
+their behavior for unary and binary operations, including
+those defined by intrinsic functions and by functions in intrinsic
+modules, shall be consistent with the specifications in the IEEE
+International Standard."
+
+Therefore, the behaviour of IEEE_SCALB for the case cited here is as
+defined for scalb by the IEEE International Standard.
+
+EDITS: None
+
+SUBMITTED BY: Fred Tydeman
+
+HISTORY: 05-117    m171  Submitted
+         05-117r1  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER:  F03/0040
+TITLE:  2.0+2.0 and IEEE
+KEYWORDS: IEEE-754, accuracy, transformation
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+For processors that use IEEE arithmetic, must 2.0+2.0 be 4.0?
+May x/5.0 be transformed into x*0.2?
+
+1.4 (6) [2:4-5] has: "This standard does not specify: The
+physical properties of the representation of quantities and the
+method of rounding, approximating, or computing numeric values
+on a particular processor."  That has been used as the reason
+why 2.0+2.0 is not required to be 4.0.
+
+Section 14 [364:6-13] has: "If a scoping unit has access to
+IEEE_DATATYPE of IEEE_FEATURES, within the scoping unit the
+processor shall support IEEE arithmetic and return true from
+IEEE_SUPPORT_DATATYPE(X) (14.10.23) for at least one kind of
+real. Similarly, if IEEE_DENORMAL, IEEE_DIVIDE, IEEE_INF,
+IEEE_NAN, IEEE_ROUNDING, or IEEE_SQRT is accessible, within the
+scoping unit the processor shall support the feature and return
+true from the corresponding inquiry function for at least one
+kind of real. In the case of IEEE_ROUNDING, it shall return true
+for all the rounding modes IEEE_NEAREST, IEEE_TO_ZERO, IEEE_UP,
+and IEEE_DOWN."  IEEE-754 specifies methods of rounding and
+computing numeric values, and in particular, requires that
+2.0+2.0 be 4.0.
+
+So, does section 14 override the weasel words of 1.4(6)?  If
+not, should something along the lines of: "The requirements of
+this section override 1.4(6)" be added to section 14?
+
+Using IEEE arithmetic, x/5.0 and x*0.2 are not equivalent, so
+the former may not be transformed into the latter.  Does IEEE
+arithmetic override 7.1.8.3 and Note 7.18 and prohibit that
+transformation?  If not, should something along the lines of:
+"The requirements of this section override 7.1.8.3" be added to
+section 14?
+
+ANSWER:
+
+Yes, for processors that use IEEE arithmetic, 2.0+2.0 and 4.0
+have the same value. That is a requirement of the IEEE
+International Standard. However, your example is very simple.
+
+For a more complicated expression, the IEEE Standard does not
+
+specify whether intermediate results are kept in extended-
+
+precision registers.  The words in Section 1 are applicable
+
+and give compilers the freedom to choose whether to keep
+
+intermediate results in such registers.
+
+
+
+No, section 14 does not override the weasel words of 1.4(6).
+As you point out, Section 7 allows x/5.0 to be evaluated as
+x*0.2. The results may be different on any binary computer.
+
+Section 14 tells us about the rounding that will occur once
+
+the processor has chosen which way to evaluate this.
+
+
+EDITS: None
+
+SUBMITTED BY: Fred Tydeman
+
+HISTORY: 05-119    m171  Submitted
+         05-119r1  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER:  F03/0041
+TITLE:  IEEE halting and exceptions
+KEYWORDS: IEEE-754, trapping, exception
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+If a specific Floating-Point (FP) exception flag is raised, and
+then HALTING for that FP exception is enabled for the first
+time, does the program halt?  Or, must the specific FP exception
+happen after the halting is enabled for the program to halt?
+Section 14.5 [368:1-8] does not answer the question.
+
+ANSWER:
+
+Section 14.5 states "Halting is not precise and may occur
+any time after the exception has occurred." It is therefore
+processor dependent as to when, if ever, the program
+halts.
+
+EDITS: None
+
+SUBMITTED BY: Fred Tydeman
+
+HISTORY: 05-120    m171  Submitted
+         05-120r1  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0043
+TITLE: Passed-object arguments and procedure pointer components
+KEYWORDS:
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Section 4.5.3.3 [52:5-7] of 04-007 indicates that passed-object dummy
+arguments are relevant for both type-bound procedures and procedure
+pointer components. However, section 12.4.1.1 [268:17-19] of 04-007 on
+the passed-object dummy argument and argument association mentions
+only type-bound procedures.  Should procedure pointer components also
+be mentioned in 12.4.1.1?
+
+ANSWER:
+
+Yes. This was an omission in section 12.4.1.1.
+
+EDITS:
+
+[268:17] After "procedure" insert " or a procedure pointer component"
+
+{The edit in 05-182r1 reads
+After "procedure", insert ", or a procedure pointer component," }
+  
+SUBMITTED BY: Bill Long
+
+HISTORY: 05-106    m171  Submitted, passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0044
+TITLE: Implicit interfaces and conflicting references
+KEYWORDS: implicit interface, procedure pointer, dummy procedure,
+          procedure reference
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+Is the following program legal?
+
+module test_mod
+contains
+
+subroutine reference (proc,choice)
+    ! Proc has implicit interface
+    external :: proc ! Or
+                     ! procedure (), pointer :: proc
+    logical :: choice
+    if(choice) then
+       call proc (1.0) ! Call with real argument
+    else
+       call proc (1)   ! Call with integer argument
+    end if
+end subroutine
+
+subroutine proc_real (x)
+   real :: x
+end subroutine
+
+subroutine proc_integer (i)  ! respelled from original submission
+                             ! without loss of generality
+   integer :: i
+end subroutine
+
+end module
+
+program test
+   use test_mod
+   call reference (proc_real, .true.)
+   call reference (proc_integer, .false.)
+end program
+
+12.3.2.5 says: "The type...of dummy arguments of a procedure
+referenced from a scoping unit where the interface of  the
+procedure is implicit shall be such that the actual arguments
+are consistent with the characteristics of the dummy arguments."
+We define a procedure reference in 2.5.6 as the "appearance of
+procedure designator, ... in a context requiring execution at
+that point."
+
+Are both calls to proc above references, at compile time?
+If both calls to proc are references then they both need to be
+consistent with the interface of the actual argument associated
+with the dummy procedure. This is not possible and the program
+would be illegal. However, if only the call executed counts as
+a reference, than the program is legal.
+
+The same question applies to both dummy procedures and procedure
+pointers with implicit interfaces.
+
+ANSWER:
+
+Technically, the question is ill-formed in asking whether the calls
+are references "at compile time".  The standard does not have a
+notion of compile-time.
+
+The calls to proc are indeed references according to the definition
+in 2.5.6.  This is a purely syntactic notion since a call-stmt is
+an example of "a context requiring execution at that point" and proc
+is the procedure designator in
+
+        call proc(1.0)
+and
+        call proc(1)
+
+12.3.2.5 specifies a requirement, violations of which are not
+required to be detected at compile-time (12.3.2.5 is not a
+constraint).  Every line of the program when it is actually executed
+by a standard-conforming processor uses only forms and relationships
+defined by the standard [2:9-10], and the program has an
+interpretation according to the standard.   This program was intended
+to be standard conforming.
+
+However, the current language of 12.3.2.5 is confusing.  The
+requirement on the type of dummy arguments must be laid on the
+procedure actually invoked and not on the procedure named in the
+procedure reference.  A procedure with only an implicit
+interface has no nominal dummy arguments on which a requirement
+can be levied!  (Ask yourself: what are the names of the dummy
+argument(s) of proc ?)  Put another way, in
+
+        call proc (1.0)
+
+proc is a "procedure reference" but proc_real is actually the
+procedure referenced.
+
+An edit is supplied to make this clearer.
+
+EDITS:
+
+In [266:8] change "referenced" to "invoked"
+
+
+SUBMITTED BY: Aleksandar Donev
+
+HISTORY: 05-127    m171  Submitted
+         05-127r3  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0052
+TITLE: ADVANCE= specifier in child data transfer statements
+KEYWORDS: ADVANCE=, UDDTIO, data transfer
+DEFECT TYPE: Interpretation
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+The appearance of the ADVANCE= specifier in a child data transfer
+statement is not prohibited, but such an appearance is meaningless.
+9.5.3 of Fortran 2003 states that the file is positioned after data
+transfer only if the statement is not a child data transfer.  The
+appearance of the ADVANCE= specifier in such a statement would seem to
+serve only to confuse people maintaining a program that contains it.
+
+Was it intended that the ADVANCE= specifier should be allowed to
+appear in a child data transfer statement?
+
+ANSWER:
+
+Yes, it was intended that the ADVANCE= specifier should be allowed to
+appear in a child data transfer statement.  Such a specifier has no
+effect.  Note that a user defined derived type I/O routine can be
+called explicitly by the user, and in that case, the I/O statements
+therein are not child data transfer statements.
+
+EDITS: None
+
+SUBMITTED BY: Rob James
+
+HISTORY: 05-143    m171  Submitted
+         05-143r1  m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636 - no edits
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0054
+TITLE: Denormal inputs to EXPONENT, FRACTION, and SET_EXPONENT
+KEYWORDS: denormal, intrinsic, EXPONENT, FRACTION, SET_EXPONENT
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+What results do EXPONENT, FRACTION, and SET_EXPONENT return if
+the value of X is denormal?
+
+If a denorm is loaded into the cpu in extended precision, it
+becomes a normal value with changed fractional and exponent parts.
+Which of these values should be taken?
+
+In the definition of EXPONENT, the words 'of the model representation
+for the value of X' appear; but in the definition of FRACTION and
+SET_EXPONENT, the words are 'for the model representation of X'.
+Was this difference intended?
+
+ANSWER:
+
+In all three cases, the intention was to treat the value as if it
+were held according to the model in 13.14 with the same radix b,
+but with an expanded exponent range. This is why the words 'for the
+value of X' were used in EXPONENT. It has to be this way for a
+denormal value since otherwise it does not lie within the model.
+Edits are provided to make the intention clear.
+
+DISCUSSION:
+
+This interpretation is satisfactory from a mathematical point of
+view since the values of EXPONENT(X) and EXPONENT(DBLE(X)) will
+be the same when X is of type default real and has a denormal value.
+Similar properties holds for the other two functions.
+
+EDITS:
+
+Page and line numbers refer to J3/04-007.
+
+[316:5-6] Subclause 13.7.37, Result Value, lines 1-2. Replace
+"model ... X" by "representation for the value of X in the model
+(13.4) that has the radix of X but no limits on exponent values".
+
+[317:8] Subclause 13.7.40, Result Value, line 2. Replace
+"model ... X" by "representation for the value of X in the model
+that has the radix of X but no limits on exponent values".
+
+[351:5] Subclause 13.7.107, Result Value, line 2. Replace
+"model ... X" by "representation for the value of X in the model
+that has the radix of X but no limits on exponent values".
+
+SUBMITTED BY: John Reid
+
+HISTORY: 05-152    m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0055
+TITLE: Denormal inputs to SPACING and RRSPACING
+KEYWORDS: denormal, intrinsic, SPACING, RRSPACING
+DEFECT TYPE: Erratum
+STATUS: Included in F03 corrigendum 1
+
+QUESTION:
+
+What results do SPACING and RRSPACING return if the value of X lies
+outside the model of 13.4, in particular if it is denormal?
+
+In the definition of EXPONENT, the words 'of the model representation
+for the value of X' appear; but in the definition of SPACING and
+RRSPACING, the words are 'for the model representation of X'.
+Was this difference intended? Is the intention to indicate that for
+SPACING and RRSPACING, the model is that of all reals with the same
+kind type parameter value as X?
+
+In the IEEE model, the spacing between any two adjacent denorms is
+equal to the smallest denorm. Is it intended that this value be
+returned by SPACING?
+
+ANSWER:
+
+The informal description refers to 'model numbers near the argument
+value', but the text does not reflect this.  Edits are provided to
+correct this.
+
+Yes, the difference was intended. In both models, the lower
+bound on the exponent has a profound effect on the spacing of
+tiny values, so it is important that it be taken into account.
+
+It was intended to refer to the model for all the reals with the
+same kind type parameter value as X. Here is it the model of 13.4
+that is involved, as the words in 13.4 make clear. If the argument
+value is a positive denorm, the model numbers near it are
+TINY(X) and 0. Their spacing is TINY(X).
+
+Edits are provided to make this intention clear.
+
+EDITS:
+
+Page and line numbers refer to J3/04-007.
+
+[347:22] Subclause 13.7.100, Result Value, line 2. Replace
+"the model representation of X." by "the value nearest to X in the
+model for real values whose kind type parameter is that of X; if
+there are two such values, the value of greater absolute value is
+taken."
+
+[353:9] Subclause 13.7.113, Result Value, line 2. Replace
+"the model representation of X." by "the value nearest to X in the
+model for real values whose kind type parameter is that of X; if
+there are two such values, the value of greater absolute value is
+taken."
+
+SUBMITTED BY: John Reid
+
+HISTORY: 05-153    m171  Passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         05-182r1  m172  Added to F03 Corrigendum 1 N1636
+
+----------------------------------------------------------------------

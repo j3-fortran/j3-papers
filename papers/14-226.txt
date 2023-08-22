@@ -1,0 +1,113 @@
+                                                             J3/14-226
+To:      J3
+From:    Nick Maclaren
+Subject: Asynchronous progress
+Date: 2014 August 07
+
+
+In Las Vegas, we took decisions to require at least enough asynchronous
+progress to make the atomics and events examples work, but to delay
+developing formal data consistency and progress models until it is
+integrated with the main standard. However, we agreed a schedule that
+allows very little time for that, and we need to at least agree on the
+principles as soon as possible.
+
+I wrote this paper (and the more detailed ones it refers to), but there
+was not time to discuss it.  I posted it to the coarray mailing list,
+but have had no response.  It describes five issues and asks a couple of
+questions.  Decisions on these will need to be taken before we can start
+designing a progress model.  This paper is NOT asking J3 for a decision,
+but is asking for at least an initial consideration of this issue.
+
+It is deliberately brief, to be comprehensible, so N1754 and 14-199
+should be read for the background.  It assumes some form of asynchronous
+agent, which could be in hardware, in firmware, a helper thread, a
+separate process or anything else.
+
+
+1. Issues
+---------
+
+Issue A:
+
+Image control statements will need to synchronise with the image's
+agent, as well as with the other images involved.
+
+The reason for this is that we allow at least ordinary coarrays and
+atomic objects to be associated with non-coarray arguments, thus
+potentially hitting the copy-in/copy-out problem.  This is all
+well-defined if the local and remote accesses are in separate, ordered
+segments.
+
+
+Issue B:
+
+Any object that is allowed to be accessed in unordered segments must be
+handled by only one of the agent or main image, and that includes
+initialisation and termination.  If the local image needs access, it
+must do that via the agent.
+
+The reason for this is that no current interfaces (including MPI, POSIX
+and Intel architecture) have one-sided fences, and the volatile / atomic
+accesses with similar semantics in POSIX and Intel (MPI does not have
+them) are very restricted on the types of data and do not specify
+sequential consistency.
+
+
+Issue C:
+
+Objects handled by the agent can be accessed asynchronously, whereas
+remote accesses to ones handled by the main image may be handled only
+when the main image reaches an image control statement.
+
+The reason for this is that such handling is very likely to involve
+an event loop and network access, so is not something that vendors
+will want to put into 'ordinary' serial code.
+
+
+Issue D:
+
+Access to objects handled by the agent from the main image is likely to
+be significantly less efficient than direct access.
+
+
+Issue E:
+
+Some restrictions on the use of data objects will be needed for objects
+handled by the agent.
+
+The reason for this is to avoid the copy-in/copy-out and related
+problems.
+
+
+2. Questions
+------------
+
+Question 1:
+
+Access to which classes of data should the standard require to progress
+asynchronously?
+
+A vendor might provide asynchronous access to more than is required, so
+we are considering only what the standard should require.  The obvious
+(but not necessarily correct) answer is one of:
+
+    a) Just atomic variables,
+
+    b) Atomic variables and events,
+
+    c) Atomic variables, events and locks,
+
+    d) All coarray data.
+
+
+Question 2:
+
+What extra restrictions on data use do we need for such classes of data?
+
+The obvious example to follow is ASYNCHRONOUS, but it is unclear whether
+that is appropriate.
+
+I have submitted several interpretation requests, to start clearing the
+decks for considering this matter, but there are several issues that I
+have not yet got onto.

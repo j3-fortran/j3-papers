@@ -1,0 +1,150 @@
+                                                           09-103
+To: J3
+From: Malcolm Cohen
+Subject: Revised interp F03/0119 and F08 fix.
+Date: 2009 January 09
+References: 08-299r1
+
+1. Introduction
+
+This paper contains a revised answer to interp request F03/0119 together
+with an edit to apply the fix to Fortran 2008.
+
+
+2. Interp Request
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0119
+TITLE: Elemental procedures and deferred length character components
+KEYWORDS: deferred length, elemental
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Constraint C1279 says
+  "In the scoping unit of an elemental subprogram, an object
+   designator with a dummy argument as the base object shall not
+   appear in a <specification-expr> except as the argument to one of
+   the intrinsic functions BIT_SIZE, KIND, LEN, or the numeric inquiry
+   functions (13.5.6)."
+
+It has been stated in previous J3 papers that the reason for this
+restriction is to ensure that every iteration of a single invocation
+of an elemental procedure will have the same stack size: and this
+desire was achieved in Fortran 95.
+
+However, the situation changes with deferred-length character
+components.  Consider example 1:
+
+PROGRAM example1
+  TYPE t
+    CHARACTER(:),ALLOCATABLE :: cp
+  END TYPE
+  TYPE(t) array(100)
+  DO i=1,100; array(i)%cp = REPEAT('x',i); END DO
+  CALL zap(array)
+  ...
+CONTAINS
+  ELEMENTAL SUBROUTINE zap(x)
+    TYPE(t),INTENT(INOUT) :: x
+    REAL work(LEN(x%cp))
+    ...
+  END SUBROUTINE
+END PROGRAM
+
+In the invocation "CALL zap(array)", the invoked procedure will have a
+different size for its WORK array for every element of ARRAY.  Thus
+the restriction no longer achieves its aim (though this aim is not
+actually stated in the standard).
+
+However, as stated the restriction still prohibits the very similar
+program example2:
+
+PROGRAM example2
+  INTEGER :: array(100) = (/ (i,i=1,100) /)
+  CALL es(array)
+  PRINT *,array
+CONTAINS
+  ELEMENTAL SUBROUTINE es(x)
+    INTEGER,INTENT(INOUT) :: x
+    REAL work(x)
+    ...
+  END SUBROUTINE
+END PROGRAM
+
+There does not seem to be any technical reason for the prohibition
+of example2.
+
+A more problematic case arises for an elemental function whose result
+variable has a length type parameter that depends on a deferred length
+parameter of a dummy argument.  This can occur both for intrinsic type
+CHARACTER and for parameterized derived types.  Consider:
+
+PROGRAM example3
+  TYPE t1(n)
+    INTEGER,LENGTH :: n
+    INTEGER istring(n)
+  END TYPE
+  TYPE t2
+    CHARACTER(:),ALLOCATABLE :: string
+  END TYPE
+  PRINT *,f( [ t2('short'),t2('this is much longer') ] )
+CONTAINS
+  ELEMENTAL FUNCTION f(x)
+    TYPE(t2),INTENT(IN) :: x
+    TYPE(t1(x%string%len)) f
+    INTEGER j
+    f%istring = [ (ICHAR(x%string(j:j),j=1,f%n)) ]
+  END FUNCTION
+END
+
+The invocation of F in the PRINT statement will return an array whose
+elements have different length type parameters, something that is
+supposed to be impossible.
+
+Is this restriction still correct and useful?  That is,
+(a) was example1 intended to be standard-conforming,
+(b) should example2 be standard-conforming,
+(c) was example3 intended to be standard-conforming.
+
+ANSWER:
+
+Although there is no technical (implementation) reason for prohibiting
+example2 while allowing example1, doing so is not a defect in the
+standard.
+
+However, allowing elemental functions to produce arrays whose elements
+have different length type parameters would be a defect.
+
+Thus,
+  example1 is standard-conforming as argued;
+  example2 is not conforming, because it violates constraint C1279;
+  example3 was intended to be prohibited: an edit is supplied to fix
+           this defect in the standard.
+
+EDIT:
+
+In 12.7.1, constraint C1278,
+  [287:17] After "scalar" change "and" to a comma.
+  [288:1] At the end of the sentence insert
+    ", and shall not have a type parameter that is defined by
+     an expression that is not an initialization expression".
+
+SUBMITTED BY:  Malcolm Cohen
+
+HISTORY: 08-258      m185   Submitted
+         08-299r1    m186   Revised answer, passed by J3 meeting.
+         09-nnn      m187   Revised answer.
+
+----------------------------------------------------------------------
+
+3. Fix for Fortran 2008 (edit to 09-007).
+
+[318:12.8.1 C1289] After "scalar" change "and" to a comma;
+                   At the end of the sentence insert
+    ", and shall not have a type parameter that is defined by
+     an expression that is not an initialization expression".
+
+===END===

@@ -1,0 +1,97 @@
+To: J3                                                     J3/21-136
+From: Van Snyder
+Subject: NAMELIST inside BLOCK
+Date: 2021-March-30
+Reference: 06-376r1, 21-007
+
+Discussion
+----------
+
+A useful strategy to avoid allocatable variables is to calculate (or
+read) size(s) or length(s) of variable(s), and then declare the
+variable(s) in a BLOCK construct as automatic variables. E.g.,
+
+  read ( *, * ) M, N
+  block
+    character(m) :: C
+    real :: A(4*n,4*n), B(n)
+    ....
+
+If one wants to read (or write) the variables using NAMELIST, the
+NAMELIST declaration cannot be outwith the block, because the variables
+declared within the block do not exist outwith the block, and it cannot
+be within the block because that's prohibited.
+
+If one wants to preserve the utility of automatic variables, the
+alternative is to put the NAMELIST statement and the READ (or WRITE)
+statement within an internal subroutine.
+
+The variables must be passed to the internal subroutine as arguments,
+because the internal subroutine cannot be defined within the BLOCK
+construct, and therefore the internal subroutine cannot access them by
+host association.
+
+Paper 06-376r1 points out that the existing description of the NAMELIST
+statement specifies that if a <namelist-group-name> therein is the same
+as the <namelist-group-name> in another NAMELIST statement in the same
+scoping unit, the <namelist-group-object-list> extends that namelist
+group, and argues that this could be viewed as either weird or
+confusing.
+
+Proposal
+--------
+
+Allow a NAMELIST statement within a BLOCK construct. Specify that it
+declares construct entities identified by its <namelist-group-name>s.
+Because they are construct entities, they do not extend namelist groups
+that are declared outwith the BLOCK; they are different entities,
+exactly the same as would be the case for a NAMELIST statement that
+appears within an internal subroutine.
+
+This new definition of the effect of a NAMELIST statement does not
+conflict with existing practice because NAMELIST statements are
+presently prohibited within BLOCK constructs.
+
+Edits (to guage the scope)
+--------------------------
+
+[Introduction: Input/Output or Data declaration?] Add a sentence:
+
+"NAMELIST statements within BLOCK constructs declare namelist groups
+that are construct entities."
+
+[122:14-16 8.9p3 NAMELIST statement] Replace the paragraph:
+
+"Any <namelist-group-name> may occur more than once in the NAMELIST
+statements in a scoping unit. If the <namelist-group-name> identifies
+another accessible namelist group that is an entity of the same scoping
+unit, the <namelist-group-object-list> following each successive
+appearance of the same <namelist-group-name> is treated as a
+continuation of the list for that namelist group.
+
+  NOTE 0.5
+    A NAMELIST statement within a BLOCK construct declares a namelist
+    group that is a construct entity.
+"
+
+[182:11 11.1.4 BLOCK construct C1107] Remove "NAMELIST," from C1107.
+
+[182:21 11.1.4p2+ BLOCK construct] Append a sentence:
+
+"Each <namelist-group-name> in a NAMELIST statement within a BLOCK
+construct declares a namelist group, identified by that
+<namelist-group-name>, that is a construct entity of that BLOCK
+construct."
+
+{No change is needed in 19.4p3.}
+
+Alternative Edits
+-----------------
+
+[182:11 11.1.4 BLOCK construct C1107] Remove "NAMELIST," from C1107.
+
+[182:12+ 11.1.4 BLOCK construct C1107+] Insert a constraint:
+
+"C1107a A <namelist-group-name> in a NAMELIST statement that appears within a
+        BLOCK construct shall not be the same as a <namelist-group-name> from
+        the containing scope."

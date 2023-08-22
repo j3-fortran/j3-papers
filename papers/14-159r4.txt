@@ -1,0 +1,235 @@
+To: J3                                                     J3/14-159r4
+From: Dan Nagle
+Subject: More reduce() (and co_reduce())
+Date: 2014 June 25
+
+Reference: 14-007r1, N2007, N1975, 13-392r2
+
+This paper attempts to improve the specification
+of the REDUCE work item.  If this paper passes, similar modifications
+may be made to CO_REDUCE.
+
+The N1975 specification follows:
+
+*** begin 13-329r2 quote
+Add an intrinsic function that reduces an array by a user-defined
+operation.
+
+Similarly to the other reduction intrinsic functions,
+(a) reduction of a single dimension shall be provided, and
+(b) use of a logical mask array shall be supported.
+
+The array to be reduced may be of any intrinsic or derived type.  The
+result for reduction of a single element shall be that element.  The
+result for reduction of zero elements shall be specifiable, and if not
+specified this result shall be processor dependent.
+
+The user-defined operation should be mathematically associative but need
+not be computationally associative.  In order to facilitate reduction of
+arrays of such things as quaternions and matrices, commutativity will not
+be required; in this, REDUCE will be different from CO_REDUCE.  When more
+than two elements are being reduced, the operation may be associatively
+applied to elements and intermediate results in any order that does not
+commute (swap) operands.
+
+For users who require evaluation in strict array element order, we could
+add an ORDERED=.TRUE. argument with that effect; to be most effective the
+actual argument should be required to be constant.  However, we do not
+think that this case warrants the extra complication (and therefore it is
+not part of the specifications).
+*** end 13-329r2 quote
+
+This specification does not state that the operations must be applied
+in order, only that operands may not be swapped.  This requirement does
+not appear in the normative text.  Indeed, the mapping from operands
+to function arguments is not described in the text.
+
+Straw votes Wednesday requested that no default value be provided
+in the case where a zero-sized array is the actual argument.  However,
+in that case if IDENTITY is not present, it is an error.
+
+An attempt is made here to address these points.
+
+Specification
+-------------
+
+As above, but with the following changes
+
+Specify that it is an error when the array is
+zero-sized and IDENTITY is absent.
+
+Also add a ORDERED optional argument to specify that the operation
+will be applied to the elements of the sequence in order.
+The requirement for commutativity is removed when ORDERED is
+absent or present with the value FALSE.
+
+The discussion of associativity is moved to a Note, since the use
+of non-associative operation functions may result in unforeseen
+consequences.  These consequences may be explained in a Note.
+
+Syntax
+------
+
+Add an ORDERED optional argument to REDUCE to specify that
+the reduction is to preserve the order of the operands.
+
+Edits
+-----
+
+To specify how reduction operations work add a new sub-clause
+to Clause 13, perhaps after 13.2 [320:30+] or after 13.4 [322:16+]
+and Note 13.5.
+
+{edits against 14-007r1}
+
+{add a new section after 13.2.4 - the location is arguable}
+
+[318:30+] add a section:  {this location sets x=2+}
+
+"13.x Reduction Operations
+
+13.x.1 User-defined Reduction Operands
+
+A reduction operation applies a binary operation to all elements
+of a sequence to produce a single result.  The elements of this
+sequence are operands and the sequence is the operand sequence.
+All elements of the sequence shall have the same type
+and type parameters.
+
+13.x.2 Default Values of User-defined Reduction Operations
+
+The value of the reduction in the case where the operand sequence has
+zero elements may be specified as an optional default value via the
+IDENTITY argument, or if none is specified it is the default
+initialization value of the type and kind of the operands, if any.
+If there is no default initialization for the type and kind
+of the operands, the IDENTITY argument shall be present when
+the ARRAY actual argument is a zero-sized array.
+
+13.x.3 User-defined Reduction Operators
+
+A reduction operation is specified by a function.  It is a pure function
+with two arguments of the same type and type parameters
+as the elements of the operand sequence and returning a result
+of the same type and type parameters.
+
+13.x.4 Types of User-defined Reduction Operations
+
+A reduction may be ordered or unordered.
+
+13.x.4.1 Unordered User-defined Reductions
+
+The operand sequence is considered to be unordered.  The processor
+selects two distinct operands of the operand sequence, associates one
+chosen operand with the first argument of the operation function
+and associates the second chosen operand with the second argument
+of the operation function.  The function is referenced and these operands
+are removed from the operand sequence.  The result of the function
+reference is returned to the operand sequence as a new operand.
+The number of operands in the operand sequence has thus been reduced
+by one.  When the operand sequence has only one operand, its value is
+the result of the reduction.
+
+13.x.4.2 Ordered User-defined Reductions
+
+The operand sequence is considered to be ordered.  In the case of REDUCE,
+the order is the array element order.  In the case of CO_REDUCE,
+the order is the image index order.  Each element is associated
+with a unique integer index value in the range 1 through N, where N is
+the number of operands, in order.  The processor selects two adjacent
+operands, with adjacent index values, from the operand sequence.
+The chosen operand with the lower index value
+is associated with the first argument of the operation function,
+and the chosen operand with the higher index value is associated
+with the second argument of the operation function.  The function is
+referenced and these chosen operands are removed from the operand
+sequence and the sequence is compressed.  The function result is returned
+to the operand sequence with an index value of either of the arguments.
+The number of operands in the operand sequence has thus been reduced
+by one.  When there is only one operand remaining, its value is the result
+of the reduction.
+
+Note 13.<some number>
+
+An ordered reduction preserves the order of it operands,
+and so is useful when the operation is not commutative.
+An example of a useful non-commutative operation is a matrix
+multiplication.
+
+Note 13.<some number>+1
+
+Some useful operations are mathematically associative
+but not computationally associative.  Some useful operations are
+computationally associative but not mathematically associative.
+Some useful operations are neither mathematically associative nor
+computationally associative.  The operation of a reduction
+need not be associative.  Therefore, the applications
+programmer is cautioned that results may not be reproducible
+unless care is taken when defining the function that provides
+the operation.  Non-associative operations are allowed because
+some are useful, at the expense of allowing possibly non-reproducible
+computations.  Different runs may produce different values
+if the chosen operation is not associative."
+
+{update the reduce entry in Table 13.1}
+
+[324:(about half way down the page)]
+replace the REDUCE arguments with
+"(ARRAY, OPERATION, DIM [, MASK, IDENTITY, ORDERED])" or
+(ARRAY, OPERATION [, MASK, IDENTITY, ORDERED])"
+
+{update the entries for reduce arguments in 13.7.140}
+
+[383:34] replace "IDENTITY" by "IDENTITY, ORDERED" twice
+
+[383:38] after "of any type." add a sentence
+"The operand sequence consists of the elements of the array,
+taken in array element order."
+
+[384:1-4] replace the current OPERATION specification with
+"OPERATION shall be a function meeting the requirements
+           of 13.x.4 Reduction Operators"
+
+{describe the ORDERED argument}
+
+[384:7+] add
+
+ORDERED (optional) shall be a scalar logical constant.  If present
+                   with the value true, the reduction is specified
+                   to be an ordered reduction.  Otherwise,
+                   the reduction is unordered.
+
+{update case-i}
+
+[384:12-17] replace the current text with
+"Case (i): The result of REDUCE( ARRAY, OPERATION [, IDENTITY =
+           IDENTITY, ORDERED = ORDERED] is the result
+           of a reduction operation where the operand sequence
+           consists of the elements of the array and the operation is
+           specified by the OPERATION function.  If ORDERED is
+           present with the value true, it is an ordered reduction
+           (13.x.4.2).  Otherwise, it is an unordered reduction
+           (13.x.4.1).  If present, IDENTITY provides the default value
+           when there are no elements in the operand sequence as
+           specified by (13.x.2)."
+
+{update case-ii}
+
+[384:18] replace "[, IDENTITY = IDENTITY]" with
+"[, IDENTITY = IDENTITY, ORDERED = ORDERED]"
+
+[384:19] replace "initial sequence is" with
+"operand sequence consists of"
+
+{update case-iii}
+
+[384:21-25] replace "IDENTITY = IDENTITY" with
+"IDENTITY = IDENTITY, ORDERED = ORDERED" four times
+
+{remark upon the processor dependencies introduced by all this}
+
+[483:10+] add a bullet item in the list:
+
+"the order operands are selected from the operand sequence
+and are associated with arguments of the operation function
+when computing an unordered reduction"

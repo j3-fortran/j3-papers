@@ -1,0 +1,498 @@
+
+                                                    J3/05-150
+
+To:      J3
+From:    Bill Long
+Subject: TYPELESS feature for f03++.
+Date:    24-Jan-2005
+References: J3/03-278r1, J3/04-244
+
+
+
+1) Number: (TBD)
+
+2) Title: TYPELESS objects in Fortran
+
+3) Submitted By: J3
+
+4) Status: For consideration
+
+5) Basic Functionality:
+
+Objects declared as TYPELESS have kind and rank attributes, but are
+treated as only a sequence of bits, without the higher abstractions
+associated with the traditional Fortran intrinsic types. A method for
+declaring objects as TYPELESS is provided as well as rules on how such
+objects interact with existing Fortran objects. Associated intrinsic
+procedures are also provided.
+
+6) Rationale:
+
+Fortran currently lacks support for variables that represent a
+sequence of bits independent of the interpretations imposed by the
+traditional numeric, logical, and character data types. Various
+features have been added to Fortran to facilitate handling sequences
+of bits by overloading the INTEGER data type, and through vendor
+extensions. This has lead to limitations in the usefulness of these
+features as well as awkward wording in the Fortran standard text.
+Adding an new intrinsic type specifier, TYPELESS, would simplify and
+enhance the use of Fortran for certain types of non-numeric problems,
+such as pattern matching, searching and sorting, and low level bit
+manipulation, as well as allowing for more clarity in the text of the
+standard. TYPELESS also provides a way to standardize several common
+Fortran language extensions, and provides a rational method for
+dealing with BOZ constants.
+
+
+7) Estimated Impact:
+
+Several edits to the standard would be required to incorporate this
+feature, though each would be straightforward. Implementation of the
+feature in compilers should be technically simple. It is rated as a 7
+on the JKR scale.
+
+8) Detailed Specification:
+
+Discussion of typeless objects requires a concept of the size of an
+object in number of bits. The term bit_size in lower case letters is
+used in this proposal. The name BIT_SIZE in upper case letters refers
+to the intrinsic function.
+
+Declarations and constants 
+--------------------------
+
+The typeless type has values that are contiguous, ordered sequences of
+bits. The bit_size is the number of bits in the sequence. A processor
+shall provide typeless sizes with bit_size values corresponding to the
+storage sizes of each of the INTEGER kinds provided, as well as the
+storage sizes of twice and four times the size of the default INTEGER
+storage size. Each provided bit_size is characterized by a value for a
+type parameter called the kind type parameter. The kind type parameter
+is of type default integer.  The kind type parameter of a typeless
+object is returned by the intrinsic inquiry function KIND. The number
+of bits of a typeless object is returned by the intrinsic function
+BIT_SIZE. The intrinsic function SELECTED_TYPELESS_KIND returns a kind
+value based on the specified number of bits.
+
+The type specifier for the typeless type uses the keyword TYPELESS.
+
+If the kind parameter is not specified, the default kind value is
+KIND(TYPELESS(0)), and the type specified is default typeless.
+
+Any typeless value may be represented as a <boz-literal-constant>.
+
+(The f03 description of BOZ constants, [37:1-18], would be moved
+to the typeless subsection of 4.4, and constraint C410 deleted.)
+
+The digits of octal constants represent triples of bits, and the
+digits of hexadecimal constants represent quartets of bits, according
+to their numerical representations as binary integers, with leading
+zero bits where needed. (Alternatively, a table of the translations
+could be provided in the standard.)
+
+A trailing <kind-param> is allowed for a BOZ constant.
+
+A nonpointer scalar object of type default typeless occupies a single
+numeric storage unit. The category of numeric sequence types is
+expanded to include default typeless.
+
+Assignment
+----------
+
+A typeless intrinsic assignment statement is an intrinsic assignment
+statement for which the variable or the expression is typeless.
+Intrinsic assignment of a typeless expression to a typeless, integer,
+real, or complex variable of the same bit_size moves the bits from the
+expression value to the variable without data conversions. Intrinsic
+assignment of a typeless, integer, real, or complex expression to a
+typeless variable of the same bit_size transfers the bits from the
+expression value to the variable without data conversion. If the
+expression value has a smaller bit_size than that of the variable, the
+expression value is padded with bits of zero on the left so that the
+bit_sizes are equal. If the expression value has a larger bit_size
+than that of the variable, the expression value is truncated on the
+left to the bit_size of the variable.
+
+The typeless intrinsic assignment rules apply to data initializations
+in declaration statements, DATA statements, and default component
+initializations.
+
+Note: Typeless assignment is not always the same as the result of the
+TRANSFER intrinsic. The TRANSFER operation is based on the memory
+image of the data, while typeless assignment is based on the data
+values.  For example, if S is an 32-bit integer array of size 8, and R
+is a 64-bit typeless array of size 8, R = TRANSFER(S,R) will result in
+the values of S packed into the first 4 elements of R.  The way in
+which this packing is done will be different on little endian and big
+endian machines.  The typeless assignment, R = S, will result in all 8
+elements of R being defined, where R(i) contains the bits from S(i) in
+the lower 32 bits, and 0 in the upper 32 bits.  Typeless assignment
+does not depend on which endian the processors memory system uses.
+
+
+Intrinsic operations 
+--------------------
+
+The .and., .or., .xor., and .not. operators are defined for typeless
+operands. .xor. is the exclusive or operation.  The computations are
+bitwise operations. The result of the expression evaluation is
+typeless.  If the operands are of unequal bit_size, the smaller is
+padded on the left with zero bits before the operation is performed.
+
+Optional feature: Extend the use of .and., .or., .xor., and .not. to
+                  integer, real, and complex operands, with an implied 
+                  cast of those operands to typeless before the 
+                  operation is performed.
+
+The .eq., .ne., .lt., .le., .gt., .ge., ==, /=, <, <=, >, and >=
+operators are defined for typeless operands.  If the operands are of
+unequal KIND, the smaller is padded on the left with zero bits before
+the operation is performed. Operands A and B are equal if their
+corresponding bits are the same, and are unequal otherwise. If A and B
+are unequal, and the leftmost unequal corresponding bit of A is 1 and
+of B is 0, then A > B, otherwise A < B.  
+
+Optional feature: Extend the above relational operators to the case
+                  where one operand is typeless and the other is real,
+                  integer, or complex, with an implied case of the
+                  operand that is not typeless to typeless before the
+                  operation is performed.
+
+The numeric intrinsic operations are not defined for typeless
+objects. To use a typeless object as an operand of a numeric intrinsic
+operator, it must first be cast to an appropriate type with a type
+conversion intrinsic function. The type conversion functions are
+described later.
+
+
+Formatted Input and Output 
+--------------------------
+
+The format specifiers for typeless objects are I, B, O, and Z. For
+output, if the .d part of the Bw.d, Ow.d, or Zw.d specifier is
+omitted, the value assumed for d is >= 1 and large enough to represent
+the bits in the io list item excluding leading 0 bits.  For the I
+format specifier, the object value is interpreted as an unsigned base
+10 integer.  For input using the B, O, and Z edit descriptors, the
+character string shall consist of binary, octal, or hexadecimal digits
+in the respective input field. For input using the I format, the input
+character string shall consist of an unsigned decimal integer.
+
+For list directed output, the format used is Zw.d where d is (bit_size
+of the io list item + 3)/4 and w = d+1. For list directed input,
+hexadecimal constants are valid for typeless io list items. The number
+of bits required to represent the input value shall be less than or
+equal to the bit_size of the corresponding io list item. If it is
+less, the io list item is padded with zero bits on the left.
+
+
+Procedure actual and dummy arguments and pointers
+-------------------------------------------------
+
+Two objects have "compatible kind parameters" if they have the same
+bit_sizes.
+
+TYPELESS objects can be targets of pointers with compatible kind
+parameters and TYPELESS pointers can point to targets with compatible
+kind parameters.
+
+TYPELESS dummy arguments of non-intrinsic procedures are compatible with
+actual arguments having compatible kind parameters.
+
+Note: This feature can significantly simplify the interfaces for
+procedures that move data in memory, but do not perform any operations
+on the data. Classic examples include dusty-deck codes containing MOVE
+or COPY routines, as well as some MPI library routines written in C with
+dummy arguments of type void.
+
+
+Modification of existing language intrinsics:
+---------------------------------------------
+
+Section 13.3 of the standard, describing Bit Models, is modified to
+apply to typeless quantities. The specifications for several intrinsic
+procedures are modified to allow typeless actual arguments. Several of
+these have result values described in terms of the bit model in
+section 13.3. Minimal changes would be needed in those cases.
+
+The I argument of ACHAR shall be of type integer or typeless. If I is
+typeless, it is interpreted as an unsigned integer value.
+
+The I argument of BIT_SIZE shall be of type integer or typeless. 
+
+The I argument of CHAR shall be of type integer or typeless. If I is
+typeless, it is interpreted as an unsigned integer value.
+
+The X and Y arguments of CMPLX shall be of type integer, real,
+complex, or typeless. Note that typeless is a generalization and
+replacement for the current "or a <boz-literal-constant>".
+
+The A arguments of DBLE shall be of type integer, real, complex, or
+typeless. Note that typeless is a generalization and replacement for
+the current "or a <boz-literal-constant>".
+
+The X argument of HUGE shall be of type integer, real, or typeless.
+If X is typeless, the result value has all bits set to 1.
+
+The I and J arguments of IAND, IEOR, and IOR shall be of type integer
+or typeless, and have the same bit_size. The result is of type integer
+if one of the arguments is integer, and typeless otherwise.
+
+The I argument of BTEST, IBCLR, IBITS, and IBSET shall be of type
+integer or typeless.
+
+The A argument of INT shall be of type integer, real, complex, or
+typeless. Note that typeless is a generalization and replacement for
+the current "or a <boz-literal-constant>". If A is typeless, the
+result value is that of an intrinsic assignment of A to an integer
+variable of the specified KIND.
+
+The I arguments of ISHFT and ISHFTC shall be of type integer or
+typeless.
+
+The X argument of KIND is specified as "any intrinsic type", so no
+change is needed.
+
+The A* arguments of MAX and MIN shall be of type integer, real,
+character, or typeless. If the arguments are typeless, the meaning of
+"largest" in the result value description is as specified by the >
+operator for typeless values.
+
+The ARRAY arguments of MAXLOC, MINLOC, MAXVAL, and MINVAL shall be of
+type integer, real, character, or typeless.
+
+The FROM and TO arguments of MVBITS shall be of type integer or
+typeless.
+
+The I argument of NOT shall be of type integer or typeless.
+
+The A argument of REAL shall be of type integer, real, complex, or
+typeless. Note that typeless is a generalization and replacement for
+the current "or a <boz-literal-constant>". If A is typeless, the
+result value is that of an intrinsic assignment of A to a real
+variable of the specified KIND.
+
+Possible modifications to other intrinsic procedures:
+-----------------------------------------------------
+
+Several other intrinsic functions could be reasonably extended to
+allow typeless arguments. 
+
+Changes to PRODUCT, SUM, DOT_PRODUCT, and MATMUL should be included or
+omitted from the proposal as a group.
+
+PRODUCT: The result value is an .and. reduction of the specified
+elements of the typeless ARRAY argument.
+
+SUM: The result value is an .xor. reduction of the specified elements
+of the typeless ARRAY argument.
+
+DOT_PRODUCT: The result value is SUM(VECTOR_A .and. VECTOR_B) for
+typeless arguments VECTOR_A and VECTOR_B.
+
+MATMUL: The value of each result element is SUM(MATRIX_A( )
+.and. MATRIX_B( )) where the argument subscripts are as specified for
+the other argument types, and MATRIX_A and MATRIX_B are typeless. Note
+that this is not the same as bit-matrix-multiply operation.  That
+could be added as a separate pair of intrinsics (for the .or. and
+.xor. variants), but it is not currently part of the typeless
+proposal.
+
+The RANDOM_NUMBER subroutine could allow a typeless HARVEST argument
+which would return with a value consisting of a random pattern of
+bits.
+
+
+New intrinsic functions:
+------------------------
+
+SELECTED_TYPELESS_KIND(Z)  : Result: default scalar integer 
+                             Z  : scalar integer
+
+Z is a number of bits. The returned KIND value is that of the smallest
+typeless kind that can contain Z bits. If no kind is provided for the
+requested value of Z, the result is -1.
+
+Note: The default kind is SELECTED_TYPELESS_KIND(BIT_SIZE(0))
+
+
+TYPELESS(A[,KIND]) : Result: typeless 
+                   A     : integer, real, complex, or typeless 
+                   KIND  : integer initialization expression
+
+The result is a typeless value with the same bit pattern as the
+argument A, possible padded with zero bits on the left, or truncated
+on the left if the bit_sizes of A and the result are not equal.
+TYPELESS is an elemental function, and it cannot be passed as an
+actual argument.  If KIND is present, the kind type parameter of the
+result is that specified by the value of KIND; otherwise the kind type
+parameter of the result is that of default typeless.
+
+
+
+POPCNT(I)   : Result: integer, in range [0..bit_size(I)] 
+              I     : typeless or integer
+
+The result is the number of bits set to 1 in the argument. This
+function is adopted from HPF and extended to allow typeless
+arguments. POPCNT is an elemental function, and it cannot be passed as
+an actual argument.  If I is integer, the result KIND is the same as
+that of I. If I is typeless, the result KIND is that of an integer
+with the same bit_size as the argument.
+
+POPPAR(I)   : Result: integer, 0 or 1 
+              I     : typeless or integer
+
+The result is 0 if the number of bits set to 1 in the argument is
+even, and 1 if the number of bits set to 1 in the argument is odd.
+This function is adopted from HPF and extended to allow typeless
+arguments. POPPAR is an elemental function, and it cannot be passed as
+an actual argument.  If I is integer, the result KIND is the same as
+that of I. If I is typeless, the result KIND is that of an integer
+with the same bit_size as the argument.
+
+LEADZ(I)    : Result: integer, in range [0..bit_size(I)] 
+              I     : typeless or integer
+              
+The result is the number of leading 0 bits in the argument.  This
+function is adopted from HPF and extended to allow typeless
+arguments. LEADZ is an elemental function, and it cannot be passed as
+an actual argument.  If I is integer, the result KIND is the same as
+that of I. If I is typeless, the result KIND is that of an integer
+with the same bit_size as the argument.
+
+TRAILZ(I)   : Result: integer, in range [0..bit_size(I)]
+              I     : typeless or integer
+
+The result is the number of trailing 0 bits in the argument.  TRAILZ
+is an elemental function, and it cannot be passed as an actual
+argument.  If I is integer, the result KIND is the same as that of
+I. If I is typeless, the result KIND is that of an integer with the
+same bit_size as the argument.
+
+
+SHIFTL(I,SHIFT) : Result: typeless 
+                  I     : typeless or integer 
+                  SHIFT : integer, >= 0
+
+The result is the value I shifted left by SHIFT bits, with 0 bits
+filled on the right. If SHIFT > BIT_SIZE(I), the result is
+zero. SHIFTL is an elemental function, and it cannot be passed as an
+actual argument. If I is typeless, the result KIND is the same as that
+of I. If I is integer, the result KIND is that of a typeless value
+with the same bit_size as the argument.
+
+
+SHIFTR(I,SHIFT) : Result: typeless 
+                  I     : typeless or integer 
+                  SHIFT : integer, >= 0
+
+The result is the value I shifted right by SHIFT bits, with 0 bits
+filled on the left. If SHIFT > BIT_SIZE(I), the result is
+zero. SHIFTR is an elemental function, and it cannot be passed as an
+actual argument. If I is typeless, the result KIND is the same as that
+of I. If I is integer, the result KIND is that of a typeless value
+with the same bit_size as the argument.
+
+
+SHIFTA(I,SHIFT) : Result: typeless 
+                  I     : typeless or integer 
+                  SHIFT : integer, >= 0
+
+The result is the value I shifted right by SHIFT bits, with copies of
+the leftmost bit filled on the left. If SHIFT > BIT_SIZE(I), the
+result is zero if the leftmost bit of I is 0, or HUGE(TYPELESS(I)) if
+the leftmost bit of I is 1. SHIFTA is an elemental function, and it
+cannot be passed as an actual argument. If I is typeless, the result
+KIND is the same as that of I. If I is integer, the result KIND is
+that of a typeless value with the same bit_size as the argument.
+
+
+DSHIFTL(I,J,SHIFT) : Result: typeless 
+                     I     : typeless or integer 
+                     J     : same type and kind as I 
+                     SHIFT : integer, 0 <= SHIFT <= BIT_SIZE(I)
+
+The result is the value of I shifted left by SHIFT bits, with the
+rightmost SHIFT bits of I replaced by the leftmost SHIFT bits of
+J. This is equivalent to concatenating I and J, shifting the combined
+value left SHIFT bits, and keeping the left half.  If I and J are the
+same, the result is the same as a left circular shift. DSHIFTL is an
+elemental function, and it cannot be passed as an actual argument. If
+I is typeless, the result KIND is the same as that of I.  If I is
+integer, the result KIND is that of a typeless value with the same
+bit_size as the argument.
+
+DSHIFTR(I,J,SHIFT) : Result: typeless 
+                     I     : typeless or integer 
+                     J     : same type and kind as I 
+                     SHIFT : integer, 0 <= SHIFT <= BIT_SIZE(I)
+
+The result is the value of J shifted right by SHIFT bits, and the
+leftmost SHIFT bits of J replaced by the rightmost SHIFT bits of
+I. This is equivalent to concatenating I and J, shifting the combined
+value right SHIFT bits, and keeping the right half.  If I and J are
+the same, the result is the same as a right circular shift. DSHIFTR is
+an elemental function, and it cannot be passed as an actual
+argument. If I is typeless, the result KIND is the same as that of I.
+If I is integer, the result KIND is that of a typeless value with the
+same bit_size as the argument.
+
+
+MASKL(I[,KIND])  : Result: typeless 
+                   I     : integer, in range [0..bit_size(result)]
+                   KIND  : integer initialization expression
+
+
+The result is a typeless value with the leftmost I bits set to 1 and
+the remaining bits set to 0. The value of I shall be >= 0 and <= the
+bit_size of the result.  MASKL is an elemental function, and it cannot
+be passed as an actual argument.  If KIND is present, the kind type
+parameter of the result is that specified by the value of KIND;
+otherwise the kind type parameter of the result is that of default
+typeless.
+
+
+MASKR(I[,KIND] ) : Result: typeless 
+                   I     : integer, in range [0..bit_size(result)]
+                   KIND  : integer initialization expression
+
+
+The result is a typeless value with the rightmost I bits set to 1 and
+the remaining bits set to 0. The value of I shall be >= 0 and <= the
+bit_size of the result.  MASKL is an elemental function, and it cannot
+be passed as an actual argument.  If KIND is present, the kind type
+parameter of the result is that specified by the value of KIND;
+otherwise the kind type parameter of the result is that of default
+typeless.
+
+
+MERGE_BITS(I,J,MASK) : Result: typeless 
+                       I     : typeless 
+                       J     : typeless, same kind as I 
+                       MASK  : typeless, same kind as I 
+                       
+The result of a typeless value with bits from I if the corresponding
+bits in MASK are 1 and the bits from J if the corresponding bits in
+MASK are 0.  Equivalent to (I .and. MASK) .or. (J .and. (.not. MASK))
+MERGE_BITS is an elemental function, and it cannot be passed as an
+actual argument. The kind type parameter of the result is the same as
+the kind type parameter of I.
+
+
+Interoperation with C:
+----------------------
+
+Typeless objects interoperate with C objects of the same bit_size,
+including C unsigned integer objects. If a typeless object is the
+actual argument corresponding to an unsigned integer dummy argument of
+a C function, or the unsigned integer result of a C function is
+assigned to a typeless variable, the I format can be used to output
+the correct form of the C value.
+
+
+9) History:    
+
+   J3/03-278r1 (initial proposal, meeting 166)
+   J3/04-244   (updated proposal, meeting 167, spreadsheet version at 169)
+

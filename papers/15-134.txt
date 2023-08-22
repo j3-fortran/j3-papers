@@ -1,0 +1,149 @@
+                                                             J3/15-134
+To: J3
+From: Malcolm Cohen
+Subject: Submodules and recursive USE
+Date: 2015 February 17
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0128
+TITLE: Is recursive USE within a submodule permitted?
+KEYWORDS: SUBMODULE, USE
+DEFECT TYPE: Clarification
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+  Module m1
+    Real x
+  End Module
+  Submodule(m1) subm1
+    Use m1
+  End Submodule
+
+Q1. The module m1 is referenced from within one of its own
+    submodules.  Is this standard-conforming?
+
+Note that the "submodule TR", Technical Report 19767 contains, an edit
+with the normative requirement:
+  "A submodule shall not reference its ancestor module by use
+   association, either directly or indirectly."
+along with a note which says
+  "It is possible for submodules with different ancestor modules to
+   access each others' ancestor modules by use association."
+It also contains an edit to insert the direct reference prohibition
+as a constraint.
+
+However, none of this text appears in ISO/IEC 1539-1:2010.
+
+The Introduction simply comments that submodules are available, but
+not that they have been extended beyond the Technical Report that
+created them.
+
+Also, consider
+
+  Module m2
+    Real,Private :: a
+    Real,Protected :: b
+    ...
+  End Module
+  Submodule(m2) subm2
+  Contains
+    Subroutine s
+      Use m2
+      Implicit None
+      a = 3
+      b = 4
+    End Subroutine
+  End Submodule
+
+In submodule SUBM2, procedure S references M2 by use association.
+Use association does not make "A" accessible.
+
+Q2. Is "A" still accessible by host association?
+
+Also, procedure S attempts to assign a value to B, which is accessed
+by use association, but has the PROTECTED attribute.  Normally, this
+attribute prevents assignment to variables accessed by use
+association.
+
+Q3. Is the assignment to "B" standard-conforming?
+
+DISCUSSION:
+
+The requirement appears in the early drafts of Fortran 2008, up to
+08-007r1, then it was modified by paper 08-154r1 creating a UTI
+(because the modification was broken), and finally the requirement was
+completely removed by paper 09-141.
+
+ANSWER:
+
+A1. Yes, the example is conforming.  An edit is supplied to add this
+    extension to the Introduction, and to add normative text to clause
+    11 to make this completely unambiguous.
+
+A2. Yes, A is still accessible by host association.
+    Subclause 16.5.1.4 paragraph 2 states
+      "If an entity that is accessed by use association has the same
+       nongeneric name as a host entity, the host entity is
+       inaccessible by that name."
+    This does not apply since A is not being accessed by use
+    association (because it is PRIVATE), therefore A can still be
+    accessed by host association.
+{J3 note: no edit necessary here.}
+
+ALTERNATIVE ONE FOR A3:
+A3. No, the assignment to B is not conforming as it violates
+    constraint C551 which states
+      "A nonpointer object that has the PROTECTED attribute and is
+       accessed by use association shall not appear in a variable
+       definition context..."
+    An edit is provided to add an explanation of this.
+
+ALTERNATIVE TWO FOR A3:
+A3. The assignment to B was intended to be conforming.  An edit to
+    constraints C551 and C552 is provided to remove the unintended
+    prohibition.
+
+EDITS:
+
+[xv] Introduction, p2, first bullet,
+  After "Submodules provide ... for modules."
+  Insert new sentence
+    "A submodule can reference its ancestor module by use
+     association."
+
+[100:6,9] 5.3.15 PROTECTED attribute, C551 and C552,
+  After "is accessed by use association"
+  Insert ", other than by a descendant of the module that defines the
+           entity,",
+  in each constraint.
+{only for ALTERNATIVE TWO FOR A3.}
+
+[272:23] 11.2.2 The USE statement and use association, p1,
+  After
+    "A module shall not reference itself, either directly or
+     indirectly."
+  Append to paragraph
+    "A submodule is permitted to reference its ancestor module by
+     use association.  "
+
+[273:2+4] Same subclause, NOTE 11.7, append
+  "If a submodule accesses a PROTECTED entity from its ancestor
+   module by use association, use of that entity is constrained by
+   the PROTECTED attribute, e.g. if it is not a pointer it cannot
+   appear in a variable definition context.".
+{only for ALTERNATIVE ONE FOR A3.}
+[273:2+4] Same subclause, NOTE 11.7, append
+  "If a submodule accesses a PROTECTED entity from its ancestor
+   module by use association, use of that entity is not constrained by
+   the PROTECTED attribute, e.g. if it is a variable it can appear in
+   a variable definition context.".
+{only for ALTERNATIVE TWO for A3.}
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 15-nnn   m206 F08/0128  Submitted
+
+----------------------------------------------------------------------

@@ -1,0 +1,212 @@
+To:      J3
+From:    Aleksandar Donev
+Subject: Pending interps for integration
+Date: 2007 April 25
+References: J3/06-006ar2
+
+The following is a selection of interps that have not yet been
+processed even though they are rather serious. I believe these
+ought to be processed and corrections be made to the Fortran
+2008 draft. My focus has been on Interop issues.
+
+_________________________
+NUMBER: F03/0073
+TITLE: C interop of dummy procedures
+
+It seems clear that the following procedure:
+
+use iso_c_binding
+subroutine my_sub(my_fun) bind(c, name="My_Proc")
+    interface
+       function my_fun(x) bind(c)
+          use iso_c_binding
+          integer(c_int) :: my_fun
+          real(c_double), value :: x
+       end function
+    end interface
+end subroutine
+
+is interoperable with the following protype:
+
+   void My_Sub(int (*my_fun)(double))
+
+or equivalently (according to the C standard)
+
+   void My_Sub(int my_fun(double))
+
+but this is somewhat hard to get from clause 15. I propose a new
+wording that separates dummy procedure arguments from data arguments.
+
+EDITS:
+
+[469:15+]
+In item (5) in the list in section 15.3.7, replace "any dummy argument
+without the VALUE attribute" with "any dummy argument that is not a
+procedure and does not have the VALUE attribute" and replace "pointer
+type" with "object pointer type".
+
+and add a new item (5+) after item (5) to the list:
+
+(5+) any dummy procedure argument corresponds to a formal parameter of
+the prototype that is of function pointer type, and the dummy procedure
+is interoperable with a function of the referenced type of the formal
+parameter;
+
+_________________________
+NUMBER: F03/0074
+TITLE: Type mismatch for C character arguments
+
+The following should be legal but is not according to some of the
+text in clause 12:
+
+interface
+   subroutine sub(string) bind(c)
+      character(c_char) :: string(*)
+   end subroutine
+end interface
+
+character(kind=c_char,len=10) :: string
+call sub(string)
+
+EDITS:
+
+[97:37], [312:4-8], [314:13]
+In para 2 of 5.3.7.4, para 4 of 12.5.2.4, para 13 of 12.5.2.5,
+Note 12.26
+replace "of type default character" with
+"of type default character, of type character with the C character kind
+(15.1),"
+
+Better yet, invent a term such as "atomic character type" and use
+it throughout.
+See also paras 1 and 2 of 12.5.2.12 at [318:19]
+
+_________________________
+NUMBER: F03/0075
+TITLE: C interop of derived types with array components
+
+According to the existing wording in the standard the following
+C struct:
+
+typedef struct
+{
+   float x[5];
+} array
+
+is interoperable with this Fortran type:
+
+type, bind(c) :: array
+   real(c_float) :: x(3)
+end type
+
+which is clearly wrong.
+
+EDITS:
+
+[467:7] Append to the end of C1505 a new sentence:
+
+"If the component is an array, the corresponding C component shall
+ be an array and the shapes of the two arrays shall be as prescribed
+ in 15.3.6."
+
+_________________________
+NUMBER: F03/0077
+TITLE: LBOUND of array structure component
+KEYWORDS: LBOUND, lower bounds, bounds, structure component, array
+          sections
+
+What is the expected result of this program:
+
+   PROGRAM
+      TYPE :: t
+         REAL :: x
+      END TYPE
+
+      TYPE(t) :: y(-5:5)
+
+      WRITE(*,*) LBOUND(y%x), LBOUND(y(3:5)%x)
+
+   END PROGRAM
+
+ANSWER:
+
+Option 1) The program prints "1 1"
+
+Option 2) The program prints "-5 1"
+
+Note: There are compilers on both side of the spectrum, though it seems
+the majority print "1 1". I believe the intended answer is "1 1".
+
+The definition of LBOUND at [389:32]
+uses the phrase "array structure component", which can be read as
+"structure component that is an array" (which y%x and y(3:5)%x are), or
+"array component of a structure" (which neither y%x and y(3:5)%x are).
+The first reading says that the answer is equal to the lower bound of
+y%x, but the standard does not actually specify what the lower
+bounds of
+array sections are (since they cannot be subscripted). The second
+reading says that the answer is "1 1", and I believe it is the intended
+one.
+
+EDITS:
+
+[389:32] Replace "array structure component" with
+"array component of a scalar of derived type"
+_________________________
+
+Failed letter ballot, but ought to be clarified
+
+NUMBER:  F03/0024
+TITLE: DEALLOCATE and array pointers
+
+[133:14] says that one can deallocate an array pointer if it
+points to the "whole of an object that was created by allocation".
+What exactly does "whole" mean in this rule?
+
+Specifically, are the following allowed:
+
+REAL, DIMENSION(:), POINTER :: a, b
+ALLOCATE(a(5:15))
+b=>a(5:15)
+DEALLOCATE(b) ! Example A
+
+b=>a(15:5:-1)
+DEALLOCATE(b) ! Example B
+
+ANSWER:
+
+I believe the answer is that a pointer X may be used to deallocate
+memory
+that was allocated via another pointer Y if and only ASSOCIATED(X,Y)
+would
+return .TRUE. assuming the pointer association status of Y was
+not changed
+since the time of allocation. If this is the intention, we should
+simply
+say this instead of the current confusing wording.
+
+Specifically, ASSOCIATED says:
+
+"If TARGET is present and is an array pointer, the result is true if
+and only if POINTER
+and TARGET are both associated, have the same shape, are neither of
+size zero nor arrays
+whose elements are zero-sized storage sequences, and occupy the same
+storage units in
+array element order."
+
+This would render example A above legal but B illegal.
+
+EDITS:
+
+[133:14] Replace the first sentence in the paragraph with:
+If a pointer X appears in a DEALLOCATE statement, its target shall
+be an object that was
+created by an ALLOCATE statement. The corresponding <allocate-object>
+in this ALLOCATE
+statement shall be a pointer Y, and assuming the current pointer
+association status
+of X was established immediately following the allocation of Y,
+ASSOCIATED(X,Y) shall evaluate to .TRUE.
+
+_________________________

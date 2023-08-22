@@ -1,0 +1,188 @@
+To: J3                                                     J3/13-352
+From:    Nick Maclaren
+Subject: Event ordering semantics
+Date: 2013 October 11
+
+
+
+Discussion
+----------
+
+This is not proposing a solution, but is attempting to explain why I
+regard the current wording on event synchronisation as inadequate.  I am
+uploading it as a paper in case anyone not on the coarray discussion
+list wants to see it.
+
+Let me start with two simple questions:
+
+Q.1:  Do we intent to permit a processor to implement EVENT POST by
+      (say) calling MPI_Ssend, thus causing that image to wait until
+      the matching EVENT WAIT is executed?
+
+While that may not be an optimised implementation, it is a reasonable
+one.  If we do not intend to allow it, then we need to say so,
+explicitly.
+
+Q.2:  Do we intend that the following program is conforming, and that
+      the EVENT_QUERY will eventually recognise the EVENT POST?
+
+    Image 1:  POST EVENT (q[2])
+
+    Image 2:  DO
+                  CALL EVENT_QUERY (q, n)
+                  IF (n > 0) EXIT
+              END DO
+
+If it does, EVENT_QUERY necessarily has to perform a non-local action
+with most implementations, in order to pick up incoming POST EVENTs.  In
+MPI terms, that would mean at least an Iprobe.
+
+
+The Main Issue
+--------------
+
+The current wording is as follows:
+
+    During the execution of the program, the count of an event
+    variable is changed by the execution of a sequence of EVENT POST
+    and EVENT WAIT statements. If the count of an event variable
+    increases through the execution of an EVENT POST statement on
+    image M and later in the sequence decreases through the execution
+    of an EVENT WAIT statement on image T, the segments preceding the
+    EVENT POST statement on image M precede the segments following the
+    EVENT WAIT statement on image T.
+
+This immediately raises the question of what does "later" mean?  This is
+very closely related to the atomic issues, but cannot be left
+unspecified (i.e. ambiguous), even temporarily.  Let us choose just
+three of the plethora of possible interpretations for consideration:
+
+    A) As specified explicitly in the standard by 2.3.5 Execution
+sequence and 8.5 Image execution control, and nothing else;
+
+    B) As in (A), but with the extra constraint that there can be
+no time-warps on a single datum;
+
+    C) Full 'causal consistency' in a sense that I am going to leave
+vague, but is best thought of as sequential consistency.
+
+
+Example 1
+---------
+
+    TYPE(EVENT_TYPE) :: q[*]
+    INTEGER :: x[*], n
+
+Image 1:
+    EVENT POST ( q[2] )    ! Action P
+    x[4] = 123    ! Potentially undefined
+    EVENT POST ( q[2] )    ! Action Q
+
+Image 2:
+    CALL EVENT_QUERY ( q, n)
+    IF ( n == 2 ) THEN
+        EVENT WAIT ( q )    ! Action R
+        x[4] = 456    ! Potentially undefined
+    ELSE
+        EVENT WAIT ( q )    ! Action S
+    END IF
+    EVENT WAIT ( q )
+    PRINT *, x[1]
+
+With interpretation (A), it is UNdefined, because the only constraint
+on action R is that it follows SOME post, which could be action P.
+
+With interpretations (B) and (C), it is defined but that implies
+synchronisation through the call of EVENT_QUERY (which conflicts with
+Note 7.1 and our intent).
+
+
+Example 2
+---------
+
+    TYPE(EVENT_TYPE) :: q[*]
+    INTEGER :: x[*], n
+
+Image 1:
+    EVENT POST ( q[2] )    ! Action P
+    x[4] = 123    ! Potentially undefined
+    EVENT POST ( q[3] )    ! Action Q
+
+Image 2:
+    CALL EVENT_QUERY ( q, n)
+    IF ( n == 2 ) THEN
+        EVENT WAIT ( q )    ! Action R
+        x[4] = 456    ! Potentially undefined
+    ELSE
+        EVENT WAIT ( q )    ! Action S
+    END IF
+    EVENT WAIT ( q )
+    PRINT *, x[1]
+
+Image 3:
+    CALL EVENT_QUERY ( q, n)
+    IF (n == 1) EVENT POST ( q[2] )    ! Action T
+
+Compare this with example 1.  The only difference is that action Q now
+has an effect on action R through another image.  We might want example
+1 to be defined, but I don't think that we want this one to be.  I know
+that image 2 will hang if action T is not performed, but please ignore
+that, as it is irrelevant to the main point.
+
+
+Example 3
+---------
+
+    LOGICAL(KIND=ATOMIC_LOGICAL_KIND) :: p[*] = .False.
+    TYPE(EVENT_TYPE) :: q[*]
+    INTEGER :: x[*]
+    LOGICAL :: y
+
+Image 1:
+    EVENT POST ( q[2] )    ! Action P
+    x[4] = 123    ! Potentially undefined
+    EVENT POST ( q[2] )    ! Action Q
+    CALL ATOMIC_DEFINE( p[3], .True. )    ! Action X
+
+Image 2:
+    CALL ATOMIC_REF( y, p[3] )    ! Action Y
+    IF ( y ) THEN
+        EVENT WAIT ( q )    ! Action R
+        x[4] = 456    ! Potentially undefined
+    ELSE
+        EVENT WAIT ( q )    ! Action S
+    END IF
+    PRINT *, x[1]
+
+NOTE: Because of 13.1 paragraph 3, a processor may specify that this
+example is defined.  I am considering the case where it has stated that
+how sequences of atomic actions in unordered segments interleave with
+each other is unspecified.
+
+With interpretation (A), this is UNdefined, because the only constraint
+on action R is that it follows SOME post, which could be action P.
+
+With interpretation (B), it is UNdefined, but not in a way that most
+users would expect.  It is easiest to see the problem using a graph of
+all of the links specified by 2.3.5, 8.5 and the TS 6.4:
+
+    Image 1            Image 2
+    Action P ->        Action X
+       |        \         |
+       |         \        V
+       V           --> Action R
+    Action Q ->           |
+       |        \         V
+       V          -->  Action S
+    Action Y
+
+It is easy to see that action X is in a segment that is unordered with
+respect to the one that action Y is in, so the standard specifies no
+ordering of actions X and Y (and, in the case I am considering, the
+processor doesn't, either).  So  action R may match action P, the
+two assignments to x[1] are undefined, and the program is undefined.
+
+With interpretation (C), it is defined but that implies synchronisation
+though atomic accesses in unordered segments (which conflicts with 13.1
+paragraph 3).
+

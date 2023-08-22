@@ -1,0 +1,108 @@
+                                                        J3/17-148
+To: J3
+From: Jon Steidel
+Subject: Unclear intent for TEAM behavior
+Date: 2017 April 10
+
+
+Discussion:
+11.1.5.2 p5 states
+
+  "All active images of the current team shall execute the same
+   CHANGE TEAM statement."
+
+It is unclear what behavior these words are trying to protect against.
+The synchronization rules that apply when a CHANGE TEAM statement is
+executed require all images of a (sub)team that will be the new
+current team inside the CHANGE TEAM construct arrive before any images
+can continue.
+
+I suspect these words are trying to prohibit something like the
+following:
+
+
+  USE,INTRINSIC   :: ISO_FORTRAN_ENV
+  TYPE(TEAM_TYPE) :: team_a, team_b
+
+  FORM TEAM (<expr_1>, team_a)
+  FORM TEAM (<expr_2>, team_b)
+  IF (MOD(THIS_IMAGE(), 2)
+    CHANGE TEAM (team_a)
+  ELSE
+    CHANGE TEAM (team_b)
+  ENDIF
+
+which is a good thing to prohibit. But they also prohibit
+
+  USE,INTRINSIC    :: ISO_FORTRAN_ENV
+  TYPE(TEAM_TYPE)  :: odd_even
+
+  FORM TEAM (2-MOD(THIS_IMAGE(), 2) odd_even)
+  ...
+  IF (MOD(THIS_IMAGE(), 2) == 0)
+    ! Set up for TEAM 2
+    ....
+    CHANGE TEAM (odd_even)  ! Even numbered images execute this
+    ...
+    END TEAM
+  ELSE
+    ! Set up for TEAM 1
+    ...
+    CHANGE TEAM (odd_even)  ! Odd numbered images execute this
+    ! Team 1 tasks
+    ...
+    END TEAM
+  ENDIF
+
+which may be a straight forward way of expressing different work for
+different subteams.
+
+These words do seem to permit different images on the current
+team to execute a CHANGE TEAM statement a differing number of times
+and at independent times from other images on the current team, as long
+as all images of the current team execute the CHANGE TEAM at least once
+during the execution of the program.
+
+The following appears to be conforming.  All images execute the change
+team at least once, but team 1 enters the CHANGE TEAM construct twice
+while team 2 enters it once.
+
+  USE,INTRINSIC   :: ISO_FORTRAN_ENV
+  TYPE(TEAM_TYPE) :: odd_even
+  ...
+  ! Form 2 teams, odd image indices on team 1, even indices on team 2
+  FORM TEAM (2-MOD(THIS_IMAGE(), 2), odd_even)
+  DO i = 1, 3
+    IF (2-MOD(THIS_IMAGE()) == (2-MOD(i,2)))
+      CHANGE TEAM (odd_even) ! Team 1 executes twice, team 2 once
+        ...
+      END TEAM
+    END IF
+  END DO
+
+A simple modification of the DO loop makes it non-conforming:
+
+  USE,INTRINSIC   :: ISO_FORTRAN_ENV
+  TYPE(TEAM_TYPE) :: odd_even
+  ...
+  ! Form 2 teams, odd image indices on team 1, even indices on team 2
+  FORM TEAM (2-MOD(THIS_IMAGE(), 2), odd_even)
+  DO i = 1, 3, 2
+    IF (2-MOD(THIS_IMAGE()) == (2-MOD(i,2)))
+      CHANGE TEAM (odd_even) ! Team 2 doesn't execute this
+        ...
+      END TEAM
+    END IF
+  END DO
+
+It is surprising the intent is to allow two sibling subteams to enter
+a CHANGE TEAM construct a different number of times, but zero is not a
+valid number of times for one subteam if another sibling subteam enters
+the construct at all.
+
+I believe the words we have underspecify some desired restriction(s)
+while at the same time may over-restrict some desirable practice. As i
+do not understand exactly what is meant to be prohibited and what is
+meant to be allowed, i am unable to suggest how to fix it.
+
+===END===

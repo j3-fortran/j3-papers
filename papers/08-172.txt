@@ -1,0 +1,110 @@
+                                                           08-172
+To: J3
+From: Malcolm Cohen
+Subject: Interp F95/0074
+Date: 2008 May 09
+
+----------------------------------------------------------------------
+
+NUMBER: F95/0074
+TITLE: TARGET dummy arguments and POINTER expressions
+KEYWORDS: TARGET, POINTER, dummy arguments
+DEFECT TYPE: Interpretation
+STATUS: J3 consideration in progress
+        see also F95 interp 000031
+
+QUESTION:
+
+Consider the following program.
+
+PROGRAM questionable
+  REAL,TARGET :: x
+  CALL s1(f(x))
+  CALL s2(f(x))
+  CALL s3(f(x))
+CONTAINS
+  FUNCTION f(a)
+    REAL,POINTER :: f
+    REAL,TARGET :: a
+    f => a
+  END FUNCTION
+  SUBROUTINE s1(variable)
+    variable = 42                  ! statement 1
+  END SUBROUTINE
+  SUBROUTINE s2(variable)
+    INTENT(OUT) variable
+    variable = 42                  ! statement 2
+  END SUBROUTINE
+  SUBROUTINE s3(targ)
+    REAL,TARGET :: targ
+    REAL,POINTER :: p
+    p => targ
+    PRINT *,ASSOCIATED(p,x)        ! statement 3
+  END SUBROUTINE
+END
+
+Is this program standard-conforming, and if so, what value is
+printed?
+
+The real question is whether an expression argument that is a pointer
+function reference is treated as a variable (data-object) argument
+with the variable being the target of the pointer expression.  (Or
+whether it is dereferenced as usual in the absence of POINTER dummy
+arguments).
+
+Re (statement 1), the question is whether VARIABLE is definable when
+argument-associated with "F()".
+
+Re (statement 2), if the previous answer was Yes (VARIABLE is
+definable), then presumably it can be made INTENT(OUT).  A random
+sample of 4 compilers revealed that they considered it not to be
+definable.
+
+Re (statement 3), the question is whether P is pointer-associated
+with X, not pointer-associated with X, or processor-dependent.  Of
+the same random sample 3 thought it was associated with X, 1 thought
+not.
+
+ANSWER:
+
+1. The call to s1 is not standard conforming.  5.1.2.7 states
+    "If no INTENT attribute is specified for a dummy argument, its use
+     is subject to the limitations of the associated actual argument."
+   The associated actual argument is the function reference f(x); this
+   is an expression, not a variable, and therefore not definable,
+   because only variables can be defined (in the sense of being given
+   a value, see 2.4.3.1.1 and 2.5.5).
+
+2. The call to s2 is not standard conforming. 12.4.1.2 says:
+     "If a nonpointer dummy argument has INTENT(OUT) or INTENT(INOUT),
+      the actual argument shall be definable."
+   Again the actual argument is a function reference, which is not
+   definable.
+
+3. The call to s3 is standard conforming and the pointer assignment in
+   s3 causes p and x to become associated. This may be deduced from
+   12.4.1.2, which says [270:5-0]
+     "If the dummy argument has the TARGET attribute, does not have
+      the VALUE attribute, and is either a scalar or an assumed-shape
+      array, and the corresponding actual argument has the TARGET
+      attribute but is not an array section with a vector subscript
+      then
+        (1) Any pointers associated with the actual argument become
+            associated with the corresponding dummy argument on
+            invocation of the procedure ..."
+
+EDITS: None.
+
+SUBMITTED BY:  Malcolm Cohen
+
+HISTORY: 99-198      m150   F95/0074 submitted
+         WG5/N1414          Draft answer
+         00-260      m154   Passed by J3 meeting
+         00-329      m155   Failed J3 letter ballot
+         04-311      m168   Passed by J3 meeting vote - alternate
+                             answer removed
+         04-417r1    M170   Passed by J3 letter ballot #8
+         05-180      m172   Failed WG5 ballot N1617
+         08-172      m184   Revised answer
+
+----------------------------------------------------------------------

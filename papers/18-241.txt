@@ -1,0 +1,186 @@
+To: J3                                                     J3/18-241
+From: Reinhold Bader
+Subject: Persistency option for dummy argument attributes
+Date: 2018-August-09
+
+
+Introduction
+~~~~~~~~~~~~
+
+Depending upon a procedure implementation's needs, a library writer
+can supply a dummy argument with appropriate attributes. However,
+there exist cases where the actual argument is not obliged to have
+the same attribute, while the program semantics might need it anyway.
+This paper attempts to show that this is a significant source of
+programming errors, and suggests that this language gap be closed
+by supporting an appropriate compile-time evaluable persistency option
+on the attribute; while the compile-time check is the only direct
+effect of specifying such an option, the implied semantics also allow
+to relax a generic disambiguation rule.
+
+
+Use cases
+~~~~~~~~~
+
+(A) Target attribute
+
+Assume that a library programmer wants to create a reference container,
+i.e. an object of type
+
+TYPE :: container_t
+  TYPE(content_t), POINTER :: op(:)
+END TYPE
+
+using the following procedure:
+
+SUBROUTINE add_item(c, o)
+  TYPE(container_t) :: c
+  TYPE(content_t), TARGET, CONTIGUOUS :: o(:)
+  c%op => o
+END SUBROUTINE
+
+In order to assure that after a call to add_item the first argument's
+op component retains its definition status, the second argument must
+also be declared with the TARGET attribute by the caller. It is not
+uncommon that this extra TARGET declaration is forgotten, especially
+if the involved objects exist through many levels of nested procedure
+calls. In simple cases, implementations might retain the association
+status anyway, but this is not guaranteed, especially if copy-in/out
+for the effective TARGET happens at some call site.
+
+One might argue that the library writer should rather declare the
+second dummy as
+
+TYPE(content_t), INTENT(in), POINTER :: o(:)
+
+and rely on auto-targetting, but this only shifts the problem one
+level of procedure invocation upwards.
+
+In conclusion, a mechanism is desirable that forces the caller to
+declare the actual argument a TARGET across the complete call stack,
+up to the ultimate argument.
+
+(B) Auto-targetting
+
+There exists a case where auto-targetting is counterproductive
+from the library designer's point of view: it is not possible to
+generically disambiguate a dummy argument with the ALLOCATABLE
+against one with the POINTER attribute if the latter has INTENT(in)
+(N2159, 15.4.3.4.5, para 3; indeed this restriction was added by
+Technical Corrigendum 1 of Fortran 2008 because the interaction
+with auto-targetting had been overlooked).
+
+If it were possible to force declaration of the actual argument
+corresponding to a POINTER dummy as a POINTER, this would suppress
+auto-targetting and therefore permit to reinstate disambiguation
+of ALLOCATABLE (or even all non-POINTER) data objects against
+POINTER ones.
+
+(C) ASYNCHRONOUS and VOLATILE attributes
+
+Another case in question arises when the ASYNCHRONOUS attribute
+must be used in an I/O- or MPI-related scenario: If objects are
+passed through many procedure call levels (once for initiation
+of asynchronous execution, once more for its completion) and
+the attribute is omitted in one of them, this may (depending on
+both the programmer's and the implementation's behaviour) cause
+race conditions that potentially only surface rarely even if
+present, and are hard to pinpoint.
+
+This problem can be avoided if the mechanism described in (A)
+and (B) is also available for the ASYNCHRONOUS attribute; a
+similar argument can be made for VOLATILE.
+
+I would note that the idea of adding general asynchronous
+procedure execution to the language supplies further motivation
+for adding this feature.
+
+(D) CONTIGUOUS attribute on an assumed-shape array
+
+To avoid copy-in/out for assumed-shape arrays with the CONTIGUOUS
+attribute, it may be desirable to force the corresponding
+actual argument to be a simply contiguous array designator.
+The formal requirements below do not completely cover this case,
+so some extra work will be needed. Also, it would be necessary
+to permit the attribute with the option to appear for an
+assumed-size array.
+
+
+Formal requirements
+~~~~~~~~~~~~~~~~~~~
+
+(1) It shall be possible for a library writer to specify a
+    persistency option for certain attributes of dummy data
+    arguments. Such an option only applies to the attribute
+    that specifies it.
+
+(2) If this option is present,
+    (a) the actual argument must have the same attribute, and
+    (b) if the actual argument is itself a dummy argument (or
+        a subobject thereof), the attribute is not permitted to
+	be specified in a BLOCK construct that encloses the
+	call site, and the dummy argument's declaration also
+	must specify the persistency option for that attribute.
+    This requirement should be described by constraints in the
+    standard.
+
+(3) The following attributes should support the use of the
+    persistency option: TARGET, POINTER, ASYNCHRONOUS, VOLATILE,
+    CONTIGUOUS. For the CONTIGUOUS attribute, only assumed-shape
+    arrays should support the use of the persistency option.
+    (The ALLOCATABLE attribute is persistent by virtue of
+    its defined semantics).
+
+(4) An ALLOCATABLE (or even more generally, a non-POINTER) dummy
+    argument can be disambiguated against a POINTER dummy argument
+    in generic resolution without further restrictions if the
+    POINTER attribute is declared with the persistency option.
+
+(5) For each attribute that specifies a persistency option, this
+    is a characteristic of the dummy data argument.
+
+
+Illustration with tentative syntax
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For case (A) above, the library writer might specify
+
+SUBROUTINE add_item(c, o)
+  TYPE(container_t) :: c
+  TYPE(content_t), TARGET(PERSISTENT), CONTIGUOUS :: o(:)
+  c%op => o
+END SUBROUTINE
+
+If the caller has
+
+TYPE(container_t) :: my_c
+TYPE(content_t) :: my_o(n)
+
+CALL add_item(my_c, my_o)
+
+the compiler would reject that call because my_o has not been
+declared with the TARGET attribute (my_c%op would hence be undefined
+after the call).
+
+If the caller has
+
+TYPE(container_t) :: my_c
+TYPE(content_t), TARGET :: my_o(n)
+
+CALL add_item(my_c, my_o(::2))
+
+this would be accepted by the compiler. However, due to copy-in/out
+for the CONTIGUOUS dummy argument it would be unlikely that the
+pointer component my_c%op is defined after the call. To assure this
+sitation cannot occur, one could specify the dummy argument in
+add_item as follows:
+
+  TYPE(content_t), TARGET(PERSISTENT), CONTIGUOUS(PERSISTENT) :: o(:)
+
+causing the compiler to reject a call with an argument for which
+contiguity cannot be established at compile time.
+
+
+
+
+

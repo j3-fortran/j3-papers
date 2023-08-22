@@ -1,0 +1,254 @@
+To:      J3                                        J3/14-104
+From:    Reinhold Bader
+Subject: Alternate suggestion for changes to counted events
+Date: 2014 January 20
+References: N1996, N1999
+
+Discussion:
+~~~~~~~~~~~
+
+Nick MacLaren in his vote has pointed out that counted events still
+suffer from incomplete specification in the TS draft, leading to
+variant interpretations and possibly to a circular definition.
+
+While there exists the fallback of permitting binary semaphores only,
+the latter cause sufficiently much clutter in code that can profit
+from counted events that I feel it is worth the trouble to
+retain them. Therefore, this paper suggests adding suitable
+gatekeeper semantics to EVENT WAIT, as well as removing
+the STAT_POSTED_IMAGE and the MAX_COUNT feature. The way to
+retain counted events is based on Bill Long's suggestion of
+allowing an UNTIL_COUNT on EVENT WAIT, but the rule is added that
+the number of otherwise unordered posts to that wait must be
+exactly the UNTIL_COUNT. Without an UNTIL_COUNT events
+effectively are binary semaphores (i.e. the UNTIL_COUNT has a
+default value 1).
+
+This change renders example A.2.2 invalid. Also the following
+code given by Nick Maclaren in his vote is invalid if the
+IF statement on image 2 is executed:
+
+                 INTEGER :: x[*]
+    On image 1                     On image 2
+    POST EVENT (q[2])              CALL EVENT_QUERY (q, n)
+    x[3] =  123                    IF (n >= 2) THEN
+    POST EVENT (q[2])                  WAIT EVENT (q)
+                                       x[3] =  456
+                                   END IF
+
+
+Edits to N1996:
+~~~~~~~~~~~~~~~
+
+Section 6.2:
+
+Replace [15:8-9], "An event variable ... event variable." by
+"An event variable has a count that is updated by execution of
+EVENT POST or EVENT WAIT statements. The effect of each
+change is as if it occurred instantaneously, without any
+overlap with another change."
+[[Details of the update procedure are described in 6.3 and 6.4.]]
+
+Replace [15:10], "The processor shall support ... HUGE(0)." by
+"An event variable has a threshold that describes the maximum
+ value of the event count. The initial value for
+ this threshold is at least HUGE(0). The threshold is
+ updated by execution of an EVENT WAIT statement.
+
+ A sequence of updates of event counts and thresholds shall not
+ at any time during execution of the program cause the event count
+ to exceed the event threshold."
+
+Section 6.3
+
+[15:24] Replace "post-spec-list" by "sync-stat-list"
+
+[15:26-27] Delete R603
+
+[15:29] After "variable's count" add "by 1".
+
+[15:30-33] Delete "If the MAX_COUNT ... (6.5)."
+
+Section 6.4
+
+[16:3] Replace "sync-stat-list" by "wait-spec-list" and insert
+a new line
+"R604+  wait-spec is UNTIL_COUNT = scalar_int_expr
+                  or sync-stat
+
+Replace [16:5-7] by
+
+"Execution of an EVENT WAIT statement causes the following
+ sequence of actions:
+ (1) the threshold of its event argument is set to UNTIL_COUNT
+     if this specifier is provided with a positive value,
+     and to 1 otherwise,
+ (2) the executing image waits until the count of the event
+     variable reaches its threshold value or an error condition
+     occurs,
+ (3) if no error condition occurs, the event count is decreased
+     by its threshold value,
+ [[from this point onward it is unlikely that the implementation
+   can detect incorrect excess posts without additional effort,
+   but this is not a requirement anyway. Note that for reasoning
+   about the correctness of the program all possible interleavings
+   of changes to the count must be inspected.]]
+ (4) the threshold of its event argument is set to its
+     default value,
+ (5) a new segment starts execution."
+[[I put (5) there for clarity. Perhaps analogous text
+  should be added to EVENT POST?]]
+
+Delete [16:8-10] "During execution ... another change"
+[[was moved to section 6.2]].
+
+Replace text of NOTE 6.2 by
+
+"The segment that follows the execution of an EVENT WAIT statement
+ is ordered with respect to exactly <it>n</it> segments
+ that precede EVENT POST statements that caused prior changes
+ in the sequence of values of the event count variable, where
+ <it>n</it> is the event threshold value determined by
+ that EVENT WAIT statement. If a further post to the same event
+ is executed by the program, it is the programmer's responsibility
+ to ensure that the segment preceding such a post is ordered after
+ the segment preceding that EVENT WAIT statement."
+
+[16:14-19] Delete section 6.5.
+
+
+Section 7
+
+[23:40] After "successful waits", add " without an UNTIL_COUNT
+specification".
+
+Section 8
+
+[[I think none are needed but have not checked very thoroughly.]]
+
+Annex A
+
+[38:45-39:17] Replace example A.2.2 by John Reid's tree code:
+
+
+"A tree is a graph in which every node except one has a single "parent"
+node to which it is connected by an edge. The node without a parent is
+the "root". The nodes that has a given node as parent are the "children"
+of that node. The root is at level 1, its children are at level 2, etc.
+
+A multifrontal code to solve a sparse set of linear equations involves
+a tree. Work at a node starts after work at all its children is complete
+and their data has been passed to it.
+
+Here we assume that all the nodes have been assigned to images. Each
+image has a list of its nodes and these are ordered in decreasing tree
+level (all those at level L preceding those at level L-1). For each
+node, array elements hold the number of children, details about the
+parent and an event variable. This allows the processing to proceed
+asynchrononously subject to the rule that a parent must wait for all
+its children as follows:
+
+
+PROGRAM TREE
+  USE, INTRINSIC :: ISO_FORTRAN_ENV
+  INTEGER,ALLOCATABLE :: NODE(:) ! Tree nodes that this image handles
+  INTEGER,ALLOCATABLE :: NC(:)   ! NODE(I) has NC(I) children
+  INTEGER,ALLOCATABLE :: PARENT(:), SUB(:)
+                ! The parent of NODE(I) is NODE(SUB(I))[PARENT(I)]
+  TYPE(EVENT_TYPE),ALLOCATABLE :: DONE(:)[*]
+  INTEGER :: I, J, STATUS
+! Set up the tree, including allocation of all arrays.
+  DO I = 1, SIZE(NODE)
+    ! Wait for children to complete
+    EVENT_WAIT(DONE(I),UNTIL_COUNT=NC(I),STAT=STATUS)
+    IF (STATUS/=0) EXIT
+
+    ! Process node, using data from children
+    IF (PARENT(I)>0) THEN
+       ! Node is not the root.
+       ! Place result on image PARENT(I) for node NODE(SUB)[PARENT(I)]
+       ! Tell PARENT(I) that this has been done.
+       EVENT_POST(DONE(SUB(I))[PARENT(I)],STAT=STATUS)
+       IF (STATUS/=0) EXIT
+    END IF
+  END DO
+END PROGRAM TREE"
+
+
+
+Further remarks:
+~~~~~~~~~~~~~~~~
+
+Nick Maclaren has commented the following on the draft of this paper
+sent to the coarray-ts mailing list:
+
+----
+
+Subject to the following changes, I think that it is unambiguous
+and non-circular. I am still not keen on events, but that is a
+lesser matter.
+
+>Replace [15:10], "The processor shall support ... HUGE(0)." by
+>"An event variable has a threshold that describes the maximum
+> value of the event count. The initial value for
+> this threshold is at least HUGE(0). The threshold is
+> updated by execution of an EVENT WAIT statement.
+>
+> A sequence of updates of event counts and thresholds shall not
+> at any time during execution of the program cause the event count
+> to exceed the event threshold."
+
+Grrk. That makes sense only if the threshold is an attribute of
+the event. From what you post below, you seem to be assuming that
+the EVENT WAIT precedes the EVENT POSTs, which is another form of
+circularity!
+
+I suggest dropping the last paragraph, in your model.
+
+>Replace [16:5-7] by
+>
+>"Execution of an EVENT WAIT statement causes the following
+> sequence of actions:
+> (1) the threshold of its event argument is set to UNTIL_COUNT
+>     if this specifier is provided with a positive value,
+>     and to 1 otherwise,
+
+Removing "of its event argument" from the above action (1),
+and adding:
+
+(*) if the event count exceeds the threshold, an error condition
+    occurs,
+
+> (2) the executing image waits until the count of the event
+>     variable reaches its threshold value or an error condition
+>     occurs,
+
+> (3) if no error condition occurs, the event count is decreased
+>     by its threshold value,
+> [[from this point onward it is unlikely that the implementation
+>   can detect incorrect excess posts without additional effort,
+>   but this is not a requirement anyway. Note that for reasoning
+>   about the correctness of the program all possible interleavings
+>   of changes to the count must be inspected.]]
+> (4) the threshold of its event argument is set to its
+>   default value,
+
+And removing action (4).
+
+> (5) a new segment starts execution."
+>[[I put (5) there for clarity. Perhaps analogous text
+> should be added to EVENT POST?]]
+---
+
+These seem to indicate that the threshold should not be part of
+the event state, but only maintained while EVENT WAIT is
+executing. However I don't see the point Nick makes about my
+model implicitly assuming the EVENT WAIT starting before the posts do.
+
+
+
+
+
+
+
+

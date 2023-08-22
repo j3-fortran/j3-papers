@@ -1,0 +1,485 @@
+
+                                                      J3/97-153
+Date:       15 Apr 97
+To:         J3
+From:       Richard Maine
+Subject:    Proposed Specs and Syntax for System Arguments
+References: J3/97-154
+
+This paper proposes specifications and syntax for system
+arguments.  A draft was circulated earlier on comp.lang.fortran
+and on the x3j3 mailing list.  I have made several revisions
+based on the comments received about that draft.  The main
+revisions were: added discussions about C interop; increased
+attention to Posix in several areas; and a few name changes
+(and spell-checked it).
+
+I avoid the prejudicial use of the term "command line"; the term
+"system argument" seems more neutral.  It is left up to the
+system to determine what constitutes a system argument.  (With
+one minor exception; we specify that the command name, if any, is
+effectively the 0'th argument.  If something on this isn't
+specified, code portability could be hindered by some systems
+making it the first argument and some systems not.)  The specs
+and syntax are simple enough that it seems worthwhile to address
+them in one paper.
+
+ARGC/ARGV
+
+The C interopability TR (J3/97-154) includes the ARGC/ARGV global
+variables for access to system argument information.  This could
+be considered to at least minimally meet the requirement for
+access to system arguments.  My first draft of this proposal did
+not adequately consider this question.
+
+After some study of the C interopability TR, I conclude that
+something additional is needed to provide a facility that is
+simple to use in a pure Fortran environment.  The ARGC/ARGV
+definition is driven by C interopability issues.  Whereas I agree
+that C interopability is an issue of great importance, the
+requirement for system arguments exists even for purely Fortran
+programs that would not otherwise use the C interopability
+features.  Such a user would likely find it strange to have to
+use the C interopability features.
+
+Although the C interopability version is appropriately designed
+to fit naturally with existing C interfaces that expect
+ARGC/ARGV, it is fairly complicated to use for simple purely
+Fortran things.  I argue, therefore, that we need two interfaces
+to the system arguments - the C interopability one plus the
+one proposed in this paper.
+
+Admittedly, it would not be horribly difficult for the user to write
+a short subroutine to provide a simpler interface to the information
+in ARGC/ARGV.  But it seems worthwhile to standardize this instead
+of forcing each user to write his/her own.  I propose that both
+interfaces be made available so that a program could use either
+or even both in the same program.
+
+The following simple example serves to illustrate my point that
+the ARGC/ARGV interface is complicated to use for simple needs.
+Posit a program that wants exactly 2 system arguments, perhaps
+input and output file names.  Assume the arguments are just
+character-valued for simplicity.  The following is my best quick
+attempt to do this using the C interopability ARGC/ARGV.  (I
+think it's close, but I might have missed something exactly
+because it is fairly complicated, bringing in a lot of stuff that
+seems peripheral to what I'm trying to do).
+
+  use iso_c   !-- of course
+  character(128) :: input_name, output_name  !-- for the final results.
+  type(c_char_ptr) :: arg_ptr
+
+  if (argc /= 2) call oops("Wrong number of args.")
+  arg_ptr = c_dereference(argv, arg_ptr)
+  input_name = c_dereference(arg_ptr)
+     !-- I'm assuming that char(kind=c_char) is the same
+     !-- as default character kind; otherwise I'd give up.
+  argv = c_increment(argv)
+  arg_ptr = c_dereference(argv, arg_ptr)
+  output_name = c_dereference(arg_ptr)
+
+This ought to work (I think), but I certainly find it hard to
+follow (and I had to carefully study the C interop paper while
+writing this code).
+
+POSIX 1003.1 and 1003.9
+
+I've never actually seen a copy of Posix 1003.1, so I hesitate
+to say much specifically about it.  I have at one point seen
+at least drafts of Posix 1003.9, but I don't seem to have saved
+them anywhere that I can still find.  In my judgment, Posix 1003.9
+is a failed standard (and thankfully so).  It never received ISO
+approval and appears to have no active development and little user
+support.  There are certainly some users, but I feel safe in
+characterizing the user base as small.
+
+I do not, therefore, feel constrained to adopt the Posix 1003.9
+binding, although we should certainly use it as a source of
+ideas.  There are Fortran 90 features that allow us to make
+significant improvements over the Posix 1003.9 bindings.
+Specifically, optional arguments can find good application
+here, and modules allow us to choose more legible names without
+unacceptably polluting the global namespace.
+
+I have, however, used Posix 1003.9 as a guideline by adopting
+its approach on issues where there was no substantiative
+reason for change.  This draft reflects several small changes
+to follow that philosophy.  (One example is in the treatment
+of invalid values for the argument number).
+
+It seems reasonable to express this proposal as a binding to the
+appropriate functionality in Posix 1003.1.  If someone gets a
+copy of Posix 1003.1, then we can look at that.  However, I'm
+not going to propose that we list something as a normative
+reference unless I actually read the relevant portions that
+we are referencing.  I also would not want to restrict this
+proposal to Posix systems; there exist several systems of
+significant interest that make no claim to Posix conformance.
+
+I'd therefore suggest that if we do reference Posix 1003.1, it be
+done with along the general lines of saying that the intrinsics
+(see below) are bindings to the appropriate Posix 1003.1
+definitions of system arguments on Posix systems, but can also be
+implemented on non-posix systems, in which case the definitions
+of the system arguments are system-dependent.
+
+IARGC/GETARG
+
+The approach of this proposal is modeled loosely after
+iargc/getarg.  In fact, we could do worse than just adopt
+iargc/getarg as a standardization of existing practice (for
+instance, I think Craig's proposal is worse).  I'd probably vote
+for a proposal to standardize iargc/getarg if the proposal
+presented here isn't acceptable, but I think this is an
+improvement.
+
+One potential problem with just standardizing iargc/getarg is
+that existing implementations are not completely consistent with
+each other.  There are, for instance, variations in whether
+argument numbering starts at 0 or 1 and whether or not the
+command name is counted.  Thus, by standardizing one
+specification for iargc/getarg, we might invalidate some existing
+compilers and programs.
+
+Similarly, if we standardize iargc/getarg, we might be more
+constrained against adding enhancements in the future.
+
+Besides which, iargc is a pretty poor name choice, though if that
+were the only problem, I'd probably agree that existing practice
+would suggest using the name anyway.
+
+This paper proposes that we specifically avoid the names iargc
+and getarg so that a compiler could easily support both the
+(proposed) standard forms and any existing vendor variations of
+iargc/getarg for compatibility.
+
+NAMESPACE IMPACT
+
+This part of the proposal is trivially separable from the rest.
+Instead of continually adding new intrinsics to the global
+namespace, where they potentially conflict with user-written
+procedures, I propose that we follow the lead of HPF, the IEEE
+exceptions TR, and the ISO_VARYING_STRING module in using modules
+to control the namespace pollution.  We might even go so far as to
+define module names beginning with ISO_ to be reserved.  This is
+itself a namespace pollution, but a much more limited one than
+results from adding new intrinsics to the global namespace.  For
+one thing, it would be unreasonable to require all new intrinsics
+to have names starting with ISO_, but that might be ok for
+modules.
+
+Thus, I propose that the intrinsics below be packaged in an
+intrinsic module provisionally named ISO_SYSTEM.  (All the usual
+rules for USE statements apply).  The proposed name is intended
+to provide an umbrella for other general system interface
+intrinsics, should there be any.  One might imagine that
+date_and_time and system_clock might be in the same module if
+they weren't already global intrinsics.
+
+The name ISO_SYSTEM is very provisional; alternatives invited.
+We can also discuss whether the name should be fairly general
+(like ISO_SYSTEM) to encourage future additions to the same
+intrinsic module, or more specific to the system argument
+functionality.
+
+SYSTEM_ARGUMENT_COUNT INTRINSIC
+
+Following the style of iargc/getarg, a separate intrinsic
+function is proposed to return the number of system arguments
+available.
+
+System_argument_count is an intrinsic function.  It has no
+arguments.  It returns a scalar default integer that specifies the
+number of system arguments available.  It returns 0 if there are
+no system arguments available.  It returns 0 if the system does
+not support system arguments.  On a system that has a concept of
+a command name, the command name itself does not count as one of
+the system arguments.
+
+As proposed, this intrinsic function is identical to IPFXARGC
+from Posix 1003.9, except of course, for the name change and
+the semantics of being an intrinsic module procedure.
+
+The following are some possible variations that were considered,
+but my recommendation is to stick with the specification above.
+It seems to "work" best anyway, and even more so when I factor
+in a bias in favor of following Posix 1003.9 unless there are
+good reasons otherwise.  I consider the name change to be a
+"good reason otherwise", but the following alternatives don't
+qualify.
+
+  1.  We could specify that the function returns some negative
+      value if the system does not support system arguments, thus
+      allowing the user to distinguish between the case where the
+      system doesn't support system arguments and the case where
+      they are supported but there are none.  I'm not sure how
+      useful it is to make this distinction and it would mean
+      that user codes would have to specially check for a
+      negative value before using it in things like array dimensions.
+
+  2.  We could make this a subroutine, in which case a separate
+      argument could return an error indication.  I can see
+      arguments on both sides of this question, leading me to
+      give the "deciding vote" to following Posix 1003.9.
+
+  3.  We could provide access to the system argument count by
+      adding an optional argument to the getarg equivalent, but
+      there is no "nice" place to put it.  If the argument count
+      is the first argument, it interferes with simple positional
+      argument usage when retrieving the argument values.  If it
+      is the last argument, then potential future extensions
+      could make it strangely placed in the middle of arguments
+      that relate to specific system arguments.  Besides which,
+      none of the existing practice (Posix 1003.9 and iargc/getarg)
+      supports this.
+
+  4.  We could omit this function and require people to access the
+      C interop argc variable.  That variable, unlike argv, is
+      pretty simple to use.  The only complication is in carefully
+      handling its possibly non-default kind.  But I think it
+      inconsistent to provide only half of an interface here.
+      Plus, we have again the precedents from Posix 1003.9 and iargc.
+
+GET_SYSTEM_ARGUMENT INTRINSIC
+
+The get_system_argument intrinsic is modeled after getarg, with
+some enhancements.  We provide additional optional arguments
+to support meaningful trailing blanks and to support argument
+names.  The intrinsic is, in principle, extensible to return
+other system argument properties as extra optional arguments.
+(Possible examples could include argument hierarchy information,
+argument type, argument presence, and others).
+
+This proposal is also similar to PXFGETARG.  The differences are
+the name change, the optionality of several arguments, and the
+possible addition of a name argument.  The use of optional
+arguments allows us to combine the simplicity of getarg with
+the extra functionality of PXFGETARG.
+
+get_system_argument is an intrinsic subroutine with the following
+arguments (in the following order).
+
+  1. NUMBER.  A scalar default integer intent(in) argument.  This
+     is the only argument that is required.  It specifies the
+     number of the system argument that the remaining intent(out)
+     arguments give information about.  Useful number values are
+     those between 0 and the argument count returned by the
+     system_argument_count intrinsic.  Other values are allowed,
+     but will result in error status return (see below).
+
+     System argument number 0 is a special case, discussed below
+     (and is not included in system_argument_count).  The
+     remaining system arguments are numbered numbered
+     consecutively from 1 to the argument count in an order
+     determined by the processor.
+
+  2. VALUE.  An optional scalar default character intent(out)
+     argument of assumed length.  It returns the value of the
+     system argument.  If the system argument value cannot be
+     determined, it returns blanks.
+
+  3. LENGTH.  An optional default integer intent(out) argument.
+     It returns the significant length of the system argument,
+     possibly including trailing blanks.  This length does not
+     consider any possible truncation in assigning the system
+     argument value to the VALUE argument; in fact the VALUE
+     actual argument need not even necessarily be present.
+     If the system argument length cannot be determined, a
+     length of 0 is returned.
+
+  4. STATUS.  An optional default integer intent(out) argument.
+     It returns 0 if the argument retrieval was successful.
+     It returns system-dependent non-zero values if the
+     argument retrieval failed.
+
+     One reason for failure is a value of number that is negative
+     or greater than system_argument_count().
+
+  5. NAME.  An optional default character intent(out) argument
+     of assumed length.  It returns the name of the system
+     argument.  If the name of the system argument cannot be
+     determined, it returns blanks.
+
+     Note: we could possibly omit this one.  Lots of systems
+     don't have argument names.  But some do.  Posix doesn't.
+     This one should probably be straw-voted.
+
+System argument 0 is always defined to be the system "command
+name" for the program on systems that have such a concept.  It
+is always allowed to call the get_system_argument intrinsic for
+system argument number 0, even if the system does not define
+command names or other system arguments.  In such a case, the
+argument VALUE returns blanks and the argument LENGTH returns 0.
+
+Note: as defined here, get_system_argument could conceivably
+be elemental.  That might possibly close some future enhancement
+possibilities, though.  Any opinions on the advisability of making
+it so?
+
+GET_SYSTEM_VARIABLE INTRINSIC
+
+The get_system_variable intrinsic is modeled loosely after getenv.
+The term "variable" seems more generic and appropriate than
+"environment", but I'd accept the name get_system_environment,
+or even get_environment if the majority preferred those.  I'll
+note that the number of people who can't spell environment is
+substantial enough to be a non-trivial issue for those name
+choices.  ("Enviorment" seems to be the spelling choice of many,
+to judge from Usenet postings - perhaps a biased sample).
+
+I recommend avoiding the name getenv because of the potential for
+conflict with existing and possibly incompatible intrinsics.
+(I'm not entirely sure that there aren't existing versions of
+getenv both as a subroutine and as a function, for example).
+The name "get_env" is too close; it would invite confusion.
+
+This proposed intrinsic is also similar to PXFGETENV, with
+a name change, argument optionality, and the replacement of
+LENNAME by TRIM_NAME.
+
+Note that a system is not required to support any system
+variables.  But a program is always allowed to call
+get_system_variable anyway, even if no system variables
+can be successfully retrieved.
+
+Get_system_variable is an intrinsic subroutine with the following
+arguments.
+
+  1. NAME.  A scalar default character assumed size intent(in)
+     argument.  It is required.  Its value (possibly after
+     removal of trailing blanks) is the name of the system
+     variable to be referenced.  The set of allowed variable
+     names is processor dependent.  It is also processor dependent
+     whether system variable names are case sensitive or not.
+     (Ugly, but I don't see that we really have a choice here -
+     just like file names).
+
+  2. VALUE.  An optional scalar default character assumed size
+     intent(out) argument.  It returns the value of the system
+     variable.  If there is no such system variable, or if the value
+     cannot be determined, it returns blanks.
+
+  3. LENGTH.  An optional default integer intent(out) argument.
+     It returns the significant length of the system variable,
+     possibly including trailing blanks.  This length does not
+     consider any possible truncation in assigning the system
+     variable value to the VALUE argument; in fact the VALUE
+     actual argument need not even necessarily be present.
+     If the system variable length cannot be determined, a
+     length of 0 is returned.
+
+  4. STATUS.  An optional default integer intent(out) argument.
+     It returns 0 if the variable retrieval was successful.
+     It returns system-dependent non-zero values if the
+     variable retrieval failed.
+
+     The most likely error is that there is no system variable of
+     the specified name (or that the system doesn't support any
+     system variables).
+
+  5. TRIM_NAME.  An optional logical intent(in) argument.
+     If this argument is omitted or has the value .true., then
+     any trailing blanks in the NAME argument are trimmed
+     before interpreting it as a system variable name.
+     If this argument has the value .false., then trailing blanks
+     in the NAME argument may be significant.
+
+     Note that a system is free to disallow names with trailing
+     blanks or to consider them as equivalent to the same name
+     without trailing blanks.  That is, the system may effectively
+     ignore a .false. value of TRIM_NAME.  In contrast, a .true.
+     value of TRIM_NAME is always honored.
+
+     Left entirely to my own designs, I'd probably have required
+     blank trimming for all variable names.  But Posix does allow
+     and distinguish variable names with trailing blanks (yuck),
+     so I added this argument for full support of that capability.
+     I'm open to removing it though.
+
+     Note that PXFGETENV uses an integer lenname argument for
+     this purpose, with the value 0 being a special case flag
+     meaning to trim all trailing blanks.  I don't think that
+     makes much sense for intent(in) arguments.  It completely
+     ignores the actual length of the passed-in string.  It seems
+     to me that you either want trailing blanks trimmed or not
+     (a yes/no choice obvious for a logical).  If you want some
+     substring other than the result of trimming, then just use
+     substring notation to pass the desired substring.  Note that
+     there is a distinction between intent(in) and intent(out)
+     strings in this regard.  Intent(out) strings have no inherent
+     way to return length information, so they do need a separate
+     integer argument.
+
+     On the other hand, I expect almost nobody to use this argument,
+     so I'm open to the suggestion of making it an integer length
+     as in PXFGETENV (with 0 and omitted both meaning to trim) if
+     that is preferred by a majority.  I do feel fairly strongly,
+     however, that it should be the last positional argument
+     instead of the second as in PXFGETENV.  Almost all applications
+     will want to omit it, and making it last makes that simpler.
+
+Note: Get_system_variable could also conceivably be elemental.
+I wouldn't expect its elemental properties to be much used,
+though.  Opinions?
+
+UNPARSED COMMAND LINE
+
+I debated providing an option to retrieve an "unparsed command
+line", but decided that it was likely to inhibit, rather than
+help, portability.  If we provide two different ways of getting
+system argument information (individual arguments or unparsed)
+and we don't mandate support of one of them, then some systems
+might support only one form while some systems support only the
+other.  This would mean that code with any pretext of portability
+would have to try both methods and be prepared to deal with
+either one.  I don't want to have to do this in my own code,
+and neither would I expect other users to want it.  This would
+seem like abdicating our responsibility to define one standard.
+
+Even if the form standardized isn't the most convenient for some
+application, it is bound to be easier for that application to
+deal with the form conversion than for it to have to deal with
+not knowing which form will be supported.
+
+I've already strayed from the ideal of standardizing one
+interface by proposing that both the C interop stuff and this
+proposal be standardized, thus giving two methods.  I believe
+I've shown adequate justification for that because of the
+significantly different requirements of accommodating existing C
+routines plus native Fortran usage.  Converting to and from the C
+interop form is pretty "messy".  I don't see similarly strong
+justification for adding a third interface to the same basic
+information.
+
+Since some systems make getting at the unparsed command line
+awkward, and some GUI systems might not even define such a
+concept (whereas they might well interpret a drag-and-drop
+operation as a system argument in some sense), it seems safest
+to choose the individual argument approach.  A command-line
+based system could choose to call the entire command tail
+a single argument if no more meaningful division was readily
+definable.
+
+However, if a majority disagrees with me on this point, I'd
+propose adding a separate subroutine to retrieve the unparsed
+command line.  I'd propose making it as simple as seems
+practical.  That would probably mean 3 arguments: a string for
+the data, an integer for the length, and an integer status.  I'd
+prefer to avoid complications like distinguishing between the
+command name and the "tail".
+
+CODE SAMPLES
+
+  use iso_system
+  character*128 :: arg, home_dir, prog_name
+  integer :: i
+
+  call get_system_variable('HOME', home_dir)
+  call get_system_argument(0, prog_name)
+  arg_loop: do i = 1 , system_argument_count()
+    call get_system_argument(i, arg)
+    !-- Process this argument.
+  end do arg_loop
+---------------------------------------------------------------
+

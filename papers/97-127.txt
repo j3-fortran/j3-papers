@@ -1,0 +1,135 @@
+
+                                                           X3J3/97-127
+                                                           Page 1 of 3
+
+          To:          X3J3
+          From:        HPC
+          Subject:     Pointer Association Classes
+          Date:        1997/02/11
+          References:  N1189 (Repository Item # 60)
+
+          Fortran programmers have begun to use pointers in their
+          programs, with the consequence being that such programs
+          become harder to optimize.  Fortran has the advantage that
+          a pointer is currently permitted to be pointer associated
+          with only other objects of the same type that have either
+          the POINTER or the TARGET attribute.  The drawback is that
+          this may include many more objects than the user really
+          wanted to have pointer associated.
+
+          For example,
+
+               real, target :: a(100)
+               real, pointer :: p1(:), p2(:), tmp(:)
+
+               p1 => a(1:99:2); p2 => a(2:100:2)
+               do while(condition)
+                 do i = 2, 49
+                   p1(i) = 0.5*(p2(i+1)+p2(i-1))
+                 end do
+                 tmp => p1; p1 => p2; p2 => tmp
+               end do
+               end
+
+          Here, pointers are being used as a notational convenience,
+          allowing assignments to be performed on the odd elements
+          of "a", using the even elements as input, followed by
+          assignments to the even elements, using the odd elements as
+          input.  Without pointer association classes, a compiler has
+          little chance of determining that elements of "p1" and of
+          "p2" are never associated, assuming current compiler
+          technology.
+
+          The syntax needs to provide a way of linking together both
+          pointers and targets that are not subobjects, as well as
+          pointers which are structure components.  The semantics
+          need to specify that the objects in the class are not
+          associated, not merely that the associated intrinsic would
+          indicate that they are associated.  When does this matter?
+          For example,
+
+                integer, pointer :: p(:)
+                integer, target :: t(100)
+                p => t(1:2)
+
+          Here, "p" is pointer associated with "t(1:2)", but not with
+          "t(2:1:-1)" or "t(1)" or "t(2)".
+
+
+
+
+
+
+                                                           X3J3/97-127
+                                                           Page 2 of 3
+
+          All pointers and targets not appearing explicitly in an
+          association class are considered to form an association
+          class.  This maintains compatibility with Fortran 90 and 95
+          programs.
+
+          Some (straw-man) syntax possibilities:
+
+            1) Declare objects that are in a pointer association
+               class.  For example,
+
+                 integer, pointer :: p1, p2, p3, p4, p5
+                 type dt
+                   integer, pointer :: p
+                 end type dt
+                 type (dt) :: s
+
+                 ! Indicates that p1 may be associated with p2, and
+                 ! that p2, p3 and s%p each might be associated with
+                 ! one another.  Note that p1 is not associated with
+                 ! either p3 or s%p.  p4 and p5 may be associated with
+                 ! one another, but with no other object.
+                 association class :: (p1, p2), (p2, p3, s%p), (p4,p5)
+
+            2) Declare pointer association classes, and then specify
+               pointers and targets to be in these classes when
+               declaring pointers and targets.  For example,
+
+                 ! The following sets up the same association classes
+                 ! as above.
+                 association class :: c1, c2
+                 integer, pointer(c1) :: p1
+                 integer, pointer(c1, c2) :: p2
+                 integer, pointer(c2) :: p3
+                 type dt
+                   integer, pointer(c2) :: p
+                 end type dt
+                 type (dt) :: s
+
+          One advantage of the second form is that the classes are
+          named, and can be host associated, allowing items to be
+          easily added to a host associated class within a scoping
+          unit.
+
+          A second advantage of the second form involves recursive
+          structures.  For example,
+
+                  association class :: cl
+                  type dt
+                    integer, pointer(cl) :: node_data(:)
+                    type(dt), pointer :: next
+                  end type dt
+                  type (dt) :: head
+                  integer, target(cl) :: t1(1000)
+                  integer, target :: t2(1000)
+
+
+
+                                                           X3J3/97-127
+                                                           Page 3 of 3
+
+          specifies that the "node_data" component of an object of
+          type "dt" can only be associated with other such components,
+          or with "t1".  There is no way of specifying this with the
+          first form.
+
+          A third possibility would be to state that two objects are
+          definitely not associated.  This could also be an assertion
+          applied to a segment of code, rather than being statically
+          specified in the specification of an object or component.
+

@@ -1,0 +1,784 @@
+To: J3                                                     J3/15-183
+From:       Nick Maclaren
+Subject:    Event ordering semantics
+Date: 2015 July 10
+References: WG5/N1971, 13-352 and several others
+
+
+
+Discussion
+----------
+
+In the context of TS 18508, specific issues were raised as soon as
+events were introduced, but have never been addressed.  Leaving some
+uses processor-dependent (i.e. unspecified) and others undefined is
+fine, but it is essential to agree what defined uses actually do, and
+exactly where the boundaries are with processor-dependent and undefined.
+Currently, none of that is agreed, let alone specified.  N1971, 13-352
+and several other documents contain examples of open questions.
+
+We do not necessarily need a precise consistency model, but we DO need
+to know that one could be produced, in theory.  There are three key
+points:
+
+    1) Events look simple, but are not, because semaphores are not known
+to be even self-consistent, and 'obvious truths' in parallel semantics
+are very likely to be false.  See Background for how the Java people got
+caught by that one, and how POSIX semaphores are a well-known trap.
+
+    2) I have been unable to find a consensus in WG5 as to the semantic
+intent, and individual people's answers have usually indicated that they
+often hold two incompatible views.  The current wording of TS 18508
+reflects that.  I have proposed three possible solutions:
+
+    3) I cannot guarantee that any of these solutions are both
+consistent and implementable under all circumstances (see Background
+again for why that is unavoidable), but they are the best that I can do.
+
+
+
+Proposed Solution One
+---------------------
+
+This would make examples A.3.2 and A.3.3 both defined, except for the
+progress issue.
+
+[17:15+] Add a new paragraph after 7.2p2:
+
+    "All changes to event variables are sequentially consistent, and
+    the values returned from EVENT_QUERY are consistent with that
+    ordering."
+
+[17:26+] Add a new Note to 7.2:
+
+    NOTE:
+    Segments, including those ordered by event statements, are required
+    to be in a partial order, which implies some restrictions on the
+    possible synchronisation methods for events.
+
+[18:1+] Add a new paragraph to 7.3:
+
+    "the completion of an EVENT POST statement does not depend on the
+    execution of a matching EVENT WAIT statement."
+
+[18:2-4] Delete the paragraph (7.3p4).
+
+[18:21-24] Replace 7.4p3 by:
+
+    "If an EVENT WAIT statement using an event variable is executed with
+    a threshold of k when the event variable has a value of n, and
+    k <= n, the segments preceding all of the EVENT POST statements
+    that have updated that event variable will precede the segment
+    following the EVENT WAIT statement.  If k > n, the EVENT WAIT
+    statement will wait until the value of the event variable reaches k.
+
+EVENT_QUERY is now an anomalous intrinsic procedure that performs logic
+(but not data) synchronisation, and I feel that it would be better in a
+new class.
+
+[18:25+] Delete NOTE 7.4 because it is now normative.
+
+[27:21+] Add a new paragraph to 8.4.15:
+
+    "If the value returned by an EVENT_QUERY invocation is in position k
+    of the sequence of values that the event variable takes during
+    execution and the EVENT_QUERY invocation precedes an EVENT WAIT
+    invocation on the variable, the segment preceding the EVENT POST
+    statement that made change i, for any i <= k, will precede the
+    segment following that EVENT WAIT statement."
+
+[27:21+] Add a new Note to 8.4.15:
+
+    "NOTE 8.x
+    This means that EVENT_QUERY has a synchronization effect, but it
+    does not mean that it synchronizes data updates."
+
+[49:22+] Add a new paragraph to A.3.1:
+
+    "Because this TS does not specify a progress requirement, whether
+    this program will make progress is processor-dependent."
+
+[50:35+] Add a new paragraph to A.3.2:
+
+    "Because this TS does not specify a progress requirement, whether
+    this program will make progress is processor-dependent.  Note that
+    the value returned from EVENT_QUERY for event variables on other
+    images is used solely for failure handling."
+
+
+
+Proposed Solution Two
+---------------------
+
+This would make example A.3.2 defined, except for the progress issue,
+but A.3.3 would be processor-dependent.
+
+[17:15+] Add a new paragraph after 7.2p2:
+
+    "All changes to event variables are sequentially consistent, and
+    the values returned from EVENT_QUERY for variables on the executing
+    image are consistent with that ordering."
+
+[17:26+] Add a new Note to 7.2:
+
+    NOTE:
+    Segments, including those ordered by event statements, are required
+    to be in a partial order, which implies some restrictions on the
+    possible synchronisation methods for events.
+
+[18:1+] Add a new paragraph to 7.3:
+
+    "the completion of an EVENT POST statement does not depend on the
+    execution of a matching EVENT WAIT statement."
+
+[18:2-4] Delete the paragraph (7.3p4).
+
+[18:21-24] Replace 7.4p3 by:
+
+    "If an EVENT WAIT statement using an event variable is executed with
+    a threshold of k when the event variable has a value of n, and
+    k <= n, the segments preceding all of the EVENT POST statements
+    that have updated that event variable will precede the segment
+    following the EVENT WAIT statement.  If k > n, the EVENT WAIT
+    statement will wait until the value of the event variable reaches k.
+
+[18:25+] Delete NOTE 7.4 because it is now normative.
+
+[27:21+] Add a new paragraph to 8.4.15:
+
+    "If the value returned by an EVENT_QUERY invocation on an event
+    variable on the same image is in position k of the sequence of
+    values that the event variable takes during execution and the
+    EVENT_QUERY invocation precedes an EVENT WAIT invocation on the
+    variable, the segment preceding the EVENT POST statement that made
+    change i, for any i <= k, will precede the segment following that
+    EVENT WAIT statement."
+
+[49:22+] Add a new paragraph to A.3.1:
+
+    "Because this TS does not specify a progress requirement, whether
+    this program will make progress is processor-dependent."
+
+[50:35+] Add a new paragraph to A.3.2:
+
+    "Because this TS does not specify a progress requirement, whether
+    this program will make progress and whether it detects failure
+    reliably is processor-dependent."
+
+
+
+Proposed Solution Three
+-----------------------
+
+This would make examples A.3.1 and A.3.2 both processor-dependent, but
+would be by far the easiest to implement and most efficient.
+
+[17:26+] Add a new Note to 7.2:
+
+    NOTE:
+    Segments, including those ordered by event statements, are required
+    to be in a partial order, which implies some restrictions on the
+    possible synchronisation methods for events.
+
+[18:1+] Add a new paragraph to 7.3:
+
+    "A program that depends on the segment following an EVENT POST
+    statement being executed before a matching EVENT WAIT statement is
+    executed for that event variable is not conforming."
+
+[18:2-4] Delete the paragraph (7.3p4).
+
+[18:4+] Delete NOTE 7.2.
+
+[18:22] Change "at least" to "exactly" in 7.4p3.
+
+[18:23] Following the first "WAIT statement." in 7.4p3, add:
+
+    "If the event variable has a value of greater than k, which of those
+    segments precede the EVENT WAIT is processor-dependent.  Once an
+    execution of an EVENT POST statement has been matched in this way,
+    it will not be used for matching in subsequent EVENT WAIT
+    statements."
+
+[18:25+] Replace the body of NOTE 7.4 in 7.4 by:
+
+    "The ordering of segments is precisely that defined by the execution
+    of the image control statements, and the value of the event variable
+    (as returned from EVENT_QUERY) is purely indicative".
+
+[49:22+] Add a new paragraph to A.3.1:
+
+    "Because the value returned from EVENT_QUERY is purely indicative,
+    whether these programs behave as expected is processor-dependent."
+
+[50:35+] Add a new paragraph to A.3.2:
+
+    "Because the value returned from EVENT_QUERY is purely indicative
+    whether this example behaves as expected is processor-dependent."
+
+
+
+FULL DISCUSSION
+---------------
+---------------
+
+Background
+----------
+
+Events are general semaphores (as distinct from binary semaphores),
+which are often called counting semaphores, restricted by only the
+owning image being able to wait on them, so there are many APIs that use
+them.  However, every specification I have found has been merely the
+syntax and intent, with only a few aspects of the semantics specified.
+What is more, there are rarely any useful constraints on what those
+semantics may be, so they are closer to Fortran undefined than
+processor-dependent.  POSIX is well-known for that (see below).
+
+Up until the late 1960s, essentially all parallel experts believed that
+parallel correctness was merely a matter of getting the synchronisation
+right, but experience with the early parallel systems showed that was
+not even approximately true.  It was another decade before any real
+progress was made (Hoare in 1978 and Lamport in 1979) - that identified
+data consistency as the key concept, and one that could NOT be reduced
+to a synchronisation property.
+
+Dijkstra invented semaphores in 1962/3, and described them solely as
+synchronisation facilities, with only an API (in the above sense).  In
+over 50 years, nobody seems to have been able to provide a specification
+of general semaphores that does not contain serious ambiguities or
+inconsistencies, and many of the experts I have talked to suspect that
+it is impossible.  See, for example:
+
+    https://github.com/android/platform_bionic/blob/master/libc/...
+        .../bionic/semaphore.cpp
+
+// Memory order requirements for POSIX semaphores appear unclear and are
+// currently interpreted inconsistently.
+// We conservatively prefer sequentially consistent operations for now.
+// CAUTION: This is more conservative than some other major
+// implementations, and may change if and when the issue is resolved.
+
+An indication of how deceptive this area is may be seen by the fact that
+it was only in the early 1990s that the theoreticians finally managed to
+understand the relationship between causality (i.e. that which is
+delivered by sychronisation) and the 'obvious' semantics.  See, for
+example:
+
+    http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.41.6403
+    http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.50.3356
+
+Fortran events impose the restriction that they can be waited on only by
+their owning image, but that simplifies their semantics only very
+slightly (see below), and a precise specification of them remains
+beyond the state of the art in computer science.
+
+The situation is far nastier than it seems to be, because a lot of
+hardware and software optimisations allow apparent time reversal, causal
+violations, and 'out of thin air' effects, and that includes IBM POWER.
+Despite common belief, such effects cannot be excluded by ANY
+specification that limits itself to the semantics of a single semaphore.
+
+None of the experts I know trust their own intuition, because it is so
+common that 'obviously correct' specifications contain serious flaws,
+often unusabilities or inconsistencies.  I have been following this area
+for 40 years, have 20 years practical experience of supporting parallel
+programmers, and am still learning new ways in which 'obvious truths'
+are incorrect.  Java has had threading since 1995, but its model was
+discovered to be badly flawed only in 2003 or so, and it had to be
+replaced in 2004.
+
+    http://www.cs.umd.edu/~pugh/java/memoryModel/
+
+These are not purely theoretical issues, either, as I can witness from
+helping people with parallel problems.  Even apparent time reversal,
+causal violations and 'out of thin air' effects really do occur in many
+parallel contexts.  Speaking to other people in the parallel development
+and support area, most of them had encountered similar issues, but
+resolved them by rewriting code to use different facilities or a
+different algorithm, sometimes repeating that for each new environment!
+
+
+
+Issue 1 (Blocking)
+------------------
+
+Is EVENT POST allowed to block until there is a matching EVENT WAIT?
+
+The reason that this is a critical question is that all image control
+statements except SYNC MEMORY are allowed to block, and the ordering of
+that is explicitly processor-dependent (8.5.5p4).  The point is that
+message-passing implementations have to ensure that all relevant
+outstanding transfers (including externally-initiated ones) are
+completed appropriately, and it is very hard to identify them without
+blocking.
+
+It appears that the consensus is "no", in the light of the decision
+taken in Las Vegas to require asynchronous progress (N2020), but it is
+not clear from the current normative wording.  The current Note 7.2
+clarifies nothing, unfortunately.  Specifically, are the following
+programs required to terminate?
+
+    PROGRAM Block_One
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(EVENT_TYPE) :: event[*]
+        IF (NUM_IMAGES() /= 2) STOP
+        POST(event[3-THIS_IMAGE()])
+    END PROGRAM Block_One
+
+    PROGRAM  Block_Two
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(EVENT_TYPE) :: event[*]
+        IF (NUM_IMAGES() /= 2) STOP
+        POST(event[3-THIS_IMAGE()])
+        WAIT(event)
+    END PROGRAM Block_Two
+
+
+Solution A: If those are conforming:
+----------
+
+[18:1+] Add a new paragraph to 7.3:
+
+    "The completion of an EVENT POST statement does not depend on the
+    execution of a matching EVENT WAIT statement."
+
+
+Solution B: If not:
+----------
+
+[18:1+] Add a new paragraph to 7.3:
+
+    "A program that depends on the segment following an EVENT POST
+    statement being executed before a matching EVENT WAIT statement is
+    executed for that event variable is not conforming."
+
+
+
+Issue 2 (EVENT_QUERY)
+---------------------
+
+Is the segment ordering required to match the value of the event
+variable, and must that be consistent across images?
+
+Are the following programs conforming?
+
+    PROGRAM Query_One
+! This asks whether, if the event count is higher than the wait
+! count, the WAIT synchronises after all of the POSTs
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(EVENT_TYPE) :: event[*]
+        INTEGER :: data[*] = 0, count
+        IF (NUM_IMAGES() /= 2) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            DO
+                CALL EVENT_QUERY(event,count)
+                IF (count == 2) EXIT
+            END DO
+            WAIT(event)
+            data = 1
+        ELSE IF (THIS_IMAGE() == 2) THEN
+            POST(event[1])
+            data[1] = 0
+            POST(event[1])
+        END IF
+    END PROGRAM Query_One
+
+    PROGRAM Query_Two
+! Assuming the answer to Query_One is "yes", this asks whether the event
+! count must be consistent across all images
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(EVENT_TYPE) :: event_1[*], event_2[*]
+        INTEGER :: data[*] = 0, count
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            WAIT(event_2)
+            WAIT(event_1)
+            data = 1
+        ELSE IF (THIS_IMAGE() == 2) THEN
+            POST(event_1[1])
+            data[1] = 0
+            POST(event_1[1])
+        ELSE IF (THIS_IMAGE() == 3) THEN
+            DO
+                CALL EVENT_QUERY(event_1[1],count)
+                IF (count == 2) EXIT
+            END DO
+            POST(event_2[1])
+       END IF
+    END PROGRAM Query_Two
+
+    PROGRAM Query_Three
+! Assuming the answer to Query_One is "yes", this asks whether waiting
+! for the event count to reach the required value is enough (as distinct
+! from requiring the WAIT to be executed)
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(EVENT_TYPE) :: event[*]
+        INTEGER :: data[*] = 0, count
+        IF (NUM_IMAGES() /= 2) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            WAIT(event)
+            DO
+                CALL EVENT_QUERY(event,count)
+                IF (count == 1) EXIT
+            END DO
+            data = 1
+        ELSE IF (THIS_IMAGE() == 2) THEN
+            POST(event[1])
+            data[1] = 0
+            POST(event[1])
+        END IF
+    END PROGRAM Query_Three
+
+Five plausible responses are "no, no, no", "yes, no, no", "yes, yes,
+no", "yes, no, yes" and "yes, yes, yes".  The solution depends on which
+one is preferred.
+
+
+Solution A: If "no, no, no":
+----------
+
+I favour this, and there are certainly some other people who do, but I
+do not know whether we are in a majority.
+
+[18:22] Change "at least" to "exactly" in 7.4p3.
+
+[18:23-24] In 7.4p3, replace the sentence:
+
+    "The segment following a different EVENT WAIT statement using the
+    same event variable can be ordered to succeed segments preceding
+    other EVENT POST statements using that event variable.
+
+by:
+
+    "If the event variable has a value of greater than k, which of those
+    segments precede the EVENT WAIT is processor-dependent.  Once an
+    execution of an EVENT POST statement has been matched in this way,
+    it will not be used for matching in subsequent EVENT WAIT
+    statements."
+
+[18:25+] Replace the body of NOTE 7.4 in 7.4 by:
+
+    "The ordering of segments is precisely that defined by the execution
+    of the image control statements, and the value of the event variable
+    (as returned from EVENT_QUERY) is purely indicative".
+
+[49:13+] Add a new paragraph to A.3.1:
+
+    "Because the value returned from EVENT_QUERY is purely indicative,
+    this program is processor-dependent."
+
+[50:35+] Add a new paragraph to A.3.2:
+
+    "Because the value returned from EVENT_QUERY is purely indicative,
+    this program is processor-dependent."
+
+
+
+Solution B: If "yes, no, no":
+----------
+
+My understanding from what they have said is that many people expect
+this.
+
+[18:21-24] Replace 7.4p3 by:
+
+    "If an EVENT WAIT statement using an event variable is executed with
+    a threshold of k when the event variable has a value of n, and
+    k <= n, the segments preceding all of the EVENT POST statements
+    that have updated that event variable will precede the segment
+    following the EVENT WAIT statement.  If k > n, the EVENT WAIT
+    statement will wait until the value of the event variable reaches k.
+
+[18:25+] Delete NOTE 7.4 because it is now normative.
+
+[27:21+] Add a new paragraph to 8.4.15:
+
+    "If the value returned by an EVENT_QUERY invocation on an event
+    variable on the same image is in position k of the sequence of
+    values that the event variable takes during execution and the
+    EVENT_QUERY invocation precedes an EVENT WAIT invocation on the
+    variable, the segment preceding the EVENT POST statement that made
+    change i, for any i <= k, will precede the segment following that
+    EVENT WAIT statement."
+
+[49:22+] Add a new paragraph to A.3.1:
+
+    "Because this TS does not specify a progress requirement, whether
+    this program will make progress is processor-dependent."
+
+[50:35+] Add a new paragraph to A.3.2:
+
+    "Because this TS does not specify a progress requirement, whether
+    this program will make progress and whether it detects failure
+    reliably is processor-dependent.
+
+
+Solution C: If "yes, yes, no":
+----------
+
+This differs from solution B in making example A.3.3 less deceptive and
+requiring EVENT_QUERY to synchronised.  I do not like it, because I
+can't convince myself that it doesn't have some nasty ambiguities
+lurking, and it adds serious inefficiency, but am prepared to propose it
+for the sake of consensus.
+
+[18:21-24] Replace 7.4p3 by:
+
+    "If an EVENT WAIT statement using an event variable is executed with
+    a threshold of k when the event variable has a value of n, and
+    k <= n, the segments preceding all of the EVENT POST statements
+    that have updated that event variable will precede the segment
+    following the EVENT WAIT statement.  If k > n, the EVENT WAIT
+    statement will wait until the value of the event variable reaches k.
+
+[18:25+] Delete NOTE 7.4 because it is now normative.
+
+[27:21+] Add a new paragraph to 8.4.15:
+
+    "If the value returned by an EVENT_QUERY invocation is in position k
+    of the sequence of values that the event variable takes during
+    execution and the EVENT_QUERY invocation precedes an EVENT WAIT
+    invocation on the variable, the segment preceding the EVENT POST
+    statement that made change i, for any i <= k, will precede the
+    segment following that EVENT WAIT statement."
+
+EVENT_QUERY is now an anomalous intrinsic procedure that performs logic
+(but not data) synchronisation, and I feel that it would be better in a
+new class.
+
+[27:21+] Add a new Note to 8.4.15:
+
+    "NOTE 8.x
+    This means that EVENT_QUERY has a synchronization effect, but it
+    does not mean that it synchronizes data updates."
+
+[49:22+] Add a new paragraph to A.3.1:
+
+    "Because this TS does not specify a progress requirement, whether
+    this program will make progress is processor-dependent."
+
+[50:35+] Add a new paragraph to A.3.2:
+
+    "Because this TS does not specify a progress requirement, whether
+    this program will make progress is processor-dependent.  Note that
+    the value returned from EVENT_QUERY for event variables on other
+    images is used solely for failure handling."
+
+
+Solution E: If "yes, no, yes":
+----------
+
+I do not think that anyone on WG5 favours this, though some users may,
+so I have not tried to specify it.
+
+
+Solution F: If "yes, yes, yes":
+----------
+
+I sincerely hope that nobody on WG5 favours this, but some people have
+said things that are equivalent to it.
+
+The best solution in this case would be to change EVENT_QUERY from a
+subroutine into an image control statement, but there seems to be no
+willingness to do that.  If not, the next best solution would be a new
+class of intrinsic subroutine, i.e. an atomic one containing an image
+control statement, but that would mean significant changes to the TS
+and main standard.
+
+
+
+Issue 3 (Sequential Consistency)
+--------------------------------
+
+In Fortran 2008, the segment ordering is necessarily transitive (i.e. a
+mathematical partial order, as Note 8.31 says).  The only explicit,
+normative and general requirement is in 2.3.5p1 "...  segments executed
+by separate images are partially ordered by image control statements."
+
+Unfortunately, semaphores are NOT necessarily sequentially consistent
+(see reference above), code sections ordered by them are NOT necessarily
+in a mathematical partial order (unlike the locks in Fortran 2008), and
+there is no normative requirement for that in TS 18508.  The reason for
+this is that the event variable count is anonymous, and therefore
+provides no information on the ordering of the EVENT POST statements.
+
+One interpretation is that that wording in 2.3.5p1 is a requirement on
+all features introduced into Fortran by future Technical Specifications.
+Another is that it is present to constrain the the processor-dependent
+semantics specified in 8.5.5 (SYNC MEMORY), and does not necessarily
+apply to future language extensions.  Both are reasonable.
+
+Worse, the ordering of semaphores is described solely in terms of the
+event variable, and we have NOT required atomic variables to be
+sequentially consistent (on efficiency grounds).  It is therefore
+unclear whether that wording in Fortran 2008 constrains segment ordering
+by events or not.
+
+Thiss leads on to the question of whether values returned from
+EVENT_QUERY are required to be (globally) consistent with the ordering
+of EVENT POSTs and EVENT WAITs, even when it is called in an unordered
+segment.
+
+And, lastly, this is a fiendishly complicated area, which took 30 years
+between identification and understanding in computer science (see
+Background), and I am only 90% certain that sequential consistency of
+events and transitivity of sent-ordered segments are equivalent.  There
+are some published results, but they are in a fairly weird notation, and
+I am not sure that I have correctly translated them to Fortran terms.
+
+Aside: for people not familiar with parallel data models, sequential
+consistency is a global attribute, and cannot be specified by any
+wording that applies to each object separately.
+
+Are events required to be sequentially consistent?
+
+Is the following program required to print '1'?  I assume that the
+answer is "yes".
+
+    PROGRAM SC_One
+! This is a classic example, and a surprising number of environments
+! will, at least on occasion, print '0' (which indicates simultaneous
+! access to data in unordered segments) -  'obviously' that can't
+! happen, but parallelism is no more obvious than quantum mechanics.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(EVENT_TYPE) :: event[*]
+        INTEGER :: data[*] = 0
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            WAIT(event)
+            POST(event[2])
+            PRINT *, data
+        ELSE IF (THIS_IMAGE() == 2) THEN
+            WAIT(event)
+            POST(event[1])
+        ELSE IF (THIS_IMAGE() == 3) THEN
+            data[1] = 1
+            POST(event[1])
+        END IF
+    END PROGRAM SC_One
+
+This example is relevant only if the answer to Query_One (sic) is "yes",
+because otherwise the ordinary atomic consistency rules (whatever they
+are) apply.  Is the following defined to print "1"?  I assume that the
+answer is "yes".
+
+    PROGRAM SC_Two
+! Consider an implementation with multiple point-to-point links, where
+! an EVENT WAIT requests the posting image to ensure that all updates
+! have been completed.  That is the conventional 'pull' model of
+! data synchronisation.
+
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(EVENT_TYPE) :: event[*]
+        INTEGER :: data[*] = 0
+        IF (NUM_IMAGES() /= 4) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            data[4] = 1
+            EVENT POST (event[3])    ! Post A
+            EVENT POST (event[2])
+        ELSE IF (THIS_IMAGE() == 2) THEN
+            EVENT WAIT (event)
+            EVENT POST (event[3])    ! Post B
+        ELSE IF (THIS_IMAGE() == 3) THEN
+            EVENT WAIT (event)    ! Waits on post B
+            ! Waits for image 2 (i.e. Post B) to synchronise data
+            PRINT *, data[4]
+            EVENT WAIT (event)    ! Waits on post A
+            ! Waits for image 1 (i.e. Post A) to synchronise data
+        END IF
+    END PROGRAM SC_Two
+
+Is the following program allowed to print "1 0" from image 3 and "0 1"
+from image 4, as well as conversely?
+
+    PROGRAM SC_Three
+! This is the classic IRIW example, and often occurs when the network
+! has multiple paths between two points.  It is obviously the most
+! likely to fail.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(EVENT_TYPE) :: event[*]
+        INTEGER :: count_1, count_2
+        IF (NUM_IMAGES() /= 6) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            POST(event[5])
+        ELSE IF (THIS_IMAGE() == 2) THEN
+            POST(event[6])
+        ELSE IF (THIS_IMAGE() == 3) THEN
+            CALL EVENT_QUERY(event[5],count_1)
+            CALL EVENT_QUERY(event[6],count_2)
+            PRINT *, count_1, count_2
+        ELSE IF (THIS_IMAGE() == 4) THEN
+            CALL EVENT_QUERY(event[6],count_2)
+            CALL EVENT_QUERY(event[5],count_1)
+            PRINT *, count_1, count_2
+        END IF
+    END PROGRAM SC_Three
+
+It would be a good idea to close the issue by explicitly requiring
+sequential consistency for events and, if the answer to Query_Three is
+"yes", to include EVENT_QUERY, and to include a Note clarifying that
+2.3.5p1 applies to event-ordered segments.
+
+
+Solution A: If the answer to Issue 2 (sic) is "yes, yes, yes":
+----------
+
+[17:15+] Add a new paragraph after 7.2p2:
+
+    "All changes to event variables are sequentially consistent, and
+    the values returned from EVENT_QUERY are consistent with that
+    ordering."
+
+[17:26+] Add a new Note to 7.2:
+
+    NOTE:
+    Segments, including those ordered by event statements, are required
+    to be in a partial order, which implies some restrictions on the
+    possible synchronisation methods for events.
+
+
+Solution B: Otherwise, if the answer to Query_One is "yes":
+----------
+
+[17:15+] Add a new paragraph after 7.2p2:
+
+    "All changes to event variables are sequentially consistent, and
+    the values returned from EVENT_QUERY for variables on the executing
+    image are consistent with that ordering."
+
+[17:26+] Add a new Note to 7.2:
+
+    NOTE:
+    Segments, including those ordered by event statements, are required
+    to be in a partial order, which implies some restrictions on the
+    possible synchronisation methods for events.
+
+
+Solution C: Otherwise:
+----------
+
+[17:26+] Add a new Note to 7.2:
+
+    NOTE:
+    Segments, including those ordered by event statements, are required
+    to be in a partial order, which implies some restrictions on the
+    possible synchronisation methods for events.
+
+
+
+Issue 4 (Tidying Up)
+--------------------
+
+One response to these issues was to add the following paragraph to
+7.3p4 (EVENT POST):
+
+    "If the segment that precedes an EVENT POST statement is unordered
+    with respect to the segment that precedes another EVENT POST
+    statement for the same event variable, the order of execution of the
+    EVENT POST statements is processor dependent."
+
+I am unable to see that it adds anything useful.  That never was
+disputed and does not resolve any problems.  It should be deleted.
+
+[18:2-4] Delete the paragraph (7.3p4).
+

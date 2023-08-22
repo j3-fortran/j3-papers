@@ -1,0 +1,218 @@
+
+                                                              J3/03-255
+
+Date:     29 September 2003
+To:       J3 
+From:     Aleksandar Donev
+Subject:  Post Fortran 2003: Movable arrays
+
+______________________________________ 
+Summary
+______________________________________
+
+There is a need for providing a dynamic array within Fortran that has
+far less storage overheads than allocatable or pointer arrays. This is
+possible because often it is known that the array will be contiguous
+and its size is either known or can be deduced from some other data
+which is available. I will call these movable arrays, based on a
+proposal I originally developed with John Reid, pasted almost literally in the 
+Proposal section. 
+
+Movable arrays are a mixture between assumed-size arrays and array pointers. 
+They behave like assumed-size arrays in almost all contexts, but can be 
+inside derived types and can change their address dynamically like pointers. 
+Some will note similarities with Cray pointers.
+
+IMO, movable arrays
+should also provide the basis for interoperability with C arrays,
+rather then the current system where untyped pointers are used for
+everything having to do with C. This is in agreement with several
+comments to the FCD draft (but it was then too late for such a big
+change).
+
+______________________________________ 
+Motivation
+______________________________________
+
+Consider a data-structure representing a graph, where a vertex needs a list of 
+neighbours. Presently, one can do:
+
+TYPE vertex
+   INTEGER :: start_of_neighbors ! The list of neighbors
+END TYPE vertex
+
+where start_of_neighbours is an index into some array where the neighbour 
+lists for all vertices are concatenated. This usage of integers instead of 
+(or as) pointers is common on FORTRAN, and efficient, but has a very big 
+defficiency. An integer index *assumes* that there is only one array where 
+neighbours are stored. But in dynamic applications there may be several 
+buffers used for storing vertices, and a pointer is much better then an 
+integer:
+
+TYPE vertex
+   INTEGER, DIMENSION(:), POINTER :: neighbors ! The list of neighbors
+END TYPE vertex
+
+Now, one has freedom of where the neighbors are stored and how they are
+allocated, and can simply use pointer assignment on neighbors to change
+this. For efficiency reasons, one would almost allocate several large
+neighbour arrays when initializing the graph, and then chop them
+into small pieces, one for each vertex, using pointer assignment. 
+An example code segment might be:
+
+TYPE(vertex), DIMENSION(N) :: V ! Vertex set
+INTEGER, DIMENSION(N*d) :: N ! Neighbour set, d is maximal degree
+INTEGER :: vertex, counter, degree
+
+counter=1
+DO vertex=1, N
+  degree=... ! Assign value
+  V(vertex)%neighbors=>N(counter:counter+degree) ! Pointer assignment
+  counter=counter+degree
+END DO
+
+This approach is nice to use and allows one to have freedom in how the
+neighbour lists are allocated, for example. The above code has a big
+efficiency problem though, which is very important in practice. The
+array pointer neighbours in the type vertex usually takes a lot of
+memory, since the array pointer concept of Fortran 90 requires that
+adress, stride and bound information be stored. The compilers I have
+used usually pad this to some large value such as 16 or 32 bytes. This
+storage requirement is excessive and in many cases not necessary. For
+example, stride information is often not needed since the user knows
+that he will only use memory contigous blocks, and in some cases, such
+as skip linked search lists, the size (bound) information is also not
+needed.
+
+TYPE vertex
+   INTEGER :: degree=0
+   INTEGER, DIMENSION(*), POINTER :: neighbours
+END TYPE vertex
+
+then the assignment of the neighbour list in the above code would be
+substituted with:
+
+V(vertex)%degree=degree
+V(vertex)%neighbors=>N(counter) ! Or N(counter:)
+   ! Or N(counter:counter+degree)
+
+The syntax bellows does not use POINTER but MOVABLE to avoid conflicts with 
+the existing words in the standard.
+
+______________________________________ 
+Proposal
+______________________________________
+
+2. THE MOVABLE ARRAY
+
+Our starting point is the assumed-size array. We call our new sort of
+array 'movable' for the moment. We are not committed to this adjective,
+but we want to avoid 'pointer' since this is already used extensively
+in the standard with another meaning. A movable array can be moved from
+one target to another with the pointer assignment statement:
+
+   real, movable :: a(*)
+   real, target  :: t(100)
+   a => t
+
+and allocated and deallocated:
+
+   allocate (a(30))
+   deallocate (a)
+
+We do not want any array copying to take place with such a pointer
+assignment, so the right-hand side must be an array that is movable,
+assumed-size, allocatable, or explicit-size. It must have the same type
+and must have the target attribute. An element of such an array is
+allowed, too (as for the actual argument corresponding to an
+assumed-size dummy array). The ranks are not required to agree (again,
+as for the actual argument corresponding to an assumed-size dummy
+array), and in such cases array element sequence association between
+the target and the movable array is implied.
+
+Deallocation will be allowed only if the target was allocated as a movable 
+array.
+
+Movable arrays can also be null, tested for null, and tested for being 
+associated with the same target:
+
+   real, movable :: a(*), b(*)=>null(), c(*)
+    ...
+   a => null()
+   nullify(c)
+   if (associated(b)) then
+    ...
+   if (associated(a,b)) then
+
+The two-argument version tests only that a and b share the same first element.
+
+We expect the implementation of a movable array to be like that for an
+assumed-size array. Mostly, its descriptor will consist of an address
+only.  However, a debugging compiler might also hold its size and a
+flag to indicate whether the target was allocated as a movable array.
+
+An explicit interface will be required like for allocatable array
+arguments. If the dummy argument is a movable array, the actual
+argument must be a movable array. If the actual argument is a movable
+array, the dummy argument must be a movable, explicit-shape or
+assumed-size array.
+
+We will also permit movable arrays as components of types:
+
+   type my_data
+      real, movable :: a(*) => null()
+   end type my_data
+
+and we permit multi-rank movable arrays:
+
+   subroutine mine(lda)
+   integer :: lda
+   real, movable :: a(lda,*)
+
+   type my_data
+      integer :: lda
+      real, movable :: a(lda,*)
+   end type my_data
+
+The bounds must be defined whenever a movable array is referenced and
+must not be altered while a movable array is associated with a target.
+If a multi-rank movable array is a component of a type, the bounds of
+its leading extents must be integer expressions depending only on other
+components of the type.
+
+For the sake of optimization, we propose that the rules that apply to
+assumed-size arrays with respect to aliasing should apply also to
+movable arrays. While a movable array is associated with a target,
+action that affects value of the target must be taken through the
+movable array.
+
+3. INTEROPERABILITY WITH C
+
+A movable array is interoperable with a C pointer provided their types
+correspond. It may be a component of a type that corresponds to a C
+struct type with a C pointer of a corresponding type in the
+corresponding position. Entities of such types may be passed in a
+procedure call under the existing rules.
+
+If a movable array appears directly in an argument list, the VALUE
+attribute refers to the descriptor (usually just an integer holding the
+address). If the VALUE attribute is present, the corresponding actual
+argument must be a C pointer whose referenced type is interoperable
+with the type of the movable array. If absent, the corresponding actual
+argument must be a pointer to a pointer whose referenced type is
+interoperable with the type of the movable array. For example,
+
+   void AllocateIntegerArray(int ** a, const int n)
+   { *a=(int *) malloc(n*sizeof(int)); }
+
+is interoperable with:
+
+  interface
+    subroutine AllocateIntegerArray(a, n), bind(C)
+        use iso_c_binding
+        integer(c_int), dimension(*), movable :: a
+        integer(c_int), intent(in), value :: n
+    end subroutine AllocateIntegerArray
+  end interface
+
+Note that a movable array provides a way to dereference some C pointers.

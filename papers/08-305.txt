@@ -1,0 +1,625 @@
+To: J3                                                        08-305
+From: Bill Long
+Date: 2008 November 20
+Subject: TR 29113: "Further Interoperability of Fortran with C"
+         (Interoperability of optional, assumed-shape, allocatable,
+         pointer, assumed-type, and assumed-rank dummy arguments.)
+References: Rewrite of 06-128r1
+            WG5 worklist item j3-041
+            J3/05-271, J3/05-277, J3/05-281, J3/06-171r1
+            WG5/N1667, WG5/N1674, J3/08-271r1, WG5/N1755
+-----------------------------------------------------------------------
+
+
+Introduction
+------------
+
+The system for interoperability between the C language, as
+standardized by ISO/IEC 9899:1999, and Fortran, as standardized by
+ISO/IEC 1539-1:2009, provides for interoperability of procedure
+interfaces with arguments that are non-optional scalars, explicit
+shape arrays, or assumed size arrays. These are the cases where the
+Fortran and C data concepts directly correspond. Interoperability is
+not provided for important cases where there is not a direct
+correspondence between C and Fortran.
+
+The existing system for interoperability does not provide for
+interoperability of interfaces with Fortran dummy arguments that are
+assumed-shape arrays, dummy arguments with the Fortran allocatable or
+pointer attribute, or optional dummy arguments.  As a consequence, a
+significant class of Fortran subprograms are not portably accessible
+from C, limiting the usefulness of the facility.
+
+The existing system also does not provide for interoperability with C
+prototypes that have formal parameters declared (void *). The class of
+such C functions includes widely used library functions that involve
+copying blocks of data, such as those in the MPI library.
+
+This technical report extends the facility of Fortran for
+interoperating with C to provide for interoperability of procedure
+interfaces that specify optional dummy arguments, assumed shape dummy
+arguments, or dummy arguments with the allocatable or pointer
+attributes.  New Fortran concepts of assumed-type and assumed-rank are
+provided to facilitate interoperability of procedure interfaces with C
+prototypes with formal parameters declared (void *).
+
+The facility specified in this technical report is a compatible
+extension of Fortran as standardized by ISO/IEC 1539-1:2009. It does
+not require that any changes be made to the C language as standardized
+by ISO/IEC 9899:1999.
+
+
+Optional arguments
+------------------
+
+A C function reference indicates that an actual argument is not
+present by supplying NULL as the value of that argument.  A nonpresent
+optional argument of a C function is indicated by the corresponding
+formal parameter having the value NULL.  This design matches the common
+usage style in C for specifying that an actual argument is not
+provided.
+
+To avoid ambiguity with an actual argument that has the same internal
+representation as NULL, the OPTIONAL and VALUE attributes shall not
+both be specified for a dummy argument in a Fortran interface with the
+BIND attribute.
+
+
+Assumed-type variables:
+-----------------------
+
+An <assumed-type> variable is a variable declared with TYPE (*).
+
+An <assumed-type> variable shall be a dummy variable. An
+<assumed-type> variable shall not have the CODIMENSION, EXTERNAL,
+INTRINSIC, or VALUE attribute.
+
+The ALLOCATABLE, ASYNCHRONOUS, CONTIGUOUS, DIMENSION, INTENT,
+OPTIONAL, POINTER, TARGET, and VOLATILE attributes are allowed.
+
+An assumed-type variable may appear only as a dummy argument, an
+actual argument associated with a dummy argument that is assumed-type,
+or the first argument to these intrinsic and intrinsic module
+functions: ALLOCATED, ASSOCIATED, IS_CONTIGUOUS, LBOUND, PRESENT,
+RANK, SHAPE, SIZE, UBOUND, or C_LOC.
+
+An explicit interface is required for a procedure that has an
+assumed-type dummy argument.
+
+In the association of actual and dummy arguments, an assumed-type
+dummy argument is type and kind compatible with an actual data
+argument of any type.
+
+In specific interfaces of a generic interface, corresponding dummy
+arguments may include an assumed-type dummy argument. Disambiguation
+relies on the characteristics of the corresponding arguments other
+than type or on characteristics of other dummy arguments.
+
+A BIND(C) interface may specify dummy arguments that are
+assumed-type. If the dummy argument is a scalar, an explicit-shape
+array, or an assumed-size array, the corresponding formal parameter in
+the C prototype shall be a void pointer (void *).  If the dummy
+argument has the ALLOCATABLE or POINTER attributes, or is
+assumed-shape or assumed-rank, the actual argument is passed as the C
+address of a Fortran descriptor describing the actual argument.
+
+
+Assumed-rank variables:
+-----------------------
+
+An <assumed-rank> variable is a variable declared with the DIMENSION
+attribute with an <assumed-rank-spec>, DIMENSION(..).
+
+An <assumed-rank> variable shall be a dummy
+variable. An <assumed-rank> variable shall not have the CODIMENSION,
+EXTERNAL, INTRINSIC, or VALUE attribute.
+
+The ALLOCATABLE, ASYNCHRONOUS, CONTIGUOUS, DIMENSION, INTENT,
+OPTIONAL, POINTER, TARGET, and VOLATILE attributes are allowed.
+
+An assumed-rank variable may appear only as a dummy argument, an
+actual argument associated with a dummy argument that is assumed-rank,
+the argument of the C_LOC intrinsic function in the ISO_C_BINDING
+module, or the first argument in a reference to the intrinsic inquiry
+functions except LCOBOUND, UCOBOUND, and IMAGE_INDEX. A new inquiry
+intrinsic RANK is added to inquire about the rank of an array.
+
+An explicit interface is required for a procedure that has an
+assumed-rank dummy argument.
+
+In the association of actual and dummy arguments, an assumed-rank
+dummy argument is rank compatible with a corresponding actual argument
+of any rank. If the actual argument is scalar, the dummy argument has
+rank zero and the shape and bounds are arrays of zero size. If the
+actual argument is an array, the bounds of the dummy argument are
+assumed from the actual argument. In other respects, the rules for
+assumed-rank dummy arguments are similar to those for assumed-shape
+arrays.
+
+In specific interfaces of a generic interface, corresponding dummy
+arguments may include an assumed-rank dummy argument. Disambiguation
+relies on the characteristics of the corresponding arguments other
+than rank or on characteristics of other dummy arguments.
+
+A BIND(C) interface may specify dummy arguments that are
+assumed-rank. If the dummy argument is assumed-rank, the actual
+argument is passed as the C address of a Fortran descriptor describing
+the actual argument.
+
+
+Object Descriptors
+------------------
+
+A <<Fortran descriptor>> is an structure used by the processor to
+describe an object that is assumed-shape, assumed-rank, allocatable,
+or a data pointer.  The Fortran processor may already define a
+structure for this purpose independent of a use in interface
+operability with C prototypes. If this structure contains sufficient
+information it may be used directly as a Fortran descriptor. The
+internal structure of a Fortran descriptor might not be the same for
+all implementations, so direct use of this descriptor by a C
+programmer is not portable. Therefore, a new descriptor, the <<C
+descriptor>> is specified along with library functions with standard
+prototypes that allow for conversion between Fortran and C
+descriptors. This two descriptor model for describing data objects has
+these characteristics:
+
+1) The internal structure of the Fortran descriptor is not exposed to
+   the C programmer.
+
+2) The C descriptor contains enough information to efficiently access
+   the described object within a C function.
+
+3) The C descriptor contains enough information to create a
+   corresponding Fortran descriptor that is usable by the companion
+   Fortran processor.
+
+4) A method is provided to the C function that allows for allocation
+   or deallocation of objects that is compatible with effects of the
+   corresponding Fortran ALLOCATE and DEALLOCATE statements.
+
+5) A method is provided to compute stride multipliers based on lower
+   bound, extent, and stride values.
+
+
+Fortran descriptors
+-------------------
+
+The Fortran descriptor for an object shall contain enough information
+that the following can be determined by the C library function that
+converts a Fortran descriptor to a C descriptor.
+
+1) The base C address of the object unless the object is an
+   unallocated allocatable, or a data pointer that is not associated.
+
+2) The size, as would be returned by the C sizeof operator, of a
+   scalar of the same type and type parameter values as the object.
+
+3) The Fortran rank of the object. If this value is zero, the object
+   is scalar.
+
+4) Whether the object has the pointer attribute.
+
+5) Whether the object has the allocatable attribute.
+
+6) If the Fortran object has the pointer attribute, whether or not the
+   pointer is associated.
+
+7) If the Fortran object has the allocatable attribute, whether or not
+   the object is allocated.
+
+8) The type of the object if the object is of intrinsic interoperable
+   type, or that the object is of derived type.
+
+9) Triples that contain the lower bound, extent, and stride
+   multiplier for each dimension of the object unless the object is an
+   unallocated allocatable, a pointer that is not associated, or a
+   scalar.
+
+The Fortran descriptor may contain additional information that is not
+required to create a corresponding C descriptor.
+
+
+C descriptors
+-------------
+
+The C descriptor is a struct of type CFI_desc_t. This struct is
+defined in the file ISO_Fortran_binding.h. It shall contain these
+components:
+
+base_addr - pointer of type void. If the object is an unallocated
+            allocatable or a pointer that is not associated, the value
+            is NULL. If the object has zero size, the value is
+            processor-dependent. Otherwise, the value is the base
+            address of the object being described. The base address of
+            a scalar is its C address. The base address of an array is
+            the C address of the element for which each subscript has
+            the value of the corresponding lower bound.
+
+elem_len - type size_t, equal to the sizeof() of an element of the
+           object being described
+
+rank - type int, equal to the number of dimensions of the object being
+       described. If the object is a scalar, the value is zero.
+
+type - type int, equal to the identifier for the type of the
+       object. Each interoperable intrinsic C type has an
+       identifier. The identifier for interoperable structures has a
+       different value from any of the identifiers for intrinsic
+       types. Symbolic names and the corresponding values for the
+       identifiers are supplied in the ISO_Fortran_binding.h file.
+
+attribute - type int, equal to the value of an attribute code that
+            indicates whether the object being described is a data
+            pointer, allocatable, or assumed-shape.  Symbolic names
+            and the corresponding values for the attribute codes are
+            supplied in the ISO_Fortran_binding.h file.
+
+state - type int, has the value 1 if the object is an allocated
+        allocatable, an associated pointer, or assumed-shape, and 0
+        otherwise.
+
+fdesc - pointer of type void that points to the corresponding Fortran
+        descriptor if one exists; otherwise the value is NULL.
+
+dim[CFI_MAX_RANK] - array of type CFI_dim_t. Each element of the array
+        contains the lower bound, extent, and stride multiplier
+        information for the corresponding dimension of the
+        object. CFI_MAX_RANK is a constant defined in the file
+        ISO_Fortran_binding.h. The number of elements actually used is
+        equal to the rank of the object. This component is not used if
+        the object is a scalar.
+
+The struct of type CFI_dim_t is used to hold lower bound, extent, and
+stride multiplier information for one dimension of an array. It  is
+defined in the file ISO_Fortran_binding.h, and contains these
+components:
+
+lower_bound - type intptr_t, equal to the value of the lower bound of
+              an array for a specified dimension.
+
+extent - type intptr_t, equal to the number of elements of an array
+         along a specified dimension.
+
+sm - type intptr_t, equal to the stride multiplier for a
+     dimension. The value is the distance in bytes between the
+     beginnings of successive elements of the array along a specified
+     dimension.
+
+The following constant is defined in the file ISO_Fortran_binding.h:
+
+CFI_MAX_RANK - a value of type int equal to the largest rank
+               supported. The value shall be greater than or equal to
+               15.
+
+The following constants are defined in the file ISO_Fortran_binding.h
+for use as attribute codes. The values shall be of type int,
+nonnegative, and distinct.
+
+CFI_attribute_assumed
+CFI_attribute_allocatable
+CFI_attribute_pointer
+
+The following constants are defined in the file ISO_Fortran_binding.h
+for use as type specifiers. The values are of type int. The value for
+CFI_type_struct shall be distinct from all the other type
+specifiers. If an intrinsic C type is not interoperable with a Fortran
+type and kind supported by the companion processor, its specifier
+shall have a negative value. Otherwise, the specifier for an intrinsic
+type shall be positive.
+
+CFI_type_struct         - specifier for an interoperable struct
+CFI_type_signed_char    - specifier for type as indicated in name
+CFI_type_short
+CFI_type_int
+CFI_type_long
+CFI_type_long_long
+CFI_type_size_t
+CFI_type_int8_t
+CFI_type_int16_t
+CFI_type_int32_t
+CFI_type_int64_t
+CFI_type_int_least8_t
+CFI_type_int_least16_t
+CFI_type_int_least32_t
+CFI_type_int_least64_t
+CFI_type_int_fast8_t
+CFI_type_int_fast16_t
+CFI_type_int_fast32_t
+CFI_type_int_fast64_t
+CFI_type_intmax_t
+CFI_type_intptr_t
+CFI_type_float
+CFI_type_double
+CFI_type_long_double
+CFI_type_float_Complex
+CFI_type_double_Complex
+CFI_type_long_double_Complex
+CFI_type_Bool
+CFI_type_char
+
+Note that the specifiers for two intrinsic types may have the same
+value.  For example, CFI_type_int and CFI_type_int32_t might have the
+same value.
+
+
+Assumed-shape, assumed-rank, allocatable, data pointer arguments
+----------------------------------------------------------------
+
+In a reference to a procedure whose interface has the BIND attribute,
+the entity passed as the actual argument corresponding to a dummy
+argument that is an interoperable assumed-shape, assumed-rank,
+allocatable, or pointer data object is the C address of the Fortran
+descriptor of the actual argument. If the procedure referenced is a C
+function, the corresponding formal parameter shall be a pointer to
+type void.
+
+C struct definitions, C function prototypes, and the definitions of
+constants needed for a C function to interoperate with an interface
+that has assumed-shape, assumed-rank, allocatable, or data pointer
+dummy arguments are contained in a file named
+ISO_Fortran_binding.h. This file is supplied as part of the Fortran
+processor and shall be available to the companion C preprocessor.
+
+
+Seven functions are provided for use in C functions. These functions
+and the structure of the C descriptor provide the C programmer with
+the capability to interact with Fortran procedures that have
+allocatable, data pointer, assumed-rank, or assumed-shape arguments.
+
+Within a C function, allocatable objects shall be allocated or
+deallocated only through execution of the CFI_allocate and
+CFI_deallocate functions. Pointer objects may become associated with a
+target by execution of the CFI_allocate function.
+
+Each function returns an int value. If an error occurred during
+execution of the function the returned value is nonzero; otherwise
+zero is returned. Errors might occur because values supplied in an
+argument are invalid for that function, or a memory allocation
+failed. Which errors are detected and the corresponding return values
+are not specified by this standard. Prototypes for these functions are
+provided in the ISO_Fortran_binding.h file as follows:
+
+
+int CFI_update_cdesc ( CFI_cdesc_t * );
+
+   CFI_update_cdesc updates a C descriptor based on information in the
+   corresponding Fortran descriptor. The Fortran descriptor is not
+   modified.
+
+int CFI_update_fdesc ( CFI_cdesc_t * );
+
+   CFI_update_fdesc creates or updates a Fortran descriptor based on
+   information in the corresponding C descriptor. The C descriptor is
+   not modified.  If the address of the Fortran descriptor is NULL,
+   then a new Fortran descriptor is allocated using malloc.
+
+int CFI_allocate ( CFI_cdesc_t *, const CFI_bounds_t bounds[] );
+
+   CFI_allocate allocates memory for an object using the same
+   mechanism as the Fortran ALLOCATE statement. On entry, the base
+   address in the C descriptor shall be NULL. The corresponding
+   Fortran descriptor shall be for an unallocated allocatable or
+   disassociated pointer data object. The supplied bounds override any
+   current dimension information in the descriptors. The stride values
+   are ignored and assumed to be one. Both the Fortran and C
+   descriptors are updated by this function.
+
+int CFI_deallocate   ( CFI_cdesc_t * );
+
+   CFI_deallocate deallocates memory for an object that was allocated
+   using the same mechanism as the Fortran DEALLOCATE statement. On
+   entry, the base address in the C descriptor shall not be NULL.  The
+   corresponding Fortran descriptor shall be for the same object and
+   shall be for an allocated allocatable object, or a pointer
+   associated with a target that was allocated using CFI_allocate or
+   the Fortran ALLOCATE statement. Both the Fortran and C descriptors
+   are updated by this function.
+
+int CFI_is_contiguous ( const CFI_cdesc_t *, _Bool * result);
+
+   CFI_is_contiguous defines result as true if the object described by
+   the C descriptor is contiguous in memory, and false otherwise. If
+   the object is allocatable it shall be allocated. If it is a pointer
+   it shall be associated.
+
+int CFI_bounds_to_cdesc ( const CFI_bounds_t bounds[], CFI_cdesc_t * );
+
+   CFI_bounds_to_cdesc computes a set of extent and stride multiplier
+   values in a C descriptor given a corresponding set of lower bound,
+   upper bound, and stride values in the bounds array. The lower
+   bounds in the C descriptor become those in the input bounds
+   array. Since computation of stride multipliers requires the element
+   size, the whole C descriptor is used as one of the arguments. If
+   there is a corresponding Fortran descriptor, it is updated to
+   reflect the same bounds, extend, and stride multiplier information.
+
+int CFI_cdesc_to_bounds ( const CFI_cdesc_t *, CFI_bounds_t bounds[] );
+
+   CFI_cdesc_to_bounds compute a set of upper bounds and stride values
+   based on the extent and stride multiplier values in a C descriptor.
+   The lower bounds in the bounds array become those in the input C
+   descriptor. Since computation of strides from stride multipliers
+   requires the element size, the whole C descriptor is used as one of
+   the arguments.
+
+
+The struct of type CFI_bounds_t is used to hold bounds and stride
+information for one dimension of an array. It is defined in the file
+ISO_Fortran_binding.h, and contains these components:
+
+lower_bound - type intptr_t, equal to the value of the lower bound of
+              an array for a specified dimension.
+
+upper_bound - type intptr_t, equal to the value of the upper bound of
+              an array for a specified dimension.
+
+stride - type intptr_t, equal to the difference between the subscript
+         values of consecutive elements of an array along a
+         specified dimension.
+
+
+The base address in the C descriptor for a data pointer may be
+modified by assignment and that change later affected in the
+corresponding Fortran descriptor by the CFI_update_fdesc function.
+The base address in the C descriptor for an allocatable object may be
+initialized to NULL and its value shall be modified only by the
+CFI_allocate or CFI_deallocate functions. If the base address of an
+object that is neither a data pointer nor an allocatable object is
+changed from its initial value, the corresponding Fortran descriptor
+shall not be modified.
+
+It is possible for a C function to acquire memory through a library
+function like malloc and associate that memory with a data pointer in
+a C descriptor. A C descriptor associated with such memory shall not
+be supplied as an argument to CFI_deallocate and a corresponding dummy
+argument in a called Fortran procedure shall not be specified in a
+context that would cause the dummy argument to be deallocated. The
+memory may be released by reference to the free library function in a
+C function.
+
+If a Fortran descriptor is created by a C function, the memory for the
+descriptor may be released by a reference to the free library function
+in a C function when the descriptor is no longer needed.
+
+
+Specification for a RANK inquiry function.
+------------------------------------------
+
+In Table 13.1:
+
+RANK         (A)        I        Rank of a data object.
+
+Following the RANGE intrinsic in 13.7:
+
+13.7.136a  RANK (A)
+
+Description: Rank of a data object.
+
+Class: Inquiry function.
+
+Argument:  A  shall be a data object of any type.
+
+Result Characteristics: Default integer scalar.
+
+Result value: The result is the rank of A.
+
+Example: For an array X declared REAL :: X(:,:,:), RANK(X) is 3.
+
+
+===========================
+
+Examples:
+
+Example of TYPE (*) for an abstracted MPI routine with two
+arguments. The first argument is a data buffer of type (void *) and
+the second is an integer indicating the size of the buffer.  The
+generic interface allows for both 4 and 8 byte integers, as a solution
+to the "-i8" compiler switch problem.
+
+In C:  void MPI_xxx ( void * buffer, int n);
+
+In the Fortran MPI module:
+
+interface MPI_xxx
+   subroutine MPI_xxx (buffer, n) bind(c,name="MPI_xxx")
+      type(*),dimension(*) :: buffer
+      integer(c_int),value :: n
+   end subroutine MPI_xxx
+   module procedure MPI_xxx_i8
+end interface MPI_xxx
+
+...
+
+subroutine MPI_xxx_i8 (buffer, n)
+   type(*),dimension(*) :: buffer
+   integer(8) :: n
+   call MPI_xxx(buffer, int(n,c_int))
+end subroutine MPI_xxx_i8
+
+-----------------------
+Example of assumed-type and assumed-rank for an abstracted
+MPI_send routine.
+
+In C:  void MPI_send ( void * buffer, int n);
+       void MPI_send_new ( void * buffer_desc);
+
+In the Fortran MPI module:
+
+interface MPI_send
+   subroutine MPI_send_old (buffer, n) bind(c,name="MPI_send")
+      type(*), dimension(*) :: buffer ! Passed by simple address
+      integer(c_int),value :: n
+   end subroutine
+   subroutine MPI_send_new (buffer) bind(c,name="MPI_send_new")
+      type(*), dimension(..), contiguous :: buffer
+         ! Passed by descriptor including the shape and type
+   end subroutine
+end interface
+
+real :: x(100), y(10,10)
+
+! These will invoke MPI_send_old
+call MPI_send(x,size(x)) ! Passed by address
+call MPI_send(y,size(y)) ! Sequence association
+call MPI_send(y(:,1),size(y,dim=1)) ! Pass first column of y
+call MPI_send(y(1,5),size(y,dim=1)) ! Pass fifth column of y
+
+! These will invoke MPI_send_new
+call MPI_send(x) ! Pass a rank-1 descriptor
+call MPI_send(y) ! Pass a rank-0 descriptor
+call MPI_send(y(:,1)) ! Passed by descriptor without copy
+call MPI_send(y(1,5)) ! Illegal: No sequence association
+
+--------------------
+
+It is possible to "cast" a TYPE (*) object to a usable type, exactly
+as is done for void * objects in C. For example, this code fragment
+casts a block of memory to be used as an integer array.
+
+
+subroutine process(block, nbytes)
+   type(*), target :: block(*)
+   integer, intent(in) :: nbytes ! Number of bytes in block(*)
+
+   integer :: nelems
+   integer, pointer :: usable(:)
+
+   nelems=nbytes/(bit_size(usable)/8)
+   call c_f_pointer (c_loc(block), usable, [nelems] )
+   usable=0 ! Instead of the disallowed block=0
+end subroutine
+
+
+--------------------
+Assumed-rank variables are not restricted to be assumed-type.
+For example, many of the procedures in Clause 14 could be written
+using an assumed-rank dummy argument instead of writing 16 separate
+specific routines for each possible rank.
+
+An example of an assumed-rank dummy argument for the specific
+procedures for a Clause 14 function.
+
+interface ieee_support_divide
+    module procedure ieee_support_divide_noarg
+    module procedure ieee_support_divide_onearg_r4
+    module procedure ieee_support_divide_onearg_r8
+end interface ieee_support_divide
+
+...
+
+logical function ieee_support_divide_noarg ()
+    ieee_support_divide_noarg = .true.
+end function ieee_support_divide_onearg_r4
+
+logical function ieee_support_divide_onearg_r4 (x)
+    real(4),dimension(..) :: x
+    ieee_support_divide_onearg_r4 = .true.
+end function ieee_support_divide_onearg_r4
+
+logical function ieee_support_divide_onearg_r8 (x)
+    real(8),dimension(..) :: x
+    ieee_support_divide_onearg_r8 = .true.
+end function ieee_support_divide_onearg_r8
+
+

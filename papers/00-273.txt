@@ -1,0 +1,117 @@
+
+                                                         J3/00-273
+
+Date:     9 September 2000
+To:       J3
+From:     John Reid
+Subject:  Interpretation 23
+
+We struck this problem at Oulu:
+
+Suppose a formatted sequential file is positioned in the middle of a
+record because it has just performed a nonadvancing read or write
+statement.  Suppose there are n characters from the current point to
+the end of the record.  Now perform a write of less than n characters.
+Is the length of the record unchanged and are the characters at the end
+of the record retained?
+
+At [136:44], we find:
+
+For sequential access on output, if there is a current record, the file
+position is not changed and the current record becomes the last record
+of the file.  Otherwise, a new record is created as the next record of
+the file; this new record becomes the last and current record of the
+file and the file is positioned at the beginning of this record.
+
+This makes it clear that all records beyond the current record are lost,
+but what about the data in the current record beyond the current point?
+The Oulu subgroup thought that this was the intention and worked out an
+edit to the above paragraph. Doubts were expressed in the main group.
+
+Another view (mine now) is that the data should be retained since this
+paragraph does not say that it is lost.
+
+Should it make any difference whether the previous statement was a
+read or a write?
+
+I tried this program on the five compilers to which I have access
+
+ program main
+  character(4)word
+  character(10)line
+  integer size
+
+  open(11)
+  write(11,'(a)')'1234567890'
+  rewind 11
+  read(11,'(a)', advance='no')word
+  write(11,'(a)', advance='yes')word
+  rewind 11
+  read(11,'(a)',advance='no',eor=10, size=size)line
+10  write(*,*)' line=',line
+  write(*,*)' size=',size
+
+  rewind 11
+  write(11,'(a,TL6)', advance='no')'1234567890'
+  write(11,'(a)', advance='yes')word
+  rewind 11
+  read(11,'(a)',advance='no',eor=20, size=size)line
+20  write(*,*)' line=',line
+  write(*,*)' size=',size
+
+ end program
+
+and the reported sizes were:
+
+SUN      8  10
+EPC      8  10
+Nag      8  10
+DEC     10  10
+Fujitsu  8   8
+
+WG5 members reported these further results to me:
+
+Cray vector         10  10
+SGI MIPS-based Irix 10  10
+N.A. Software       10  10
+
+Bill Long (Cray) says:
+
+I recently had an extensive email discussion with someone from Sun (I could
+look
+up the name if that is important) on the difference between a "record" and a
+"file", especially the distinction between the current position within the
+record as opposed to the current position within a file.   He seemed to take
+a
+pure C view that there was only a file position, and that position within a
+record was essentially a meaningless concept. Thus, the end of the current
+write
+(for sequential I/O) defined the end of the file.
+
+I would argue the opposite. In Fortran, unlike C,  there is a strong concept
+of
+a record as distinct from the containing file.  Writes into the middle of a
+record should affect only the character positions specified by the current
+format, and not affect other characters already in the record from previous
+writes. It would seem irrelevant whether those previously written characters
+were before or after the newly written characters.
+
+If the intent of the standard is to truncate the file in the manner
+suggested by
+our man from Sun, then the standard should be changed to eliminate the
+concept
+of "record" for sequential I/O.  I really doubt that is the intent, and
+would be
+strongly opposed to such a change.
+
+Steve Morgan says:
+
+My gut feel on this is that Fujitsu have the right interpretation.
+My Rationale: The non-advancing case ought to be analogous to the
+advancing case. When an advancing write is made for normal advancing
+I/O the record written becomes the last record. All subsequent records
+are lost. So following non-advancing I/O the characters written (by an
+advancing WRITE) should become the last characters in the file (and
+hence the record).
+
+

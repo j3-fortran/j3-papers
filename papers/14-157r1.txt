@@ -1,0 +1,52 @@
+To:      J3                                                 J3/14-157r1
+From:    John Reid
+Subject: A.1.2 revision
+Date: 2014 June 25
+References: N2007, N2013
+
+Discussion
+----------
+In N2013, I suggested a change to the code in A.1.2 to make the code
+tolerate failing spare images. That code was not correct. Here is a
+alternative change. It uses image 1 to inquire about failed images
+and set up a suitable mapping to spare images. The function
+IMAGE_STATUS, proposed in 14-141r2, is used to test the spares for
+failure. In case of further failures before the CHANGE TEAM statement
+completes execution, a test is included after it to cause the set-up
+process to be repeated if any more images have failed. I am assuming
+here that if some of the images that executed the CHANGE TEAM statement
+have failed but the executing image is a member of a new team without
+a failed image, its value of its variable called status will not be
+STAT_FAILED_IMAGE.
+
+Edits to N2007:
+---------------
+
+[40:4] Delete "and the spare ... images".
+
+[40:9] Delete "id, me,"
+[49:9+] Add INTEGER :: id[*], me[*]
+
+[40:22-37] Replace by
+! Set up spare images as replacement for failed ones
+  IF (image_status(1) == STAT_FAILED_IMAGE) then
+     ERROR STOP 'cannot recover'
+  IF (this_image() == 1) then
+     failed_img = failed_images()
+     k = images_used
+     DO i = 1, size(failed_img)
+        DO k = k+1, num_images()
+           IF (image_status(k) == 0) EXIT
+        END DO
+        IF (k > num_images()) ERROR STOP 'cannot recover'
+        me[k] = failed_img(i)
+        id[k] = 1
+     END DO
+     images_used = k
+  END IF
+!
+! Set up a simulation team of constant size.
+! id == 2 does not participate in team execution
+  FORM TEAM (id, simulation_team, NEW_INDEX=me, STAT=status)
+  simulation : CHANGE TEAM (simulation_team, STAT=status)
+  IF (status==STAT_FAILED_IMAGE) EXIT simulation

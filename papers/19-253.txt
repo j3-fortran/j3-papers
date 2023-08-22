@@ -1,0 +1,174 @@
+To: J3                                                     J3/19-253
+From: Dan Nagle & Lorri Menard
+Subject: Array Descriptor Type
+Date: 2019-October-16
+
+Reference: 18-007r1, 19-150
+
+
+I Introduction
+
+At meeting 219, during the roll call of features, the rank-1
+integer as array descriptor feature was supported.  I asked a question
+of whether a distinct type for the array descriptor would be
+a more advantageous approach.  The answer was that it
+should be considered, but had not yet been.  This paper
+attempts to further the discussions started in 19-150.
+
+
+
+II Basic Idea
+
+A new derived type is added to iso_fortran_env that performs the functions
+of the rank-1 integer array descriptor.  This can reduce the new syntax
+required to provide useful array bounds and subscript description.
+
+While the meaning and use of a rank-1 integer are well established,
+a new type may be given any desirable behavior.
+
+This paper proposes the following: 
+
+1. A new derived type is added to iso_fortran_env, called
+   "array_spec_type".
+
+2. An object of array_spec_type is initialized by value constructor.
+   An object of array_spec_type is set by value constructor.
+
+3. An object of array_spec_type has two visible data components;
+   these are lb and ub, each of which are rank-1 integer arrays.
+    [Note: These are intentionally not declared to be protected
+           to allow example <n> below]
+   An object of array_spec_type has two type-bound procedures;
+   these are ordinal() and element() and are non-overrideable.
+
+
+4. Type-bound procedures ordinal() and element() are supplied to
+   convert from subscripts to storage ordinal and from 
+   storage ordinal to subscripts.
+
+5. An object of array_spec_type can be used within a DIMENSION statement.
+
+6. The array_spec_type can be extended.
+
+7 An object of array_spec_type can be a component of another type,
+   can be declared as an array, can be a dummy argument (including being
+   used for generic resolution).
+
+8 An object of array_spec_type cannot be in COMMON or EQUIVALENCE.
+
+9 When an allocatable object is used as the mold for an object of
+  array_spec_type, the allocatable shall be allocated.
+
+  When a pointer object is used as the mold for an object of
+  array_spec_type, the pointer shall be associated.
+
+
+III Examples of array_spec_type objects in declarations
+
+Given that all the declaration examples share these lines:
+
+! ensure this is the "real" array_spec_type
+
+use, intrinsic :: iso_fortran_env, only: array_spec_type
+
+type(any-type), dimension(42) :: foo
+
+! Declaration example 1:
+! declare an array_spec_type object and associate it with an array
+
+type( array_spec_type) :: asto = array_spec_type( foo )
+
+! Declaration example 2:
+! allocate goo the same bounds as foo
+
+type(any-other-type), dimension( asto) :: goo ! same bounds as foo
+
+! Declaration example 3:
+! add a halo of ghost elements
+
+type(any-other-type), dimension( asto% lb - 1: asto% ub + 1) :: poo
+
+
+
+IV Examples of array_spec_type objects in executables
+
+Executable example 1:
+! translate subscripts from one rank to another
+
+type(any-type), dimension( 10,10), target :: a
+
+type(same-as-a), dimension( :, :, :), pointer :: pa
+
+type(array_spec_type) :: asta = array_spec_type(a)
+
+! astpa is declared, but is initially undefined 
+type(array_spec_type)  astpa
+
+! Before pa is assigned, its dimension information is undefined.
+!  Setting astpa here will also be undefined
+
+astpa = array_spec_type(pa)
+
+pa(5,5,4) => a
+
+! After pa is assigned, setting astpa will give
+!   astpa%lb=[ 1, 1, 1 ]
+!   astpa%ub=[ 5, 5, 4 ]
+astpa = array_spec_type(pa)
+
+
+Executable example 2:
+! Find the ordinal of an element in one array, and access that
+!  same relative element in another, potentially different-shaped
+!  array.
+
+type(same-any-type), dimension( n, m)     :: a
+
+type(same-any-type), dimension( i, j, k) :: b
+
+type(array_spec_type) :: asta = array_spec_type(a)
+type(array_spec_type) :: astb = array_spec_type(b)
+
+integer o
+type(same-any-type) ofinterest
+
+
+! find the ordinal of an element in array a
+
+o = asta% ordinal( minloc(a))
+
+! and access the same element in array b
+
+ofinterest = astb%element(o)
+
+
+
+Executable example 3:
+! Use the array_spec_type in allocation
+subroutine testme (scratch)
+use, intrinsic :: iso_fortran_env, only: array_spec_type
+
+type(any-type), dimension(42) :: foo
+
+type( array_spec_type) :: asto = array_spec_type( foo )
+
+type( ...), dimension(..), allocatable :: scratch
+
+! allocate scratch to have the same bounds as foo
+
+allocate( scratch( asto))  !! Yes, same results as mold=foo
+
+Executable example 4:
+! SWAP from 19-152r1, using ast
+
+#define SWAP_USING_AST(A,B) \
+    ASSOCIATE(x=>A,y=>B); \ ! associations to avoid naming issues
+        BLOCK; \
+            REAL, ALLOCATABLE, DIMENSION(array_spec_type(x)) :: temp; \
+            temp = x; \
+            x = y; \
+            y = temp; \
+        END BLOCK; \
+    END ASSOCIATE
+
+NOTES:  Assumed size?  Copy from assumed rank?

@@ -1,0 +1,110 @@
+                                                           11-124r1
+To: J3
+From: Malcolm Cohen
+Subject: Interop: On assumed type
+Date: 2011 February 15
+
+
+1. Introduction
+
+For BIND(C) procedures, an assumed-type array that is neither assumed-shape
+nor assumed-rank must be passed as a simple void * pointer, i.e. the same
+as TYPE(C_PTR).
+
+This means that the array element size or indeed any other information
+about its type will not be directly available.  Without this information an
+assumed-shape dope vector, or array pointer dope vector, or C descriptor
+cannot be constructed.
+
+Therefore it is proposed that it be forbidden to pass such an array as an
+actual argument corresponding to an assumed-shape or assumed-rank dummy.
+(The pointer association case is already covered.)
+
+See 11-124 for an example.
+
+Also, the TR provides little guidance as to what the contents of the type
+field of the C descriptor should contain in various cases.
+
+
+2. Discussion
+
+2.1p2 is problematic, since it implies that CLASS(*) is assumed-type.
+It is also very strange to read that an assumed-type object "is" something
+followed by a constraint that it "shall be" something.
+An edit is provided.
+
+Review of 2.1p3 showed that it was much too restrictive, disallowing
+TYPE(*) entities from appearing in type declaration statements etc..
+(Are these meant to be only implicitly typed?)
+
+
+3. Open technical issues and suggested straw votes
+
+(1) Why is explicit-shape assumed-type allowed?  One is not permitted to
+    access array elements or take sections etc. so this seems useless.
+
+Straw vote 1:
+  (a) do not allow assumed-type to have explicit shape,
+  (b) ditto, and require assumed-type assumed-size to have rank 1,
+  (c) remain as is,
+  (d) undecided.
+?
+
+(2) Why does the type member in the C descriptor even exist?  Existing
+    C libraries require type to be passed separately already.
+
+(3) Even if type member exists, why does it require the processor to tell
+    the difference between an interoperable struct and a non-interoperable
+    one?  Even CLASS(*) doesn't require this!  How does it help the user
+    to know that he has something that is interoperable but of otherwise
+    completely unknown type?
+
+Straw vote 2: The type member should
+  (a) not exist
+  (b) not treat interoperable structs differently
+  (c) remain as is
+  (d) undecided
+?
+
+
+3. Edits to N1838
+
+[3:10-12] 2.1p2, replace the whole paragraph with
+  "An entity declared with a <declaration-type-spec> of TYPE (*) is an
+   assumed-type entity.  It has no declared type and its dynamic type and
+   type parameters are assumed from its effective argument."
+
+[3:15] 2.1p3, after "An assumed-type variable shall"
+       replace "appear ... with"
+       with "not appear in a designator or expression except as an
+             actual argument corresponding to".
+{It is only its appearance in/as a designator/expression that is
+ problematic.}
+
+[3:17] Append to 2.1p3
+  "An assumed-type array that is explicit shape or assumed size
+   shall not appear as an actual argument corresponding to an
+   assumed-shape or assumed-rank dummy argument.".
+{This just modifies the requirements of the existing 2.1p3, so should
+ not be a constraint unless we want to make the whole 2.1p3 into a
+ constraint.}
+
+[5:6] "is also required to" -> "shall".
+{Remove repetitive redundancy, use correct ISO language.}
+
+[17:14] 5.2.8p5, at the end before the final full stop, insert
+  "; the type member shall have a value from Table 5.2 that depends on the
+   effective argument as follows:
+   (-) if the effective argument is TYPE(*), CFI_type_unspecified;
+   (-) if the effective argument is CLASS(*) with a dynamic type that is an
+       interoperable intrinsic type, the appropriate value for that type;
+   (-) if the effective argument is of an intrinsic interoperable type, the
+       appropriate value from the table;
+   (-) if the effective argument is not polymorphic and is of an
+       interoperable derived type, CFI_type_struct;
+   (-) otherwise, CFI_type_unspecified.".
+{Bullet list.
+ I think that polymorphic actual arguments are forbidden except for TYPE(*)
+ and CLASS(*), so this covers all the cases.}
+
+===END===

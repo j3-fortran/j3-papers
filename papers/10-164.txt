@@ -1,0 +1,263 @@
+                                                            J3/10-164
+To: J3
+From: Malcolm Cohen
+Subject: Final discussion/motivation
+Date: 2010 June 01
+
+
+1. Introduction
+
+I have several interpretation requests on the finalization facility.
+However, these do not completely cover my doubts as to whether it is
+correctly described in the standard.
+
+One of the "poster children" for this facility was the support of dynamic
+types like those provided by ISO_VARYING_STRING.  This paper attempts to
+construct such a type with finalization and discusses its shortcomings.
+
+I note that although ISO_VARYING_STRING itself is better provided for by
+the use of ALLOCATABLE components, for more complicated dynamic types that
+is (allegedly) not necessarily the case, meaning we need finalization.
+However, more complicated cases are even more likely to be problematic than
+the simple case (and certainly harder to discuss), so I have chosen this
+type for the initial discussion.
+
+
+2. Goals of the type
+
+The ISO_VARYING_STRING module as originally written used pointer
+components, but leaked memory.  The goal of a type with finalization is to
+leak memory less, and if possible not at all; it would certainly be
+acceptable to leak memory in a small number of pathological cases.
+
+Obviously unacceptable behaviour includes things like deallocating memory
+more than once, or deallocating memory still in use.
+
+The module will omit nearly all of the actual operations of
+ISO_VARYING_STRING, just having enough to see how well it works.
+
+
+3. The example module
+
+MODULE m8_varying_string
+  PRIVATE
+  TYPE,PUBLIC :: m8string
+    PRIVATE
+    CHARACTER(:),POINTER :: value => NULL()
+  CONTAINS
+    PROCEDURE,PRIVATE :: m8s_asgn_m8s
+    GENERIC :: ASSIGNMENT(=) => m8s_asgn_m8s
+    PROCEDURE,PRIVATE :: m8s_concat_m8s
+    GENERIC :: OPERATOR(//) => m8s_concat_m8s
+    FINAL :: m8szap
+  END TYPE
+  PUBLIC new_m8string
+CONTAINS
+  ELEMENTAL TYPE(m8string) FUNCTION new_m8string(ch) RESULT(r)
+    CHARACTER(*),INTENT(IN) :: ch
+    ALLOCATE(CHARACTER(LEN(ch))::r%value)
+    r%value = ch
+  END FUNCTION
+  ELEMENTAL SUBROUTINE m8s_asgn_m8s(a,b)
+    CLASS(m8string),INTENT(OUT) :: a
+    CLASS(m8string),INTENT(IN) :: b
+    ! Do not need to deallocate a%value because a is already finalized.
+    ALLOCATE(CHARACTER(LEN(b%value))::a%value)
+    a%value = b%value
+  END SUBROUTINE
+  ELEMENTAL TYPE(m8string) FUNCTION m8s_concat_m8s(a,b) RESULT(r)
+    CLASS(m8string),INTENT(IN) :: a,b
+    ALLOCATE(CHARACTER(LEN(a%value)+LEN(b%value))::r%value)
+    r%value = a%value//b%value
+  END FUNCTION
+  ELEMENTAL SUBROUTINE m8szap(x)
+    TYPE(m8string),INTENT(INOUT) :: x
+    IF (ASSOCIATED(x%value)) DEALLOCATE(x%value)
+  END SUBROUTINE
+END MODULE
+
+Looks simple, what could possibly go wrong?
+
+
+4. Array constructors are a problem.
+
+Example 0: Function references
+
+Consider the code sample
+  x = ... new_m8string('abc') ... new_m8string('abc') ...
+i.e. some expression that has the same call to new_m8string more than
+once.  It might be argued that the processor may evaluate this function
+just once and use the value in two places.
+
+Seeing as how a reference to the function never returns the same value as a
+previous reference, and this could be true of many other functions, there
+seems to be a flaw in our permission logic here.
+
+Example 1: Array constructors and function references
+
+  TYPE(m8string) a(3)
+  a = [ (new_m8string('xyz'),i=1,3) ]
+
+This will call new_m8string 3 times (ignoring the issue raised earlier),
+place those three values in a (constructed) array.  This gives us,
+conceptually,
+  TYPE(m8string) funtmp1,funtmp2,funtmp3,arraytmp(3)
+  CHARACTER(3),POINTER :: chval1,chval2,chval3
+where each chvalN has been allocated and assigned the value 'xyz',
+and the values of the other temporaries are as follows:
+  funtmp1%value => chval1
+  funtmp2%value => chval2
+  funtmp3%value => chval3
+  arraytmp(1)%value => chval1
+  arraytmp(2)%value => chval2
+  arraytmp(3)%value => chval3
+
+According to 4.5.6, what happens next is finalization of the function
+reference results and finalization of the array constructor (not in any
+particular order).  WLOG, consider the sequence
+  CALL m8szap(funtmp1)
+  CALL m8szap(funtmp2)
+  CALL m8szap(funtmp3)
+  CALL m8szap(arraytmp) ! elemental
+The first three calls to m8szap will deallocate chval1, chval2 and chval3,
+and the fourth one will again try to deallocate chval1, chval2 and chval3;
+this is obviously a problem!  (In reality, the pointer components of
+arraytmp have become "undefined" - and some processors might detect this
+and abort the program, other processors might double-deallocate the memory
+and even more fun will be had later.)
+
+Example 2: Array constructors and variables
+
+  TYPE(m8string) b,c,d,e(6)
+  b = 'abc'
+  c = 'the quick brown fox'
+  d = ''
+  e = [ b,c,d,b,c,d ]
+
+Here, for the sake of discussion we give the names bval, cval and dval to
+the allocated objects pointed to by b%value, c%value and d%value.  We will
+call value of the array constructor ac2, and we have
+  ac2(1)%value => bval
+  ac2(2)%value => cval
+  ac2(3)%value => dval
+  ac2(4)%value => bval
+  ac2(5)%value => cval
+  ac2(6)%value => dval
+
+Following the execution of the assignment statement, the array constructor
+is finalized.  This will deallocate bval, cval, and dval twice each,
+incidentally destroying the variables b, c, and d.
+
+
+5. Why are array constructors problematic?
+
+Quite simply, because they construct their value "intrinsically", bypassing
+any user-defined assignment.  One could imagine there might be a simple
+principle here: if the user didn't need to run any code to make the value,
+he doesn't *need* to run any code when the value "goes away" either.
+
+There really doesn't seem to be any way around this other than by simply
+not finalizing the array constructor.  Note that this gives the correct
+behaviour: the variables would not be deconstructed, and the function
+results would be zapped exactly once each.
+
+Another obvious fix that would work (but is unavailable) would be to make
+the array constructor assign values to its elements by "normal" assignment
+i.e. any relevant user-defined assignment should be called.  If we did
+that, then the array constructors should be finalized.  We could not do
+that, because it would have been incompatible with Fortran 90 and 95.  In
+hindsight, we could have done it for type-bound assignment anyway, but it
+would have been an unusual difference between type-bound assignment and
+interface-block assignment, so not terribly desirable anyway.
+
+
+6. Does this happen in other situations?
+
+Sadly, yes.
+
+Example 3: ALLOCATE with SOURCE=.
+
+  TYPE(m8string) :: a
+  TYPE(m8string),POINTER :: p
+  a = new_m8string('oh no, not agaiN!')
+  ALLOCATE(p,SOURCE=a)
+  ...
+  DEALLOCATE(p)
+
+The ALLOCATE results in ASSOCIATED(a%value,p%value) being true, so
+the DEALLOCATE destroys variable a.
+
+The same thing happened here: we imagined that we wanted simple value
+semantics for SOURCE= (like we have for structure constructors and array
+constructors), and did not realise the interaction with FINAL would be
+problematic in this way.
+
+Example 4: The TRANSFER intrinsic.
+
+  TYPE(m8string) :: a,b
+  a = new_m8string('ugh')
+  b = TRANSFER(TRANSFER(a,(/1/)),b)
+
+This use of TRANSFER is explicitly guaranteed to have the same value as a.
+If, for the sake of argument, we call the result of the outer TRANSFER
+  TYPE(m8string) transtmp
+what we then have is that ASSOCIATED(transtmp%value,a%value) is true.
+
+That's all fine for the assignment to b (which makes a copy via our
+defined assignment), but the finalization of the outer TRANSFER will
+deallocate transtmp%value thus destroying the value of a.
+
+Example 5: The SPREAD intrinsic.
+
+  TYPE(m8string) :: a,b(2)
+  a = new_m8string("we're all doomed")
+  b = SPREAD(a,1,2)
+
+Obviously, this is going to produce an array temp with both elements having
+their value components associated with the target of variable a;
+finalization of the function result will not only destroy the variable a
+but also deallocate the same block of memory twice.
+
+Example 6: The RESHAPE intrinsic.
+
+Constructing this example is left as an exercise to the reader.
+
+Example 7: Other intrinsic procedures.
+
+Obviously EOSHIFT, CSHIFT, PACK and UNPACK are all similarly afflicted.  In
+fact, unless I am very much mistaken, any intrinsic function that returns a
+value of finalizable type!
+
+
+7. How can we fix this?
+
+These are somewhat harder.  Fortunately, they are less high-profile than
+array constructors.
+
+One possibility for ALLOCATE+SOURCE= would be to bite the incompatibility
+bullet and declare that it does use defined assignment.  It's not possible
+to forbid it syntactically, as the dynamic type might have a final
+subroutine.
+
+For TRANSFER, it would be tempting just to say "don't do that", but the
+fact that other intrinsic functions are affected makes that somewhat less
+appealing.
+
+For all the affected intrinsic functions, we could just say that their
+results are not finalized.  That does appear to solve the problem.
+
+
+8. Summary
+
+I am sure this is not the end of the discussion, but perhaps it is the
+beginning.  For a start, by limiting the discussion to my
+ISO_VARYING_STRING analogue, we have completely skipped any mention of
+structure constructors (since it doesn't expose one).  If it did expose
+one, then my analysis is that the problems (and solutions) would be
+identical to that of the array constructors outlined above, and for the
+same reasons.
+
+Note that the constructor problems are the subject of an interp request,
+but the other problems are not.  Yet.
+
+===END===

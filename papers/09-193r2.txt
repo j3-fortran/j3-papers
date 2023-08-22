@@ -1,0 +1,97 @@
+To: J3                                                     09-193r2
+From: Aleksandar Donev
+Subject: LOCKs and segment ordering
+Date: 2009 May 6th
+
+Discussion:
+
+All of the synchronization primitives, including CRITICAL (see
+[174:23-24]), include a description of how they affect segment
+ordering. This seems to be missing for the LOCK and UNLOCK
+statement. This omission has led some external readers
+of our draft to believe that the
+segment ordering semantics of locks is contained in the implicit
+SYNC MEMORY statement ([193:17]). I propose to add appropriate
+words concerning segment ordering to the LOCK/UNLOCK clause, and
+eliminate the implied SYNC MEMORY statement.
+
+The semantics of CRITICAL blocks should conform to the common
+model that there is a global shadow lock variable associated with the
+construct that was LOCKED on entry and UNLOCKED on exit. I believe
+the words already there for CRITICAL are appropriate, and all that
+is needed is to remove the implied SYNC MEMORY.
+
+Justification:
+
+The implicit SYNC MEMORY in LOCK/UNLOCK will have efficiency
+penalties and has the wrong semantics of a two-way code motion
+barrier (see Note 8.38). Some readers and implementors may assume
+that every LOCK/UNLOCK statement must include a full memory fence,
+which may increase implementation cost on some architectures. This is
+particularly true for unsuccessful LOCK statements, but it is also
+true for successful ones.
+
+Namely, locks only cause one-way segment
+ordering. The segment before an UNLOCK statement precedes the segment
+that follows the next successful LOCK statement. This one-way ordering
+allows for code motion in one direction. Consider the example:
+
+   TYPE(LOCK_TYPE) :: lock   
+   ....
+   IF(THIS_IMAGE()==1) THEN
+      ! Segment P1
+      UNLOCK(lock) ! Releases the lock
+      ! Segment P2
+   ELSE IF(THIS_IMAGE()==2) THEN
+      ! Segment Q1
+      LOCK(lock[1]) ! Next to acquire the lock 
+      ! Segment Q2    
+   END IF
+
+Here, segment Q2 follows P1.
+Therefore, all memory operations started in P1 must complete before the
+lock is released, and similarly, operations in Q2 cannot be initiated
+until the lock is acquired.
+No segment ordering concerning P2 and Q1/Q2, or Q1 and P1/P2 is implied.
+Therefore, an operation in P2 could be moved to before the unlock,
+for example, a preload instruction could be issued for some coarray
+referenced in segment P2. This is because a legal program must not 
+define that coarray in other segments.
+Similarly, operations in Q1 could be moved to after
+the LOCK statement, for example, a write could be initiated without
+waiting for it to complete.
+
+The implicit SYNC MEMORY,
+on the other hand, would block code motion in both directions. If we
+give a guarantee of an implied SYNC MEMORY now, we cannot go back in
+a future revision because some users may start relying on it (for
+example, in conjunction with atomic intrinsics). We therefore ought
+to remove the implicit SYNC MEMORY now.
+
+Edits:
+=====================
+
+-------------------------------------------------------
+[190:1-] In 8.5.1, Image control statements,
+insert a new paragraph before p3:
+"All image control statements except
+CRITICAL, END CRITICAL, LOCK, and UNLOCK
+include the effect of executing a SYNC MEMORY statement (8.5.5)."
+
+-------------------------------------------------------
+[193:17-19] In 8.5.5, delete paragraph 5
+
+-------------------------------------------------------
+[195:4+] Add a new paragraph p4+:
+"During the execution of the program, the value of a lock variable
+changes through a sequence of locked and unlocked states due to the
+execution of LOCK and UNLOCK statements.
+If image M executes an UNLOCK statement that causes a lock variable to
+become unlocked, and image T is the next to execute a LOCK statement
+that causes that variable to become locked, then the segments that
+execute on image M before the UNLOCK statement precede the segments
+that execute on image T after the LOCK statement. Execution of a
+LOCK statement with an ACQUIRED_LOCK= specifier that does not cause
+the lock variable to become locked does not affect segment ordering."
+
+-------------------------------------------------------

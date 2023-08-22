@@ -1,0 +1,97 @@
+To: J3                                                     J3/18-205
+From: Steve Lionel
+Subject: Discussion of GB043 (RANDOM_INIT)
+Date: 2018-June-12
+
+Reference: 18-007,14-184r4
+
+Introduction
+------------
+
+DIS comment GB043 says:
+
+"Subclause 16.7, para 4 says "It is processor
+dependent whether each image uses a separate
+random number generator, or if some or all images
+use common random number generators." We
+believe that the reason for this wording is to allow
+implementations to use a separate seed on each
+image, a single seed on each set of images
+(perhaps those on single nodes) or a single seed
+on all images (perhaps on a shared-memory
+machine with a modest number of images).
+
+The present wording for IMAGE_DISTINCT makes
+sense only for the case of a separate seed on
+each image - which image of a set sharing a seed
+calls RANDOM_INIT has no bearing. Does a single
+call of RANDOM_INIT initialize all the seeds? The
+current wording suggests that only one seed is
+initialized. Subclause 16.7, para 4 also says "If
+RANDOM_INIT or RANDOM_SEED is called in a
+segment A, and RANDOM_INIT,
+RANDOM_SEED, or RANDOM_NUMBER is called
+in segment B, then segments A and B shall be
+ordered." If only one seed is initialized, the calls
+must be in a CRITICAL construct or its equivalent,
+which would be very inefficient. It would be much
+better to say that a single call initializes all the
+seeds and that it does not matter which image
+makes the call."
+
+The questions raised by this comment reveal inconsistencies
+with how RANDOM_INIT works in the presence of multiple images.
+
+16.7p4 (Standard generic intrinsic procedures) says:
+
+"If RANDOM_INIT or RANDOM_SEED is called in a segment A, and 
+RANDOM_INIT, RANDOM_SEED, or RANDOM_NUMBER is called in segment 
+B, then segments A and B shall be ordered. It is processor dependent
+whether each image uses a separate random number generator, or if 
+some or all images use common random number generators."
+
+16.9.156 (RANDOM_NUMBER) says:
+
+"If images use a common generator, the interleaving of values assigned 
+in unordered segments is processor dependent."
+
+The primary motivation for RANDOM_INIT (see 14-184r4) was to specify
+a mechanism to set the initial seed for a program to be either
+repeatable (same sequence on each run) or non-repeatable (different
+sequence on each run.) Both behaviors are desirable for different use
+cases. For validation and debugging, you want the same sequence each
+run, but in a production environment you may want different sequences
+each run. F2008 left this aspect processor-dependent.
+
+During the development of RANDOM_INIT, it became evident that it was
+additionally useful to be able to specify whether different images
+had different sequences or if they all had the same sequence.
+
+The term "common generator" is ill-specified, but is taken to mean a 
+single sequence of random numbers drawn in turn by calls to 
+RANDOM_NUMBER, which may be from different images. But if there are 
+multiple images, the interleaving of calls to RANDOM_NUMBER is not 
+repeatable.
+
+Furthermore, the option for distinct sequences on each image requires 
+that there NOT be a shared sequence of numbers. The only way to
+support both repeatbility and image-distinct sequences is if each
+image has its own sequence (and hence its own seed). If that is the
+case, then it makes no sense to talk about "common generators" nor
+to worry about segment ordering with RANDOM_NUMBER.
+
+RANDOM_INIT is very important to a large subset of Fortran users, 
+while the notion of "common generators" is merely a possible
+implementation option. Clarifying the behavior of RANDOM_INIT
+effectively excludes the notion of a "common generator" and language
+relating to that would need to be deleted.
+
+It is useful to note that requiring each image to have its own
+generator state removes a performance-robbing critical section
+for calls to any of the RANDOM_xxx procedures.
+
+Straw vote: Should we remove wording relating to common pseudorandom
+number generators from the text so that RANDOM_INIT can work?
+
+
+

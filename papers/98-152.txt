@@ -1,0 +1,344 @@
+
+                                                                    J3/98-152
+
+Date:    25th May 1998
+To:      J3
+From:    Malcolm Cohen
+Subject: R6.b Polymorphism (Dynamic Dispatch) Syntax
+
+1. Introduction
+
+This is the syntax to satisfy the requirement for the ability to invoke
+dynamically bound procedures where the actual procedure invoked depends on the
+runtime type of a single, potentially polymorphic, associated variable.  Such
+procedures are bound to the type of an entity, whereas a procedure component is
+bound to the contents (value) of an entity.
+
+Specifications for this requirement are in 97-230r1.
+
+We will call these "type-bound procedures", since their accessibility and
+dynamic-dispatch resolution are bound to the (runtime) type of an entity.
+[Nomenclature borrowed from Oberon-2].
+
+This paper differs from 98-136 in that it describes the interaction between
+parameterised derived types and polymorphism.
+
+2. Applicability
+
+Type-bound procedures are permitted for both non-extensible types and
+extensible types, but dynamic dispatch only ever occurs when extensible
+types are involved.
+
+[The specifications had the restriction that type-bound procedures are only
+allowed in extensible types.  This is unnecessary, since no runtime dispatch
+table would be needed for non-extensible types.]
+
+3. Scope
+
+Type-bound procedure names are in the same name class as component names.
+
+4. Declaration
+
+A derived type need not have any component-def statements.
+It may have a type-bound procedure section following the
+component-def statements if any.
+
+R422 <derived-type-def> <<is>> <derived-type-stmt>
+                               [ <private-sequence-stmt> ] ...
+                               [ <component-def-stmt> ... ]
+                               [ <contains-stmt>
+                                 [ <private-stmt> ]
+                                 <tbp-construct> ... ]
+                               <end-type-stmt>
+
+<tbp-construct> <<is>> <tb-procedure-stmt>
+                <<or>> <select-kind-construct>
+
+4.1 Type-bound Procedure Statement
+
+<tb-procedure-stmt> <<is>> PROCEDURE [ [ , <tbp-attr-list> ] :: ] <tbp-name>
+                           [ => { <procedure-name> | <deferred-tbp> ) } ]
+
+The name of a type-bound procedure and the name of the procedure that
+implements it need not be the same.  This renaming allows a single module
+to provide both a type and one or more extensions.  The actual procedure
+shall be an accessible procedure that has an explicit interface.  If the
+<procedure-name> is omitted, it has the same name as the type-bound procedure.
+
+[The specifications had the restriction that the procedure be a module
+procedure from the containing module; this is unnecessary and could
+inhibit modularisation by the user.]
+
+<tbp-attr> ::= PASS_OBJ | NON_OVERRIDABLE | <access-spec>
+
+If a type-bound procedure name has the PASS_OBJ attribute, it shall
+have a dummy argument of the type, and this dummy argument shall be a
+scalar non-pointer polymorphic dummy variable.  When the type-bound
+procedure is invoked through the type-bound procedure name, the object
+through which the procedure is invoked is passed to this dummy
+argument and any actual arguments are distributed to the other dummy
+arguments according to the usual rules.  [See later example.]
+
+[The specifications had the restriction that the dispatching argument
+match the first dummy argument; this is unnecessary, all that is needed is
+a simple rule to determine which argument is affected by PASS_OBJ.  The
+rule is stated in 5. Invocation]
+
+Example:
+	TYPE,EXTENSIBLE :: vector_2d
+		REAL x,y
+	CONTAINS
+		PROCEDURE,PASS_OBJ :: length => length_2d
+	END TYPE
+
+	REAL FUNCTION length_2d(v)
+		CLASS(vector_2d) v
+		length_2d = SQRT(v%x**2+v%y**2)
+	END FUNCTION
+
+A type-bound procedure name that does not have the NON_OVERRIDABLE attribute
+can be overridden in an extension of the type.  An override for a type-bound
+procedure name shall specify the PASS_OBJ attribute if and only if the name
+has the PASS_OBJ attribute in the parent type.
+
+	TYPE,EXTENDS(vector_2d) :: vector_3d
+		REAL z
+	CONTAINS
+		PROCEDURE,PASS_OBJ :: length => length_3d
+	END TYPE
+	REAL FUNCTION length_3d(self)
+		CLASS(vector_3d) self
+		length_3d = SQRT(self%x**2+self%y**2+self%z**2)
+	END FUNCTION
+
+The NON_OVERRIDABLE attribute indicates that the type-bound procedure name
+cannot be further overridden in an extension of this type.  This allows
+static dispatch when the compiler can determine that the dispatching variable
+is at least of this type.  [Another suggested spelling for this attribute is
+"FROZEN".  Straw vote?]
+
+4.2 Select Kind Construct
+
+Since a parameterised derived type that has one or more kind type parameters
+defines not a single type but a set of similar (but incompatible) types, a
+type-bound procedure binding will in general only be applicable to a single
+member of that set of types, or perhaps a subset of those types.  For instance,
+any type-bound procedure binding that has the PASS_OBJ attribute can only ever
+apply to a single member of that set, that being the one that the dummy
+argument belongs to.
+
+For example, given:
+   TYPE,EXTENSIBLE :: mytype(kind)
+      REAL(kind) :: value1
+      INTEGER timestep,nruns
+   END TYPE mytype
+the procedure
+   SUBROUTINE reset4(a)
+     TYPE(mytype(4)),INTENT(INOUT) :: a
+     a%value1 = 0
+     a%timestep = 0
+     a%nruns = a%nruns + 1
+   END SUBROUTINE
+can only ever be applied to TYPE(mytype(4)) entities, and never
+TYPE(mytype(8)) etc.
+
+<select-kind-construct> <<is>> <select-kind-stmt>
+                               [ <kind-case-stmt> <tbp-construct> ... ]
+                               <end-select-kind-stmt>
+
+<select-kind-stmt> <<is>> SELECT KIND ( <type-param-name-list> )
+
+Constraint: Each name in the <type-param-name-list> shall be the name of a
+            kind type parameter.
+
+<kind-case-stmt> <<is>> KIND ( <scalar-initialization-expr-list> )
+                 <<or>> KIND DEFAULT
+
+Constraint: Each expression in the <initialization-expr-list> shall be of type
+            integer.
+Constraint: The <initialization-expr-list> shall contain the same number of
+            expressions as the number of <type-param-name>s specified in the
+            matching <select-kind-stmt>.
+
+<end-select-kind-stmt> <<is>> END SELECT
+
+The sets of values specified by each <kind-case-stmt> in a particular
+<select-kind-construct> must be disjoint.
+
+For example:
+  TYPE,EXTENSIBLE :: mytype(kind)
+    ...
+  CONTAINS
+    PROCEDURE open_trace_file
+    PROCEDURE shutdown
+    SELECT KIND(kind)
+    CASE(4)
+      PROCEDURE,PASS_OBJ :: reset => reset4
+      PROCEDURE,PASS_OBJ :: step => step4
+    CASE(8)
+      PROCEDURE,PASS_OBJ :: reset => reset8
+      PROCEDURE,PASS_OBJ :: step => step8
+    END SELECT
+  END TYPE
+For the above parameterised derived type, there will be 3 dispatch tables
+generated:
+  (1) for kind==4, containing the dispatch slots
+         open_trace_file => open_trace_file
+         shutdown => shutdown
+         reset => reset4
+         step => step4
+  (2) for kind==8, containing the dispatch slots
+         open_trace_file => open_trace_file
+         shutdown => shutdown
+         reset => reset4
+         step => step4
+  (3) for other kinds, containing
+         open_trace_file => open_trace_file
+         shutdown => shutdown
+
+An example with multiple kinds
+  TYPE mytype(ikind,rkind)
+    REAL(rkind) r
+    INTEGER(ikind) i
+  CONTAINS
+    SELECT KIND(ikind,rkind)
+    KIND(2,4)
+      PROCEDURE,PASS_OBJ :: fun => fun_2_4
+    KIND(4,4)
+      PROCEDURE,PASS_OBJ :: fun => fun_4_4
+    KIND(4,8)
+      PROCEDURE,PASS_OBJ :: fun => fun_4_8
+    END SELECT
+  END TYPE
+
+5. Invocation
+
+Reference to a named type-bound procedure looks just like a reference
+to a procedure component.  If the type-bound procedure name has the
+PASS_OBJ attribute, the object used to access the procedure becomes
+associated with the first dummy argument of the type, e.g.
+	TYPE(vector_2d) vec
+        TYPE(vector_3d) x
+	REAL size
+	...
+	size = vec%length()     ! Invokes length_2d(vec).
+        size = x%length()       ! Invokes length_3d(x).
+
+When invoked from a polymorphic entity, the runtime type determines the
+procedure that is called, e.g.
+
+        TYPE,EXTENDS(vector_2d) :: named_vector_2d
+          CHARACTER*10 name
+        END TYPE
+
+        CLASS(vector_2d) y
+        ...
+        size = y%length()
+        !
+        ! Invokes length_2d if the runtime type is vector_2d,
+        !         length_2d if the runtime type is named_vector_2d,
+        !         length_3d if the runtime type is vector_3d.
+
+6. Overriding and Procedure Characteristics
+
+When overriding a type-bound procedure without the PASS_OBJ attribute, all
+characteristics of the overriding procedure shall be the same as that of the
+procedure being overridden.
+
+When overriding a type-bound procedure with the PASS_OBJ attribute, only the
+characteristics of the dummy argument used for passing the invoking object
+shall be different.  [The characteristics of this dummy argument are
+specified above.]
+
+If a type-bound procedure has the PURE attribute, any overriding procedure
+shall also have the PURE attribute.
+
+A type-bound procedure shall not have the ELEMENTAL attribute.
+
+7. Deferred Type-Bound Procedures
+
+<deferred-tbp> <<is>> NULL( [ <abstract-interface-name> ] )
+
+Constraint: <abstract-interface-name> shall be present unless the
+            <tbp-spec-stmt> is overriding an inherited type-bound procedure.
+
+A <tbp-spec-stmt> that specifies the NULL intrinsic instead of a module
+procedure name creates a deferred type-bound procedure.  Note that the
+<abstract-interface-name> argument to the NULL intrinsic is required to
+establish the characteristics of the type-bound procedure name unless those
+have already been inherited.
+
+An extension of a type containing such a deferred type-bound procedure shall
+contain a <tbp-spec-stmt> that specifies a binding for each deferred name.
+This new binding may confirm that the type-bound procedure name is still
+deferred (e.g. by having "NULL()") or supply a specific procedure.
+
+[The requirement that a deferred procedure have its deferredness be confirmed
+or overridden is to help prevent errors.  It is not strictly necessary.]
+
+For example:
+	TYPE,EXTENSIBLE :: vector_0d
+          ! No ordinary components
+	CONTAINS
+          PROCEDURE,PASS_OBJ :: length => NULL(procname)
+	END TYPE
+
+	TYPE,EXTENDS(vector_0d) :: vector_0d_special
+          INTEGER special_value
+	CONTAINS
+          PROCEDURE,PASS_OBJ :: length => NULL()      ! Still deferred
+	END TYPE
+	! Note: No "procname" necessary when confirming abstraction.
+	TYPE,EXTENDS(vector_0d) :: vector_1d
+          REAL x
+	CONTAINS
+          PROCEDURE,PASS_OBJ :: length => length_1d  ! We now have a "length()"
+	END TYPE
+
+It is also possible to override an existing procedure binding with
+the null binding, e.g.
+
+	TYPE,EXTENDS(vector_1d) :: vector_2d ! A strange vector with no length
+          REAL y
+	CONTAINS
+          PROCEDURE,PASS_OBJ :: length => NULL()
+	END TYPE
+
+It is possible to declare entities of TYPE(vector_0d) or CLASS(vector_0d);
+however it is a compile-time error to have a reference to "length" in a
+TYPE(vector_0d) entity, and a runtime error to execute a reference to "length"
+from an object that still has a deferred binding (e.g. the variable is
+CLASS(vector_0d) and the runtime type is TYPE(vector_0d_special)).
+
+8. Visibility
+
+The default visibility of a type-bound procedure is PUBLIC, i.e. the default
+visibility of the section before the "CONTAINS" is separate from the default
+visibility of the section after the CONTAINS.
+
+This default may be changed with an explicit PRIVATE statement following the
+CONTAINS, and may be overridden for individual procedures with an
+accessibility attribute.
+
+E.g.,
+	TYPE mytype
+		PRIVATE
+		REAL x,y                          ! secret components
+	CONTAINS
+		PROCEDURE mean=>mean_mytype       ! public type-bound procedure
+		PROCEDURE, PRIVATE :: hypot=>hypot_mytype   ! A private one
+	END TYPE
+
+	TYPE another
+		LOGICAL available(100)          ! public components
+	CONTAINS
+		PRIVATE
+		PROCEDURE secret=>proc1                 ! private procedures...
+		PROCEDURE hidden=>proc2
+		PROCEDURE, PUBLIC :: pub=>proc3         ! public procedure
+	END TYPE
+
+The rationale for resetting the default visibility on encountering the CONTAINS
+is that it is anticipated that it would be common for the user to require
+private (or mostly private) components but to have public type-bound procedures
+(e.g. which could include functions which access the private components).

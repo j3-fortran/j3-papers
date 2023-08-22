@@ -1,0 +1,307 @@
+To: J3                                                     J3/21-110
+From: Malcolm Cohen
+Subject: Enumeration types discussion specs and syntax
+Date: 2021-February-21
+
+
+1. Introduction
+
+Two things have become clear over the last year:
+    - our approach to "true enumeration types" has become too complicated,
+      unnecessarily so, and needs to be cut back to basics (at least this
+      time around);
+    - even the basic approach to "true enumeration types" does not satisfy
+      a significant part of the community, which needs better support for
+      interoperable "enum types" than we currently provide with
+      ENUM,BIND(C).
+
+The requirements for "better interoperable enums" are partially in conflict
+with the requirements for "true enums", so this paper proposes doing both
+of these separately, and not trying to shoehorn one into the other.
+
+It is possible to do either feature without the other.
+    - "Simpler true enumerations" fulfills more of the WG5 requirements.
+    - "Better interoperable enums" fulfills a large part of the type-safety
+      WG5 requirement, and fixes a long-standing and well-known deficiency
+      in the ENUM,BIND(C) feature.
+There is a good case for doing both of these, and a very strong case for
+doing at least one of them.
+
+
+2. Better interoperable enums
+
+2.1 Requirements
+
+Basically, have all the features of ENUM,BIND(C) plus a type name. The type
+name needs to provide type safety for procedure calls and assignment.
+
+2.2 Specifications
+
+(A) Retains the ability to specify the internal representation, and thus to
+    have gaps and duplicate values, that ENUM,BIND(C) currently has.
+
+(B) Provides a type name that can be used to declare variables of an
+    interoperable enum type.
+
+(C) Variables of that type can take on any representable value, just as
+    they can in C.
+
+(D) Dummy arguments of that type are only type-compatible with actual args
+    with the same type and with integer expressions involving values or
+    the enumerators of the type.
+
+(E) Upwards compatible with ENUM,BIND(C); the enumerators will still be of
+    type integer, and can be used freely in integer expressions.
+
+(F) Assignment is type-safe in the same way as argument association.
+
+(G) No polymorphic entities with a declared type that is an enum type.
+
+(H) No intrinsic constructor of this type.
+
+(I) An enum entity in an i/o list acts like integer. For output that's the
+    same as wrapping it in INT(...), for input it's the same as having an
+    integer temporary assigned with "var = typename(tempo)".
+
+(J) Enum types can be used in generic resolution vs. other enum types
+    and derived types, but not vs. integer (ambiguity).
+
+Comments:
+    (1) It might be thought that it would be harmless to allow assignment
+        to/from integers, but requiring an INT(...) or typename(...) in
+        such cases is not an onerous requirement. The special weaseling for
+        expressions involving the enumerators will handle most common cases
+        anyway.
+    (2) We could be stricter and allow only the enumerators themselves to
+        be type-compatible, but that would disallow IOR(enum1,enum2), and
+        enums are sometimes used to define bit-patterns for that purpose.
+    (3) We could be less strict and merely require a warning diagnostic
+        from compilers. I believe that strict typing is better than
+        warnings.
+    (4) We could instead have the enumerators be literal constants of the
+        new type. That would be easier in the standard, but more strict on
+        the user, and make it harder to gradually upgrade a program with
+        the existing ENUM,BIND(C) to use enum type names.
+
+2.3 Syntax and semantics
+
+The syntax is to extend the ENUM,BIND(C) statement with a type-name:
+
+<enum-def-stmt> <<is>> ENUM, BIND(C) [ :: <enum-type-name> ]
+
+The <enum-type-name> is for a new kind of type, which is like a derived
+type with an anonymous integer(KIND=kind of the enumerators) component,
+but that is not a BIND(C) type, not extensible, and not a sequence type.
+We will call this an "enum type", as it acts more or less like C enums.
+
+Comment: The concept that all derived types are structure types is pretty
+         well embedded into the standard at this time. Either we split
+         derived types into structure types and enum types, or we add enum
+         types as a separate concept and mention it everywhere necessary.
+         The latter is probably easiest to do without making mistakes.
+         But how we describe this in the standard can be left to the edits
+         paper; here we are just describing the effect we want.
+
+Thus it cannot be extended, and CLASS(<enum-type-name>) is not allowed, but
+it uses "normal" type compatibility (not the complicated sequence rules),
+and can be used in TYPE IS (<enum-type-name>) when the SELECT TYPE selector
+is CLASS(*).
+
+Values of the type can be created using the constructor
+    enum_type_name ( integer expression )
+There being no actual components or component name, there is no keyword
+form of this constructor.
+
+The internal representation of an enum type is the same as the integer kind
+of its enumerators, and its set of values is the set containing every
+    enum_type_name ( integer value )
+for all the integer values of that kind.
+
+Entities of an enum type are declared using the TYPE specifier, just as if
+it were a derived type.
+
+ALTERNATIVE SYNTAX for the definition:
+
+    <enum-def-stmt> <<is>> ENUM, BIND(C) [ , NEWTYPE :: <enum-type-name> ]
+
+This would make it more obvious that the <enum-type-name> is a new type and
+not an alias for a kind of INTEGER.
+
+POSSIBLE ADDITIONAL SYNTAX FOR F202y (or later; not this time):
+
+    <enum-def-stmt> <<is>> ENUM, BIND(C) [ , ALIAS :: <enum-alias-name> ]
+
+This would define a type alias instead of a new type, which is how the ENUM
+feature started out. TYPE(<enum-alias-name>) would have identical effect to
+INTEGER(KIND(one of the enumerators)).
+
+2.4 Examples
+
+Module enum_mod
+  Enum,Bind(C) :: myenum
+    Enumerator :: one=1, two, three
+  End Enum
+  Enum,Bind(C) :: flags
+    Enumerator :: f1 = 1, f2 = 2, f3 = 4
+  End Enum
+Contains
+  Subroutine sub(a) Bind(C)
+    Type(myenum),Value :: a
+    Print *,a ! Acts as if it is Print *,Int(a).
+  End Subroutine
+End Module
+
+Program example
+  Use enum_mod
+  Type(myenum) :: x = one           ! Valid by (F)
+  Type(myenum) :: y = myenum(12345) ! Explicit constructor
+  Type(myenum) :: x2 = myenum(two)  ! Constructor not needed but valid
+  Call sub(x)
+  Call sub(three)
+  Call sub(myenum(-Huge(one)))
+End Program
+
+Program invalid
+  Use enum_mod
+  Type(myenum) :: z = 12345         ! INVALID - no enumerator in the expr
+  Call sub(999) ! Need a cast.
+  Call sub(f1)  ! Wrong enum type.
+End Program
+
+3. Simpler true enumerations
+
+3.1 Requirements
+
+A true enumeration type is a new type, not a renaming of integer.
+The enumerators are of this type.
+No requirement should be placed on the internal representation.
+The operations of First, Last, Next, and Previous are available.
+Relational operations between objects of the same enumeration type are
+available.
+Explicit conversion to/from type Integer is available.
+No arithmetic or other operations.
+
+3.2 Specifications
+
+(a) The enumeration type is a user-defined type that is not a structure
+    type, i.e. it is rather like a derived type but has no components.
+
+Comment: It behaves somewhat like a derived type with a hidden anonymous
+         component. Either we split derived types into structure types and
+         other types, or we just add a new kind of type.
+
+(b) No polymorphic entities with a declared type of an enumeration type.
+
+(c) Variables of the type can take on only values of the type, or be
+    undefined. Values of the type are the enumerators only.
+
+(d) An intrinsic constructor of the type provides conversion from type
+    Integer only. The INT intrinsic provides conversion to type Integer.
+
+(e) Strict type safety, viz the enumerators are of that type.
+
+(f) No DO loop or other such; that functionality is available, though with
+    extra verbosity, using integers and conversions.
+
+(g) Enumerators come without any enhanced namespace management, i.e. their
+    names are normal class one names.
+
+(h) The Next et al operations are provided intrinsically, not type-bound.
+
+(i) Enumeration variables are initially undefined, like other variables.
+
+(j) Relational operations order by the order of definition of the
+    enumerators, e.g. the first one defined is less than all the others.
+
+Comments:
+    (11) Extending an enumeration could be useful, but at this time that
+         would be an unnecessary frippery. We need to focus on having a
+         solid and reliable basic feature.
+    (12) Similarly, a DO index of an enumeration type would sometimes be
+         useful, but is an unnecessary frill at this stage.
+    (13) I note that enumerators as class one names is not only simpler
+         but what WG5 asked us to do in the first place.
+    (13) Fortran already has basic namespace management (USE ONLY and
+         renaming). Some ideas for extensions to that have already been
+         floated (for a future revision, possibly F202y); we should not
+         preempt that with a complicated feature here.
+    (14) Intrinsic operations and functions are already generic and don't
+         conflict with user-defined operations and functions. Making the
+         operations on enumerations type-bound would be likely to inhibit
+         future namespace management features.
+    (15) Being able to specify an initial value would be useful, but is not
+         core functionality.
+
+3.3 Syntax
+
+<enumeration-type-def> <<is>> <enumeration-type-stmt>
+                                <enumeration-enumerator-stmt>
+                                [ <enumeration-enumerator-stmt> ]...
+                              <end-enumeration-type-stmt>
+
+<enumeration-type-stmt> <<is>>
+    ENUMERATION TYPE [ [ , <access-spec> ] :: ] <enumeration-type-name>
+
+Constraint: The <access-spec> shall only appear in the specification part
+            of a module.
+
+<enumeration-enumerator-stmt> <<is>>
+    ENUMERATOR [ :: ] <enumerator-name-list>
+
+<end-enumeration-type-stmt> <<is>>
+    END ENUMERATION TYPE [ <enumeration-type-name> ]
+
+Constraint: If <enumeration-type-name> appears on an END ENUMERATION TYPE
+            statement, it shall be the same as on the ENUMERATION TYPE
+            statement.
+
+The <access-spec> on an ENUMERATION TYPE statement specifies the
+accessibility of the <enumeration-type-name> and the default accessibility
+of its enumerators. The accessibility of an enumerator may be confirmed or
+overridden by an <access-stmt>.
+
+An enumeration type is a user-defined type that is not a structure type.
+
+Comment: See above comments re terminology.
+
+An entity of enumeration type is declared using the TYPE specifier, just as
+if it were a derived type.
+
+The name of the type operates as a constructor; it takes an integer and
+returns a value of the type. As the type has no named component, there is
+no keyword form of the constructor. The constructor returns the enumerator
+value with the ordinal number of the integer value given. The integer
+value shall be positive and less than or equal to the number of enumerators
+of the type.
+
+POSSIBLE ADDITIONAL SYNTAX:
+    Allow [ , <access-spec ] in an ENUMERATOR statement for both these and
+    for ENUM,BIND(C). It surprises me we did not think of this in F2003.
+
+Conversion to Integer: INT(enumeration value) = the ordinal number of the
+    enumerator in the type definition. The constructor typename(integer)
+    returns the enumeration value with that ordinal number; integer shall
+    be in the range 1...N, where N is the number of enumerators.
+
+Relationals: Noted that a.rel.b has the same value as INT(a).rel.INT(b).
+
+The operations First, Last, Next and Previous shall be provided as follows.
+
+First: typename(1).
+
+Last: HUGE(any enumeration value).
+
+Next, Previous: New intrinsic functions with those names.
+    To avoid producing bad values,
+        PREVIOUS(first) = first
+        NEXT(last) = last
+
+Comment: We could choose different names here. PREV is shorter and okay.
+         If we want to avoid names likely to already be in use (not that
+         there is any problem with that usually), PREDECESSOR and SUCCESSOR
+         would be suitable if a bit long. PRED and SUCC are horrible but
+         acceptable.
+
+===END===
+
+

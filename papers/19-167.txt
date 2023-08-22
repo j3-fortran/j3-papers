@@ -1,0 +1,324 @@
+To: J3                                                     J3/19-167
+From: Van Snyder
+Subject: Preliminary requirements for support for containers
+Date: 2019-June-14
+References: 04-153 04-383r1 19-120 19-121 19-122 19-123
+
+Introduction
+============
+
+At meeting 216, there was agreement to develop support for containers, but
+not to provide any specific containers such as lists, stacks, queues,
+trees....
+
+Containers need
+===============
+
+  o A representation for their persistent state,
+  o Methods to initialize their persistent state, e.g.:
+    - Initial size (e.g. for a stack or queue),
+    - Internal parameters (e.g., dimensions of a sparse matrix),
+  o Methods to enter or update elements,
+  o Methods to retrieve a specified element or a pointer associated
+    with one,
+  o Methods to traverse the elements or a subset thereof,
+  o Methods to finalize their persistent state,
+  o Ability to instantiate a framework for a representation for a
+    persistent state, and associated methods, for specified type
+    and kind, and
+  o Ability to declare or allocate more than one container object
+    without physically copying program text, or effectively copying it
+    using a device such as a parameterized module, macro, template or
+    INCLUDE statement.  Physically or effectively copying program text
+    is not a run-time action.  The ability to allocate a container, or
+    an array of containers, using an ALLOCATE statement, is important.
+
+Representation of persistent state
+==================================
+
+The persistent internal state of a container could be represented by
+
+  o Save variables within a subprogram.  This would require all methods
+    to be in one subprogram, with either argument values or ENTRY
+    statements to specify which method to apply.  This allows only one
+    persistent state, or array of similar persistent states (all the
+    same type and kind) per instance.
+
+  o Save variable within a modulle.  This allows only one persistent
+    state, or array of similar persistent states (all the same type and
+    kind) per instance.
+
+  o Object of derived type with type-bound methods.  This requires to
+    invoke methods using type-bound procedure syntax.  If a container
+    replaces an abstraction originally represented by an array or
+    arrays, this requires substantial labor to modify existing programs.
+
+  o A new variety of entity that combines a representation of the state
+    and the methods, but does not require to invoke methods using
+    type-bound procedure syntax, as described in 19-122 and 19-123. 
+    This
+    - Is similar to a derived type definition in that it declares the
+      respresentation of data entities that represent the persistent
+      internal state;
+    - Is similar to a derived type definition in that it declares
+      methods used to initialize and manipulate the persistent internal
+      state;
+    - Is similar to a derived type definition in that it allows more
+      than one container object without physically copying program text
+      or instantiating it using a device such as a parameterized module,
+      macro, template, or INCLUDE statement;
+    - is different from a derived type in that
+      .  invoking procedures to initialize and manipulate the persistent
+         internal state does not require to use type-bound procedure
+         invocation syntax; this would allow to replace an intrinsic
+         representation such as an array with a persistent state
+         representation and non-intrinsic methods, without requiring
+         changes to the syntax to insert or examine elements of the
+         container,
+      .  procedures to initialize and manipulate the persistent internal
+         state are defined within the entity, and access data
+         declarations within the entity by host association, without the
+         need to name the entity in references, and
+      .  entities that represent the persistent internal state are not
+         accessible outwith the container; if it were a derived type,
+         the entities that represent the persistent internal state would
+         be private components.
+
+Methods to initialize persistent state
+======================================
+
+The persistent internal state of a container could be initialized by
+
+  o Declarations, if the initial size and internal parameters (e.g.
+    dimensions of a sparse matrix) can be known
+    - when the container is developed,
+    - when it is instantiated if it is defined by a parameterized
+      module, macro, or template,
+    - when its scope is entered (e.g. the persistent state is
+      represented as an automatic variable) or
+    - when it is allocated.
+
+  o ENTRY points in a subprogram in which the persistent internal state is
+    represented by local saved variables.
+
+  o Module procedures in the module in which the persistent internal state
+    is represented by local saved variables.
+
+  o Type bound procedures if the persistent internal state is represented
+    by an object of derived type.
+
+  o Procedures associated with a new variety of entity that combines a
+    representation of the state and the methods, as described in 19-122
+    and 19-123.
+
+Methods to enter elements into the persistent state
+===================================================
+
+Elements could be updated or entered into the persistent internal state
+by
+
+  o Assignment to a data object.  This requires to expose the details of
+    the representation of the persistent internal state.
+
+  o Subroutine calls.  If  a container was originally represented by an
+    intrinsic entity such as an array, and elements were entered by
+    assignment statements, and it becomes necessary to represent it using
+    more elaborate data structures, this requires to find and replace
+    every assignment of an element of the persistent state by a subroutine
+    call.  This is one reason that changes to programs frequently have
+    costs proportional to the size of the program rather than to the
+    magnitude of the change in representation of one container.
+
+  o Stand-alone updater procedures of the variety associated with the
+    representation described in 19-122 and 19-123.  Updater procedures
+    have the advantage that the syntax is the same as for an assignment
+    statement, and therefore it is not necessary to find and replace
+    every assignment of an element of the persistent state by a
+    subroutine call.  It has the disadvantage that a stand-alone updater
+    procedure does not easily provide for more than one container object
+    without physically copying or instantiating program text using a
+    device such as a parameterized module, macro, template or INCLUDE
+    statement.
+
+  o Type-bound updater procedures of the kind associated with the
+    representation described in 19-122 and 19-123.  This has the
+    advantage that an assignment statement using a type-bound updater
+    has the same syntax as an assignment statement to a component,
+    provided it is permitted to invoke an updater that has no (non
+    optional) arguments without using empty parentheses.
+
+  o Updater procedures associated with a new variety of entity that
+    combines a representation of the state and the methods, as described
+    in 19-122 and 19-123.  This has the advantage that the syntax is the
+    same as for an assignment statement, and therefore does not require to
+    find and replace every assignment of an element of the persistent
+    state by a subroutine call.  It also has the advantage that there can
+    be several containers, without requiring physically to copy, or
+    instantiate program text, using a device such as a parameterized
+    module, macro, template or INCLUDE statement.  In particular, a
+    container or array of containers can be instantiated by an ALLOCATE
+    statement.
+
+Methods to retrieve a specified element
+=======================================
+
+A specified element of a container, or a pointer associated with it, can
+be retrieved by
+
+  o Subroutine calls.  This is required if the internal state is
+    represented by save variables within a subprogram, unless
+    initialization, and entering elements, are performed using functions
+    that have side effects.  If a container had been represented by an
+    intrinsic data object such as an array and it becomes necessary to
+    replace it with a more elaborate data structure and methods, this
+    requires to find and replace every reference with a subroutine call. 
+    This is one reason that changes to programs frequently have costs
+    proportional to the size of the program rather than to the magnitude
+    of the change in representation of one container.
+
+  o References to stand-alone functions.  If a container had been
+    represented by an intrinsic data object such as an array, and a
+    revised representation consists either of local save variables
+    within a subprogram or module, this has the advantage that it does
+    not require to find and replace references.  It has the disadvantage
+    that a stand-alone function does not easily provide for more than
+    one container object without physically copying or instantiating
+    program text using a device such as a parameterized module, macro,
+    template or INCLUDE statement.  A subset of elements cannot be
+    accessed using array section notation unless the SECTION type
+    described in 19-122 and 19-123 is provided.  All elements (as
+    opposed to the container itself) cannot be retrieved without changes
+    to the program because a function cannot be referenced without
+    parentheses.
+
+  o References to type-bound functions.  If a container had been
+    represented by an intrinsic data object such as an array, and a
+    revised representation consists either of local save variables within
+    a subprogram or module, this has the disadvantage that it requires to
+    find and replace references.  If a container had been represented by a
+    derived type and type-bound procedures, and some facet of a revised
+    container had been represented by a scalar component, but in the
+    revision it is required to be represented by procedures, this has the
+    disadvantage that every reference to that facet must be found and
+    changed to a function reference.  The change is trivial because it
+    consists of adding empty parentheses.  This could easily be
+    ameliorated by allowing to reference type-bound procedures that have
+    no (non-optional) arguments without using parentheses.
+
+  o Reference to functions associated with a new variety of entity that
+    combines a representation of the state and the methods, as described
+    in 19-122 and 19-123.  This has the advantage that it does not require
+    to find and replace references to array elements.  It would still be
+    necessary to find and replace scalar references or whole-array
+    references because parentheses are necessary to invoke a function.
+
+Methods to traverse the elements or a subset thereof
+====================================================
+
+The elements of a container, or a subset of the elements, could be
+traversed using
+
+  o Ordinary looping mechanisms.  This requires:
+
+    - To expose the details of the representation.
+
+    - To provide specialized procedures for each operation to be
+      performed by a traversal, even if some operations are performed in
+      only one place.
+
+    - To provide a generalized procedure to carry out a traversal, which
+      procedure has one or more procedure arguments to carry out operations
+      on traversed elements.  This can cause difficulty to provide
+      additional data to the procedure that carries out an operation,
+      especially when revising "legacy" programs.
+
+    - To provide a generalized procedure to carry out a traversal, which
+      procedure uses "reverse communication" to return to the invoking
+      process to carry out operations on traversed elements, after which
+      the invoking process invokes the traversal procedure to continue
+      the traversal.  This in turn requires the traversal procedure to
+      maintain an internal state of the traversal process, which in turn
+      limits the applicability to one container object.  It is also
+      inherently not thread safe.
+
+    - To provide coroutines.  This is similar to "reverse communication"
+      in that a coroutine temporarily suspends its execution by
+      transferring control to the invoking process, instead of returning
+      to the invoking process.  After carrying out the desired operation,
+      the invoking process resumes the coroutine instead of invoking it
+      anew.  This has the important distinctions to "reverse communication"
+      that
+      
+      . the internal state of the traversal is automatically represented
+        by the ordinary control flow of the coroutine,
+      . local variables of the coroutine are not destroyed when it is
+        suspended and not re-created when it is resumed, which reduces
+        execution cost,
+      . a coroutine as described in 19-120 and 19-121 can traverse
+        several containers, even simultaneously, without duplicating the
+        program unit text, and
+      . a coroutine is inherently thread safe.
+
+  o Iterators and ITERATE constructs, as described in 19-120 and
+    19-121.  Iterators and ITERATE constructs have the advantages of
+    coroutines, a more concise syntax, and clear indication and scope of
+    iteration.
+
+Methods to finalize their persistent state
+==========================================
+
+The persistent internal state of a container can be finalized by
+
+  o Subroutine or function references to ENTRY points if the container's
+    data are represented by local save variables within a subprogram. 
+    This has the disadvantage that a stand-alone subprogram does not
+    easily provide for more than one container object without physically
+    copying or instantiating program text using a device such as a
+    parameterized module, macro, template or INCLUDE statement.
+
+  o References to module subroutines or functions.  This also has the
+    disadvantage that it does not easily provide for more than one
+    container object without physically copying or instantiating program
+    text using a device such as a parameterized module, macro, template
+    or INCLUDE statement.
+
+  o Reference to type-bound procedures.
+
+  o Final subroutines bound to a derived type.
+
+  o Final subroutines associated with a new variety of entity that
+    combines a representation of the state and the methods, as described
+    in 19-122 and 19-123.
+
+Ability to instantiate a framework
+==================================
+
+Instantiating a framework for a container could be done by:
+
+  o Physically copying the text of the program unit that implements the
+    container's representation and methods.  This has the disadvantage
+    that it is not possible to create similar containers for different
+    type or kind.
+
+  o Effectively copying the text of the program unit that implements the
+    container's representation and methods, using INCLUDE statements. 
+    Although useful, and not difficult to instantiate a container for a
+    particular type with a different kind, it is tedious to instantiate a
+    container using different types.  This has the disadvantage that
+    such instantiations are not allocatable, and therefore a program can
+    have only a fixed number of them.
+
+  o A new device such as
+    - parameterized modules
+    - macros, or
+    - templates.
+
+  o Declaring an object of a new entity such as described in 19-122 and
+    19-123 that allows to combine the declarations of a container's
+    internal state and methods.  This can, of course, be combined with a
+    new device such as
+    - parameterized modules
+    - macros, or
+    - templates.
+
+

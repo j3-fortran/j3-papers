@@ -1,0 +1,346 @@
+
+                                                           J3/06-254
+
+To: J3/B
+From: Malcolm Cohen
+Subject: BLOCK construct fixes
+Date: 2006/07/31
+
+1. Introduction
+---------------
+
+This paper addresses the deficiencies in the BLOCK construct text.  Some of
+this is in c08, much of it is not.  Since it is a cross-chapter issue, it is
+being addressed initially as a "c08" feature (where most of it is described).
+
+Most of the issues raised by email are already addressed in 06-007, but a
+few remain which require tidying up, and several need technical discussion.
+
+2 Specification part of BLOCK - contents
+----------------------------------------
+
+Principles:
+(a) some specification-part statements MUST be allowed, as that is the
+    purpose of BLOCK
+(b) most specification-part statements SHOULD be allowed, as that leads
+    to greater consistency.
+(c) some specification-part statements CANNOT be allowed, as they would
+    create problems.
+
+To recap:
+
+R204 <specification-part> <<is>> [ <use-stmt> ... ]
+                                   [ <import-stmt> ... ]
+                                   [ <implicit-part> ]
+                                   [ <declaration-construct> ... ]
+
+The <import-stmt> part is already excluded.
+The <implicit-part> should be excluded.
+
+Q1. Should <use-stmt>... be excluded?
+A1-y. Yes: entities imported via these USE statements are accessible only
+      within the construct.  Note that this will involve fixes to various
+      boilerplate-like constructions which use the phrase "execution of a
+      RETURN or END statement".
+A1-n. No: This is unnecessary, and takes time and effort to word correctly.
+      It is not worth the effort, and no overriding consistency considerations
+      dictate otherwise.
+
+for subgroup discussion.
+
+Continuing:
+
+R207 <declaration-construct> <<is>> <derived-type-def>
+                             <<or>> <entry-stmt>
+                             <<or>> <enum-def>
+                             <<or>> <format-stmt>
+                             <<or>> <interface-block>
+                             <<or>> <macro-definition>
+                             <<or>> <parameter-stmt>
+                             <<or>> <procedure-declaration-stmt>
+                             <<or>> <specification-stmt>
+                             <<or>> <type-declaration-stmt>
+                        \obs{<<or>> <stmt-fn-stmt>}
+
+NOTE TO EDITOR: This list is alphabetic except for the last entry; shome
+                mishtake, shurely?
+
+The <derived-type-def> is reasonable.
+The <entry-stmt> must be excluded (it is already excluded from within the
+  <block>, but not from the specification part).
+NOTE: Actually, I cannot now find the exclusion of ENTRY from <block>.  Huh?
+      It must be *somewhere*!
+The <enum-def> is reasonable.
+The <format-stmt> is perfectly reasonable, and doesn't define any entity
+  anyway, other than the statement label which has scoping-unit scope.  And
+  it is already allowed as an executable.
+The <interface-block> is perfectly reasonable.
+The <macro-definition> is reasonable.
+The <parameter-stmt> is perfectly reasonable.
+The <procedure-declaration-stmt> is reasonable.
+The <specification-stmt> is the main point of BLOCK!
+The <type-declaration-stmt> is also the main point of BLOCK!
+
+Continuing:
+
+R212 <specification-stmt> <<is>> ...
+
+Of these,
+  <access-stmt> is already disallowed, since BLOCK is an executable construct
+    that cannot appear in the specification-part of a module.
+  <asynchronous-stmt> must be specified not to create a construct entity, i.e.
+    the same as ASYNCHRONOUS in a module procedure or internal procedure.
+  <intent-stmt> must be excluded.
+  <optional-stmt> must be excluded.
+  <protected-stmt> is already disallowed.
+
+Q2. Should COMMON be excluded?
+A2-y: Yes, it is too much work to fix.
+A2-n: No, it should be consistent.
+
+For subgroup discussion.
+
+All other specification statements either fall into category (a) or (b), and
+since they don't take significant effort to define their semantics they ought
+to be allowed.
+
+3. Finalization and Default initialization
+------------------------------------------
+
+(a) Any construct-local variables with default initialization are
+    default-initialized on entry to the BLOCK.
+
+This is already mentioned by item (27) of 16.6.5, and so is therefore
+covered by the text in 4.5.4.5 at [65:33-39].
+
+(b) Any unsaved construct-local variable should be finalized on exit.
+
+This is already handled by 4.5.6.3 When finalization occurs,
+third paragraph.
+
+(c) Any construct-local allocatable variable must be unallocated on entry.
+
+This ought to be mentioned (c06).  Edit supplied.
+
+(d) Any unsaved allocatable construct-local variables should be deallocated on
+    exit.
+
+This is already mentioned (6.3.3.1, third paragraph).
+
+4. Other issues regarding definition status
+-------------------------------------------
+
+(a) Undefinition. Do unsaved construct variables become undefined when  
+    the construct terminates? When the procedure returns? Ever?
+
+This is handled already by item (20) of 16.6.6.
+
+(b) This flaw would appear to be present for some of our pre-existing statement
+    entities as well.  (Well, on first glance, anyway.)
+
+Urgh.  Double-check later.
+
+(c) Any unsaved construct-local pointer should become undefined on exit.
+
+Oops.  Edit for c16.
+
+(d) Any pointer associated with an unsaved construct-local variable should
+    become undefined (pointer association status) on exit.
+
+Oops.  Edit for c16.
+
+5. Specification expressions
+----------------------------
+
+Q3. Should specification expressions in a BLOCK be allowed to reference
+    local variables of the subprogram?
+
+   subroutine sub
+     integer :: n
+     read (*,*) n
+     block
+      real :: x(n,n)
+       ...
+     end block
+   end subroutine
+
+A3-y: Yes, everyone will want this to work.
+A3-n: No, it is too much effort.
+
+for subgroup consideration.
+
+6. BLOCK construct termination
+------------------------------
+
+This is already handled by the third paragraph of 8.1.9 BLOCK construct.
+
+7. Terminology and explanation
+------------------------------
+
+The document would be simplified if we defined the terms "instantiate" and
+"deinstantiate" for variables, and hung the various effects off of those
+rather than higglety-pigglety scattering special cases throughout the
+document.  Actually, "deinstantiate" is probably the most useful one here.
+
+8. Edits to 06-007
+------------------
+
+8.1 Outline
+-----------
+
+Exclude <use-stmt> or define semantics.
+
+Exclude <implicit-part>.
+
+Exclude <entry-stmt>.
+
+Silly semantics for <asynchronous-stmt>.
+
+Exclude <intent-stmt>.
+
+Exclude <optional-stmt>.
+
+Exclude COMMON or make it work.
+
+Maybe extend specification expressions to include "outer" local variables.
+
+8.2 Definition of terms
+-----------------------
+
+Here is a very rough idea of what I mean.
+
+A variable is <<ordinary>> if it does not have the ALLOCATABLE or POINTER
+attributes, and is not part of a COMMON block.
+
+An ordinary saved variable is <<instantiated>> when execution of the program
+begins.
+An ordinary unsaved variable is instantiated as follows:
+  - an ordinary local variable of the main program is instantiated when
+    execution of the program begins;
+  - an ordinary local variable of a procedure is instantiated when an instance
+    of that procedure is created;
+  - an ordinary local variable of a module is instantiated when execution of
+    the program begins;
+  - an ordinary local variable of a construct is instantiated when execution of
+    that construct begins.
+Allocation of an allocatable variable instantiates that variable.
+Allocation of a pointer instantiates the target of the pointer.
+A variable in a common block is instantiated when execution of the program
+begins.
+
+{Note: I have depicted a simple model for COMMON and MODULE (and SUBMODULE!)
+       here because it is probably impossible to tell in a standard-conforming
+       program.  However, it would might be better to define instances of
+       these - like procedures - together with rules saying when they are
+       created and are destroyed.  This would aid in categorising the
+       processor-dependent stuff.}
+
+{Note: I have chosen here to maintain our fiction that an allocatable entity
+       is one entity, not a dope vector plus a target.  In contradistinction
+       to pointers.}
+
+An ordinary unsaved variable is <<deinstantiated>> as follows:
+ - an ordinary local variable of a procedure is deinstantiated when the
+   procedure instance which instantiated it is completed;
+ - if execution of a RETURN or END statement in a procedure that references a
+   module or submodule results in there being no active scoping unit
+   referencing the module or submodule, it is processor-dependent whether
+   variables in the scoping unit of that module or submodule are
+   deinstantiated;
+ - a local variable of a construct is deinstantiated when execution of the
+   construct completes.
+A variable in a named common block that appears in a subprogram is
+deinstantiated on execution of a RETURN or END statement in that subprogram
+unless another active scoping unit is referencing the common block.
+
+Deallocation of an allocatable variable deinstantiates that variable.
+Deallocation of a pointer deinstantiates its target.
+Neither saved variables nor local variables of a main program are ever
+deinstantiated.
+
+When a variable that has a subcomponent with default initialization is
+instantiated, that subcomponent is default-initialized.
+
+When a variable is deinstantiated,
+ - if it is finalizable, it is finalized;
+ - if it has any allocated ultimate allocatable components, they are
+   deallocated;
+ - if a pointer is associated with it as a target, the pointer's association
+   status becomes undefined;
+ - if it is a pointer, its pointer association status becomes undefined.
+After deinstantiation, a nonpointer variable becomes undefined.
+
+{Adding these terms would allow us to remove or simply much of the RETURN or
+ END boilerplate.}
+
+8.3 Actual edits
+
+[127:29] 6.3.1.1 Allocation of allocatable variables, fifth paragraph
+         (beginning "An unsaved ...")
+  Append to paragraph
+    "An unsaved local variable of a construct has a status of unallocated at
+     the beginning of each execution of the construct.  The status may change
+     during execution of the construct."
+  Editorial: [127:26,28]
+     "An unsaved allocatable object that is a local variable of a"
+  -> "An unsaved allocatable local variable of a"
+  twice.
+{Specify initial state of allocatable local variables of a BLOCK construct.}
+  More editorial: [129:23-25]
+     "an allocatable variable that is a named local variable of the procedure
+      ... if it has the SAVE attribute or is ..."
+  -> "an unsaved allocatable local variable of the procedure ... if it is ..."
+  and [129:27-28]
+
+More editorial: [129:29]
+  "If an unsaved allocatable object is a local variable of a module or
+   submodule, and it is allocated when ..."
+  ->
+  "If an unsaved allocatable local variable of a module or submodule is
+   allocated when ..."
+
+[142:14+] 7.1.6 Specification expression, definition of restricted expression,
+  after item (4) {second one beginning "an object designator..."} insert new
+  items
+    "(4a) an object designator with a base object that is a local variable of
+          the procedure containing the BLOCK construct in which the restricted
+          expression appears,
+     (4b) an object designator with a base object that is a local variable of
+          an outer BLOCK construct containing the BLOCK construct in which the
+          restricted expression appears,"
+{Edit for Q3-y.  These items could probably be merged by wordsmithing.}
+
+[191:20+] 8.1.9 BLOCK construct, after R845 <block-construct>,
+  Insert new constraint
+    "C831a (R845) The <specification-part> of a BLOCK construct shall not
+           contain a COMMON statement, ENTRY statement, IMPLICIT statement,
+           INTENT statement, OPTIONAL statement, or USE statement.".
+{Exclude undesirable elements from BLOCKs.
+ Note: this version assumes A1-n and A2-n.}
+
+[191:27] 8.1.9, first textual paragraph (immediately after the only constraint)
+  Change "Specifications"
+  to     "Except for the ASYNCHRONOUS statement, specifications".
+{Silly semantics for <asynchronous-stmt>.}
+
+[498:24+] 16.5.2.2.3 Events that cause the association status of pointers to
+          become undefined, numbered list, after item (4) "execution of a
+          RETURN or END statement...",
+  insert new list item
+    "(4a) termination of a BLOCK construct causes the pointer's target to
+          become undefined (item (20 of 16.6.6),"
+{Pointers should become undefined when their target goes away.}
+
+[498:36+] 16.5.2.2.3, numbered list, before item (7) "the pointer is an ...",
+  insert new list item
+    "(6a) a BLOCK construct is terminated and the pointer is an unsaved local
+          entity that is explicitly declared in the BLOCK,"
+{Comments: - If we allow COMMON in BLOCK, this needs to be turned into the same
+             form as item (6), with (b) and (c).
+           - If we allow USE in BLOCK ditto, but subitems (d) and (e).
+           - Never need subitems (f) or (g).
+           - Careful wording to catch procedure pointers.
+ Actually, if we do allow COMMON and USE, I hope we introduce the deinstantiate
+ terminology to simplify the mess that is item (6) and that this would become.}
+
+== END OF DOCUMENT ===

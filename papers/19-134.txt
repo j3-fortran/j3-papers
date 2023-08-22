@@ -1,0 +1,110 @@
+To: J3                                                     J3/19-134
+From: Peter Klausler (pklausler@nvidia.com)
+Subject: Problem with default locality semantics in DO CONCURRENT
+Date: 2019-February-11
+
+1. Introduction
+
+In 11.1.7.5 paragraph 4 (page 185) one reads "If a variable has
+unspecified locality, (bullet) if it is referenced in an iteration it
+shall either be previously defined during that iteration, or shall not
+be defined or become undefined during any other iteration; ..."
+
+This requirement guarantees that a variable that is defined and then
+later referenced within the same iteration of a DO CONCURRENT
+construct will observe that the values retrieved by those later
+references will be the same values that were stored in the most recent
+definition of the variable in the same iteration (possibly converted
+to the type of the variable, of course), absent an explicit SHARED or
+DEFAULT(NONE) locality specifier, even when that same variable is also
+defined by other iterations of the DO CONCURRENT construct.  This
+behavior is unsurprising and reasonable when the variable is a simple
+local temporary result.
+
+The semantics of DO CONCURRENT impose necessary, sufficient, and
+feasible constraints upon the program and processor to ensure that
+execution of the iterations of a conforming construct in any
+serialized order will produce the same results.
+
+As implementors of Fortran, we would like DO CONCURRENT to also ensure
+well-defined results for efficient parallel execution.  The
+requirement quoted above for variables of unspecified locality to
+become automatically localized by the processor is feasible for whole
+variables, but not feasible for a processor to ensure for variables
+whose designators comprise any expression that is not a constant
+expression, or for variables that are pointers or pointer functions.
+In short, the processor should be required to implement the semantics
+of automatic localization of those variables with unspecified locality
+only when it is clear what the variables are that need to be
+localized.
+
+We observe that Fortran programmers tend to be surprised when the
+current semantics are explained to them, and that at least one Fortran
+processor to which we have access fails to implement these semantics
+in the general case of subscripted variables below.  The change
+proposed below might constitute a case of correcting the Standard to
+describe what it is already generally understood to mean.
+
+2. Sample case
+
+SUBROUTINE FOO(N, A, B, T, K, L)
+  IMPLICIT NONE
+  INTEGER, INTENT(IN) :: N, K(N), L(N)
+  REAL, INTENT(IN) :: A(N)
+  REAL, INTENT(OUT) :: B(N)
+  REAL, INTENT(INOUT) :: T(N)
+  INTEGER :: J
+  DO CONCURRENT (J=1:N)
+    T(K(J)) = A(J)
+    B(J) = T(L(J))
+  END DO
+END SUBROUTINE FOO
+
+When K(J) equals L(J) in any iteration, B(J) is guaranteed to be
+defined to the value of A(J), even when the variable T(K(J)) is
+defined in multiple iterations; i.e., K(J1)==K(J2) for two distinct
+iterations J1 and J2.
+
+A processor implementing a parallel execution model of this construct
+with the semantics required by the text of the Fortran 2018 standard
+must capture the value of A(J) and substitute that value for T(L(J))
+conditionally when K(J)==L(J).  When there are multiple references to
+and definitions of elements of T, the number of these conditional
+forwardings grows as the product of the number of references and
+definitions.  The induced overhead reduces the efficacy of parallel
+execution.
+
+3. Proposal
+
+Edit 11.1.7.5 paragraph 4 in such a way as to clarify that the
+guarantee of automatic localization for variables of unspecified
+locality applies only to whole variables; i.e., variables whose names
+could, and perhaps should, appear in a LOCAL locality specifier on the
+DO CONCURRENT.
+
+Specifically: in 11.1.7.5 paragraph 4, first bullet, insert text so
+that what reads as
+
+  "if it is referenced in an iteration it shall either be previously
+   defined during that iteration, or ..."
+
+becomes
+
+  "if it is referenced in an iteration it shall either be previously
+   defined during that iteration as an assignment to a name that could
+   appear in LOCAL locality specifier, or ...".
+
+4. Note
+
+This change increases the value of the Fortran 2018 locality specifier
+DEFAULT(NONE), as the semantics available to variables of unspecified
+locality will have been restricted in such a way that the explicit
+locality specifiers LOCAL, LOCAL_INIT, and SHARED can now be used to
+declare the locality of all of the whole objects mentioned in the DO
+CONCURRENT construct.  In Fortran 2018, a loop like the sample case
+above cannot be decorated with DEFAULT(NONE) and still retain the
+conditional localization of some elements of the array, as array
+elements cannot appear in locality specifiers.
+
+
+

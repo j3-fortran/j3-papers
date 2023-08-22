@@ -1,0 +1,112 @@
+To: J3                                                          J3/00-140
+From: JOR                                                       page 1 of 2
+Date: March 1, 2000
+Subject: Async/Volatile fixups
+
+This paper addresses various problems with the ASYNCHRONOUS and VOLATILE 
+attributes, mostly from paper 00-129.
+
+Malcolm asked why we require an explicit interface for objects with these 
+attributes which are dummy arguments.  This restriction was added so the 
+compiler could use pass by descriptor, and avoid copyin/copyout.  Using 
+copyin/copyout would almost certainly cause unexpected behavior/wrong answers
+in this context.  Malcolm also pointed out a few omissions in how these 
+attributes are handled.  
+
+JOR has decided to adopt Malcolm's suggestion for cleaning up what types of
+dummy arguments can have the ASYNC attribute, and to apply the same mechanisms
+to VOLATILE dummys.
+
+Simply, an actual argument that is (easily) known to be contiguous can always be
+an actual argument corresponding to a dummy argument with the ASYNC or VOLATILE
+attribute.  Possibly non-contiguous objects (but regularly shaped) can be passed
+if the dummy argument is assumed shape.  This forces the actual & dummy to be 
+the same rank/shape.  
+
+Although the standard does not prohibit using copyin/copyout under these 
+restrictions, we know of no implementations that do the copies.  A suitable
+hint for implementors is included in the edits to ensure that copyin/copyout
+is not used for dummy arguments with these attributes.
+
+One remaining question was whether or not to require an explicit interface for
+these dummy arguments all the time.  An explicit interface would allow the
+compiler to check for cases where a compiler has to use copyin/copyout 
+(such as passing a POINTER to a routine with an implicit interface is one
+common example), and issue an error.  For now, we have decided to leave this
+restriction in place, and add a few suitable constraints so the compiler can
+prevent the users from shooting themselves in the foot too often.  If we choose
+not to require the explicit interface for all routines which contain a dummy 
+argument with one of these attributes, then the constraints will become plain
+normative text (not a constraint).
+
+Paper 00-132 contains edits to prohibit vector valued subscripted arrays from 
+being passed to a dummy argument with these attributes, since copyin/copyout 
+is always required in this case.
+
+Malcolm asked if a called procedure was expected to implicitly WAIT if any
+dummy args were ASYNCHRONOUS.  The answer is NO.
+
+Subgroup decided to not require a dummy arg to have the ASYNC attribute
+just because the actual argument does.  The general rule (big hammer) is
+already present 5.1.2.12 [77:29-?], and removing the restriction allows more
+flexibility for knowledgable users.  Volatile has the same sort of requirements
+as async after this change.  This change also allows intrinsics to be called
+with objects having the ASYNC attribute, as long as the object is not
+currently a pending I/O storage sequence affector.
+								
+
+
+											J3/00-140
+											page 2 of 2
+Malcolm asked if we really wanted to require the base object of a part-ref to be
+ASYNCHRONOUS just because a part-ref was.  We do, and also for all the part-
+ref's to also be asynchronous, to enable a more efficient compiler 
+implementation.
+
+
+
+EDITS to J3/00-007:
+
+  Section 5.1.2.12 [77:35]
+    change "ASYNCRONOUS" to "ASYNCHRONOUS"
+
+
+  Section 5.1.2.12 [77:37-38]: delete these two lines.
+
+  Section 12.2.1.1 [244:16], change
+    ", and"
+  to
+    ", whether it has the ASYNCHRONOUS attribute (5.1.2.12), whether it has 
+     the VOLATILE attribute (5.1.2.13), and" 
+
+  Section 12.4.1.2 [260:15+] (after not 12.26), add
+
+    The following additional constraints apply to the syntax rule defining
+    actual arguments (R1219).
+
+    Constraint: If an actual argument is an array section or an assumed-shape
+    array, and the corresponding dummy argument has either the VOLATILE or 
+    ASYNCHRONOUS attributes, that dummy argument shall be an assumed-shape
+    array.
+
+    Constraint: If an actual argument is a pointer array, and the corresponding
+    dummy argument has either the VOLATILE or ASYNCHRONOUS attributes, that
+    dummy argument shall be an assumed-shape array or a pointer array.
+
+    Constraint: If an actual argument is a <data-ref> with non-zero rank, and
+    the rightmost <part-ref> has zero rank, and the corresponding dummy
+    argument has the VOLATILE or ASYNCHRONOUS attribute, that dummy argument
+    shall be an assumed-shape array. 
+ 
+    Note
+    These last few restrictions on actual arguments that correspond to a 
+    dummy argument with either the ASYNCHRONOUS or VOLATILE attribute are
+    designed to avoid forcing a processor to use the so-called copyin/copyout
+    argument passing mechanism.  Making a copy of actual arguments whose values
+    are likely to change due to an asynchronous I/O operation completing or in
+    some non-predictable manner will cause the new values to be inaccessible 
+    via the dummy argument, and may cause those new values to be lost when a
+    called procedure returns and "copyout" overwrites the actual argument.
+    END NOTE
+
+

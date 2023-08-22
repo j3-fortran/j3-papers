@@ -1,0 +1,280 @@
+
+                                                        J3/98-209
+
+Date:        23 Oct 1998
+To:          J3
+From:        R. Maine
+Subject:     Specs and Syntax for B.4, Stream I/O
+
+I. BACKGROUND
+
+Stream I/O is item B.4 on the f2k work plan.  It is the only item on the
+work plan that has not been addressed in some manner.  The rationale for
+this item is given in items 63 and 63a of the wg5 repository, N1189.
+
+I consider this item to be of importance both in itself and also as a
+component of C interopability.  Other work on C interopability has
+focussed on interoperating with C code, but interoperating with C data files
+is also an important item.  It would not be particularly convenient to
+tell the users that in order to work with C files, they need to write
+C code to do so and then call that C code using the other C interopability
+features.  Furthermore, as mentioned in the quoted rationales below,
+byte-stream files have become a de-facto standard far beyond the direct
+scope of the C environment.
+
+>From item 63:
+
+| Rationale: C-style "byte stream" has become a de facto standard far beyond
+the
+| direct scope of the C environment. In a scientific application it is not
+| surprising to have a sensor feeding a stream of data to a processor which
+in
+| turn feeds the results over a heterogeneous network for additional
+processing.
+| Fortran record structure provides the user with an obstacle to overcome in
+this
+| scenario (the processors may not have the same record conventions (even
+when
+| the CPU architecture is the same), etc.)
+
+And from item 63a:
+
+| there is a category of files that are definitely not record oriented.
+| This category is called "binary stream files". These files  are merely
+| constituted of a continuous sequence of storage units,  without any
+internal
+| structure. Stream files are prevalent in many  operating systems such as
+Unix,
+| DOS, Windows and OS/2. Also, there  are "industry-standard" file formats
+that
+| are not record oriented,  such as GIF and TIFF formats for digital images.
+|
+| Accessing stream files with standard Fortran I/O facilities is often
+difficult:
+| unformatted sequential access may fail because the file  contains no
+record
+| delimiters. Using unformatted direct access is also  awkward since the
+data
+| cannot be accessed easily with fixed record  lengths. In short, a new file
+| access is needed.
+
+I consider this work item to be of far higher importance than might be
+inferred by just looking at its current position in the work plan.  It
+is also not a particularly difficult item to do, either in terms of
+standards work or implementation.  The impact on the standard is fairly
+localized, and many implementations already do something simillar as
+an extension.
+
+II. SPECIFICATIONS
+
+Considering the late date, I believe that a fairly minimalist approach
+to this work item is appropriate.  WG5 item 63 mentions stream
+versions of all combinations of formatted/unformatted and
+direct/sequential, with a new specifier on the OPEN statement.  WG5
+item 63a restricts itself to unformatted i/o and adds stream as a new
+kind of access instead of as a new specifier.  I think it works out
+far more simply and integrates better to add one new access model
+along the lines of item 63a, rather than to add 4 new ones, which is
+essentially what item 63 proposes.
+
+I earlier considered specifying the new model with the form keyword,
+which has some precedent.  But this did not seem to integrate as well
+as one would like.  It raises questions about how to interpret the
+access keyword when the form is specified to be stream.  On
+reconsideration, I am proposing that the new model be specified with
+the access keyword as an alternative to sequential or direct.  This
+appears to integrate far better.  Indeed, much of what the standard
+already says about the data in unformatted files is the same stuff
+that needs to be said about these new files.  It is only in matters
+of record structure that they should much differ.
+
+Thus, I propose one new file structure, which would be a stream access,
+unformatted form file.  After deciding that this seemed like the best
+approach, I reviewed wg5 document N1189 and found this to be exactly
+what item 63a specifies.
+
+In principle, one could also define stream access for formatted files,
+but I do not propose to do that now.  The proposal does leave that
+open as a possible extension, but it seems like too much work for too
+little benefit for now.  Most requests relating to formatted stream
+I/O appear to have more to do with enhancements of non-advancing I/O
+in that there still is an underlying record structure (the lines of
+the file).  Formatted files that truly have no record structure are
+not particularly common.  For those rare cases where such a file is
+needed, it could be handled as character data on a unformatted stream
+file in combination with internal i/o.  This would be a little awkward,
+but I don't see it as common enough to be a significant issue.  If
+we did add a capability for stream formatted I/O, we would have to
+do something to define the interactions with formatting issues that
+refer to record boundaries, notably the "/" and "T" format descriptors,
+format reversion, and advance="yes".  I don't see any reason why we
+couldn't define these interactions, but it would be extra work for
+what I consider minimal return.
+
+With these thoughts in mind, I think that most of the specifications
+are laid out adequately in item 63a, which I therefore quote verbatim:
+
+| Detailed Specification:  only new keywords and options in OPEN, READ,
+WRITE,
+| and INQUIRE  are needed.
+|
+| A binary stream file consists of a sequence of processor-dependant
+storage
+| units. These units must be the same to those used to define  the record
+length
+| of an unformatted direct file. The storage units  are numbered from 1 to
+n, n
+| being the last unit written. Two concepts  are present in a stream file. A
+file
+| position pointer is used to locate  the next storage unit to be read or
+| written. Following the last storage  unit of the file, there is an
+end-of-file
+| marker that may physically  exist or not. This marker can be checked in a
+READ
+| statement by END  or IOSTAT specifiers. The file position pointer may
+point to
+| the  end-of-file marker.
+|
+| Opening a binary stream file could be done by simply adding
+ACCESS='STREAM' in
+| the OPEN statement. The POSITION specifier  is valid for these files.
+|
+| Binary stream I/O should work following in an hybrid fashion between
+| sequential and direct access. Sequential access should be done by  using
+the
+| syntax of unformatted sequential READ and WRITE, except  that the unit is
+| connected to a binary stream file. The file position  pointer is moved by
+the
+| amount of data storage units transferred  by each READ or WRITE statements
+| executed. Random access should be  provided by adding a POS=location
+specifier
+| to the READ or WRITE  statements. Mixed access should be allowed for the
+same
+| unit.  When a WRITE statement overwrites a portion of a stream file,  only
+the
+| amount of storage tranferred should replace the existing  locations; the
+| remaining storage units should remain intact  (in the contrary of
+conventional
+| unformatted sequential WRITEs).
+|
+| READ and WRITE statement with POS specifiers but with an empty  I/O list
+merely
+| move the pointer inside the file. In the case  of a WRITE statement, if
+the
+| position pointer is moved with  the POS specifier beyond the end-of-file
+| marker, the gap is filled  with unitialized data.
+|
+| The BACKSPACE statement should be disallowed for such files, since  there
+is no
+| record delimiters.
+|
+| The ENDFILE statement is used to truncate the binary stream file
+| at the current file pointer position.
+|
+| New specifiers should be added to the INQUIRE statements.
+|
+| In particular, a CURRPOS specifier to obtain the current position
+| of the pointer, and a FILESIZE specifier that returns the amount
+| of units written to the file. The ACCESS specifer should also be
+| extended to allow ACCESS='STREAM' to be returned.
+
+The most complicated part of this spec relates to the random positioning
+capability.  This is a desirable feature and it appears to me that this
+spec lays out an approach that will work.  Therefore, I'll propose to
+keep it in.  However, if it proves controversial or difficult, I'm
+prepared to accept deletion of the random positioning feature.
+
+One deletion from the above specs: Consistent with the philosophy of
+giving the user maximum control over the contents of a stream file,
+and in order to improve file portability, delete the concept of a
+system-dependent end-of-file mark.  There is a terminal position of
+the file, and this terminal position may be set to the current position
+by using ENDFILE, but there is no mark associated with this.  (If the
+system file structure inherently includes an end-of-file mark, that
+is outside of the scope of the Fortran standard; it would not be
+considered to be a part of the file as viewed by Fortran).
+
+And one additional spec: Delete the prohibition against namelist
+with internal I/O.  Allowing internal namelist I/O will help
+facilitate getting the effect of formatted stream I/o by using
+unformatted stream I/O in conjunction with internal I/O.  But
+this is not critical and can be dropped if there is objection.
+
+III. SYNTAX
+
+Much of the syntax follows fairly obviously from the specifications,
+with possible minor quibbles about spelling.
+
+A. The OPEN statement.
+
+   ACCESS='STREAM' is allowed in the OPEN Statement.  In such cases,
+   FORM defaults to 'unformatted', which may be explicitly specified.
+   FORM='formatted' is not allowed.
+
+   BLANK, DELIM, and PAD, are already prohibitted for unformatted;
+   this prohibition applies.
+
+   RECL is not allowed.
+
+   ASYNC is allowed.
+
+B. The CLOSE, WAIT, REWIND, and ENDFILE statements
+
+   No syntax changes.  EOR is allowed in WAIT, but will never happen.
+   (We already allow it for other cases where it can't happen).
+
+   The specs describe the different interpretation of ENDFILE.
+
+   Take out the prohibiton against namelist on internal files.
+
+C. The BACKSPACE and PRINT statements are disallowed, as is the form
+   of READ without an io-control-spec-list.  (The PRINT and that form
+   of READ are only for formatted files).
+
+D. The READ and WRITE statements.
+
+   Identical in syntax to other unformatted READ/WRITE statements.
+
+   Can not have FMT=, NML=, ADVANCE=, SIZE=, EOR=, REC=.  (All but the
+   REC= apply only to formatted files).
+
+   May have ASYNC= and ID=.
+
+   Add a new POS=scalar-int-expr specifier allowed only for stream files.
+   If this is specified, the file is positioned to the specified position
+   prior to the data transfer.
+
+E. The INQUIRE statement.
+
+   May return 'STREAM' as a value for access.
+
+   Add a STREAM= specifier just like SEQUENTIAL= and DIRECT=.  (It is
+   possible that a processor might not allow stream access to all files).
+
+   Add a SIZE=scalar-default-int-variable specifier that returns the
+   file size in the same units as used for REC=.  (The wg5 item
+   suggested an example spelling FILESIZE, but I don't think that
+   necessary, though I'd accept it if the majority prefers; file_size
+   would be another obvious alternative along that line).  This
+   returns a value of -1 if the file size cannot be determined (for
+   example, if the file is a device instead of a disk file).  SIZE=
+   may also be used for sequential and direct access files; in those
+   cases, the file size might not be the same as the amount of data
+   written to the file (i.e. the processor can return the actual file
+   size; it doesn't have to do anything like keep track of how much of
+   the size is user data versus how much is record headers).
+
+   Add a POS=scalar-default-int-variable specifier that returns the
+   current file position.  This returns -1 if the position cannot be
+   determined.  The result of POS= is undefined for sequential and
+   direct files.  The wg5 item used the example spelling CURRPOS, but
+   I find that a bit awkward.  I think it better to use the same
+   spelling for the specifier in the INQUIRE statement as the one in
+   the READ/WRITE statements.
+
+F. Derived type I/O.
+
+   Uses the unformatted derived type I/O routines with no changes.
+   (Those routines already look almost more like stream I/O than
+   record-oriented anyway - within the DTIO routine you don't get
+   any file positioning before or after a read or write).

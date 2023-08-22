@@ -1,0 +1,155 @@
+                                                      J3/98-195r1
+
+          Date:        1998/08/13
+          To:          J3
+          From:        Interop
+          Subject:     Interoperability syntax (Part 2):  Characters
+          References:  J3/98-132r1, J3/98-139, J3/98-165r1
+
+          All references in the following are to 98-007r2.
+
+          The facilities described below provide a complete facility
+          for interoperability of C characters with Fortran
+          characters.  No additional facilities are required to
+          manipulate C strings in Fortran.
+
+          Handling of characters
+          ----------------------
+
+          In C, objects that are of a character type contain a single
+          character value.  In Fortran, entities of type character
+          can be composed of more than one character value.  In C,
+          multi-character objects are created using arrays, and in
+          the case of strings, a specially distinguished NULL
+          character marks the end of the string.
+
+          In order to facilitate passing Fortran character entities
+          with character length parameters greater than one to C
+          strings, the Fortran rules on sequence association need to
+          be relaxed.  Today, the following is a valid Fortran
+          program:
+
+                program p
+                  character(10) :: a(1)
+                  call sub(a)
+                contains
+                  subroutine sub(b)
+                    character(1) :: b(10)
+                  end subroutine sub
+                end program p
+
+          but the following is not:
+
+                program p
+                  character(10) :: a
+                  call sub(a)
+                contains
+                  subroutine sub(b)
+                    character(1) :: b(10)
+                  end subroutine sub
+                end program p
+
+          That is, sequence association involving characters permits
+          arrays of characters to blur the division between the number
+          of array elements and the length of the element, but this
+          blurring only applies when an actual argument is a character
+          array, an element of a character array or a substring of
+          such an array element, but does not allow a scalar of type
+          character to be argument associated with a dummy argument
+          associated with a character array, unless it is an element
+          of a character array.
+
+          In order to make this change, the rules in 12.4.1.1
+          [227:13-15] and 12.4.1.4 need to be modified to allow this.
+
+          Note:  This change could conceivably cause problems for some
+                 Fortran 95 processor, though whether there is
+                 actually a processor that relies on this is unclear.
+
+          An example of this approach as it applies to
+          interoperability:
+
+                program p
+                  interface
+                    bind(c) subroutine myprintf(dummy)
+                      ! The Fortran array corresponds with the C
+                      ! array dummy
+                      character(1) :: dummy(0:12)
+                    end subroutine myprintf
+                  end interface
+                  character(13) :: actual = "Hello, world!"
+
+                  ! actual is a scalar that is not an array
+                  ! element, which is not currently allowed
+                  call myprintf(actual)
+                end program p
+
+                void myprintf(char dummy[13])
+                { ... }
+
+          Note:  This approach was preferred in a straw vote to the
+          alternative of allowing Fortran scalar characters to
+          interoperate with C character arrays by a vote of 6-4-1.  An
+          additional straw vote on whether this extension to sequence
+          association should be permitted only in references to
+          BIND(C) procedures passed by a vote of 5-4-2.  A third straw
+          vote on whether to allow this extension to other types
+          failed by a vote of 2-8-2.
+
+          In order to simplify things, subgroup decided to ignore the
+          result of the second straw vote.
+
+          Sample edits:
+            In 5.1.2.4.4 [63:38+]
+                  Add    "If the actual argument is of type default
+                          character and is a scalar that is not an
+                          array element or array element substring
+                          designator, the size of the dummy array is
+                          MAX(INT(l/e), 0), where e is the length of
+                          an element in the dummy character array, and
+                          l is the length of the actual argument."
+
+            In 12.4.1.1 [226:9-10]
+                  Change "or array element"
+                  to     "array element, or scalar"
+
+            In 12.4.1.1 [226:11]
+                  After  "array"
+                  add    "or scalar"
+
+            In 12.4.1.1 [227:14-15]
+                  Change "or a substring of such an element"
+                  to     "or a scalar of type default character".
+
+            In 12.4.1.4 [228:45]
+                  Change "an array element substring designator"
+                  to     "a scalar of type default character"
+
+
+            In 12.4.1.4 [229:8+]
+                  Add    "If the actual argument is of type default
+                          character and is a scalar that is not an
+                          array element or array element substring
+                          designator, the element sequence consists
+                          of the character storage units of the actual
+                          argument."
+          Null characters
+          ---------------
+
+          The C character and wchar_t data types have designated null
+          characters, whose value is zero.  The ISO_C_TYPES module
+          shall make accessible a named constant, C_NULLCHAR, of type
+          charcter, whose kind type parameter is equal to the value of
+          C_CHAR.  The value of C_NULLCHAR shall be equal to the value
+          of the null character of the C char data type.
+
+          Note:  A straw vote on whether to use CHAR(0) vs. a
+          C_NULLCHAR named constant showed a preference for C_NULLCHAR
+          (2-6-3).
+
+          Length type parameters
+          ----------------------
+
+          The character length parameter of a Fortran entity that
+          interoperates with a C entity shall not be an asterisk.
+

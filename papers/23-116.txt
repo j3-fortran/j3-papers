@@ -1,0 +1,138 @@
+To: J3                                                     J3/23-116
+From: Malcolm Cohen
+Subject: Interp F23/002 on C interoperability
+Date: 2023-February-07
+
+----------------------------------------------------------------------
+
+NUMBER: F23/002
+TITLE: Interoperation of assumed-length assumed-size
+KEYWORDS: C interoperability
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+In 18.3.7 Interoperability of procedures and procedure interfaces,
+paragraph 2 item (5) second bullet states that a procedure can be
+interoperable if
+    "any dummy argument without the VALUE attribute corresponds to a
+     formal parameter of the prototype that is of a pointer type, and
+     ...
+        the dummy argument is a nonallocatable nonpointer variable of
+        type CHARACTER with assumed character length and the formal
+        parameter is a pointer to CFI_cdesc_t,"
+
+The inner bullet list is an "or" list, so that means the following
+would be interoperable
+
+    Subroutine s(x,y) Bind(C)
+        Character(*,C_char) x(*)    ! Interoperable kind
+        Character(*,iso_10646) y(*) ! Probably not interoperable kind
+        ! C function has CFI_cdesc_t * for these.
+        ...
+
+even though in the case of any other intrinsic type, if it is
+interoperable it may be DIMENSION(*) - but the C function has an
+array formal parameter, not CFI_cdesc_t, and if not interoperable
+(and character kind iso_10646 is likely to be non-interoperable),
+it is required to be allocatable/assumed-shape/assumed-rank/pointer.
+
+This seems to be inconsistent, especially since explicit-shape and
+assumed-size always interoperate with C arrays, not CFI_cdesc_t, for
+all other permitted cases. It is the only case where CFI_cdesc_t is
+passed for a dummy argument that is assumed-size or explicit-shape.
+
+It is also unnecessary functionality, as the allocatable, assumed-
+shape, assumed-rank, and pointer cases are fully handled by the
+third bullet.
+
+Q1. Is any kind of array intentionally permitted for assumed-length
+    CHARACTER (and with any kind)?
+
+Q2. If it is permitted, what happens when the rank of the actual
+    argument differs from the dummy argument? How many elements does
+    dim have? If the dummy is assumed-size but the actual is not, does
+    the last extent of dim have -1? If a dummy array bound depends on
+    a variable (e.g. from a module or the argument list), does the
+    actual argument array bound get plugged into the descriptor, or
+    the module variable?
+
+For example,
+     Module c23_002b
+       Use Iso_C_Binding
+       Integer(C_int),Bind(C) :: m
+       Interface
+         Subroutine s(x,n) Bind(C)
+           Import
+           Character(*,C_char) x(m)
+           Integer(C_int),Value :: n
+         End Subroutine
+       End Interface
+     End Module
+     Program doom
+       Use c23_002b
+       Character(17,C_char) :: y(2,3)
+       m = 5
+       y = 'Oh no!'
+       Call s(y,2)
+       Print *,y
+     End Program
+     #include <ISO_Fortran_binding.h>
+     #include <string.h>
+     #include <stdio.h>
+     extern int m;
+     void s(CFI_cdesc_t *x,int n)
+     {
+       int i,j,k;
+       char *p = x->base_addr;
+       if (x->rank!=1 || x->dim[0].extent!=m)
+         fprintf(stderr,"OOPS %d %d\n",x->rank,(int)x->dim[0].extent);
+       for (i=0; i<n; i++)
+         {
+           char *q = i ? "We are all" : "Doomed!!!!!!!!!!!!!!!!!!!!";
+           k = strlen(q);
+           if (k>x->elem_len) k = x->elem_len;
+           for (j=0; j<k; j++) p[j] = q[j];
+           for (; j<x->elem_len; j++) p[j] = ' ';
+           p += x->dim[0].sm;
+         }
+     }
+
+It's easy to construct other "interesting" examples with differing
+ranks and extents between the actual and the dummy.
+
+ANSWER:
+
+A1. Yes, this was intended.
+
+Perhaps a NOTE that with assumed-length, assumed-size/explicit-shape
+are passed with C descriptors, not as base address pointers?
+
+A2. Your computer melts down.
+
+ALTERNATIVE ANSWER:
+
+A1. No, this was intended for scalars (and assumed-shape et al), not
+    explicit-shape or assumed-size. An edit is provided.
+
+A2. Moot.
+
+EDITS to N2209:
+
+(For "ANSWER") To be provided if necessary.
+
+ALTERNATIVE EDITS:
+
+[508:15]
+  18.3.7 Interoperability of procedures and procedure interfaces, p2,
+  item (5), second bullet,
+    Between "nonpointer" and "variable" insert "scalar".
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 23-nnn   m229  Submitted
+
+----------------------------------------------------------------------
+
+

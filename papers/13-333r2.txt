@@ -1,0 +1,146 @@
+To:      J3                                         J3/13-333r2
+From:    Bill Long, Tobias Burnus, Lorri Menard
+Subject: THIS_TEAM intrinsic
+Date: 2013 October 16
+References: N1983, N1989, 13-337r1
+
+
+Discussion
+----------
+
+A ballot comment proposes a new intrinsic, THIS_TEAM ( ). The
+following is extracted from N1989.
+
+---
+{Tobias 1}: N1983 permits at some places the use of a team variable,
+which refers to the ancestor team. In particular in image selectors:
+"[team-variable :: cosubscript-list]".
+
+The PDTS requires that the team-variable was assigned a value by a
+FORM SUBTEAM statement. However, that makes it rather complicated to
+access the initial team (which encompasses all images). [Or the
+current subteam, in case that the caller has already done some
+partition before calling a procedure (in a library), which creates
+further subteams.] Hence, I think it would be useful to have an
+intrinsic procedure, which sets the value of the current team to a
+team-variable.  assuming For instance, "subroutine
+this_team(team-variable)". One could add an optional "distance"
+argument but as the caller has to be aware (for practical use) of the
+image indexes, it is probably not needed.
+
+One usage case would be a partition in a climate model into air, land
+and sea (cf. Annex A.1) where one exchanges every few iterations
+information for the boundaries between different subteams. This could
+be done in the "air" subteam via "boundary[parent_team ::
+sea_neighbor] = values; event post(data_is_there[parent_team ::
+sea_neighbor])".  Without the new subroutine, one had either leave the
+subteam, exchange the boundaries, and re-enter. (Implies two global
+synchronizations for end change team/change team for each exchange.)
+Or one had to form an artificial subteam, which encompasses all of the
+images of the (current, initial) team. The effect of the latter would
+be similar to the proposed "this_team()" except that it is uglier and
+requires three pointless synchronization (form subteam, change team,
+end change team) - but at least not during the iteration.
+---
+
+{Ed}: An additional use case involves the need to access the parent
+team variable in an image selector in a subprogram where the name
+originally given to the parent team is not known.  A local name for
+the same team can be constructed and used.
+
+THIS_TEAM would be a more efficient alternative to constructing a name
+for the initial team.
+
+J3 discussion led to changing the name to GET_TEAM.
+
+Edits to N1983:
+--------------
+
+[15:5] {Tobias 1} Change ", SUBTEAM_ID, and TEAM_DEPTH" to ",
+GET_TEAM, TEAM_DEPTH, and TEAM_ID".
+
+[22:40] {Tobias 1} Add section
+
+7.4.12+ GET_TEAM ( TEAM_VAR [,DISTANCE] )
+
+Description: Populate TEAM_VAR with team value
+
+Class:  Subroutine
+
+Arguments:
+
+TEAM_VAR   shall be scalar and of type TEAM_TYPE defined in the
+           ISO_FORTRAN_ENV intrinsic module.  It is an INTENT(OUT)
+           argument.  The corresponding actual argument shall not be
+           the team variable of the current team, nor of any of its
+           ancestors.
+
+DISTANCE (optional) shall be scalar nonnegative integer.  It is an
+           INTENT(IN) argument.
+
+If DISTANCE is not present, TEAM_VAR is defined with the value of a
+team variable of the current team. If DISTANCE is present with a value
+less than or equal to the team distance between the current team and
+the initial team, TEAM_VAR is defined with the value of a team
+variable of the ancestor team at that distance. Otherwise TEAM_VAR is
+defined with the value of a team variable for the initial team.
+
+
+Examples:
+
+   USE,INTRINSIC :: ISO_FORTRAN_ENV
+   TYPE(TEAM_TYPE) :: WORLD_TEAM, TEAM2
+
+   ! Declare a variable representing the initial team
+   CALL GET_TEAM(WORLD_TEAM)
+   END
+
+   SUBROUTINE TT (A)
+   USE,INTRINSIC :: ISO_FORTRAN_ENV
+   TYPE(TEAM_TYPE) :: PARENT_TEAM
+   REAL A[*]
+
+   CALL GET_TEAM(PARENT_TEAM, 1)
+
+   ! Reference image 1 in parent's team
+   A [PARENT_TEAM :: 1] = 4.2
+
+   ! Reference image 1 in my team
+   A [1] = 9.0
+
+   RETURN
+   END
+
+[9:22-25] {Ed: modification to C501 to allow new context} Replace C501
+with:
+
+"C501 A team variable shall not appear in a variable definition
+      context except as the team-variable in a FORM TEAM statement, as
+      an allocate-object in an ALLOCATE statement without a
+      SOURCE=alloc-opt, as an actual argument to a GET_TEAM call, or
+      as an actual argument in a reference to a procedure with an
+      explicit interface where the corresponding dummy argument has
+      INTENT(INOUT)."
+
+[10:13] {Ed: modifications to allow a variable defined by GET_TEAM to
+          be used in a CHANGE TEAM construct} Change sentence at
+          [10:13] to read: "The value of the team variable shall have
+          been formed by executing a FORM TEAM statement or a call to
+          GET_TEAM()."
+
+[10:30-32] {Add GET_TEAM as valid way to set a <team-variable>} Change
+     sentence at lines 30-32 to read: "If <team-variable> appears, its
+     value shall be the same as that of a team variable that was
+     assigned a value by a FORM TEAM statement for the current team or
+     an ancestor of the current team, or a call to GET_TEAM that
+     defined a team variable for the current team or an ancestor of
+     the current team, and the cosubscripts are interpreted as if the
+     current team were the team specified by <team-variable>."
+
+[30:11+] {Add GET_TEAM to intrinsic procedures} Insert a line
+following description of FAILED_IMAGES() to say
+
+"GET_TEAM( TEAM_VAR [, DISTANCE] )  S    Populate TEAM_VAR team value"
+
+[30:18] Change "7.3.1 through 7.3.14" to "7.4.1 through 7.4.15".
+

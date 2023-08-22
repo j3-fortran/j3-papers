@@ -1,0 +1,117 @@
+                                                             J3/15-150
+To:        J3
+Subject:   Allow users to specify local variables in DO CONCURRENT
+From:      Daniel Chen & Malcolm Cohen
+Date: 2015 February 24
+Reference: 15-007
+
+1. Introduction
+===============
+
+The intent of the restrictions listed in (8.1.6.5) is to allow a
+processor to parallize the code inside a DO CONCURRENT construct
+without causing any race condition. However, there are issues as in
+the following cases:
+
+Case 1:
+
+  REAL X
+  X = 1.0
+  DO CONCURRENT(...)
+    IF (condition) THEN
+      X = something
+      ...                ! code using X
+    END IF
+    ...                  ! code that doesn't use X
+  END DO
+
+In case 1, you cannot localise X, because if "condition" is true
+exactly once, the assignment affects the "outer" X. OTOH, if
+condition is true more than once, you cannot execute in parallel
+without localising X.
+
+
+Case 2:
+
+  REAL X
+  X = 1.0
+  DO CONCURRENT(...)
+    CALL sub(X)
+    ...                  ! code referencing X
+  END DO
+
+A processor is not able to detect
+1. if X is defined (or becomes undefined) in sub, and
+2. how many iterations that defines or undefines X as the condition
+could be in sub.
+
+Both Case 1 and 2 are standard conforming.
+
+It is understood that users can use a BLOCK construct to localize
+variables, but a processor still need to be able to handle all the
+standard conforming code.
+
+In order to still be able to parallize code such as in Case 1 and
+2, a processor needs to always localize x and copy-in the initial
+value and also copy-out the value at every possible point X could
+be defined or become undefined.
+
+The performance impact described at the above is not the intent
+of the standard, a proposal is made to eliminate the indetermination.
+
+
+2. Proposal
+===========
+
+Since a processor is not able to determine if a local copy is needed
+or not at the compile time, it would be critical to provide a
+mechanism to allow users to list all the variables that need to be
+localized.
+
+A new syntax as follows is introduced to achieve that
+
+  R819 concurrent-header is ( [ integer-type-spec :: ]
+         concurrent-control -list
+           [, scalar-mask-expr ]
+           [, locality-spec-list ])
+
+Rxxx locality-spec is LOCAL = object-name-list
+                   or GLOBAL = object-name-list
+
+Rules:
+1. LOCAL has a list of variables that will have a local
+   copy of each iteration without getting the initial value from
+   the original variable. (maps to OMP PRIVATE)
+2. GLOBAL has a list of variables that are common to all iterations;
+   a global variable shall not be defined or become undefined in more
+   than one iteration.  A global variable that is defined or becomes
+   undefined in one iteration shall not be referenced in any other
+   iteration.  In the case of arrays, these requirements apply to each
+   element individually.  In the case of derived types, these requirements
+   apply to the ultimate components.
+
+Optional extension:
+Rxxx locality-spec is LOCAL = object-name-list
+                   or GLOBAL = object-name-list
+                   or LOCAL_INIT = object-name-list
+
+3. LOCAL_INIT has a list of variables that will have a local
+   copy of each iteration with getting the initial value from
+   the original variable. (sort-of like OMP FIRSTPRIVATE, when there is
+   one thread per iteration).
+
+Discussion: The current restriction in the standard makes LOCAL_INIT not
+            very useful as it says a variable can only be referenced in
+            a particular iteration if and only if that variable is
+            previously defined in the same iteration. An edit is needed.
+
+Optional recommendation:
+4. A variable that does not appear in any locality-spec should not be
+   defined or become undefined in any iteration (OMP SHARED).
+
+Discussion: This will give a processor full compile time knowledge of
+            which variables are supposed to be local to each iteration
+            and which are supposed to be global.
+
+3. Edits
+========

@@ -1,0 +1,65 @@
+To: J3                                                     J3/18-135
+From: Van Snyder
+Subject: Use cases for unallocated list item in READ statement
+Date: 2018-February-14
+
+Reference: 18-122r1
+
+" (3)More support of deferred-length allocatable character variables,
+  to eliminate the requirement that the programmer pre-allocate,
+  including:
+  o Formatted READ
+"
+
+There is broader use of a more generalized feature.  If we bite off a
+tiny corner people will ask "why so restrictive?"
+
+The original motivation was to allow
+
+  character(:), allocatable :: A
+  read ( *, * ) a
+
+with A not yet allocated, and with the expectation that A becomes
+allocated to the "correct" length for the input item.  Since the
+processor cannot know the length of the input item, it has to guess a
+length.  If it's too short it has to create a buffer twice as big and
+copy what it has so far, etc.  Then, at the end, it might need to
+allocate a smaller A and copy the buffer to it.  This all can be done
+with O(n) complexity, where N is the length of the input item.  This is
+the complexity of reading into a sufficiently-large buffer, and using
+LEN_TRIM (if that's what works), but with a larger coefficient
+multiplying N.  It's not a quadratic or exponential problem.  And it's
+almost certain that the data transfer time will dwarf the "fiddling
+around" time to get the right size buffer.
+
+More generally, there is a desire to allow
+
+  real, allocatable :: X(:)
+  read ( *, * ) X
+
+with A not yet allocated, where the input is, for example
+
+  10.0, 12.4, 7.9, 15.7 /
+
+There really isn't any serious difference here.  The implementation
+problem is almost exactly the same, and the complexity here is also
+O(n), where N is now array size instead of string length.  An obviously
+similar case is
+
+  namelist /in/ A
+  read ( *, in )
+
+with the input
+
+&in a = 10.0, 12.4, 7.9, 15.7 /
+
+The ugly alternative that I have used, although not always possible, is
+to create an array that I believe to be sufficiently large for the
+largest problem, and fill it with a sentinel that is not a valid value
+for the problem at hand (say -huge(0.0) for the longitude).  This is a
+FORTRAN 77 solution.
+
+If we decide to do the first one, there's really no believable excuse
+not to do them all.
+
+

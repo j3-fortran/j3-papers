@@ -1,0 +1,269 @@
+To: J3                                                     J3/21-107r2
+From: R. Bader
+Subject: C interop module procedure examples
+Date: 2021-June-26
+
+Reference: 21-007r1,21-100
+
+1. Introduction
+
+This paper is triggered by the Editor's comment in 21-100 on a lack of
+examples in section 18.2.3 of 21-007r1.
+In the course of setting these up, a minor issue was observed,
+for which a fix is also suggested.
+
+Specifically, 
+
+* For 18.2.3.2 C_ASSOCIATED it is suggested to replace NOTE 1 by
+  an example that illustrates both usage cases.
+
+* For 18.2.3.3 C_F_POINTER a spurious "Case (iv)" is referenced in the
+  example section for which there is no counterpart in the FPTR arguments'
+  description (the "Case" designators refer to the semantic variants
+  of the procedure).
+
+* For 18.2.3.4 C_F_PROCPOINTER an example is added.
+
+* For 18.2.3.5 C_F_STRPOINTER examples for use of both specifics are
+  added.
+
+* For 18.2.3.6 C_FUNLOC an example is added.
+
+* For 18.2.3.7 C_LOC an example is added, as well as a reference to
+  an earlier example.
+
+* For 18.2.3.8 C_SIZEOF an example is added.
+
+* For 18.2.3.9 F_C_STRING an example is added.
+
+The capitalization style used is that of the existing examples in 
+18.2.3.3 C_F_POINTER. 
+  
+
+2. Edits against 21-007r1:
+
+In 18.2.3.2 C_ASSOCIATED [496:12+] replace NOTE 1 by a new para 6
+
+"Examples.
+ Case (i): extern double c_x;
+           void *address_of_x (void)
+           {
+              return &c_x;
+           }
+
+           TYPE(C_ptr) ::    p = C_null_ptr
+           ...
+           ! Assume interface to "address_of_x" is available.
+	       ! The following IF construct's block will be executed:
+           If ( .Not. C_Associated(p) ) Then
+             p = address_of_x()
+           End If
+           
+ Case (ii): Assume that the C variable c_x from the Case (i) example is
+            bound to Fortran by a module variable declaration
+	    
+	       Real(C_double), Target, Bind(C, Name='c_x') :: x 
+
+           Then, the following IF construct's block 
+
+           If ( C_Associated(p, C_loc(x)) ) Then
+              ...
+           End If
+
+           will be executed if the construct is placed
+	       after the statements of the Case (i) example."
+
+
+In 18.2.3.3 C_F_POINTER [498:7] delete "Case (iv)" and unindent [498:7-14]
+by one level.
+
+
+In 18.2.3.4 C_F_PROCPOINTER after [498:26] add a new para 4
+
+"Example.
+      #include <math.h>
+
+      typedef double (*simplefun)(double);
+
+      // use above typedef to create a C function that returns a C
+      // function pointer to the cube root C library function:
+      
+      simplefun dispatch() {
+        return cbrt;
+      }
+     
+      Assuming that the intrinsic module Iso_C_Binding is accessed, 
+      the following Fortran interface interoperates with dispatch():
+      
+      Interface
+        Type(C_funptr) Function dispatch() Bind(C)
+          Import, Only : C_funptr
+        End Function dispatch
+      End Interface
+
+      Abstract Interface
+         Real(C_double) Function simple_function(x) Bind(C)
+           Import, Only : C_double
+           Real(C_double), Value :: x
+         End Function simple_function
+      End Interface
+ 
+      Procedure(simple_function), Pointer :: psimp
+
+      Call C_F_Procpointer(dispatch(), psimp)
+
+      ! Invoke cbrt via associated function pointer psimp
+      Write(*,*) psimp(4.5_C_double)"
+
+
+In 18.2.3.5 C_F_STRPOINTER after [499:12] add a new para 5
+
+"Example.
+
+      Assume that interfaces to the C library routines "free" and
+      "get_current_dir_name" are available. Furthermore, a constant
+
+      Integer, Parameter :: maxlen = 1000
+
+      is taken to be the maximum expected length of the strings
+      involved. 
+
+      The following fragment indicates how a Fortran implementation of 
+      a procedure with C prototype
+      
+      void process_handle(..., char[], ...);
+      
+      can process a character array that is argument associated with a C 
+      string as a Fortran string:
+
+      Subroutine process_string(..., str, ...) Bind(C)
+         Character(Kind=C_char), Dimension(*), Target :: str
+         ...
+         Character(Kind=C_char, Len=:), Pointer :: f_str => Null()
+	 
+         Call C_F_Strpointer(str, f_str, maxlen)
+	     ! f_str is now pointing at storage associated with the 
+	     ! C string actual parameter
+         ...
+      End Subroutine process_string
+ 
+      The following statements indicate how to process a C character
+      pointer as a Fortran string:
+
+      Character(kind=C_char, Len=:), Pointer :: f_str => Null()
+      
+      Call C_F_Strpointer(get_current_dir_name(), f_str, maxlen)
+      ! f_str is now pointing at storage associated with the string
+      ! returned by the C library call
+      ...
+      ! clean up allocation done by the C library call
+      Call free(C_Loc(f_str))
+      f_str => Null()
+
+      For both scenarios, the value of the length of f_str will be that of
+      the strlen() C library call for the corresponding C string, unless
+      that value exceeds maxlen."
+
+(Thanks to Steve Lionel for suggesting significant improvements).
+
+In 18.2.3.6 C_FUNLOC after [499:24] add a new para 7
+
+"Example.
+    The C library function "qsort" allows to perform sorting of arrays
+    of any type. Assuming that the intrinsic module Iso_C_Binding is 
+    accessed, an interoperable Fortran interface for it is provided by
+    
+    Interface
+       Subroutine qsort(base, nmemb, size, compar) Bind(C)
+          Import, Only : C_ptr, C_size_t, C_funptr
+          Type(*), Dimension(*) :: base
+          Integer(C_size_t), Value :: nmemb, size
+          Type(C_funptr), Value :: compar
+       End Subroutine qsort
+    End Interface
+    
+    The programmer is obliged to supply a C function pointer to a 
+    comparison routine in a call to "qsort". For example, to perform 
+    reverse sorting of an integer array, an interoperable procedure like
+    
+    Integer(C_Int) Function reverse_compare(a, b) Bind(C)
+       Type(*) :: a, b
+       ... ! cast a, b to C_int (cf. example in 18.2.3.7) and calculate 
+       ... ! reverse-compared function value
+    End Function
+    
+    might be used. The "qsort" routine can then be invoked as follows:
+
+    Integer(C_size_t), Parameter :: nmemb = 10
+    Integer(C_int) :: iarr(nmemb) = [ 1, 4, 7, 3, 8, 10, 2, 5, 9, 6 ]
+
+    Call qsort(iarr, nmemb, C_Sizeof(iarr(1)), C_Funloc(reverse_compare))
+    ! iarr now contains the reverse-sorted permutation of its input value"
+
+In 18.2.3.7 C_LOC after [500:3] add a new para 10
+
+"Example.
+
+      Type(*), Intent(in), Target :: x
+      Real(C_float), Pointer :: pr => null()
+
+      If "x" is argument associated with an object of type Real(C_float),
+      execution of the following statements is permissible:
+
+      Call C_F_Pointer(C_Loc(x), pr) ! effectively, a type cast
+      Write(*, '("x is a real scalar with value: ",F8.1)') pr
+      
+      An example of how to use C_Loc on an array object of non-
+      interoperable type is supplied in 18.2.3.3, for Case (ii) of that
+      section."
+      
+      
+In 18.2.3.8 C_SIZEOF after [500:15] add a new para 7
+
+"Example.
+
+      Consider the following equivalent C and Fortran programs:
+      
+      Use, Intrinsic :: Iso_C_Binding, Only : C_sizeof, C_int
+      Integer(Kind=C_int) :: ia(3)
+
+      Write(*,*) C_Sizeof(ia)
+      End
+
+      #include <stdio.h>
+      int ia[3];
+
+      int main() {
+         printf("%li\n", sizeof(ia));
+      }
+      
+      If the representation of a C int uses four bytes, the value printed
+      by both programs will be 12.
+
+      NOTE 1:
+      The sizeof operator in C can also produce the size of a type 
+      specifier. This functionality is not available in the Fortran 
+      procedure C_SIZEOF.
+      
+      NOTE 2:
+      Due to padding imposed by the companion processor, the value returned
+      for derived type objects might be larger than the sum of C_SIZEOF
+      values calculated for each type component individually."
+
+
+In 18.2.3.9 F_C_STRING after [500:29] add a new para
+
+"Example.
+
+  CHARACTER(LEN=9,KIND=c_char) :: str = 'abcdef    '
+  CHARACTER(LEN=:,KIND=c_char), ALLOCATABLE :: res
+
+  res = F_C_STRING(str, .TRUE.)
+  ! res is allocated to length 10, with '\0' as last character
+
+  res = F_C_STRING(str)
+  ! res is allocated to length 7, with '\0' as last character"
+
+
+
+

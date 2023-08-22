@@ -1,0 +1,119 @@
+To: J3                                                     J3/21-123r1
+From: Malcolm Cohen
+Subject: Interp F18/019 PURE and default initialization
+Reference: 20-151
+Date: 2021-March-02
+
+----------------------------------------------------------------------
+
+NUMBER: F18/019
+TITLE: PURE and default initialization
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 meeting
+
+QUESTION:
+
+An essential property of pure procedures is that they do not modify
+the values of nonlocal variables except through dummy arguments. The
+addition of default initialization of pointer components makes it
+possible to violate this property. Because default initialization does
+not imply the SAVE attribute, a local variable of derived type in a
+pure procedure can include a pointer component whose target is a
+nonlocal variable. The definition of pure procedures in subclause 15.7
+allows a program to modify the value of a nonlocal variable through
+such a component.
+
+For example,
+
+    PROGRAM EXAMPLE1
+      REAL, TARGET :: X = 1.0
+      TYPE T
+        REAL, POINTER :: P => X
+      END TYPE T
+      CALL SUBR
+      PRINT *, X ! X has been changed to 2.0
+    CONTAINS
+      PURE SUBROUTINE SUBR
+        TYPE(T) Y
+        Y%P = 2.0
+      END SUBROUTINE SUBR
+    END
+
+A local variable is not needed, for example,
+
+    PROGRAM example2
+      REAL,TARGET :: x = 123
+      TYPE t
+        REAL,POINTER :: p => x
+      END TYPE
+      CALL sub
+      PRINT *,x ! No longer == 123?
+    CONTAINS
+      PURE SUBROUTINE sub()
+        ASSOCIATE(y=>t())
+          y%p = -999 ! Affects x.
+        END ASSOCIATE
+      END SUBROUTINE
+    END PROGRAM
+
+A polymorphic variable can be used, for example,
+
+    PROGRAM example2
+      REAL,TARGET :: x = 123
+      TYPE t
+      END TYPE
+      TYPE,EXTENDS(t0) :: t
+        REAL,POINTER :: p => x
+      END TYPE
+      CALL sub
+      PRINT *,x ! No longer == 123?
+    CONTAINS
+      PURE SUBROUTINE sub()
+        CLASS(t0) y ! Declared type has no initialized ptr comp.
+        ALLOCATE(t::y) ! Without SOURCE=, gets a pointer to x.
+        SELECT TYPE(y)
+        TYPE IS (t)
+          y%p = -999 ! Affects x.
+        END SELECT
+      END SUBROUTINE
+    END PROGRAM
+
+ALLOCATE with MOLD= instead of a type-spec can do the same.
+
+If component initialization is not an attribute of the component, more
+convoluted examples are possible using SEQUENCE types so that the
+local variable does not have default initialization but can be
+initialized using a compatible type that does.
+
+Q. Was it intended to allow nonlocal variables to be modified by a
+   pure procedure in this way?
+
+ANSWER:
+
+A: No. An edit is supplied to correct the standard.
+
+Note: The question of whether component initialization is an attribute
+      should be addressed by a separate interpretation request.
+
+EDIT to 18-007r1:
+
+[324:20-] 15.7 Pure procedures, between NOTE 1 and C1590,
+          insert new constraint
+   "C1589a A named local entity or construct entity of a pure
+           subprogram shall not be of a type that has default
+           initialization of a pointer component to a target at
+           any level of component selection."
+{With no local or construct entity designator of a "bad" type being
+ allowed, one cannot write a pointer component reference to it.
+ This is stricter than strictly necessary, as it effectively forbids
+ such types from any usage within pure, even unproblematic usage.}
+
+SUBMITTED BY: Robert Corbett
+
+HISTORY: 20-151   m222  Submitted
+         21-123   m223  Revised with answer
+         21-123r1 m223  Passed by J3 meeting 223.
+
+----------------------------------------------------------------------
+
+

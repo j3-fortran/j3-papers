@@ -1,0 +1,149 @@
+To: J3                                                     J3/18-279
+From: Tom Clune & Steve Lionel
+Subject: Extending usability of deferred-length strings
+Date: 2018-October-17
+
+Reference: 18-130
+
+1. Introduction
+---------------
+
+Deferred length strings have proven to be a very useful and popular
+feature.  However, there remain several aspects in the language that
+currently require fixed-length strings or allocated deferred-length
+strings of sufficient length. This could/should be improved to work with
+deferred-length strings.
+
+At meeting 215, J3 approved this item for moving forward.
+
+2. Use cases
+------------
+
+2.1 IOMSG and ERRMSG
+
+Many Fortran statements optionally return status information in the
+form of strings (IOMSG and ERRMSG).  Use of these requires that the
+user provide a string of "sufficient" length, and there is no standard
+mechanism to determine the necessary length.  It would be preferable
+to allow these features to assign deferred-length-strings as if by
+intrinsic assignment.  Unallocated strings would be allocated and
+filled.  Allocated strings of insufficient length would be
+reallocated and then filled.
+
+2.2 Intrinsics that return strings
+
+Several intrinsic procedures (e.g., GET_COMMAND,
+GET_ENVIRONMENT_VARIABLE, ...) also have intent out string arguments.
+Unlike the features above, these at least typically have a mechanism
+to determine the necessary length.  A typical use is to then
+
+   CALL GET_ENVIRONMENT_VARIABLE('PATH', LENGTH=n)
+   ALLOCATE(CHARACTER(LEN=n) :: var
+   CALL GET_ENVIRONMENT_VARIABLE('PATH', VALUE=var)
+
+A natural simplification would be to allow allocatable,
+deferred-length strings to be passed to the intrinsic which would then
+perform the necessary allocation internally, if the value length is
+different from the current length (or if the variable is unallocates).  
+So users could do:
+
+   CHARACTER(LEN=:), ALLOCATABLE :: var, msg
+   CALL GET_ENVIRONMENT_VARIABLE('PATH', VALUE=var, ERRMSG=msg)
+
+If there is no error, then var would be assigned the value of
+the environment variable as if by intrinsic assignment. (If msg
+was also deferred-length and there is no error, it is unchanged.)
+
+Note: allocated deferred-length strings should be reallocated as-if by
+intrinsic assignment.
+
+
+2.3 Writes to internal files
+
+As with IOMSG and ERRMSG, there is no general mechanism for a user to
+determine how long a string is required for writes to internal files.
+A typical scenario is to either use a hopefully-large-enough fixed
+length string (or an allocated large-enough deferred-length string)
+and then trim:
+
+   ALLOCATE (CHARACTER(LEN=MAX_LEN) :: buffer)
+   WRITE(buffer, fmt) a, b, c
+   buffer = TRIM(buffer)
+
+Alternatively, IOSTAT can be used to iteratively increase the buffer
+size to provide a more robust mechanism:
+
+   INTEGER :: n, stat
+
+   n = MIN_LENGTH
+   stat = -1
+   DO WHILE (stat /= 0)
+      ALLOCATE (CHARACTER(LEN=MAX_LEN) :: buffer)
+      WRITE(buffer, fmt, IOSTAT=stat) a, b, c
+      IF (stat /= 0) DEALLOCATE(buffer)
+   END DO
+   buffer = TRIM(buffer)
+
+If the buffer could instead be a deferred-length string
+then the implementation could be responsible for ensuring a string of
+sufficient length is allocated.  The implementation could either start
+with a large allocation or even use a strategy to progressively
+allocate larger strings until sufficiency is obtained.
+
+If the io-unit is an array, however, there is no reasonable solution
+to allow for reallocation.
+
+
+3. Endorsement
+
+The Data subcommittee endorses this functionality.
+
+4. Proposals
+
+4a. IOMSG and ERRMSG
+
+The current texts for IOMSG and ERRMSG (for statements) say that, 
+if a value is assigned, it "is assigned an explanatory message, 
+truncated or padded according to the rules of intrinsic assignment." 
+
+The rules of intrinsic assignment already specify that if the length 
+type parameters differ the variable is deallocated and then reallocated 
+to the length of what is being assigned. Simply removing "truncated or 
+padded" from the text is an appropriate edit, along with a note in the 
+introduction calling out this change.
+
+Indeed, one might argue that the existing text already specifies this
+behavior, since no truncating or padding takes place in intrinsic
+assignment for such variables. In any case, the "truncated or padded"
+text seems redundant.
+
+4b. Intrinsic procedures
+
+Character output arguments for intrinsic subroutines should have wording
+added to indicate that assignment of the output value is as if by
+intrinsic assignment. A note should be added to the introduction
+calling this out. The list of such procedures and relevant arguments is:
+
+DATE_AND_TIME (DATE, TIME, ZONE)
+EXECUTE_COMMAND_LINE (CMDMSG)
+GET_COMMAND (COMMAND, ERRMSG)
+GET_COMMAND_ARGUMENT (VALUE, ERRMSG)
+GET_ENVIRONMENT_VARIABLE (VALUE, ERRMSG)
+MOVE_ALLOC (ERRMSG)
+
+4c. Internal WRITE
+
+JOR recommends that if the io-unit in a internal WRITE is an
+unallocated deferred-length character allocatable scalar variable, 
+the WRITE behaves as if the record were assigned as if by intrinsic
+assignment. The requirement that the variable be unallocated is
+to provide consistency with the array case described in the next
+paragraph. If the variable is allocated it behaves as it does in
+F2008, using the current length.
+
+JOR further recommends that the standard disallow the case of io-unit 
+being an unallocated deferred-length character array. If the array
+is allocated, then it works the way it does in F2008 with the current
+length being used.
+
+

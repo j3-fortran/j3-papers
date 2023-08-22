@@ -1,0 +1,111 @@
+To: J3                                         11-204
+From: John Reid
+Subject: Asynchronous communication
+Date: 2011 June 15
+Reference: WG5/N1847, WG5/N1854, 11-172, 11-183
+
+Discussion
+
+The MPI Forum made this comment in N1847:
+
+"After reading your N1845 working draft from March 3, 2011, we detected
+one major gap: there is no standardized possibility of using
+nonblocking features of MPI in Fortran programs to overlap computation
+with communication.  Specifically, Fortran MPI applications will be
+prohibited from initiating any form of asynchronous communication and
+then continuing to perform local computations while MPI advances the
+communication 'in the background.'
+
+This is a key issue for us because nonblocking communication is a
+critical technique for deadlock-free communication and high
+performance performance.  An easy use case to describe is one that is
+popular in current high performance computing environments: when the
+MPI library utilizes hardware offload technologies (such as RDMA) with
+a communication co-processor (such as a NIC).
+
+The problem is, in principle, independent of MPI.  It also occurs with
+libc/POSIX asynchronous IO (aio), and is therefore a topic that should
+be solved by the 'TR on further interoperability of Fortran with C'."
+
+In April, I worked with the interop. email group on edits to the draft
+TR re using the ASYNCHRONOUS attribute to support asynchronous
+communication. The thread died out after Rolf Rabenseifner appeared to
+withdraw the request. I think all he withdrew was the request to use
+part of an array for communication while another part was being used
+for computation. I am returning to this following the plea by Craig
+Rasmussen in 11-183.
+
+Consider the code
+    REAL :: buf(100,100)
+       : ! Code that involves buf
+    CALL MPI_Irecv(buf,...req,...)
+       :  ! Code that does not involve buf
+    CALL MPI_Wait(req,...)
+       :  ! Code that involves buf
+Since there is no mention of buf in the call of MPI_Wait, the compiler
+is free to perform code motion involving it. For example, it might load
+buf into a GPU during the calculations that do not involve buf, ready
+for those that do.
+
+Asynchronous communication is so like asynchronous I/O that I think we
+need to have the same rules. If we write this into the normative text
+of the TR, the effect of giving MPI_Irecv and MPI_Wait the BIND(C)
+attribute and adding ASYNCHRONOUS to the declaration of buf in the
+above example would be that the compiler will not be allowed to
+make the harmful change that I have just outlined.
+
+The rules in the Standard for asynchronous input i/o are slightly
+different from the rules for asynchronous output i/o. For example, it is
+acceptable to reference an array that is being used for output, but not
+if it is being used for input. I think we should maintain this
+distinction for asynchronous communication. The programmer knows which is
+taking place and therefore which restrictions apply in the calling
+procedure. We are anyway not expecting the compiler to diagnose failure
+to respect the restrictions.
+
+Van Snyder addresses this problem in 11-172, but has far more edits than
+seem appropriate for the TR.
+
+---------------------
+
+Edits to WG5/N1854
+
+4:28+ After NOTE 2.4, add new section
+
+2.4 ASYNCHRONOUS attribute
+
+2.4.1 Introduction
+
+The ASYNCHRONOUS attribute is extended to apply to variables that are
+used for asynchronous communication initiated and terminated
+by procedures written in C.
+
+2.4.2 Asynchronous communication
+
+Asynchronous communication for a Fortran variable occurs
+through the action of procedures defined by means other than Fortran.
+It is initiated during an invocation of a procedure from Fortran and
+terminated during another invocation of a procedure from Fortran.
+During the execution of all statements executed between these
+invocations, any variable of which any part is associated with any
+part of the asynchronous communication variable is a pending
+communication affector.
+
+Asynchronous communication is either input communication or output
+communication. For input communication, a pending communication affector
+shall not be referenced, become defined, become undefined, become
+associated with a dummy argument that has the VALUE attribute, or have
+its pointer association status changed. For output communication, a
+pending communication affector shall not be redefined, become undefined,
+or have its pointer association status changed.
+
+24:23+ Add
+In 5.3.4 ASYNCHRONOUS attribute, at the end of paragraph 1, add "or
+asynchronous communication (15.5.4)" and at the end of paragraph 2, add
+"or a pending communication affector (15.5.4)".
+
+28:37+ Add
+Insert subclause 2.4.2 of this Technical Report as subclause
+15.5.4 at the end of the existing subclause 15.5.
+
+

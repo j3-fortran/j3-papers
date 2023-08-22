@@ -1,0 +1,174 @@
+To: J3                                                     J3/21-101
+From: Richard Bleikamp
+Subject: UTI-008
+Date: 2021-January-15
+
+Reference: 20-134, 20-155r1
+
+Historical context and personal ramblings: 
+After considering the discussion about 20-155r1 at meeting 222,
+I believe there are two reasonable approaches to resolving UTI-008.
+  1) Allow output of BOZ literal constants as in 20-155r1,
+     but NOT in list directed output.  In a list-directed output
+     statement, one can always enclose the BOZ literal constant list
+     item in quotes or apostrophes (whichever was not used in the BOZ
+     literal constant itself) to achieve the desired affect.
+
+  2) disallow BOZ literal constants as output list items, in all
+     formatted output statements.  The user can usually use an
+     INT(boz-literal-constant) intrinsic call as the list item to
+     achieve a similar effect, with an appropriately chosen Zw.d
+     edit descriptor (or O or B edit descriptor as needed). 
+
+The discussion and edits below are essentially the same as
+20-155r1 (but against 21-007), with the edits for list-directed I/O
+removed.
+
+An alternative second set of edits is included at the end to remove
+boz-literal-constants as a valid output list item in all formatted
+output statements.  The author's intent is to move the first
+alternative edits at meeting 223, and only if there appears to be
+unsurmountable problems will the alternative second set of edits be
+moved, allowing UTI-008 to be resolved, one way or another.
+--------------------------------------------------------------------
+Unresolved techical issue 008 covers two problems with output of
+BOZ constants.
+  1) output of a value too large for the specified field width is
+     currently very different than other output editing, instead of
+     producing "*"s, the value is truncated.
+
+  2) the case when the specified field width is zero (Z0) is well
+     defined, but perhaps not appropriate/useful for this data type.
+     The form "Z8.8" could be used to get the desired effect, but 
+     requires the user to count the number of bits in the constant,
+     and do the math to know how wide the field should be for the
+     chosen edit descriptor.
+
+Proposed solution:
+
+  1) print "*"s when the value to be printed has non-zero characters
+     truncated so it fits in the specified field width.
+
+  2) allow the field width "w" to be omitted, for output of
+     boz-literal-constants only.  When "w" is absent, the processor
+     chooses a field width that avoids truncating any leading zero
+     bits, similar to how the "A" edit descriptor picks the minimal
+     size field width to print the whole character string,
+     including trailing blanks.  
+
+     w=0 still acts more like I0, just using hex/octal/binary,
+     leading zero bits are truncated, but one zero bit is retained
+     when the boz-literal-constant is entirely zero bits. (avoid
+     printing "", instead of "0", when w is zero and the list item
+     item is only zero bits.
+
+Intended effect:
+
+  1) users that think BOZ constants are just integers, can use
+     Zn.  Z0 will pick a minimal field width (trim leading
+     zero bits), and Zw.n will act like the I edit descriptor,
+     more or less.  Zw.m, when w equals m, and w/m are the correct
+     value for the size of the BOZ constant, will act like the 
+     new proposed option, "Z" without a field width.
+
+  2) users that think BOZ constants are just a string of bits, and
+     zeros are just as interesting as ones, can use "Z" without a
+     field width, and get all the bits, zeros and ones, represented
+     in the output.  They can also use "Zw.m" where w equals m, and
+     w/m are the smallest value that lets the entire BOZ constant,
+     including leading zeros, be represented in the output.
+
+Note that UTI 009 addresses the issue with BOZ constants not being
+permitted as list items.
+
+----------
+EDITS to 21-007 for ALTERNATIVE 1
+[266:24] and
+[267:1]  and
+[267:2]
+  replace "w [ . m ]" with "[ w [ . m ]]"
+
+[267:19] delete "B, O, Z, "  (no constraint checking)
+
+[271:4] 
+  delete the sentence "The B, ...  boz-literal-constants."
+
+[271:27-32] delete all of list item (8), and renumber the rest
+
+[271:32+] Delete Unresolved Technical Issue 008
+
+[277:28] (section header 13.7.2.4) 
+  add "numeric " before "editing"
+
+[278:12] 
+  replace
+    "bits."
+  with
+    "bits, except a single zero bit is retained if the 
+     internal value consists of all zero bits."
+     
+[278:19+] Start a new section, 13.7.3, renumbering as needed.
+
+  Insert 
+    "13.7.3 B, O, and Z editing for boz-literal-constant list items
+
+     A boz-literal-constant list item that is edited with a
+     B, Bw, Bw.m, O, Ow, Ow.m, Z, Zw, or Zw.m edit
+     descriptor, is edited using these rules.
+
+     (1) The field width specifier w may be omitted, or specified
+         with a value greater than or equal to zero.
+
+     (2) When a value greater than zero is specified for the field
+         width specifier w, that value is used for the actual field
+         width, and if the length of the boz-literal-constant with
+         leading zero bits removed cannot be accurately represented
+         in that field width, the processor shall fill the entire
+         field of width w with asterisks.
+
+     (3) When a value of zero is specified for the field width
+         specifier w, the processor selects the smallest positive
+         actual field width that can accurately represent the
+         boz-literal-constant with leading zero bits removed,
+         except a single zero bit is retained if the internal
+         value consists of all zero bits.
+
+     (4) When the field width specifier w is omitted, the processor
+         chooses the smallest positive actual field width that can
+         represent the entire boz-literal-constant, including all
+         leading zero bits.
+
+     (5) The expected length of the bit sequence is the actual field
+         width, times three for an O edit descriptor and times four
+         for a Z edit descriptor.  If the bit sequence in the
+         boz-literal-constant has a length that is less than the
+         expected length, it is treated as if it were extended to
+         the expected length by padding on the left with zero bits."
+
+     (6) Output editing is performed described in 13.7.2.4, except
+         leading zero bits are kept when the field width specifier
+         w is not present."
+         
+[288:10+] add this new paragraph (this is in the list directed output
+          section)
+    "A boz-literal-constant may not appear as an effective list item
+     in a list directed output statement."
+
+[270:32+] Delete Unresolved Technical Issue 008
+--- END OF EDITS, alternative 1
+--- START OF EDITS, alternative 2
+
+[240:11+]: add a new paragraph
+    "An output list shall not contain an effective list item that is
+     a boz-literal-constant."
+
+[271:4]: delete the sentence
+    "The B, O, and Z edit descriptors can also be used to specify the
+     output of boz-literal-constants."
+
+[271:27-32]: delete list item (8)
+
+[271:32+] Delete Unresolved Technical Issue 008
+--- END OF EDITS, alternative 2
+
+

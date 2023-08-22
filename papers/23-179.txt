@@ -1,0 +1,105 @@
+To: J3                                                     J3/23-179
+From: Mark LeAir, Generics
+Subject: Allow Renaming of intrinsic-operators
+Date: 2023-June-12
+
+Introduction
+------------
+
+Fortran allows the programmer to rename user-defined operators in a
+module. For example,
+
+   use my_module :: operator(.add.) => operator(.plus.)
+
+However, Fortran does not currently allow the renaming of an intrinsic
+operator even though intrinsic operators can be overloaded through a
+generic interface. For example,
+
+  module my_module
+
+  interface operator(+)
+    procedure add
+  end interface
+
+  contains
+  ...
+  end module my_module
+
+  use my_module :: operator(.add.) => operator(+) ! this is not allowed
+
+A new situation that arises with the proposed template feature is that
+one may extend an intrinsic operator within a template in a manner
+which is not ambiguous in that scope but can nonetheless be ambiguous
+in the scope of some instantiate statements.
+
+E.g.,
+
+  module A
+    template tmpl(T, f)
+       type, deferred :: T
+       interface
+          function f(x,y) result(z)
+            type(T) :: z
+            type(T), intent(in) :: x,y
+          end	     
+       end
+
+       interface operator(+)
+          procedure add
+       end
+
+    contains
+      function add(x,y) result(z)
+         type(T) :: z
+	 type(T), intent(in) :: x,y
+      end function add
+    end template
+  end module
+
+  ! The following is illegal because operator(+) is ambiguous
+  ! in this scope
+  instantiate tmpl(REAL, my_f)
+
+  ...
+  function my_f(x, y) result(z)
+    real :: z
+    real, intent(in) :: x,y
+    z = sqrt(x**2 + y**2)
+  end	  
+  
+This concern would be easily circumvented if the INSTANTIATE statement
+could rename all types of operators rather than just user defined
+operators.
+
+Proposed Change for F202Y
+-------------------------
+
+We propose to augment Fortran's use rename feature to include
+intrinsic operators. This appears to be a simple change to the
+existing rename BNF. For example,
+
+Change: 
+
+  rename is local-name => use-name
+         or OPERATOR (local-defined-operator) =>
+              OPERATOR (use-defined-operator)
+
+To:
+
+  rename is local-name => use-name
+         or OPERATOR (local-defined-operator) =>
+              OPERATOR (defined-operator)
+
+where,
+
+  defined-operator is defined-unary-op
+                   or defined-binary-op
+                   or extended-intrinsic-op
+
+and
+
+  extended-intrinsic-op is intrinsic-operator
+
+===END===
+
+

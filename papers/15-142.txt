@@ -1,0 +1,110 @@
+                                                            J3/15-142
+To: J3
+From: Malcolm Cohen
+Subject: SELECT RANK
+Date: 2015 February 23
+
+
+1. Introduction
+
+This paper contains formal requirements, specifications, and syntax for a
+SELECT RANK construct as recently discussed on the J3 mailing list.
+
+
+2. Formal requirements
+
+That it be possible in Fortran, without using any C wrapper, to operate on
+an assumed-rank array variable.  In particular, it shall be possible to
+reference and define elements of the array.  Requiring additional "glue"
+code would be acceptable when processing an assumed-rank array that is
+eventually associated with an assumed-size array.
+
+
+3. Specifications
+
+There will be a construct to select a block based on the rank of an
+assumed-rank array that is not associated with an assumed-size array:
+- within each block there will be an associate-name of that rank associated
+  with the selector;
+- a single special block will catch all ranks of assumed-size, and in that
+  block the associate-name will have shape (1:*); this can be reshaped
+  using sequence association;
+- a single special block will catch all non-matching ranks, and in that
+  block the associate-name is assumed-rank.
+
+
+4. Syntax
+
+select-rank-construct ::= select-rank-stmt
+                            [ select-rank-case ]
+                          end-select-stmt
+
+select-rank-stmt ::= SELECT RANK ( [ associate-name => ] selector )
+
+Constraint: (select-rank-stmt) selector shall be the name of an
+            assumed-rank array.
+
+select-rank-case ::= rank-case-stmt
+                     block
+
+rank-case-stmt ::= RANK ( int-constant-expr )
+               |   RANK ( * )
+               |   RANK DEFAULT
+
+ALTERNATIVE: Use "CASE whatever" instead of "RANK whatever".
+
+Constraint: int-constant-expr shall be non-negative and less than or equal
+            to the maximum rank supported by the processor.
+
+5. Example
+
+SUBROUTINE process(x)
+  REAL x(..)
+  !
+  SELECT RANK(y=>x)
+  RANK (0)
+    y = 0
+  RANK (1)
+    y(::2) = 1
+  RANK (2)
+    y(:,2) = 2
+  RANK (*)
+    Do i=1,100
+      If (y(i)==0) Exit
+      y(i) = -y(i)
+    End Do
+  RANK DEFAULT
+    Print *, 'I did not expect rank', RANK(y), 'shape', SHAPE(y)
+  END SELECT
+
+
+6. Assumed-size handling rationale and example
+
+Because an assumed-size object starts out with sequence association, rank
+is more of a movable feast with assumed-size than it is with other classes
+of arrays, like assumed-shape, allocatables, and pointers.  For all other
+array types, it is best to get the shape as if it were deferred shape, then
+we get all the usual whole array operations.  If the assumed-size array is
+wanted with any other rank or bounds than the default of (1:*), sequence
+association can be used again...  for example
+
+   RANK (*)
+     IF (RANK(x)==2) THEN
+       ! Special code for the rank two case.
+       CALL seq_ass_2(y, LBOUND(x,1), UBOUND(x,1), LBOUND(x,2))
+     ELSE
+       ... same code as above for the non-rank-2 case.
+     END IF
+     ...
+     SUBROUTINE seq_ass_2(a, lb1, ub1, lb2)
+       REAL a(lb1:ub1,lb2:*)
+       ... do whatever you like with assumed-size array A.
+
+
+7. Edits
+
+Edits will be a bit bigger than SELECT CASE (because of the name
+association), and a bit smaller than SELECT TYPE (simpler selection
+mechanism).  Deferred to the next revision of the paper.
+
+===END===

@@ -1,0 +1,301 @@
+To:        J3                                      13-232r1
+From:      Bill Long and John Reid
+Subject:   Coarray events
+Date: 2013 February 13
+Reference: WG5/N1930, 12-201
+
+1. Discussion
+-------------
+
+This paper proposes syntax and semantics for coarray events.
+
+2. Requirements (copied from N1930)
+-----------------------------------
+
+NOTIFY and QUERY statements were proposed in N1858.  That proposal
+matches execution of a NOTIFY statement on one image with execution of
+a QUERY statement on another image based on the number of times the
+statements are executed on each image.  That mechanism is not robust
+in the presence of code reordering.  For example, an image that would
+otherwise be idle might bring other work forward.  Event variables
+provide a more robust mechanism for synchronizing execution of images.
+Event variables allow library routines to use synchronization in a way
+that is hidden from and does not interfere with the calling code.
+
+E1: There should be a mechanism to allow one-sided ordering of
+    execution segments. For example, suppose image I executes
+    successive segments I1 and I2 and image J executes successive
+    segments J1 and J2; there might be a need for I1 to precede J2,
+    but no need for J1 to precede I2.
+
+E2: The mechanism should use a data entity that is accessible by all
+    the images to identify the event. There shall be a type for event
+    variables, probably an opaque derived type defined in the
+    intrinsic module ISO_FORTRAN_ENV.
+
+E3: Mechanisms shall be provided to post an event, to test if an event
+    has been posted, and to wait for an event to be posted. Repeated
+    posts to the same event variable increment a counter internal to
+    the event variable and waits decrement the counter.  The statements
+    implementing event post and wait are image control statements. The
+    test operation may be implemented by an inquiry function and hence
+    would not be an image control statement.
+
+E4: If multiple event wait operations are waiting on the same event
+    variable, which of those operations completes when the
+    corresponding event post occurs is unspecified.
+
+
+3. Modifications to the requirements
+
+We have kept to the requirements except as follows:
+
+E3. A subroutine is used to return the event count, with an optional
+argument to indicate whether the call was successful.
+
+E4. Replaced by the requirement that each wait be on a local event
+variable and each post be to a coindexed event variable. 
+
+
+4. Syntax and Semantics
+-----------------------
+
+An image can use an EVENT POST statement to notify another image that it
+can proceed to work on tasks that use common resources.  Images can
+wait on events posted by other images and can query if images have
+posted events.
+
+EVENT_TYPE is a derived type with private components; no component is
+allocatable or a pointer. It is an extensible type with no type
+parameters. All components have default initialization.  The type
+is defined in the ISO_FORTRAN_ENV intrinsic module.
+
+A scalar coarray variable of type EVENT_TYPE is an event variable. An
+event variable includes a count of the difference between the number of
+successful posts and successful waits for the event variable. The
+initial value of the count of an event variable is zero.
+
+A successful post to an event variable increments its count. If the
+count is zero for a wait statement, the executing image shall wait 
+until the count is positive. A successful wait for an event variable 
+decrements its count. Unsuccessful posts and waits shall not 
+change the count.
+
+Two new statements and a new intrinsic subroutine are provided for
+event variables.  The statements are
+
+     EVENT POST(event-variable [, sync-stat-list] )
+
+and
+
+     EVENT WAIT(event-variable [, sync-stat-list] )
+
+EVENT POST posts to an <event-variable> that is coindexed and EVENT WAIT 
+waits on <event-variable> that is not coindexed.
+
+The new statements are image control statements.
+
+An event variable shall not appear in a variable definition context
+except as the <event-variable> in an EVENT POST or EVENT WAIT
+statement, as an <allocate-object> in an ALLOCATE statement without a
+SOURCE= <alloc-opt>, or as an actual argument in a reference to a
+procedure with an explicit interface where the corresponding dummy
+argument has INTENT(INOUT).  A variable with a subobject of type
+EVENT_TYPE shall not appear in a variable definition context except as
+an <allocate-object> in an ALLOCATE statement without a SOURCE=
+<alloc-opt> or as an actual argument in a reference to a procedure
+with an explicit interface where the corresponding dummy argument has
+INTENT(INOUT).
+
+The new intrinsic subroutine is
+
+     EVENT_QUERY ( EVENT, COUNT [,STATUS] )
+
+On a successful call, COUNT is given the value of the count of EVENT,
+and STATUS is given the value 0. On an unsuccessful call, STATUS is
+given a processor-dependent nonzero value. A call does not constitute
+an image control statement.
+
+A processor shall complete execution of all segments of an image that
+precede an EVENT POST statement before executing the statement.  A
+processor shall not start execution of segments of an image that
+follow an EVENT WAIT statement until after the statement has been
+executed.  A processor may execute portions of segments of images
+that follow an EVENT POST statement before executing the statement
+provided the effect of the sequential execution of the segments of
+the image is not changed.  A processor may defer execution of portions
+of segments of images that precede an EVENT WAIT statement until after
+the statement is executed, provided the effect of the sequential
+execution of the segments of the image is not changed.
+
+
+5. Edits to J3/12-201
+---------------------
+
+----------------------------------
+[5:7+] Add terms
+
+3.2
+<<event variable>>
+scalar coarray variable of type EVENT_TYPE (6.2) from the intrinsic 
+module ISO_FORTRAN_ENV.
+
+
+
+----------------------------------
+[11] Replace this page by the following
+
+6. Events
+
+6.1 Introduction
+
+An image can use an EVENT POST statement to notify another image that it
+can proceed to work on tasks that use common resources.  An image can
+wait on events posted by other images and can query if images have
+posted events.
+
+6.2 EVENT_TYPE
+
+EVENT_TYPE is a derived type with private components; no component is
+allocatable or a pointer. It is an extensible type with no type
+parameters.  All components have default initialization.
+
+A scalar variable of type EVENT_TYPE is an event variable.  An event
+variable includes a count of the difference between number of
+successful posts and successful waits for the event variable. The
+initial value of the event count of an event variable is zero.
+
+An event variable shall be a coarray and shall not appear in a
+variable definition context except as the <event-variable> in an EVENT
+POST or EVENT WAIT statement, as an <allocate-object> in an ALLOCATE
+statement without a SOURCE= <alloc-opt>, or as an actual argument in a
+reference to a procedure with an explicit interface where the
+corresponding dummy argument has INTENT(INOUT).  A variable with a
+subobject of type EVENT_TYPE shall not appear in a variable definition
+context except as an <allocate-object> in an ALLOCATE statement
+without a SOURCE= <alloc-opt> or as an actual argument in a reference
+to a procedure with an explicit interface where the corresponding
+dummy argument has INTENT(INOUT).
+
+
+6.3 EVENT POST
+
+The EVENT POST statement provides a way to post an event.
+
+R601 event-post-stmt  is  EVENT POST(event-variable [, sync-stat-list] )
+
+C601 (R601) The event-variable shall be of the type EVENT_TYPE defined 
+in the ISO_FORTRAN_ENV intrinsic module and shall be coindexed.
+
+A successful post to an event variable increments its count. 
+An unsuccessful post does not change the count.
+
+A processor shall complete execution of all segments of an image that
+precede an EVENT POST statement before executing the statement.  A
+processor may execute portions of segments of images that follow an
+EVENT POST statement before executing the statement provided the
+effect of the sequential execution of the segments of the image is not
+changed.
+
+6.4 EVENT WAIT
+
+The EVENT WAIT statement provides a way to wait until an event is
+posted.
+
+R602 event-wait-stmt  is  EVENT WAIT(event-variable [, sync-stat-list] )
+
+C602 (R602)  The event-variable shall be of the type EVENT_TYPE defined 
+in the ISO_FORTRAN_ENV intrinsic module and shall not be coindexed.
+
+If the count of the event-variable is zero, the executing image shall wait 
+until the count is positive. A successful wait for an event variable 
+decrements its count. Unsuccessful posts and waits shall not 
+change the count.
+
+A processor shall not start execution of segments of an image that
+follow an EVENT WAIT statement until after the statement has been
+executed. A processor may defer execution of portions of segments of
+images that precede an EVENT WAIT statement until after the statement
+is executed, provided the effect of the sequential execution of the
+segments of the image is not changed.
+
+ ----------------------------------
+[17:44+] Add a new intrinsic subroutine
+
+7.3.10a  EVENT_QUERY ( EVENT, COUNT [,STATUS] )
+
+Description. Query the count of an event variable.
+
+Class. 	Subroutine.
+
+Arguments.
+
+EVENT shall be scalar and of type EVENT_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module. It is an INTENT(IN) argument.
+
+COUNT shall be scalar and of type default integer. It is an INTENT(OUT)
+      argument. If the call is successful, COUNT becomes defined with
+      the difference between number of successful posts and successful
+      waits for EVENT. Otherwise, it is given the value 0.
+
+STATUS (optional) shall be scalar and of type integer. It is an
+      INTENT(OUT) argument. It becomes defined with value 0 if the
+      call is successful and to a processor-defined nonzero value if
+      the call is unsuccessful.
+
+Example. If EVENT is an event variable for which there have been no
+      successful posts or waits, after the invocation
+
+          CALL EVENT_QUERY ( EVENT, COUNT )
+
+      the integer variable COUNT has the value 0. If there have been
+      10 successful posts and 2 successful waits to EVENT[2], after 
+      the invocation
+
+          CALL EVENT_QUERY ( EVENT[2], COUNT )
+
+      COUNT has the value 8.
+
+------------------------------------
+[19:9+] Add two new subclauses
+
+"8.2a Edits to clause 1
+
+{In 1.3 Terms and definitions insert new terms}
+
+[Text for the terms in clause 3 of the TS go here, with new subclause
+numbers and corrected references.]
+
+ 8.2b Edits to clause 8
+
+{In 8.5.1 Image control statements, paragraph 2}
+
+Add extra bullet point:
+
+    " o EVENT POST and EVENT WAIT"
+
+
+{Following 8.5.2 Segments, insert two new subclauses}
+
+Move 6.3 EVENT POST of this Technical Specification to become
+subclause 8.5.2a of F2008.
+
+Move 6.4 EVENT WAIT of this Technical Specification to become
+subclause 8.5.2b of F2008.
+"
+------------------------------------
+[19:29+] Add to the existing edit for Table 13.1:
+
+"EVENT_QUERY (EVENT,COUNT[,STATUS])       S  count of an event."
+
+
+------------------------------------
+[20:2+] Add new edits to clause 13
+
+{In 13.8.2 The ISO_FORTRAN_ENV intrinsic module}
+
+Move the paragraph of subclause 6.2 of this Technical
+Specification to become subclause 13.8.2.8a of F2008.
+
+
+

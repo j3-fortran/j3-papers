@@ -1,0 +1,144 @@
+To:      J3                                        J3/14-104r2
+From:    Reinhold Bader & Bill Long
+Subject: Alternate suggestion for changes to counted events
+Date: 2014 February 12
+References: N1996, N1999
+
+
+Discussion:
+~~~~~~~~~~~
+
+Nick MacLaren in his vote has pointed out that counted events still
+suffer from incomplete specification in the TS draft, leading to
+variant interpretations and possibly to a circular definition.
+
+While there exists the fallback of permitting binary semaphores only,
+the latter cause sufficiently much clutter in code that can profit
+from counted events that I feel it is worth the trouble to retain
+them. Therefore, this paper suggests adding suitable gatekeeper
+semantics to EVENT WAIT, as well as removing the STAT_POSTED_IMAGE and
+the MAX_COUNT feature. The way to retain counted events is based on
+Bill Long's suggestion of allowing an UNTIL_COUNT on EVENT
+WAIT.
+
+
+Edits to N1996:
+~~~~~~~~~~~~~~~
+
+Section 6.2:
+
+Replace [15:8-9], "An event variable ... event variable." by
+"An event variable has a count that is updated by execution of a
+sequence of EVENT POST or EVENT WAIT statements. The effect of each
+change is as if it occurred instantaneously, without any overlap with
+another change."
+
+
+Section 6.3:
+
+[15:24] Replace "post-spec-list" by "sync-stat-list"
+
+[15:26-27] Delete R603
+
+[15:29] Replace "event variable's count" with "count of the event
+variable by 1".
+
+[15:30-33] Delete "If the MAX_COUNT ... (6.5)."
+
+
+Section 6.4:
+
+[16:3] Replace "sync-stat-list" by "wait-spec-list" and insert
+a new line
+"R604+  wait-spec is UNTIL_COUNT = scalar_int_expr
+                  or sync-stat
+
+Replace [16:5-7] by
+
+"Execution of an EVENT WAIT statement causes the following
+ sequence of actions:
+
+ (1) the threshold of its event argument is set to UNTIL_COUNT
+     if this specifier is provided with a positive value,
+     and to 1 otherwise,
+
+ (2) the executing image waits until the count of the event variable
+     is greater than or equal to its threshold value or an error
+     condition occurs, and
+
+ (3) if no error condition occurs, the event count is decreased
+     by its threshold value."
+
+
+Delete [16:8-10] "During execution ... another change"
+
+
+[16:14-19] Delete section 6.5.
+
+
+Section 7:
+
+[23:40] After "successful waits", add " without an UNTIL_COUNT
+specification".
+
+
+Section 8:
+
+[33:12-13] Delete.
+{Removes the insertion of the now deleted 6.5 into Clause 13.}
+
+
+Annex A:
+
+[38:45-39:17] Replace example A.2.2 by John Reid's tree code:
+
+"A tree is a graph in which every node except one has a single "parent"
+node to which it is connected by an edge. The node without a parent is
+the "root". The nodes that has a given node as parent are the "children"
+of that node. The root is at level 1, its children are at level 2, etc.
+
+A multifrontal code to solve a sparse set of linear equations involves
+a tree. Work at a node starts after work at all its children is complete
+and their data has been passed to it.
+
+Here we assume that all the nodes have been assigned to images. Each
+image has a list of its nodes and these are ordered in decreasing tree
+level (all those at level L preceding those at level L-1). For each
+node, array elements hold the number of children, details about the
+parent and an event variable. This allows the processing to proceed
+asynchronously subject to the rule that a parent must wait for all
+its children as follows:
+
+
+PROGRAM TREE
+  USE, INTRINSIC :: ISO_FORTRAN_ENV
+  INTEGER,ALLOCATABLE :: NODE(:) ! Tree nodes that this image handles
+  INTEGER,ALLOCATABLE :: NC(:)   ! NODE(I) has NC(I) children
+  INTEGER,ALLOCATABLE :: PARENT(:), SUB(:)
+                ! The parent of NODE(I) is NODE(SUB(I))[PARENT(I)]
+  TYPE(EVENT_TYPE),ALLOCATABLE :: DONE(:)[*]
+  INTEGER :: I, J, STATUS
+! Set up the tree, including allocation of all arrays.
+  DO I = 1, SIZE(NODE)
+    ! Wait for children to complete
+    EVENT WAIT(DONE(I),UNTIL_COUNT=NC(I),STAT=STATUS)
+    IF (STATUS/=0) EXIT
+
+    ! Process node, using data from children
+    IF (PARENT(I)>0) THEN
+       ! Node is not the root.
+       ! Place result on image PARENT(I) for node NODE(SUB)[PARENT(I)]
+       ! Tell PARENT(I) that this has been done.
+       EVENT POST(DONE(SUB(I))[PARENT(I)],STAT=STATUS)
+       IF (STATUS/=0) EXIT
+    END IF
+  END DO
+END PROGRAM TREE"
+
+
+
+
+
+
+
+

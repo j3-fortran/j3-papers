@@ -1,0 +1,71 @@
+To: J3                                                     10-234
+From: R. Bader, R. Rabenseifner
+Subject: Reconsider CHARACTER(*) and BIND(C)
+Date: 2010 October 08
+References: 10-165r2, N1814, N1820
+
+
+TR feature request: add support for CHARACTER(*):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+MPI has a number of routines which take arguments which are
+presently declared as CHARACTER*(*) in the interface. The
+MPI-3 effort to implement the complete interface
+* in an backward compatible manner
+* using BIND(C) for most (if not all) calls
+runs into trouble at this point. It is not possible
+to convert CHARACTER(*) :: arg to CHARACTER :: arg(*) since
+this would require appending C_NULL_CHAR to each actual
+argument i.e., to modify existing MPI-based applications.
+
+Therefore, it is requested that the following feature be added
+to the functionality covered by the Interop TR:
+
+A dummy argument in a BIND(C) interface may be declared
+CHARACTER(kind=C_CHAR, len=*). In this case, the length information
+must be passed to the C interface as an extra argument of type
+size_t. For example, the Fortran interface
+
+interface
+  subroutine fpc(str, x) BIND(C)
+    use, intrinsic :: iso_c_binding
+    character(kind=c_char, len=*) :: str
+    real :: x(*)
+  end subroutine
+end interface
+
+matches the C prototype
+
+void fpc(char *str, float *x, size_t len);
+
+The extra arguments are passed by value, and are appended at the
+end of the argument list in the same order as that of the set of
+string arguments which are declared CHARACTER(*) in the Fortran
+interface.
+
+
+COMMENTS:
+
+(1) Support for assumed-length CHARACTER variables was
+    explicitly excluded from consideration in N1820 (item 4a, based
+    on an earlier WG5 vote). However, this poses the following
+    problem for the MPI-3 implementation: Assuming that passing
+    an assumed-size actual argument to an assumed-rank dummy is
+    supported at best with BIND(C) interfaces, it will not be
+    possible to implement routines with both CHARACTER(*) arguments
+    and choice buffer arguments of TYPE(*), DIMENSION(..) in a
+    backward compatible manner, since passing an assumed size
+    actual buffer argument will not be allowed. Hence, WG5 is
+    asked to reconsider this decision.
+
+(2) Concerning the possibility of a mismatch between default and
+    C-interoperable character kinds in Fortran: For MPI libraries
+    it would be more useful to define dummy arguments only as
+    CHARACTER(*) and to postpone the conversion problem from
+    Fortran default to C characters to the C-written routine.
+    The reason for this again is that MPI-based codes would
+    require an explicit conversion of character entities
+    if the above-mentioned mismatch surfaces. One could, for example,
+    consider providing a conversion function to the C programmer
+    and making the str argument in the above C prototype a pointer
+    to void.

@@ -1,0 +1,172 @@
+To: J3                                                     J3/21-135
+From: Van Snyder
+Subject: Improving security of type-bound elemental functions
+Date: 2021-March-30
+Reference: 19-186, 21-007
+
+Discussion
+----------
+
+The passed-object dummy argument of a function bound to an extensible
+type is required to be polymorphic.
+
+A generic operator binding is required to have a passed-object dummy
+argument.
+
+If an operation is expected to have a result that is of the same dynamic
+type as its arguments, this can only be accomplished in one of two ways:
+
+  (1) The result is polymorphic, which requires it to be allocatable or
+      a pointer, or
+  
+  (2) the function is overridden in every extension.
+
+If the function is elemental, the result cannot be allocatable or
+a pointer, and therefore cannot be polymorphic.
+
+There is no way that the author of a class can require functions to be
+overridden.
+
+Therefore, if one develops a class to solve a particular problem, and it
+is later extended, perhaps by a different author, to solve a related
+problem, elemental functions and generic elemental operator bindings
+that are not overridden necessarily return nonpolymorphic results of the
+base type. This is dangerous.
+
+Proposal 1
+----------
+
+In addition to allowing a CLASSOF declaration for an allocatable or
+pointer function result, allow it for a function result that is neither
+allocatable nor a pointer, provided the <data-ref> in the CLASSOF
+declaration specifies a nonoptional nonallocatable nonpointer
+polymorphic dummy argument of that function. Where the function is type
+bound, if the result is not allocatable or a pointer, require the
+<data-ref> in the CLASSOF declaration to refer to the passed-object
+dummy argument.
+
+Prohibiting the ALLOCATABLE or POINTER attribute for the <data-ref>
+allows the dynamic type of the result to be determined at the moment
+function execution commences. This also limits the <data-ref> to dummy
+arguments, but allowing a host-associated dummy argument in this role is
+probably unwise.
+
+Specify that if the result is neither allocatable nor a pointer, the
+dynamic type of the result is the same as the dynamic type of the
+<data-ref> in the CLASSOF declaration (which can be determined when
+function execution commences because the <data-ref> is neither
+allocatable nor a pointer, and not optional).
+
+This allows the result of an elemental function to be polymorphic with
+the same declared and dynamic type as the passed-object dummy argument.
+In an elemental reference, the result is an array with elements of
+homogeneous dynamic type because the actual argument associated with the
+passed-object dummy argument is an array with elements of homogeneous
+dynamic type.
+
+Proposal 2
+----------
+
+Allow a <binding-attr>, say SHALL_OVERRIDE, that specifies a type-bound
+procedure or generic binding must be overridden in extensions. Thereby,
+in case the result of a type-bound elemental function is not CLASSOF,
+the author of a base type can require that the author of an extension
+type is required to override the binding, and hopefully will have the
+sense to provide one with a result type that is the same as the
+extension type.
+
+Proposal 1 is a better solution to the type-bound elemental function
+problem, but Proposal 2 has merit on its own.
+
+Proposal 3
+----------
+
+As Vipul Parekh advocated in 19-186, provide a <type-attr>, say
+NON_EXTENSIBLE, that prohibits a type from being extended. Thereby, one
+need not worry that a type-bound elemental function will be invoked with
+arguments of an extended type, but return a result of the base type. One
+can still "extend" such a type by including a component of its type in
+an "extension" type. This is the old way, but it still works.
+
+It is already specified (C765) that the passed-object dummy argument of
+a procedure bound to a nonextensible type cannot be polymorphic.
+
+Presently, the only nonextensible types are BIND and SEQUENCE types (and
+C_PTR and C_FUNPTR, which might be BIND, but this appears not to be
+specified anywhere). SEQUENCE types are undesirable because objects of
+SEQUENCE types have equivalent type according to their types' structures
+(which it is the author's responsibility to ensure), not their
+declarations (which the processor can enforce).
+
+Proposal 1 is a better solution to the type-bound elemental function
+problem, but Proposal 3 has merit on its own.
+
+Edits 1 (to guage the scope)
+----------------------------
+
+[56:28 7.3.2.1 Type Specifier Syntax C708] Remove "or CLASSOF".
+
+[56:29+ 7.3.2.1 Type Specifier Syntax] Insert a new constraint:
+
+"C708a An entity declared with the CLASSOF keyword shall be a dummy
+       argument or function result, or have the ALLOCATABLE or POINTER
+       attribute. If it is a function result that is neither allocatable
+       nor a pointer, the <data-ref> shall specify a nonoptional
+       nonallocatable nonpointer polymorphic dummy argument of the same
+       function."
+
+[79:36+ 7.5.5 Type-bound procedures] Insert a new constraint:
+
+"C786a If NOPASS does not appear, the type-bound procedure is a
+       function, the result is declared using the CLASSOF keyword, and
+       the result is neither allocatable nor a pointer, the <data-ref>
+       in the CLASSOF declaration shall specify the passed-object dummy
+       argument."
+
+[329:31+ 16.6.2.2p4+ Function subprogram] Insert a paragraph:
+
+"If the function result is declared using the CLASSOF keyword and is
+neither allocatable nor a pointer, the dynamic type of the result is the
+same as the dynamic type of the dummy argument specified by the
+<data-ref> in the CLASSOF declaration."
+
+Edits 2 (to guage the scope)
+----------------------------
+
+[79:30+ 7.5.5 Type-bound procedures] Add an alternative to R752
+<binding-attr>:
+
+"                      <<or>> SHALL_OVERRIDE"
+
+[80:2+ 7.5.5 Type-bound procedures] Insert a new constraint:
+
+"C790a In an extention type, every procedure binding in the parent type
+       that has the SHALL_OVERRIDE attribute shall be overridden, and
+       the binding in the extension type shall have the SHALL_OVERRIDE
+       attribute."
+
+Edits 3 (to guage the scope)
+----------------------------
+
+[67:14+ 7.5.2.1 Syntax of a derived-type definition] Add an alternative
+to R728 <type-attr-spec>:
+
+"                      <<or>> NON_EXTENSIBLE"
+
+[82:29-29 7.5.7.1p1 Extensible, extended, and abstract types] Replace
+the paragraph:
+
+"A derived type that does not have the NON_EXTENSIBLE, BIND, or SEQUENCE
+attribute is an extensible type."
+
+Insert a note
+
+  "The types C_PTR and C_FUNPTR from the intrinsic module ISO_C_BINDING
+   are not extensible."
+
+[494:2 18.3.2p1 Interoperability with C pointer types] After "with"
+insert "the NON_EXTENSIBLE attribute and".
+
+Alternative: After "with" insert "the BIND attribute and".
+
+

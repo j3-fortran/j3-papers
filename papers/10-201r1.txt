@@ -1,0 +1,98 @@
+                                                     10-201r1
+To: J3
+From: John Reid/Malcolm Cohen
+Subject: F2008 interp re segment ordering rules
+Date: 2010 October 11
+
+------------------------------------------------------------------------
+
+NUMBER: F08/0041
+TITLE:  Segment ordering rules
+KEYWORDS: segment, allocation
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+(1) Was it intended to allow the allocation of a variable that is not
+    a subobject of a coarray to be unordered with respect to its
+    definition by another image through a pointer component of a
+    coarray?
+
+For example,
+
+  PROGRAM example1
+    TYPE t1
+      REAL,ALLOCATABLE :: c(:)
+    END TYPE
+    TYPE t2
+      TYPE(t2),POINTER :: p
+    END TYPE
+    TYPE(t1),TARGET :: x
+    TYPE(t2) :: y[*]
+    y%p => x                         ! y[n]%p => x[n] for all n.
+    SYNC ALL
+    IF (THIS_IMAGE()==1) THEN
+      ALLOCATE(x%c(1000))            ! Allocates x[1]%c.
+    ELSE
+      y[1]%p%c(THIS_IMAGE()) = 999   ! Defines some part of x[1]%c.
+    END IF
+  END PROGRAM
+
+(2) If a variable is already defined (initially or by some segment
+    that precedes all other segments in this question), may one image
+    reference it while another image causes it to become undefined in
+    unordered segments?
+
+For example, is
+
+  PROGRAM example2
+    REAL :: x(100)[*]
+    x = 1
+    SYNC ALL
+    IF (THIS_IMAGE()==1) THEN
+      PRINT *,SUM(x)
+    ELSE
+      CALL destroy(x)
+    END IF
+  CONTAINS
+    SUBROUTINE destroy(x)
+      REAL,INTENT(OUT) :: x(:)
+    END SUBROUTINE
+  END PROGRAM
+
+standard-conforming?  This does not appear to violate any of the
+segment ordering requirements in 8.5.2 because it is not defined in
+any unordered segment (so bullet 1 does not apply), there is no
+allocation or pointer association status (so bullet 2 does not apply),
+and there is no dummy argument being defined (so bullet 3 does not
+apply).
+
+ANSWER:
+
+(1) No, this example violates the requirement of the first bullet in
+    paragraph 3 of 8.5.2, which says:
+      "if a variable is defined on an image in a segment, it shall not
+       be referenced, defined, or become undefined in a segment on
+       another image unless the segments are ordered".
+    x[1]%c is defined in segment 2 by images 2-N, but is made
+    undefined on image 1 (allocation makes a variable undefined except
+    when default initialization occurs).
+
+(2) No, this example was not intended to be standard-conforming.  An
+    edit is supplied to clarify the intent.
+
+EDITS to 10-007:
+
+[189:14] In 8.5.2 paragraph 3, first bullet point,
+  After "if a variable is defined"
+  Insert "or becomes undefined"
+  (before "on an image in a segment").
+{Forbid uncoordinated undefinings of variables.}
+
+SUBMITTED BY: John Reid
+
+HISTORY: 10-201    m193  Submitted
+         10-201r1  m193  Revised
+
+------------------------------------------------------------------------

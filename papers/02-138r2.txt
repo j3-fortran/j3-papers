@@ -1,0 +1,256 @@
+                                                       J3/02-138R2
+
+Date:     February 28, 2002
+To:       J3
+From:     Dick Hendrickson
+Subject:  Chapter 14 comments
+
+1)     271:8-10 (really in chapter 12)  Can we really control code generation enough to prevent a compiler from generating setjmp or longjump?  Either for inline code or in a library function like COS?
+
+No action needed.  The text means setjmp can't be used to violate Fortran execution order.
+
+2)     CH 14.  I don't think the description of what IEEE_FEATURES does, nor how it does it, is complete enough.
+
+Proposal:  345:20 Add as a Note  
+"Note 14.1
+The IEEE_FEATURES module is provided to allow a reasonable amount of cooperation between the programmer and the processor in controlling the extent of IEEE arithmetic support.  On some processors some IEEE features are natural for the processor to support, others may be inefficient at run time, and others are essentially impossible to support.  If IEEE_FEATURES is not used, the processor will only support the natural operations.  Within IEEE_FEATURES the processor will define the named constants (14.1) corresponding to the time-consuming features (as well as the natural ones for completeness) but will not define named constants corresponding to the impossible features.  If the programmer accesses IEEE_FEATURES, the processor shall provide support for all of the IEEE_FEATURES that are reasonably possible.  If the programmer uses an ONLY clause on a USE statement to access a specific feature name, the processor shall provide support for the corresponding feature, or issue an error message saying the name is not defined in the module.
+
+When used this way, the named constants in the IEEE_FEATURES are similar to what are frequently called command line switches for the compiler.  They can specify compilation options in a reasonably portable manner."
+
+3)     345:17 says "if IEEE INEXACT FLAG or IEEE INVALID FLAG is accessible, the scoping unit shall support the exception and return true from the corresponding inquiry for at least one kind of real. "  This is poorly worded, the "scoping unit" doesn't support IEEE arithmetic: it's a bunch of user code.  Something like
+       subroutine empty
+       USE IEEE_FEATURES
+       end
+should be legal even though it doesn’t return true from any inquiry function.  This happens in many places in 14.
+
+Proposal:  345: 15, 17, 19, 28, and 30
+Change "the scoping unit shall support" to "within the scoping unit the processor shall support"
+
+4)     345:25.  Delete "For processors with IEEE arithmetic, " and capitalize next word.  It appears to be aimed at processors with built-in IEEE arithmetic, but the next sentence says they don’t have to have it all.
+
+5)     345:21.  But what if it only accesses IEEE_FEATURES?  Lines 14 and 15 require underflow support for at least one real type if IEEE_UNDERFLOW_FLAG is accessible, and this does not appear to depend on the other modules being accessible.  I think we want to add IEEE_FEATURES to the list.
+
+Proposal:  345:21  Add "IEEE_FEATURES, " just before IEEE_EXCEPTIONS and add a comma after IEEE_EXCEPTIONS.
+
+
+6)     345:22 says  if a flag is signaling on entry it will signal on exit, but says nothing about what happens in between.  347:19 says it will be set to quiet at the start of execution.  The first deals with a subroutine that doesn't USE IEEE*, but does require the flag to signal on exit which implies some knowledge in the compiler code of the flag register--it must be saved and restored since a routine which doesn't USE IEEE* could easily clear the flags by calling an assembly language routine.  I think we should add language to 345 to say the flags are cleared on entry.
+
+No action needed.  The cited words cover all the possible cases and the flags need not be cleared on entry to a non-IEEE using routine
+
+7)     345:36.  The last sentence isn't necessarily true, and even if we think it is, it is beyond the scope of the standard.  Lines 31-33 require all 4 rounding modes if IEEE_ROUNDING is accessible.  So a processor that doesn’t support round-up won’t have IEEE_ROUNDING in IEEE_FEATURES.  It seems arguable top me that there is "fuller" support by not using IEEE_FEATURES and letting the processor by default support all of IEEE except round-up.  But this might be a perverse reading of the words.
+
+No action needed
+
+8)     Proposal:  345 Note 14.1  Move this to 345:7+ since it doesn't particularly apply to the preceding paragraph or two.
+
+9)     NO ACTION, withdrawn, covered by 2)  
+
+10)     346:25-28  Why do some of the terms have _FLAG and not all of them?
+
+No action needed; they are ones that refer to things in the flag register, not capabilities.
+
+11)     346:32  What about overflow within the calculation..  Something like print *, ABS(CMPLX(big, big)) where big**2 + big**2 overflows.?  I wouldn't call ABS an intrinsic real operation and neither the real or imaginary parts are too big.  This is just a wording issue; does anybody know what IEEE says?  
+
+No action needed, 347:22+ covers this.
+
+12)     347:6  What about, e.g., IEEE_RINT?  It's not an intrinsic function, should it trigger invalid for large values of x?  I think this is another problem with saying the intrinsic module functions aren’t intrinsic: we actually think they are.  See 1) in my paper "Chapter 13, questions about intent and meaning" for more comments.  see also 347:17 for another use of "intrinsic".  Or 347:25 and IEEE_NEXT_AFTER.  I really think the (local) solution is to call them intrinsics; but I'm not sure what that does to chapter 13, and 1, and 11/12, etc.  But 350:17 also gives better wording
+
+Proposal:    347:6, after "intrinsic procedure" add "or a procedure defined in this module"
+
+             347:22-23, after "intrinsic procedure" add "or a procedure defined in this intrinsic module"
+
+             347:25, change "intrinsic" to "procedure"
+
+             348:17, after "intrinsic procedure" add "or a procedure defined in this intrinsic module"
+
+             350:17 and 21, replace "functions in intrinsic modules" with "functions in this intrinsic module"
+
+13)     347:8  same questions as for 346:32, except replace big with small.
+
+No action needed
+
+14)     347:17.  The next sentence gives another instance where it gets set quiet.
+
+Proposal  347:17  After "Once signaling" add " within a procedure"
+
+15)     347:19-20.  Does this also hold for recursive and internal procedures?  I think it should, at least for recursive.
+
+No action needed, the intent is that internal and recursive procedures be treated just like any other procedure; the flag is set quiet on entry and OR'd back on exit
+
+16)     347:20.  Add a note.
+"NOTE  14.xxx
+If a flag signals during execution of a procedure, the processor shall not set it to quiet on return."
+
+17)     347:21  Note that this allows specification functions to talk to each other through the flags and to me means they are not PURE.
+
+NO action here, covered in 39) later in paper
+
+18)     347:28.  All calculations in the intrinsic affect the result (otherwise why would they be there?)  We mean intermediate calculations that are later ignored because of an IF that detects something odd about them;  we need to find a way to say that.
+
+No action needed.
+
+19)     347:30+  I'm not sure this goes far enough for modern optimizers.  Dead code is common in old codes that have been extensively maintained.  Things like
+       subroutine  xxx(a,b)
+       …
+       x = sqrt(y)                   !originally, this was useful but later on all subsequent references to X have been removed
+        end
+A good dead code eliminator is likely to effectively eliminate the entire line.  What is the processor required do?
+
+No action appropriate, the words are loose enough.
+
+20)    NO ACTION, withdrawn  
+
+21)     348:14.  I'm not sure this is true.  I think we are mixing "local" support and hardware support.  I think we can "disable" e.g., IEEE_INVALID locally by doing something like
+        USE, INTRINSIC ::  IEEE_FEATURES, ONLY: IEEE_ROUND
+in this case the scoping unit has no access to the IEEE_INVALID flag.  But a call to another routine can set the flag to signaling, so it's not always quiet.  I think we need to reword something.
+
+No action needed.
+
+22)     348:16-18  This sentence does not belong here; it's said in 347:4-6.
+
+Proposal:  Delete 348:16-18  "If IEEE_INVALID … representable"
+
+23)     348:30-32.  Is there a problem with DTIO?  Since the user is doing it himself, how can the function guarantee that rounding will be IEEEish?
+
+Answer.  No problem.  The DT encapsulation means the things are e. g. not reals and the module writer is free to do whatever he wants to IO them.
+
+24)     348:33+  can we really expect this to be true for calls to routines that don't directly USE IEEE*?  How about to C routines or assembly routines?  Is this intended to be a code generation restriction (effectively requiring save/restore on the caller side?) or a boy-scout restriction on the writer of a called procedure?
+
+NO action needed.  NOTE 14.5 answers this.
+
+25)     349:6-8  same question for IEEE_HALTING
+
+NO action needed.  NOTE 14.5 answers this.
+
+26)     350:17.  Do we mean "this intrinsic module" instead of "intrinsic modules".  As worded this requires the C interop module to also support NaNs, etc.  Suppose a processor has it's own special arithmetic mode and defines modules similar IEEE_*; we can't expect VENDOR_SQRT(X) to mimic the IEEE behavior if X is an IEEE NaN.  Same comment for lines 21 and 24.
+
+Fixed above in  12)
+
+27)     350:22-24.  I think the first sentence is true, but incomplete.  Doesn't IEEE also require accuracy conditions?  The first sentence implies that -0.0 is the only special case.  
+
+Proposal:  350:22, after second "-0.0" add ", and has certain accuracy requirements"
+
+28)     350:26  Is this function ever true for any current computers?
+
+No action, the standard can't require IEEE compliance
+
+29)     351:issue 353.  I agree with Richard's comments.  Also, if the functions are not "intrinsic" I don’t see how we can give them magic ch13 properties.
+
+No action here, paper 128R2 resolves issue 353
+
+30)     355:note 14.8  The values can also be used with == and /= See 346:20+
+
+Proposal:  Page 355:23+  Delete note 14.8
+Proposal:  Page 356:2+  Delete note 14.9
+
+31)     361:16.  "ARITHMETIC" => "EXCEPTIONS"  the STATUS_VALUE type is actually defined in IEEE_EXCEPTIONS, true the existing USE brings it in; but why confuse people.
+
+Proposal  page 361:16  replace "ARITHMETIC" with "EXCEPTIONS"
+
+32)     361:note 14.11.  Delete the last sentence as unnecessary.  Reword the first to "On some processors this may be a very time consuming process."
+
+33)     362:note 14.12.  Middle part.  I thought underflow signaled whenever a denorm was produced, even if it is exact.
+
+Proposal  362, Note 14.12  Delete " unless the result is exact"
+NOTE that this is potentially a technical change!
+
+34)     362:3  Does this restriction need [X] instead of X as the argument?  That is, am I allowed to invoke IEEE_SUPPORT_DENORMAL() if IEEE_SUPPORT_DATATYPE() is false?  This applies to most of the functions.
+
+Needs committee discussion
+
+Proposal, add J3 unresolved issue note after restriction in IEEE_SUPPORT_DENORMAL
+
+J3 note
+The comments apply to the IEEE_SUPPORT_* functions, and possibly others.
+
+There are several problems here
+
+A)  IEEE_SUPPORT_DENORMAL can't be a generic function since the rules do not allow an optional argument to be the generic decider.  Do we need to have 2 cases in the header  IEEE_SUPPORT_DENORMAL() and IEEE_SUPPORT_DENORMAL(X)?
+Does that match the intent?
+
+B)  How should the restriction be read?  It's clear that IEEE_SUPPORT_DENORMAL(3.14) can't be invoked unless IEEE_SUPPORT_DATATYPE(3.14) is true; but can IEEE_SUPPORT_DENORMAL() be invoked if IEEE_SUPPORT_DATATYPE() is false?  The restriction could be read either way.  What was the intent?
+
+C)  How should this be treated if X is an optional argument in the invoker?
+    Call z ()
+    ...
+    Subroutine z(X)
+    Real, optional ::  X
+    Print *, IEEE_SUPPORT_DENORMAL(X)
+
+Is this illegal because it's a reference to a not-present optional argument?
+
+Is it the same as Print *, IEEE_SUPPORT_DENORMAL(3.14) because only the properties of X apply?
+
+Is it the same as Print *, IEEE_SUPPORT_DENORMAL() because the argument isn't present and unpresentness flows down the call chain?
+
+35)     362:28-29.  These are the only possible values for the argument.  There is no need to list them.  If we make this change we should scan all of the other arguments sections.  e.g. 363:14+
+
+No action, it's redundant but useful as a reminder.
+
+36)     363:10.  Does SUPPORT_HALTING take an array as an argument?  It seems like a natural thing to want to use IEEE_USUAL or IEEE_ALL as an argument.  The "Argument" section doesn't say that FLAG is a scalar; whereas it does for e.g. IEEE_SUPPORT_FLAG  362:28-29
+
+Proposal  363:14  After "shall" add " be scalar and"
+
+37)     363:14 compare to 362 28-29.  Why is one FLAG explicitly INTENT(IN) and the other not?
+
+In general, I think we need to look at all of the argument definitions for consistency.
+
+Proposal  360 near 1 and 2  Delete "It is an INTENT(IN) argument." twice
+          360 near 9 and 10  Delete "It is an INTENT(IN) argument." Twice
+          360:19-20 delete "is an INTENT(IN) argument and"
+          361:12  Delete "It is an INTENT(IN) argument." Twice
+          363:14  Delete "It is an INTENT(IN) argument."
+
+38)     NO ACTION NEEDED, withdrawn.  
+
+39)     14.8.4  We need to do/say something about things like IEEE_SET_FLAG and IEEE_SET_HALTING_MODE being elemental.  Chapter 13, note 13.1 talks about elemental subroutines being PURE and non-elemental being impure because they have ... system side effects.  
+
+Proposal:  352:36-37 (3 lines) to after 352:41
+  Fix IEEE_SET_FLAG
+           359:38 delete "Elemental" and capitalize "subroutines"
+           360:1-3, change argument description to
+    FLAG            shall be a scalar or array of type TYPE(IEEE_FLAG_TYPE).  If
+                    a value of FLAG is IEEE_INVALID, IEEE_OVERFLOW,
+                    IEEE_DIVIDE_BY_ZERO, IEEE_UNDERFLOW, or IEEE_INEXACT, the
+                    corresponding exception flag is assigned a value.  No two 
+                    elements of FLAG shall have the same value.
+
+    FLAG_VALUE     shall be a scalar or array of type default logical. It shall be
+                   conformable with FLAG.  If an element has the value true, the
+                   corresponding flag is set to be signaling;  otherwise, the flag
+                   is set to be quiet.
+
+  Fix IEEE_SET_HALTING
+           360:8 delete "Elemental" and capitalize "subroutines"
+           360:9+ to 11, change argument description to
+    FLAG           shall be a scalar or array of type TYPE(IEEE_FLAG_TYPE). It
+                   shall only have the values IEEE_INVALID, IEEE_OVERFLOW,
+                   IEEE_DIVIDE_BY_ZERO, IEEE_UNDERFLOW, or IEEE_INEXACT.  No two 
+                   elements of FLAG shall have the same value.
+
+    HALTING        shall be a scalar or array of type default logical.  It shall
+                   be conformable with FLAG.  If an element has the value is true, 
+                   the corresponding exception specified by FLAG will cause
+                   halting.  Otherwise, execution will continue after this
+                   exception.  
+
+
+##############
+Typo's and grammar/usage questions.
+Passed to editor with no committee action proposed.
+
+G1)     350:29  "whenh" => "when"
+
+G2)     351:23  extra blank line to right of function definition
+
+G3)     360:note 14.10  Change "the exception" to "an exception".  Because halting is imprecise, you can trigger many of them.
+
+G4)     349:21  In about half the cases we use "Not-A-Number" and in the other half "Not-a-Number".  I believe we consistently use NaN in text references.
+Proposal:  Replace all "Not-A-Number" with "Not-a-Number"
+
+G5)     408:18.  The glossary entry for Not-a-Number uses a different kind of dash from all of the other usages; makes it hard to search for!
+Proposal:  408:18 make "Not-a-Number" the same as instances in the body of the standard.  This might be a generic problem with "-", I also had some trouble searching for "round-"
+
+G6)     IEEE_RINT  this is the first use of hyphens in round-to-nearest and round-up that my search found.  Compare with 219:5-7
+
+G7)     IEEE overflow in ch 14 is the first occurrence of the term "processor-dependent" with a hyphen.  Should it be hyphenated here?  I thought we used processor dependent about a million times elsewhere.

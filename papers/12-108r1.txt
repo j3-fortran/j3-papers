@@ -1,0 +1,154 @@
+                                                                12-108r1
+To: J3
+From: Van Snyder
+Subject: Interpretation concerning specification functions
+Date: 19 January 2012
+
+----------------------------------------------------------------------
+
+NUMBER: F08/xxxx
+TITLE: Can a specification function invoke an internal procedure?
+KEYWORDS: specification function, internal procedure
+DEFECT TYPE: Erratum
+STATUS: Under J3 consideration
+
+BACKGROUND:
+
+[10-007r1:7.1.11p5 150:44-45] prohibits a specification function from
+_being_ an internal function, but not from _invoking_ one.  There are
+(at least) three ways by which one might be invoked.  A fourth and
+more complicated way, involving a type-bound procedure with a dummy
+procedure argument, is not illustrated.  There might be others.
+
+QUESTIONS:
+
+(1) Given
+
+  module M
+
+    abstract interface
+      pure integer function F ( I )
+        integer, intent(in) :: I
+      end function F
+    end interface
+
+    procedure(f), save, pointer :: P => NULL()
+
+  contains
+
+    subroutine S ( A )
+      integer, intent(in) :: A(:)
+      integer :: B(g(size(a,1)))
+      integer :: C(size(b,1))
+      ...
+      p => h
+      ...
+    contains
+      pure integer function H ( I )
+        integer, intent(in) :: I
+        h = size(c,1)
+      end function H
+    end subroutine S
+
+    pure integer function G ( I )
+      integer, intent(in) :: I
+      g = i
+      if ( associated(p) ) g = p(i)
+    end function G
+
+  end module M
+
+is it permitted to invoke S if a prior invocation of it has caused P
+to become associated with H?
+
+(2) Given
+
+  module MT
+
+    abstract interface
+      pure integer function F ( I )
+        integer, intent(in) :: I
+      end function F
+    end interface
+
+    type T
+      procedure(f), pointer :: P => NULL()
+    end type T
+
+  contains
+
+    subroutine ST ( A )
+      integer, intent(in) :: A(:)
+      integer :: B(g(size(a,1)),t(p=h))
+      integer :: C(size(b,1))
+      ...
+    contains
+      pure integer function H ( I )
+        integer, intent(in) :: I
+        h = size(c,1)
+      end function H
+    end subroutine ST
+
+    pure integer function G ( I, P )
+      integer, intent(in) :: I
+      type(t), intent(in) :: P
+      g = i
+      if ( associated(p%p) ) g = p%p(i)
+    end function G
+
+  end module MT
+
+is a reference to ST permitted?
+
+(3) Given
+
+  module MR
+
+    abstract interface
+      pure integer function F ( I )
+        integer, intent(in) :: I
+      end function F
+    end interface
+
+  contains
+
+    recursive subroutine R ( A, Q )
+      integer, intent(in) :: A(:)
+      procedure(f) :: Q
+      integer :: B(q(size(a,1)))
+      integer :: C(size(b,1))
+      ...
+      call r ( a, rh )
+      ...
+    contains
+      pure integer function RH ( I )
+        integer, intent(in) :: I
+        rh = size(c,1)
+      end function RH
+    end subroutine R
+
+  end module MR
+
+is the recursive invocation of R permitted?
+
+ANSWERS:
+
+(1) When S returns, P becomes undefined.  Therefore the reference to H
+    within G by way of P is not permitted.  Therefore S cannot be
+    invoked more than once.
+
+(2) The declaration of B within ST is not permitted because a procedure
+    target is not permitted within a specification expression.
+
+(3) The invocation of RH by way of a specification expression is
+    harmless because the invoked instance of RH does not have access
+    to the same instance as the reference to Q in the declaration of
+    B.
+
+EDITS:
+
+None.
+
+SUBMITTED BY: Van Snyder
+
+HISTORY: 12-xxx    m197  F08/xxxx submitted

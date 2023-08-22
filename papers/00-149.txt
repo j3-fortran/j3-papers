@@ -1,0 +1,172 @@
+
+                                                                   J3/00-149
+
+Date:     2000/03/02
+To:       J3
+From:     /interop
+Subject:  Revision of ENUM syntax and unresolved issue 231
+References:   00-007, 00-121, 00-102r1, 00-011
+
+Bill Mitchell points out in 00-121 that the limit on the number of continuation
+lines effectively limits the number of enumerators that can appear in an
+enumeration.  This severely hinders real applications.
+
+Using the existing syntax, the Fortran equivalent of the following C enum
+
+   enum colour
+     {
+       r, o=2, y=4, g=8, b=16, i=32, v
+     }
+
+would be 
+
+   ENUM, BIND(C) :: COLOUR(R,O=2,Y=4,G=8,B=16,I=32,V)
+
+The proposed new syntax is
+
+   ENUM, BIND(C) :: COLOUR
+     ENUMERATOR R  ! :: is optional here
+     ENUMERATOR :: O = 2, Y = 4, G = 8  ! :: is required here
+     ENUMERATOR :: B = 16, I = 32, V
+   END ENUM COLOUR
+
+Edits:
+
+[10:14]
+   Change "<enum-def-stmt>"
+   to     "<enum-alias-def>"
+
+[58:17-19]
+   Replace rules R453-R454 with the following, and renumber the existing R455
+   as R456.
+     "R453 <enum-alias-def> <<is>>  <enum-def-stmt>
+                                       <enumerator-def-stmt>
+                                       [ <enumerator-def-stmt> ]...
+                                       <end-enum-stmt>
+
+      R454 <enum-def-stmt> <<is>>  ENUM, BIND(C) :: <type-alias-name>
+                           <<or>>  ENUM [<kind-selector>] [::] <type-alias-name>
+
+      R455 <enumerator-def-stmt> <<is>>  ENUMERATOR [::] <enumerator-list>"
+
+[50:20+]
+   Add a new syntax rule, and renumber the existing R456 [59:35] onwards.
+     "R457 <end-enum-stmt> <<is>>  END ENUM [<type-alias-name>]
+
+[58:20+]
+   Add new constraints
+     "Constraint:  If = appears for an enumerator in an ENUMERATOR statement,
+                   a double colon separator shall appear before the
+                   <enumerator-list>.
+      Constraint:  If END ENUM is followed by a <type-alias-name>, the
+                   <type-alias-name> shall be the same as that in the
+                   corresponding <enum-def-stmt>."
+
+[58:23-25]
+   Replace item (1) with
+     "(1)  If BIND(C) is specified, the kind is selected such that an entity
+           of type integer with that kind interoperates with an entity of the
+           corresponding C enumeration type.  The corresponding C enumeration
+           type is the type that would be declared by a C enumeration specifier
+           (6.7.2.2 of the C standard) that specified C enumeration constants
+           with the same values as those specified by the <enum-alias-def>, in
+           the same order specified by the <enum-alias-def>.
+
+           The companion processor shall use the same representation for the
+           types declared by all C enumeration specifiers that specify the same
+           values in the same order."
+
+[58:26-30]
+   Delete J3 issue 227.  The preceding edit addresses the problem that the
+   issue raises.
+
+[58:34]
+   Change "<enumerator-list>"
+   to     "the <enum-alias-def>"
+
+[58:34+]
+   Add a new note
+     "Note 4.x
+
+      The C standard requires a processor to make two enumeration types
+      compatible only if they specify enumeration constants with the same names
+      and same values in the same order.  This standard further requires that a
+      C processor that is to be the target for interoperability of the Fortran
+      processor use the same representation for two enumeration types if they 
+      both specify enumeration constants with the same values in the same
+      order, but with names that might be different."
+
+[58:41]
+   Change "<enumerator-list>"
+   to     "the <enum-alias-def>"
+
+[58:43]
+   Change "<enumerator list>"
+   to     "the <enum-alias-def>"
+
+[58:44]
+   Change "<enumerator-list>"
+   to     "<enum-alias-def>"
+
+[59:3-4]
+   Replace example ENUM declarations with
+     "ENUM(SELECTED_INT_KIND(1)) :: DIGITS
+        ENUMERATOR :: ZERO, ONE, TWO
+      END ENUM DIGITS
+
+      ENUM PRIMARY_COLORS
+        ENUMERATOR :: RED = 4, BLUE = 6
+        ENUMERATOR YELLOW
+      END ENUM"
+
+[59:15+]
+   Add a new note
+     "Note 4.x
+
+      There is no difference in the effect of declaring enumerators in more
+      than one ENUMERATOR statement rather than declaring them in a single
+      ENUMERATOR statement.  The order in which the enumerators in an
+      enumeration definition are declared is significant, but the number of
+      ENUMERATOR statements is not."
+
+[59:15+]
+   Add a new J3 internal note
+     "Unresolved issue xxx
+
+      There is an issue here.  The kind parameter of the enumerators in Fortran
+      is the same as the kind parameter of the type alias.  The kind can't be
+      determined until all of the values have been processed, but it might
+      prove impossible to process the values without knowing the kind
+      parameter.  For example, to process the value of J, we need multiply I by
+      2, and to evaluate that expression a processor needs to know the type and
+      kind of the operands, but that depends on the value of K, which we
+      haven't yet seen.
+
+         ENUM, BIND(C) :: MYTYPE
+           ENUMERATOR :: I = 1, J = I*2
+           ENUMERATOR :: K = HUGE(0)   ! vs. K = 3
+         END ENUM MYTYPE
+
+      C avoids this problem by specifying that the enumeration constants are
+      of type int.  C can get away with that because of the implicit conversion
+      of arguments.  Fortran can't do that.
+
+      We can't even rely on similar rules for the PARAMETER statement which
+      require that if a named constant appears in a type declaration statement
+      after a reference to the named constant, the type declaration must confirm
+      the implicit declaration.  That is, the appearance of I in the expression
+      "I*2" requires the implementation to assume that I is of type default
+      integer.
+
+         PARAMETER(I=1, J=I*2)
+         INTEGER I
+
+       In the case of enumerators, we can't assume default integer."
+
+[456]
+   Add index entries for the following terms:  "<enum-alias-def>",
+   "<enum-def-stmt>", "<enumerator-def-stmt>", "enumerations", and
+   "enumerators".  All should refer to subclause 4.7.
+
+[456]
+   Change the existing index entry for "<ENUM> statement" to "<ENUM>".

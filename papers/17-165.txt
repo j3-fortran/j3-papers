@@ -1,0 +1,90 @@
+                                                            J3/17-165
+To: J3
+From: Malcolm Cohen
+Subject: Reinstate constraint removed in error
+Date: 2017 June 23
+
+1. Introduction
+
+Paper 16-201r1, passed by meeting 210, removed constraint C616 because
+    "it is entirely redundant to C524, which prohibits a coarray to be
+     of the types prohibited by C616, and C614, which requires the object
+     to be a coarray if an image selector appears".
+
+The claim of redundancy appears to have been incorrect.
+This paper reinstates the non-redundant constraint.
+
+Note: C614 and C524 are now C914 and C823.
+
+
+2. Discussion
+
+Consider:
+    Program test
+        Use iso_c_binding
+        Type t
+            Type(c_ptr) my_c_ptr
+        End Type
+        Type(t) x[*]                ! (Note A)
+        x%my_c_ptr = c_null_ptr     ! (Note B)
+        x[1]%my_c_ptr = x%my_c_ptr  ! (Note C)
+        Print *,'FAIL'
+    End Type
+
+Note A:
+    Does not violate C823
+        "A coarray shall not be of type C_PTR or C_FUNPTR..."
+    because X is type T, not type C_PTR or C_FUNPTR.
+
+Note B:
+    Ordinary assignment, perfectly conforming.
+
+Note C:
+    Violates the old C616
+        "If image-selector appears, data-ref shall not be of type C PTR
+         or C FUNPTR..."
+    Does not violate C914
+        "If image-selector appears, the number of cosubscripts shall be
+         equal to the corank of part-name."
+
+Note D:
+    The "redundancy failure" appears to have been a lack of notice that
+    the old C616 was a constraint on <data-ref>, whereas C614 was a
+    constraint on <part-ref>.
+
+Note E:
+    It is depressing to note that 2 out of the 2 compilers that I tested,
+    both of which claimed to conform to Fortran 2008 vis-a-vis coarrays,
+    compiled this with no complaint!
+
+Note F:
+    I only found this because elsewhere a reference to C614 (now C914) was
+    obviously wrong as C614/914 had (and always had) nothing to do with
+    the note that referred to it.  An edit is included to repair this.
+
+
+3. Edits to N2123 (17-007r1)
+
+[133:10+] 9.4.2 Structure components,
+          after "C915 (R912) If image-selector appears and..."
+          insert new constraint
+  "C915a A coindexed object shall not be of type C_PTR or C_FUNPTR from
+         the intrinsic module ISO_C_BINDING
+         (18.3.3 \ref "Interoperability with C pointer types").".
+ALTERNATIVE WORDING:
+  "C915a A <data-ref> shall not be of type C_PTR or C_FUNPTR from the
+         intrinsic module ISO_C_BINDING (ref) if one of its <part-ref>s
+         has an <image-selector>.".
+{Reinstate constraint, reworded.}
+
+[throughout, e.g. 141:33] Hyperlink and index "coindexed object".
+{I just spotted one case that needs hyperlinking and indexing, so all
+ occurrences should be checked and fixed if necessary.}
+
+[172:13+3] 10.2.1.3 Interpretation of intrinsic assignments, after p12,
+           NOTE 10.41 beginning "An intrinsic assignment statement for
+           a variable of type C_PTR...",
+           Change "C914" to "C915a".
+{Cite appropriate constraint.}
+
+===END===

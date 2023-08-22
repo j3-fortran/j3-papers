@@ -1,0 +1,97 @@
+
+                                                                   X3J3/96-139
+                                                                   Page 1 of 2
+
+Date:       1996/08/12
+To:         X3J3
+From:       /io
+Subject:    Straw Poll on Asynchronous I/O Alternatives
+Reference:  X3J3/96-110
+
+Several possible schemes for dealing with the optimization issues surrounding
+Asynchronous I/O have been proposed and discussed by /io.  These are:
+
+   (i)  I/O list appears on both the I/O initiator and I/O terminator.
+
+             READ (99, WAIT='NO', HANDLE=IOHANDLE), A, B
+             ...
+             WAIT (99, WAIT='NO', HANDLE=IOHANDLE), A, B
+
+        For a WAIT statement terminating a READ, this will tell the optimizer
+        precisely which variables are going to be modified by the WAIT
+        statement.  What benefit this provides for WRITE statements is not
+        clear.  Optimizers should be able to take advantage of this form
+        without modification.
+
+        Unfortunately, the I/O list may be awkward to reproduce.  For example,
+        if the I/O list contained function references which might not produce
+        the same values twice.
+
+  (ii)  Declare variables which appear in I/O lists to be VOLATILE.
+
+             INTEGER, VOLATILE :: A(100), B(100)
+             READ (99, WAIT='NO', HANDLE=IOHANDLE), A, B
+             ...
+             WAIT (99, WAIT='NO', HANDLE=IOHANDLE)
+
+        This explicitly tells the optimizer which variables it needs to worry
+        about.  The user can specify the volatile attribute for a variable in
+        those scoping units in which the variable is declared and could be
+        involved in an asynchronous operation which has not been terminated.
+
+        Note that this would inhibit optimization of all references to the
+        variable in the scoping unit in which the variable was declared to be
+        volatile, not just those between asynchronous I/O initiator and
+        terminator statements.
+
+ (iii)  Optimizer has to get it right.
+
+             COMMON A(100)
+
+             CALL SUB
+             WAIT (99, WAIT='NO', HANDLE=IOHANDLE)
+
+        The problem is that a WAIT statement will impact any variable which
+        might have appeared in an asynchronous read - including all module
+        variables and variables in common blocks.  Many implementors have said
+        they will probably react to this by turning off all optimization in the
+        subprogram or main program in which the WAIT statement appears.
+
+
+
+                                                                   X3J3/96-139
+                                                                   Page 2 of 2
+
+  (iv)  I/O initiator must be in the same scoping unit as the I/O terminator.
+
+        This avoids the problem of (iii) in that the processor is able to
+        determine which variables are used asynchronously, possibly marking
+        them internally as volatile, without requiring the user to explicitly
+        declare the fact.  Or some optimizers could behave as if any variable
+        which appeared in an asynchronous read implicitly appeared on the WAIT
+        statement in a manner similar to that specified in (i), without any
+        requirement that the user explicitly do so.
+
+   (v)  A combination of (ii) and (iv).
+
+        If the user has variables which might have appeared in asynchronous
+        read or write statements in different scoping unit from that in which
+        the associated wait statement appears, those variables must be marked
+        volatile.  If a variable is not marked volatile, and it appears in an
+        asynchronous I/O statement, the associated WAIT statement must appear
+        in the same scoping unit.
+
+Straw polls:
+
+    1) Does the committee prefer giving the processor more information to
+       enable optimization in the presence of asynchronous I/O?  That is,
+       is proposal (iii) (give the processor no information) favoured over the
+       other proposals?
+
+    2) If the committee prefers to give a processor information to enable
+       optimization, which of the alternatives is prefered?
+          (i), (ii) or (iv)?
+
+    3) If either (ii) or (iv), would the committee prefer to see a combination
+       approach, or an approach using just one of the two?
+

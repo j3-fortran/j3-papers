@@ -1,0 +1,79 @@
+To:                                                              07-163
+From: Aleksandar Donev
+Subject: CAF examples of STOP and ALL STOP
+Date: 2007 February 07
+References: 07-007, 07-155
+
+I think we should add examples of using STOP and ALL STOP to terminate
+some or all of the images. I propose the examples below as a starting
+point, to be incorporated in Notes as seen needed:
+
+----------------------
+! Example of ALL STOP:
+ALLOCATE(WORK_ARRAY, STAT=STATUS)
+IF(STATUS/=0) ALL STOP ! Terminate all images ASAP
+
+----------------------
+! Example of STOP:
+
+TYPE(IMAGE_TEAM) :: MY_TEAM
+REAL, DIMENSION(100)[*] :: X=0.0
+REAL, DIMENSION(100) :: DX
+
+INTEGER :: ITERATION, LOCAL_STAT, SYNC_STAT
+CHARACTER(LEN=1024) :: MESSAGE
+LOGICAL :: TEAM_CONVERGED=.FALSE.
+
+! Iterative algorithm where a local error may occur on some images
+! The images are partitioned among several teams
+DO ITERATION=1,100
+
+   ! Calculate DX, setting LOCAL_STAT>0 an error occurs
+   IF(LOCAL_STAT>0) STOP ! Initiate normal termination
+     ! This may free non-coarray memory and CPU cycles to the OS
+   ! Note that such a STOP may occur inside a third-party library
+   ! It may also be due to the execution of exit() in a C subprogram
+
+   ! Coordinate with the rest of the team:
+   SYNC TEAM(MY_TEAM, STAT=SYNC_STAT)
+   IF(SYNC_STAT==SYNC_STOPPED_IMAGE) THEN
+      ! We cannot continue without our team
+      ! Write data to a file, including X on other images of the team
+      STOP
+   ELSE IF(SYNC_STAT/=0) THEN
+      WRITE(*,*) "SYNC TEAM ERROR ON ",THIS_IMAGE(), " MSG=",
+      TRIM(MESSAGE)
+      ! Save some debugging/restart local data to a file
+      ! An unrecoverable image/network failure may have occurred
+      ! rendering co-array data unaccessible
+      STOP
+   END IF
+   ! Check for convergence of X and set the flag TEAM_CONVERGED
+   IF(TEAM_CONVERGED) THEN ! All images have the same convergence flag
+      ! Process the final X
+      STOP ! Stop updating X
+   END IF
+   ! Continue with calculating DX locally and update X:
+   X=X+DX
+
+   ! Now coordinate all the teams together:
+   SYNC ALL(STAT=SYNC_STAT, ERRMSG=MESSAGE)
+   IF(SYNC_STAT==SYNC_STOPPED_IMAGE) THEN
+      ! Some other images/teams have stopped already
+      EXIT ! Stop the iteration
+   ELSE IF(SYNC_STAT/=0) THEN
+      WRITE(*,*) "SYNC ALL ERROR ON ",THIS_IMAGE(), " MSG=",
+      TRIM(MESSAGE)
+      ! Save some debugging/restart local data to a file
+      STOP
+   END IF
+   ! Exchange data with the other teams as necessary
+
+END DO
+
+! The team this image belongs to may continue working
+! and continue to use X from all images, or stop altogether
+
+----------------------
+
+# EOF

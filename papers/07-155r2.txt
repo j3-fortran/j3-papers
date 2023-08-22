@@ -1,0 +1,248 @@
+To: J3                                                          07-155r2
+From: Bill Long
+Subject: UTI 5,6: Program termination
+Date: 2007 February 14
+References: J3/07-007, J3/06-338r1
+
+
+Discussion
+
+Unresolved technical issues 5 and 6 (pages 196 and 197) raise issues
+related to the interaction between multiple images and program
+termination.  The semantics for a resolution of these issues are in
+paper J3/06-338r1, passed at meeting 178. This paper provides the
+edits that incorporate those semantics into the standard.
+
+Paper J3/06-338r1 included an unresolved option of hard wiring the
+value of status variable for the case of attempting to synchronize
+with a terminating image, or to make that value a named constant.  The
+edits below implement the named constant choice. In addition, the value
+of the constant was changed to be positive, as the condition really is
+an error.
+
+Edits to J3/07-007
+
+[11:32+] In the list of <action-stmt>s in 2.1 High level syntax, add
+an entry "<<or>> <allstop-stmt>".
+
+[16:6] In the fourth sentence of 2.3.5 END statement, replace "causes
+normal termination of the program" with "initiates normal termination
+of the image".
+
+[16:19] At the end of the first paragraph of 2.3.6 Execution sequence,
+replace "STOP, RETURN" with "STOP, ALL STOP, RETURN".
+
+[17:7-13] Replace the last paragraph of 2.3.6 Execution sequence by:
+
+Termination of execution of an image occurs in three steps:
+initiation, synchronization, and completion. All images synchronize
+execution at the second step so that no image starts the completion
+step until all images have finished the initiation step. Termination
+of execution of an image is either normal termination or error
+termination. An image that initiates normal termination also completes
+normal termination. An image that initiates error termination also
+completes error termination. The synchronization step is executed by
+all images. Termination of execution of the program occurs when all
+images have terminated execution.
+
+Normal termination of execution of an image is initiated if a STOP
+statement or <end-program-stmt> is executed. Normal termination of
+execution of an image also may be initiated during execution of a
+procedure defined by a companion processor (C International Standard
+5.1.2.2.3 and 7.20.4.3). If normal termination of execution is
+initiated within a Fortran program unit and the program incorporates
+procedures defined by a companion processor, the process of execution
+termination shall include the effect of executing the C exit()
+function (C International Standard 7.20.4.3) during the completion
+step.
+
+Error termination of execution of an image is initiated if
+
+ 1) an ALL STOP statement is executed,
+
+ 2) an error condition occurs during execution of an ALLOCATE,
+    DEALLOCATE, SYNC ALL, SYNC TEAM, SYNC IMAGES, SYNC MEMORY, NOTIFY,
+    or QUERY statement without a STAT= specifier,
+
+ 3) an error occurs during execution of an OPEN, CLOSE, READ, WRITE,
+    BACKSPACE, ENDFILE, REWIND, FLUSH, WAIT, or INQUIRE statement
+    without an appropriate IOSTAT=, END=, or ERR= specifier,
+
+ 4) an error occurs during execution of a PRINT statement,
+
+ 5) an error occurs during execution of the EXECUTE_COMMAND_LINE
+    intrinsic subroutine and the optional CMDSTAT argument is
+    not present,
+
+ 6) an error occurs during execution of the FORM_TEAM intrinsic
+    subroutine and the optional STAT argument is not present,
+
+ 7) an error occurs during execution of a collective intrinsic
+    subroutine, or
+
+ 8) an error condition occurs by means outside Fortran.
+
+If an image initiates error termination, all other images that have
+not already initiated termination initiate error termination.
+
+Note 2.5a
+   Within the performance limits of the processor's ability to send
+   signals to other images, the initiation of error termination on
+   other images should be immediate. Error termination is intended
+   to cause all images to stop execution as quickly as possible.
+End Note
+
+Note 2.5b
+   If an image has initiated termination, its data remain available
+   for possible reference or definition by other images that are
+   still executing.
+End Note
+
+
+[32:1-] In the Table "Adjacent keywords where separating blanks are
+optional" at the end of 3.3.1 Free source form, add an entry for "ALL
+STOP".
+
+[74:16-17] In 4.5.6.4 Entities that are not finalized, replace
+"execution of a STOP or END PROGRAM statement" with "execution of a
+STOP, ALL STOP, or END PROGRAM statement".
+
+[129:3] In 6.3.1 ALLOCATE statement, penultimate paragraph, replace
+"execution of the program is terminated" with "error termination is
+initiated".
+
+[130:27] In 6.3.3 DEALLOCATE statement, penultimate paragraph, replace
+"execution of the program is terminated" with "error termination is
+initiated".
+
+[132:19] In 6.3.4 STAT= specifier, replace the third paragraph which
+begins "If an error condition occurs..." with:
+
+"If an ALLOCATE or DEALLOCATE statement with a co-array
+<allocate-object> is executed when one or more images has initiated
+termination of execution, the <stat-variable> becomes defined with the
+processor-dependent positive integer value of the constant
+STAT_STOPPED_IMAGE from the ISO_FORTRAN_ENV intrinsic module
+(13.8.2). If any other error condition occurs during execution of the
+ALLOCATE or DEALLOCATE statement, the <stat-variable> becomes defined
+with a processor-dependent positive integer value different from
+STAT_STOPPED_IMAGE. In either case, each <allocate-object> has a
+processor-dependent status:"
+
+---Begin edits for subclause 8.4 STOP statement
+
+[196:7] Change the subclause heading to "STOP and ALL STOP statements"
+
+[196:8+] Add new syntax rule after the rule for <stop-stmt>:
+
+R855a  <allstop-stmt>  is  ALL STOP [<stop-code>]
+
+[196:13-17] Replace the first paragraph with:
+
+"Execution of a <<STOP statement>> initiates normal termination of
+execution. Execution of an <<ALL STOP statement>> initiates error
+termination of execution."
+
+[197:1-] Delete Note 8.27, which begins "If all images execute a SYNC
+ALL...".
+
+[197:1] Replace "STOP statement" with "STOP or ALL STOP statement".
+
+[197:5+] In Note 8.28 replace "the stop codes" with "any stop codes".
+[END PROGRAM initiates normal termination but does not involve a
+stop code.]
+
+---End of edits for subclause 8.4
+
+[198:8] In the list of 8.5.1 Image control statements, in the
+penultimate entry, replace "END PROGRAM" with "END PROGRAM or STOP".
+
+[206:4] In 8.5.7 STAT= and ERRMSG= specifiers in image execution
+control statements, after the first sentence of the first paragraph,
+add a new sentence: "If execution of one of these statements involves
+synchronization with an image that has initiated termination, the
+variable becomes defined with the value of the constant
+STAT_STOPPED_IMAGE (13.8.2.6) in the ISO_FORTRAN_ENV intrinsic module,
+and the effect of executing the statement is otherwise the same as
+that of executing the SYNC MEMORY statement."
+
+[206:4-5] In 8.5.7 STAT= and ERRMSG= specifiers in image execution
+control statements, in the second sentence of the first paragraph,
+replace "If an error occurs" with "If any other error occurs", and at
+the end of the sentence add "that is different from the value of
+STAT_STOPPED_IMAGE."
+
+[206:7] In 8.5.7 STAT= and ERRMSG= specifiers in image execution
+control statements, in the last sentence of the first paragraph,
+replace "execution of all images is terminated" with "error
+termination of execution is initiated".
+
+[206:11+] In Note 8.46 at the end of 8.5.7 STAT= and ERRMSG=
+specifiers in image execution control statements, in the first
+sentence replace "Which errors, if any" with "Except for detection of
+images that have initiated termination, which errors". In the last
+sentence of the same Note, replace "the failure of an image" with "a
+synchronization error".
+
+
+[222:17] In 9.4.6 CLOSE statement, at the beginning of the 6th
+paragraph, replace "At normal termination of execution" with "During
+the completion step of normal termination of execution".
+
+[222:19] In 9.4.6 CLOSE statement, at the end of the 6th paragraph,
+add "during the completion step of termination of execution".
+
+[255:5] In 9.10.1 Error conditions and the ERR= specifier, second
+paragraph, first sentence, replace "execution of the program is
+terminated" with "error termination is initiated".
+
+[255:23] In 9.10.2 Error conditions and the END= specifier, first
+paragraph, first sentence, replace "execution of the program is
+terminated" with "error termination is initiated".
+
+[255:42] In 9.10.3 Error conditions and the EOR= specifier, first
+paragraph, first sentence, replace "execution of the program is
+terminated" with "error termination is initiated".
+
+[256:23+] Add a new item to the list in 9.10.4 IOSTAT= specifier:
+
+(2a) the processor-dependent positive integer value of the constant
+    STAT_STOPPED_IMAGE (13.8.2.16) if the operation involved a team
+    with more than one image and at least one of the images of the
+    team has initiated termination of execution.
+
+[256:25-26] In item (3) of the list in 9.10.4 IOSTAT= specifier,
+replace "different from IOSTAT_INQUIRE_INTERNAL_UNIT" with "different
+from IOSTAT_INQUIRE_INTERNAL_UNIT and SYNC_STOPPED_IMAGE".
+
+[379:11] In the last sentence of 13.7.63
+EXECUTE_COMMAND_LINE... replace "execution of the program is
+terminated" with "error termination of execution of the image is
+initiated."
+
+[382:13-14] In the description of the STAT argument to the 13.7.69
+FORM_TEAM intrinsic subroutine, replace the final sentence with "If no
+error occurs it is assigned the value zero. If any of the images of
+the team has initiated termination of execution it is assigned the
+value of the constant STAT_STOPPED_IMAGE (13.8.2.16) in the
+ISO_FORTRAN_ENV intrinsic module. If any other error occurs, it is
+assigned a processor-dependent positive value different from
+STAT_STOPPED_IMAGE."
+
+[382:18] In the last sentence before the Example in 13.7.69 FORM_TEAM,
+replace "error termination occurs" with "error termination of
+execution is initiated".
+
+[438:35+] Add a new subsubclause to 13.8.2 The ISO_FORTRAN_ENV
+intrinsic module, following the entry for REAL32:
+
+13.8.2.16 STAT_STOPPED_IMAGE
+
+The value of the default integer scalar constant STAT_STOPPED_IMAGE is
+assigned to the variable specified in a STAT= specifier (6.3.4, 8.5.7)
+or an IOSTAT= specifier (9.10.4), or to the STAT argument of the
+FORM_TEAM intrinsic subroutine (13.7.69), if execution of the statement
+with that specifier or argument requires synchronization with an image
+that has initiated termination of execution. This value shall be
+positive and different from the value of IOSTAT_INQUIRE_INTERNAL_UNIT.
+

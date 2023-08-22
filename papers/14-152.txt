@@ -1,0 +1,201 @@
+To:      J3                                                 J3/14-152
+From:    John Reid
+Subject: A.2.1 rewrite
+Date: 2014 May 18
+References: N2007, N2013
+
+Discussion
+----------
+In N2013, I pointed out that A.2.1 example has bugs and said that I
+think the message would be clearer if this example were replaced by
+an example that is not tolerant to failed images, followed by a
+modification that is. Here is a suggested replacement.
+
+In two places, the statement
+       CALL EVENT_QUERY(submit[i],count,STAT=status)
+solely to test whether image i has failed. If a more direct test
+becomes available, that should be used.
+
+Edits to N2007:
+---------------
+
+[43:6-44:34] Replace A.2.1 by
+
+
+A.2.1 EVENT_QUERY example
+
+The following example illustrates the use of events via a program in
+which image 1 acts as master and shares out work items to the other
+images. Only one work item at a time can be active on a worker image,
+and each deals with the result (e.g. via I/O) without directly feeding
+data back to the master image.
+
+Because the work items are not expected to be balanced, the master
+keeps cycling through all the images to find one that is waiting for
+work.
+
+An event is posted by each worker to indicate that it has completed
+its work item. Since the corresponding variables are needed only on
+the master, we place them in an allocatable array component of a
+coarray. An event on each worker is needed for the master to post the
+fact that it has made a work item available for it.
+
+PROGRAM work_share
+   USE, INTRINSIC :: iso_fortran_env
+   USE :: mod_work, ONLY: & ! Module that creates work items
+      work, & ! Type for holding a work item
+      create_work_item, &  ! Function that creates work item
+      process_item, & ! Function that processes an item
+      work_done ! Logical function that returns true if all work done
+   TYPE(event_type) :: submit[*] ! Whether work ready for a worker
+   TYPE :: asymmetric_event
+      TYPE(event_type), ALLOCATABLE :: event(:)
+   END TYPE
+   TYPE(asymmetric_event) :: free[*] ! Whether worker is free
+   TYPE(work) :: work_item[*] ! Holds all the data for a work item
+   INTEGER :: count, i, nbusy[*]
+
+    IF (this_image() == 1) THEN
+      ! Get started
+      ALLOCATE(free%event(2:num_images()))
+      nbusy = 0 ! This holds the number of workers working
+      DO i = 2, num_images() ! Start the workers working
+         IF (work_done()) EXIT
+         nbusy = nbusy + 1
+         work_item[i] = create_work_item()
+         EVENT POST (submit[i])
+      END DO
+      ! Main work distribution loop
+      master : DO
+         image : DO i = 2, num_images()
+            CALL EVENT_QUERY(free%event(i), count)
+            IF (count == 0) CYCLE ! Worker is not free
+            EVENT WAIT (free%event(i));
+            nbusy = nbusy - 1
+            IF (work_done()) CYCLE
+            nbusy = nbusy + 1
+            work_item[i] = create_work_item()
+            EVENT POST (submit[i])
+         END DO image
+         IF ( nbusy==0 ) THEN ! All done. Exit on all images.
+            DO i = 2, num_images()
+               EVENT POST (submit[i])
+            END DO
+            EXIT master
+         END IF
+      END DO master
+   ELSE
+      ! Work processing loop
+      worker : DO
+         EVENT WAIT (submit)
+         IF (nbusy[1] == 0) EXIT
+         CALL process_item(work_item)
+         EVENT POST (free[1]%event(this_image()))
+      END DO worker
+   END IF
+END PROGRAM work_share
+
+
+A.2.1a EVENT_QUERY example that tolerates image failure
+
+This example is an adaptation of the example of A.2.1 to make it able
+to execute in the presence of the failure of one or more of the worker
+images. The function create_work_item now accepts an integer argument
+to indicate which work item is required. It is assumed that the work
+items are indexed 1, 2, ... . It is also assumed that if an image fails
+while processing a work item, that work item can subsequently be
+processed by another image.
+
+PROGRAM work_share
+   USE, INTRINSIC :: iso_fortran_env
+   USE :: mod_work, ONLY: & ! Module that creates work items
+      work, & ! Type for holding a work item
+      create_work_item, &  ! Function that creates work item
+      process_item, & ! Function that processes an item
+      work_done ! Logical function that returns true if all work done
+   TYPE(event_type) :: submit[*] ! Whether work ready for a worker
+   TYPE :: asymmetric_event
+      TYPE(event_type), ALLOCATABLE :: event(:)
+   END TYPE
+   TYPE(asymmetric_event) :: free[*] ! Whether worker is free
+   TYPE(work) :: work_item[*] ! Holds all the data for a work item
+   INTEGER :: count, i, k, kk, nbusy[*], np, status
+   INTEGER, ALLOCATABLE :: working(:) ! Items being worked on
+   INTEGER, ALLOCATABLE :: pending(:) ! Items pending after image failure
+
+    IF (this_image() == 1) THEN
+      ! Get started
+      ALLOCATE(free%event(2:num_images()))
+      ALLOCATE(working(2:num_images()), pending(num_images()-1))
+      nbusy = 0  ! This holds the number of workers working
+      k = 1 ! Index of next work item
+      np = 0 ! Number of work items in array pending
+      DO i = 2, num_images() ! Start the workers working
+         IF (work_done()) EXIT
+         work_item[i] = create_work_item(k)
+         working(i) = k
+         k = k + 1
+         nbusy = nbusy + 1
+         EVENT POST (submit[i], STAT=status)
+         IF (status==STAT_FAILED_IMAGE) THEN
+            working(i) = 0
+            k = k - 1
+            nbusy = nbusy - 1
+         END IF
+      END DO
+      ! Main work distribution loop
+      master : DO
+         image : DO i = 2, num_images()
+            CALL EVENT_QUERY(submit[i],count,STAT=status)
+            IF (status==STAT_FAILED_IMAGE) THEN ! Image i has failed
+               IF (working(i)>0) THEN ! It failed while working
+                  np = np + 1
+                  pending(np) = working(i)
+                  working(i) = 0
+               END IF
+               CYCLE image
+            END IF
+            CALL EVENT_QUERY(free%event(i), count)
+            IF (count == 0) CYCLE image ! Worker is not free
+            EVENT WAIT (free%event(i))
+            nbusy = nbusy - 1
+            IF (np>0) THEN
+               kk = pending(np)
+               np = np - 1
+            ELSE
+               IF (work_done()) CYCLE image
+               kk = k
+               k = k + 1
+            END IF
+            nbusy = nbusy + 1
+            working(i) = kk
+            CALL EVENT_QUERY(submit[i],count,STAT=status)
+            IF (status/=STAT_FAILED_IMAGE) &
+                      work_item[i] = create_work_item(kk)
+            EVENT POST (submit[i],STAT=status)
+            ! If image i has failed, this will not hang and the failure
+            ! will be handled on the next iteration of the loop
+         END DO image
+         IF ( nbusy==0 ) THEN ! All done. Exit on all images.
+            DO i = 2, num_images()
+               EVENT POST (submit[i],STAT=status)
+               IF (status==STAT_FAILED_IMAGE) CYCLE
+            END DO
+            EXIT master
+         END IF
+      END DO master
+   ELSE
+      ! Work processing loop
+      worker : DO
+         EVENT WAIT (submit)
+         IF (nbusy[1] == 0) EXIT worker
+         CALL process_item(work_item)
+         EVENT POST (free[1]%event(this_image()))
+      END DO worker
+   END IF
+END PROGRAM work_share
+
+
+
+
+

@@ -1,0 +1,160 @@
+                                                         07-194r1
+To: J3
+From: Malcolm Cohen
+Subject: Questions/issues concerning macros
+Date: 2007 May 09
+
+0. Introduction
+
+This paper responds to 07-194.
+
+>1. Nesting of macros (i.e., macros defining macros).
+>
+>In 06-007r1 there was an ambiguity in parsing nested macros since
+>the internal DEFINE MACRO could either be a macro-body-stmt or a
+>macro-definition. The editor added C316 ([37:5]) to try to correct
+>this. We need to add an additional constraint for "END MACRO", so that
+>it cannot be a macro-body-stmt either. Otherwise it is ambiguous to
+>parse the internal END MACRO.
+
+Subgroup agreed to clarify this.
+
+>2. Note: This was also proposed by Dick at meeting 179 and accepted,
+>see paper 07-154r1 (I like mine better :-).
+>My example could be added to the annex if desired?
+
+Subgroup agreed that this should be added to c03, which after m179 no
+longer had any example which used MACRO IF.  Furthermore, the description
+of the example in Note 3.15 is no longer correct after m179.
+
+>3. Note: I defer this issue until WG5 meeting.
+
+Subgroup believed this statement and therefore did not consider this
+section of 07-193.
+
+>4. Concerning C306 and C307 on page 35: Is it needed to give a similar
+>example about two macro-local-variables having the same name
+
+No.
+
+>or is this already covered by rules on name conflicts?
+
+Yes.  Macro local variables have the scope of the macro definition.
+
+>5. It seems we do not allow a token concatenation such as X%%Y where Y
+>is an optional macro argument, in the case when Y is not present. This
+>seems like a useful thing and should be allowed.
+
+Subgroup believes that PRESENT should be used for this kind of
+arbitrary processing of optional macro arguments.
+
+>6. Concerning C329 and C330 on page 38. We do not seem clearly spell
+>out how macro association happens.
+
+This has been addressed by 07-185r1.
+
+>7. When is a nested macro definition parsed?
+
+This is explained clearly under the rules for macro expansion.
+
+>It is not clear to me at what point the bnf for macro-body-construct
+>is used: At the time the outer macro is EXPANDed, or when the outer
+>macro is parsed itself. Or maybe both? Some examples may clarify
+>my confusion.
+>
+>It is clear to me the following was intended to work:
+>
+>Example A:
+>
+>--------
+>DEFINE MACRO M(something)
+>   DEFINE something X()
+>      ...
+>   END something
+>END MACRO
+>
+>EXPAND M(MACRO)
+>EXPAND X()
+
+Subgroup agrees that this will do the obvious thing.
+
+>Example B:
+>
+>--------
+>DEFINE MACRO M(something)
+>   DEFINE MACRO X()
+>     ...
+>   END something
+>END MACRO
+>
+>EXPAND M(MACRO)
+>EXPAND X()
+
+This does not satisfy the BNF rules - the compiler will get to the end
+of the file looking for the closing END MACRO statement.
+
+>Example C:
+>
+>--------
+>DEFINE MACRO M(Y)
+>   DEFINE MACRO M_1 Y
+
+This line is a syntax error, as it fails the constraint for a
+<macro-body-stmt> and does not satisfy the BNF rule for a
+<define-macro-stmt>.
+
+>Are examples B and C legal as 07-007 stands? If not, was this intended
+>or just a by-product of the way the bnf is constructed?
+
+It was deliberate.
+
+>As the final and most perverse example, consider a macro that defines
+>a macro with a variable number of arguments, where the number of
+>arguments is an argument of the top-level macro. What are the answers
+>to the above questions for this example?
+>
+>--------
+>DEFINE MACRO :: assign_shortcut(rank)
+>   MACRO INTEGER :: i
+>   DEFINE MACRO assign_%%rank(array,value,index1&&
+
+This line is a syntax error, for the same reason as example C.
+
+8. Edits to 07-007r1
+
+[37:11] After "DEFINE" insert "or END,".
+{Clarify nested macro definition parsing.}
+
+[42:Note 3.15]
+Replace "test them" with "the kind value arrays from ISO_FORTRAN_ENV".
+{Repair description of what the example shows.}
+
+[43:end of clause]
+Append new example
+"This example demonstrates the use of MACRO IF to generate an interface
+ for subroutines acting on single, double, and (if it exists) quad
+ precision real"
+
+ DEFINE MACRO my_generic_interface(typename,array_of_kinds)
+   MACRO INTEGER :: i, kind
+   INTERFACE my_generic_procedure
+      MACRO DO i=1, SIZE(array_of_kinds)
+         ! Necessary in order to evaluate kind to an integer:
+         MACRO kind = array_of_kinds(i)
+         MACRO IF (kind>0) THEN
+            SUBROUTINE MySpecificProcedure_%%kind(X)
+               typename(kind), INTENT(IN) :: X
+            END SUBROUTINE
+         MACRO END IF
+      MACRO END DO
+   END INTERFACE
+ END MACRO my_generic_interface
+
+ Use of the macro:
+
+ INTEGER,PARAMETER :: rkinds(3) = [KIND(0.0),KIND(0d0), &
+                                   SELECTED_REAL_KIND(P=PRECISION(0d0)*2)]
+
+ EXPAND my_generic_interface(REAL,rkinds)"
+
+===END===

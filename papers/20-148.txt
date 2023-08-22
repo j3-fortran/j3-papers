@@ -1,0 +1,138 @@
+To: J3                                                     J3/20-148
+From: Tom Clune
+Subject: Response and edits to UTI-013 & UTI-014 TYPEOF, CLASSOF issues
+Date: 2020-October-09
+
+Reference: 20-007
+
+
+Introduction:
+=============
+
+The newly introduced type specifiers, TYPEOF(data-ref) and
+CLASSOF(data-ref), allow some problematic/contradictory declarations
+for certain data-refs.
+
+Problem 1: Type/kind parameters for a data-ref declared as OPTIONAL.
+----------
+
+The current draft allows this case:
+CHARACTER(*),OPTIONAL :: x
+TYPEOF(x) :: y ! Allowed (but should not be)
+
+Two possible fixes were suggested when UTI-013 was created.  The first
+is to require data-ref to be a restricted expression.  The second was
+to disallow optional dummy variables.
+
+This paper argues that both of the suggested changes are too strict.
+Perfectly sensible use cases involving optional dummy arguments can be
+readily constructed.
+
+
+Problem 2: TYPEOF with TYPE(*) data ref
+---------
+
+UTI-014 notes that this case is disallowed by C711 and C714, but asks
+if we wish to permit it.  The answer in this paper is an unqualified
+"no".
+
+Problem 3: CLASSOF  with CLASS(*) data ref
+----------
+
+UTI-014 correctly points out that this case is not disallowed by
+existing constraints and asks if we want it to be allowed.  IT notes
+that the normative text for CLASSOF is in terms of declared type which
+is contradictory for the CLASS(*) case:
+
+[56:38-39]
+"TYPEOF and CLASSOF specify the same type and type parameter values as
+the declared type and type parameter values of data-ref , except that
+they specify that a type parameter is deferred if it is deferred in
+data-ref."
+
+But [57:19-21] has
+"An entity declared with the CLASS(*) specifier is an unlimited
+polymorphic entity. It is not declared to have a type, and is not
+considered to have the same declared type as any other entity,
+including another unlimited polymorphic entity."
+
+The answer in this paper is that this case should be allowed and edits
+are provided to eliminate the contradictory language.  The rationale
+is that there are seemingly reasonable use cases involving CLASS(*).
+E.g. imagine an include file that provides a "template" for a
+container of some sort:
+
+"
+...
+TYPE ELEMENT
+   CLASSOF(y), ALLOCATABLE :: ITEM
+END TYPE
+TYPE LIST
+   TYPE(ELEMENT), ALLOCATABLE :: ITEMS(:)
+END TYPE
+...
+"
+
+This include file could readily be used to define a LIST of integers:
+
+...
+TYPE(INTEGER) :: y
+INCLUDE 'template.inc'
+...
+
+or reals:
+
+...
+TYPE(REAL) :: y
+INCLUDE 'template.inc'
+...
+
+or ulimited polymorphic entities
+
+...
+CLASS(*), ALLOCATABLE :: y
+INCLUDE 'template.inc'
+...
+
+
+
+Edits:
+======
+
+056:35+ 7.3.2.1 Type specifier syntax: insert a new constraint:
+
+"
+C713+ If data-ref in a TYPEOF or CLASSOF specifier has the OPTIONAL
+attribute, then it shall not have deferred or assumed type
+parameters.
+"
+
+{Repairs UTI-013}
+
+[56:38 7.3.2.1 Type specifier syntax:
+
+Before "TYPEOF", insert "If data-ref is not unlimited polymorphic, ".
+
+[56:39 7.3.2.1 Type specifier syntax: insert new sentence:
+
+"
+If data-ref is CLASS(*), CLASSOF(data-ref) is equivalent to a
+CLASS(*) specifier.
+"
+
+Such that the resulting paragraph reads:
+
+"
+If data-ref is not unlimited polymorphic, TYPEOF and CLASSOF specify
+the same type and type parameter values as the declared type and type
+para meter values of data-ref, except that they specify that a type
+parameter is deferred if it is deferred in data-ref.  If data-ref is
+CLASS(*),  CLASSOF(data-ref) is equivalent to CLASS(*).
+"
+
+{Repairs UTI-014}
+
+
+=== END ===
+
+

@@ -1,0 +1,120 @@
+                                                            J3/10-175
+To: J3
+From: Malcolm Cohen
+Subject: DO CONCURRENT (Interp=3).
+Date: 2010 June 02
+
+----------------------------------------------------------------------
+
+NUMBER:
+TITLE: DO CONCURRENT and ALLOCATABLE
+KEYWORDS: DO CONCURRENT, ALLOCATABLE
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following example:
+
+  REAL,POINTER :: x(:)
+  REAL y(4)
+  ...
+  DO CONCURRENT (i=1:4)
+    IF (IAND(i,1)==1) ALLOCATE(x(i),STAT=j)
+    ...
+    y(i) = SUM(x)
+    IF (IAND(i,1)==1) DEALLOCATE(x,STAT=j)
+  END DO
+
+This is clearly not conforming, as it violates the requirement
+  "A pointer that is referenced in an iteration either shall be
+   previously pointer associated during that iteration, or shall not
+   have its pointer association changed during any iteration."
+
+However, consider example 2, identical except for replacing the first
+statement with:
+  REAL,ALLOCATABLE :: x(:)
+
+This satisfies the first restriction for allocatables - they if
+allocated by more than one iteration, it shall be subsequently
+deallocated by that iteration.  The second restriction for
+allocatables - that it not be referenced by a different iteration -
+only applies to allocatables allocated/deallocated by a single
+iteration, not by multiple iterations.
+
+Together with use of STAT= and a previously allocated array, allows
+cross-iteration dependencies.
+
+Q1. Was this intended to be standard-conforming?
+
+Consider example 3
+  REAL,ALLOCATABLE :: x(:)
+  ALLOCATE(x(10))
+  DO CONCURRENT(i=1:2)
+    IF (i==1) THEN
+      DEALLOCATE(x)
+    ELSE IF (ALLOCATED(x)) THEN
+      PRINT *,'Iteration 2 happened first'
+    ELSE
+      PRINT *,'Iteration 1 happened first'
+    END IF
+  END DO
+
+This does not fall foul of the restrictions because using ALLOCATED
+does not "reference" x.
+
+Q2. Was this intended to be standard-conforming?
+
+Consider example 4
+  REAL,ALLOCATABLE :: x(:)
+  ...
+  ALLOCATE(x(999))
+  DO CONCURRENT (i=1:3)
+    IF (i>1) ALLOCATE(x(i))
+    X = 3
+    DEALLOCATE(x)
+  END DO
+
+Again, the reference and DEALLOCATE in an iteration that does not
+ALLOCATE it is permitted because it is ALLOCATEd in more than one
+iteration.  This would not have been permitted if x had been a
+pointer.
+
+Q3. Was this intended to be standard-conforming?
+
+The second allocatable restriction says
+  "An allocatable object that is ... deallocated in only one iteration
+   shall not be deallocated ... in a different iteration."
+
+This does not achieve anything, since the "deallocated ... in a
+different iteration" means that it is deallocated in more than one
+iteration in the first place.
+
+Q4. What is the meaning of this restriction?
+
+ANSWER:
+
+No, the examples were not intended to be standard-conforming.
+The restriction is faulty; an edit is supplied to correct it.
+
+EDITS to 10-007:
+
+[178:13-14] In 8.1.6.7p1, ante-penultimate bullet point,
+  Replace the sentence "An object ... iteration".
+  With
+    "An allocatable object that is referenced, defined, deallocated,
+     has its allocation status, dynamic type, or a deferred type
+     parameter value inquired about, in any iteration, either shall be
+     previously allocated in that iteration or shall not be allocated
+     or deallocated in any other iteration."
+
+ALTERNATIVE EDIT:
+
+Should we do something like "p-reference" (or extend p-reference to
+cover allocatables)?
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 10-175   m192 Submitted
+
+----------------------------------------------------------------------

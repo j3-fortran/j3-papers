@@ -1,0 +1,162 @@
+To:      J3                                    13-301
+From:    Reinhold Bader
+Subject: Split phase barrier
+Date:    August 11, 2013
+References: N1971, N1983
+
+
+Discussion:
+~~~~~~~~~~~
+
+Using EVENT_TYPE objects as defined in N1983, it is possible to write a 
+split-phase barrier as follows 
+
+  type(event_type) :: barrier[*]
+
+  do i=1, num_images()
+    event post( barrier[i] )
+  end do	
+  : ! do work that does not violate segment rules
+  do i=1, num_images()
+    event wait( barrier )
+  end do
+
+This is rather cumbersome as well as inefficient; since modification of
+EVENT_TYPE objects is only possible via EVENT POST and EVENT WAIT, there
+is however presently no alternative to the above. Therefore, addition of
+a collective facility
+
+  event postall ( barrier ) 
+  : ! do work that does not violate segment rules
+  event waitall ( barrier ) 
+
+is suggested that would allow an implementation to execute the above 
+much more efficiently. Arguably, one could consider this to be within 
+the spirit of E3 of N1981; however the facility only makes sense if the 
+posted event count can exceed one. The edits below propose the feature's 
+specification as well as an example for the Annex.
+
+Edits to N1983:
+~~~~~~~~~~~~~~~
+
+[14:7+] Add two new sections
+
+"6.5 EVENT POSTALL statement
+
+The EVENT POSTALL statement provides a way to post an event to all 
+images of the current team. It is an image control statement.
+
+R604  <event-postall-stmt>  is  EVENT POSTALL( <event-variable> [,
+                                             <sync-stat-list>] )
+C606  (R604) An <event-variable> in an <event-postall-stmt> shall
+      not be coindexed.
+
+An EVENT POSTALL statement shall be executed on all images of the 
+current team. The <event-variable> in an EVENT POSTALL statement 
+shall be the same coarray on every image. It shall not be modified
+by executing an EVENT POST, EVENT WAIT or another EVENT POSTALL 
+statement on it in segments that are unordered with respect to any
+segment starting from the one preceding the EVENT POSTALL statement, 
+up to the one preceding a subsequent EVENT WAITALL statement 
+executed on the same event variable. When the EVENT POSTALL 
+statement is executed, the event count of its <event-variable> 
+shall be zero.
+
+NOTE 6.3
+For efficiency reasons, it is left to the implementation how event 
+counts are incremented on each image when executing EVENT POSTALL. 
+
+6.6 EVENT WAITALL statement
+
+Execution of an EVENT WAITALL statement performs a synchronization 
+of all images of the current team. It is an image control statement.
+
+R605  <event-waitall-stmt>  is  EVENT WAITALL( <event-variable> [,
+                                             <sync-stat-list>] )
+C607  (R605) An <event-variable> in an <event-waitall-stmt> shall
+      not be coindexed.
+
+An EVENT WAITALL statement shall be executed on all images of the 
+current team. Execution on an image, M, of the segment following 
+the EVENT WAITALL statement is delayed until each other image has 
+executed a preceding EVENT POSTALL statement on the same 
+<event-variable> as many times as has image M. The segments that 
+executed before that EVENT POSTALL statement on an image precede 
+the segments that execute after the EVENT WAITALL statement on 
+another image. After execution of the statement, the event count 
+of its <event-variable> is zero."
+
+
+[34:48+] In Annex A.2 Clause 6 notes, add a third example:
+
+"Example 3: Using a split phase barrier.
+
+The following procedure sketch uses a one-dimensional domain 
+decomposition to calculate iterative stencil updates for a 
+rank-2 problem.
+
+SUBROUTINE parallel_stencil_updates(u, u_old, iters, ...)
+  IMPLICIT NONE
+  INTEGER :: it, iters, me, ...
+  REAL :: u(:,:), u_old(:,:)[*]  ! have same shape
+  TYPE(event_type), SAVE :: barrier[*]
+
+  me = THIS_IMAGE()
+  DO it=1,iters
+    EVENT POSTALL ( barrier )
+! usual sequential part - local accesses only
+    u(:,<interior>) = ...     ! stencil update that eventually 
+                              ! reads all of u_old
+    EVENT WAITALL ( barrier ) ! following read against write on u_old
+                              ! boundaries in last iteration
+! boundary region requires data exchange between images
+    IF ( me > 1 ) THEN
+       u(:,<left-boundary>) =  ...
+                              ! stencil update that reads
+                              ! u_old(:,<right-boundary>)[me-1]
+    ELSE IF ( me < NUM_IMAGES() ) THEN
+       u(:,<right-boundary>) =  ...
+                              ! stencil update that reads
+                              ! u_old(:,<left-boundary>)[me+1]
+    END IF  
+
+    EVENT POSTALL ( barrier )
+!  copy back data for next iteration - local accesses only   
+!  (cannot be moved further up because parts of u_old that are
+!   defined here are referenced above)             
+    u_old(:,<interior>) = u(:,<interior>)
+
+    EVENT WAITALL ( barrier ) ! following write against read
+                              ! on u_old boundaries above
+
+    u_old(:,<all-boundaries>) = u(:,<all-boundaries>)
+  END DO  
+END SUBROUTINE
+
+For correct execution, SYNC ALL statements could be used where now 
+EVENT WAITALL statements are, provided the EVENT POSTALL statements are 
+also omitted. Because the interior copy-backs and stencil updates do 
+not generate race conditions, splitting the barriers is a possible 
+optimization measure. 
+Improved performance compared to SYNC ALL can be expected if, for 
+example, there exists a load imbalance in the code enclosed between 
+POSTALL and WAITALL: An image that has less to do in that part of the 
+code may be able to continue even though the others are still busy. 
+However, an amortized performance gain can usually only be achieved 
+if subsequent code sections have an inverse load imbalance; in this 
+example, this might be the case if images with a weaker network link
+to a neighbour are assigned smaller portions of the working arrays
+(this would complicate subscripting compared to the above sketch).
+Since in this example images typically need to perform data
+exchanges with left and right neighbours, using the split 
+phase barrier is favored over the use of EVENT POST/WAIT."
+
+
+
+
+
+
+
+
+                               
+                                  

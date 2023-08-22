@@ -1,0 +1,136 @@
+
+                                                             X3J3/96-083
+
+Date:    May 6, 1996
+To:      X3J3
+From:    David R. Levine
+Subject: VFE - A Simplifying Proposal
+
+
+I'd like to set forth a specific modification to the VFE proposal.
+
+Summary of proposal:
+  	Restrict VFE's to scalar, non-pointer default integer variables.
+Summary of Rationale:
+	  Provides essentially all necessary functionality at greatly
+	  reduced cost, complexity, and confusion.
+
+PROPOSAL:
+
+Changes to 96-071 are shown following each paragraph.
+
+>  2.   Technical Specification
+>  
+>  A variable format expression is a scalar numeric expression enclosed inside
+>  angle brackets, <>.  A VFE can be used in a format edit descriptor any place
+>  that an integer can.  During program execution, the VFE is re-evaluated each
+>  time it is encountered in the normal format scan.
+
+Change to read:
+
+A variable format expression is a scalar, non-pointer integer variable
+of default integer kind enclosed inside angle brackets, <>.  A VFE can
+be used in a format edit descriptor any place that an integer can.
+During program execution, the current value of the VFE is used each time
+it is encountered in the normal formt.  The VFE variable may appear as
+an input-item.
+--
+>  If the VFE is not of integer data type, it is converted to integer type before
+>  it is used, according to the usual rules for data type conversion.  A VFE may
+>  be of any KIND type that is defined on the processor.
+
+delete
+--
+>  The VFE can be any valid scalar numeric expression.  It can include
+>  dummy arguments, function references, and named constants.  It shall not
+>  include any array valued data item or any variable with the POINTER
+>  attribute.  Any function referenced in a VFE shall not execute any I/O
+>  operation.
+
+delete
+--
+>  The value of a VFE must obey the restrictions on magnitude applying to
+>  its use in the format, or an error occurs.
+
+retain
+--
+>  VFEs shall not be used in a character format specification (10.1.2).
+
+retain
+--
+>  VFEs are evaluated each time they are encountered in the scan of the
+>  format.  If the value of the variable used in the expression changes
+>  during the execution of the I/O statement, the new value is used the next
+>  time the format item containing the expression is processed.
+
+(retain)
+--
+((Note that the example does not need any modification))
+
+>  Example
+>  Consider the following statements:
+>       INTEGER   ::   IWIDTH, IDIGITS, IEXPONENT, NF, NE
+>       REAL, ALLOCATABLE     :: FREAL (:), EREAL(:)
+>  !    Intervening statements defining the values of NF and NE
+>       ALLOCATE  FREAL (NF)
+>       ALLOCATE  EREAL (NE)
+>  !    Intervening statements defining the elements of FREAL, EREAL,
+>  IWIDTH, IDIGITS,
+>  !      and IEXPONENT.
+>       WRITE (*, 601)  FREAL, EREAL
+>  601  FORMAT (5X, <NF>F<IWIDTH>.<IDIGITS>, &
+>       & 5X, <NE>E<IWIDTH+6>.<IDIGITS>E<IEXPONENT>)
+>  
+---------
+
+RATIONALE:
+
+The proposed changes provide essentially full functionality, and do not
+include any terms or concepts new to Fortran.
+Should any of these restrictions prove a hardship to real users, the
+restriction can be lifted in a subsequent version of the standard
+without invalidation of any existing programs.
+
+ - restriction to integer: the values have to be integral anyway.
+   There's little or no reason for a REAL or other value to appear in
+   this kind of computation.
+
+ - restriction to a variable (rather than a full expression):
+  -- lexical complexity (and likely ambiguity) related to "<" and ">"
+	delimiters interacting with "<" and ">" operators;
+  -- implementation complexity and user confusion related to
+	re-evaluation of complicated expressions, particulary when
+	function calls are involved.  (There's no simple Fortran way of
+	excluding functions from an expression.)
+  -- added utility is very small;  main expected usage is as per example.
+
+ - restriction to simple variable:  a less confusing rule, no real loss
+   of functionality.  (If we allow array elements, then we need to
+   restrict the subscripting;  that makes the rule more complex.) 
+
+ - restriction to default kind:  no particular loss of functionality,
+   easier implementation.  (non-essential restriction)
+
+Implementation model:
+  The implementation ought to be able to latch onto a particular piece
+of storage, much as is done when a scalar value is passed into a
+procedure.  Then we avoid all kinds of complexity in providing "thunks"
+or other re-evaluation mechanisms, save the user from confusion about
+exactly how much is evaluated when and why, and keep the overall
+language slimmer and cleaner.
+  Corbett reports promising developments in enhancing the amount of
+format processing that can be done at compile time, which tends to
+obviate some of these concerns.  Note, however, that the complexity
+remains for the language definition.  How can we express a constraint of
+the form that "VFE's with expressions cannot appear in a format whose
+complexity exceeds that of the processor's analytic capability"?  Yet,
+without that restriction, one will need BOTH Corbett's optimized scheme
+(for 99% of the cases) and the "thunk" mechanism (for the other 1%,
+which will show up in the test suites).
+
+-------
+
+  David Levine
+  HP Languages - Chelmsford
+ 	drlevine@apollo.hp.com     (508) 436-4015
+

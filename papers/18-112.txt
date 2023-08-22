@@ -1,0 +1,143 @@
+To: J3                                                     J3/18-112
+From: Van Snyder
+Subject: Generic programming
+Date: 2018-February-05
+Reference: 04-153
+
+Number
+======
+
+TBD
+
+Submitted by
+============
+
+J3
+
+Status
+======
+
+For consideration.
+
+Basic Functionality
+===================
+
+Provide a facility whereby a module or subprogram can be specified in
+generic form, and then instantianted with specific parameters.  Instance
+parameters can be modules, subprograms, types, variables, or constant
+values.  Whether an instance parameter can be a parameterized module or
+subprogram can be decided in due course.
+
+Rationale
+=========
+
+Many algorithms can be applied to more than one type or kind.  Some
+algorithms need access to subprograms provided by the user. It is
+tedious, expensive, and error prone -- especially during maintenance --
+to develop algorithms that are identical except for declarations, to
+operate on different types or kinds.
+
+Estimated Impact on Standard
+============================
+
+Moderate to extensive, depending on how it's done.  The solution proposed
+here can be implemented with changes in Clauses 3, 14 and 15.
+
+Estimated Impact on Processors
+==============================
+
+Moderate.  It can be done by tree transformations after parsing.  The
+method the GNU Ada Translator uses is explained online.
+
+Detailed Specification
+======================
+
+Define a parametric module or subprogram, and declare its parameters. 
+The names of the parameters shall be specified on the module, function,
+or subroutine statement, as a parenthesized list immediately after the
+word MODULE, FUNCTION, or SUBROUTINE.  The sort of entity allowed for
+each instance parameter shall be declared by statements that appear in a
+delimited block after the module, function, or subroutine statement, and
+after use statements within that block if an entity accessed by use
+association (probably a type definition) is required to declare instance
+parameters.  Whether a parameterized module or subprogram can be an
+instance parameter can be decided in due course.  Concrete syntax can be
+decided in due course.
+
+Example:
+
+  Module ( P1, P2, P3, P4, P5 ) M
+    parameters
+      type P1     ! P1 shall be a type name
+      type(p1) P2 ! P2 shall be a real variable or constant of type P1
+      integer, parameter :: P3  ! P3 shall be an integer constant
+      subroutine :: P4          ! P4 shall be a subroutine
+      module :: P5              ! P5 shall be a module
+    end parameters
+    ...
+  end module M
+
+A parameterized module can be instantiated with specific instance
+parameters to create an instance of it.  Each instance of a
+parameterized module is a different module, even if the parameters are
+identical.  An instance of a parameterized module is a local entity, but
+if it is a public module entity it can be accessed by use association. 
+Public entities from the instance can be accessed by use association. 
+To allow instance parameters to be defined or declared before an
+instantiation is declared, the strict rules concerning the ordering of
+use statements needs to be relaxed.  Concrete syntax can be decided in
+due course.
+
+Example:
+
+  program P
+    use Integrand_m only: MyIntegrand  ! Or otherwise accessible
+    use MyDumpRoutines, only: ! Declare that MyDumpRoutines is a module
+    type :: MyType
+      ...
+    end type MyType
+    type(myType), parameter :: P2 = myType(...)
+    integer :: RK = kind(0.0d0)
+    ! Instantiate M with the local name of the instance MyM
+    use MyM => M ( MyTYpe, P2, RK, MyIntegrand, MyDumpRoutines )
+    ! Access the instance MyM by use association
+    use MyM, only: Gauss_Kronrod_Quadrature
+
+    ! or
+
+    use M ( MyTYpe, P2, RK, MyIntegrand, MyDumpRoutines ), &
+      & only: Gauss_Kronrod_Quadrature
+
+A parameterized subprogram can be defined only within a module or
+subprogram.  Concrete syntax can be decided in due course.
+
+Example:
+
+  function ( RK ) Fresnel_Integral_C ( X ) result ( C )
+    parameters
+      integer, parameter :: RK
+    end parameters
+    real(rk), intent(in) :: X
+    real(rk) :: C
+
+A parameterized subprogram can be instantiated with specific parameters
+to create an instance of it.  Each instance of a parameterized
+subprogram is a different subprogram, even if the parameters are
+identical.  An instance of a parameterized subprogram is a local entity,
+but if it is a public module entity it can be accessed by use
+association.  Although it is a local entity where it is instantiated, it
+has access by host association to entities of the module where it is
+defined.  Concrete syntax can be decided in due course.
+
+Example:
+
+  module SpecialFunctions
+    ! Definition of Fresnel_Integral_C here (or maybe below "contains")
+    integer, parameter :: DK = kind(0.0d0), SK = kind(0.0e0)
+    procedure :: Fresnel_C_D => Fresnel_Integral_C ( dk )
+    procedure :: Fresnel_C_S => Fresnel_Integral_C ( sk )
+    interface Fresnel_C
+      module procedure Fresnel_C_D, Fresnel_C_S
+    end interface
+
+

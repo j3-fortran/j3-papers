@@ -1,0 +1,101 @@
+To: J3                                                     10-224r2
+From: Bill Long
+Subject: Interop TR: Requirements 2 and 8b
+Date: 2010 October 13
+References: 10-165r2, ISO/IEC 1539-1:2010, N1820
+
+DISCUSSION
+
+Requirement 2 of N1820 is
+
+   If it is reasonably feasible, a mechanism should be provided for
+   C function to specify by explicit declaration the type or rank
+   (both preferred) of an assumed-shape, allocatable, or pointer
+   object. The objective is to provide a facility for type and rank
+   safety.
+
+Requirement 8b of N1820 is
+
+ A C function should have a mechanism to create an array that it can
+ use as an actual argument corresponding to an assumed-shape dummy of
+ a Fortran procedure.  The same mechanism should allow an existing
+ block of memory in the C function, including an array passed into
+ the C function, or memory accessed as a global object, to be passed
+ to an assumed-shape dummy in Fortran.
+
+
+These requirements can be met by providing functions to create and
+initialize C descriptors and associate memory with those descriptors.
+
+The proposed CFI_associate function duplicates the capability of the
+existing CFI_bounds_to_cdesc function, so it is no longer
+necessary.
+
+EDITS to 10-165r2:
+
+
+[12:1-] Add two new sections:
+
+"5.2.6.1a CFI_cdesc_t *  CFI_create_cdesc (const size_t elem_len,
+                               const CFI_rank_t rank,
+                               const CFI_type_t type,
+                               const CFI_attribute_t attribute);
+
+<<Description.>> CFI_create_cdesc allocates memory using malloc for a
+C descriptor of the rank specified by the rank argument. If the memory
+allocation is successful and the values of the arguments are valid,
+the elem_len, rank, type, and attribute members are initialized to the
+values of the corresponding arguments, the version member is
+initialized to CFI_VERSION that is specified in the
+ISO_Fortran_binding.h header file, the base_addr member is initialized
+to NULL, and the function result is a pointer to the C descriptor
+created.  If memory allocation fails or any of the arguments have
+invalid values, the function result is NULL.
+
+
+5.2.6.1b int CFI_initialize_cdesc (CFI_cdesc_t * ,
+                               const size_t elem_len,
+                               const CFI_rank_t rank,
+                               const CFI_type_t type,
+                               const CFI_attribute_t attribute);
+
+<<Description.>> CFI_initalize_cdesc initializes members of an
+existing C descriptor. If the values of the arguments are valid, the
+elem_len, rank, type, and attribute members are initialized to the
+values of the corresponding arguments, the version member is
+initialized to CFI_VERSION that is specified in the
+ISO_Fortran_binding.h header file, the base_addr member is initialized
+to NULL, and the function result is zero.  If any of the arguments
+have invalid values, the function result is nonzero and the C
+descriptor is not modified. The function result is an error indicator."
+
+
+[12:13+] Add a new section:
+
+"5.2.6.2a int CFI_associate (CFI_cdesc_t * ,
+                           void *, base_addr,
+			   const CFI_bounds_t bounds[] );
+
+
+<<Description.>> CFI_associate associates memory with an assumed-shape
+or Fortran pointer object described by the C descriptor. If the
+object has rank zero, the bounds[] argument is ignored and the amount
+of memory required for the object is specified by the elem_len member
+of the descriptor. If the rank is greater than zero, the amount of
+memory required for the object is specified by the bounds[] array and
+elem_len.  If the base_addr is not NULL, the amount of memory starting
+at address base_addr that is currently allocated by the program shall
+be large enough to provide storage for the object. If the base_addr is
+NULL, memory for the object is allocated using malloc and base_addr is
+the value returned by malloc. The function result is an error
+indicator. If memory allocation during execution of the function
+fails, the attribute member of the C descriptor is not equal to
+CFI_attribute_assumed or CFI_attribute_pointer, or the values of
+members of the C descriptor or the first rank elements of the bounds[]
+array are invalid, the function result is nonzero. Otherwise, the
+function result is zero and the C descriptor is updated."
+
+
+[12:18-23] Delete section 5.2.6.5 int CFI_bounds_to_cdesc.
+
+

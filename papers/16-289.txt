@@ -1,0 +1,84 @@
+                                                            J3/16-289
+To: J3
+From: Malcolm Cohen
+Subject: Pure statement functions are too volatile
+Date: 2016 October 12
+
+1. Problems
+
+Consider the following module:
+
+Module m
+  Use Iso_C_Binding
+  Integer(C_int),Volatile :: vcount
+Contains
+  Subroutine s(x)
+    Integer i,pure_stmtfn,x(:)
+    pure_stmtfn() = vcount
+    Forall (i=1:Size(x)) x(i) = pure_stmtfn()
+  End Subroutine
+End Module
+
+Statement function pure_stmtfn is pure because it references no
+impure function.  However, vcount may change at any time so this is
+not actually pure.  This was fixed for normal pure procedures by
+Interp F03/0126, which prohibited the designator of a VOLATILE
+variable from appearing within a pure subprogram.  However, it did
+not address statement functions.
+
+Also, it appears that the following is valid, as long as the variable Z is
+not used.
+
+Pure Subroutine strange(y)
+  Integer,Intent(Out) :: y
+  Integer,Volatile :: z
+  y = 0
+End Subroutine
+
+Permitting Z to be declared, but not used, within STRANGE is strange.
+
+
+2. Solution
+
+Therefore we should do the same as F03/0126 for statement functions.
+This will be a new incompatibility with Fortran 2003/8.
+
+We should also fix this gratuitous strangeness with local volatiles.
+It will also be a new incompatibility with Fortran 2003/8.
+
+Note that we could address this via the interpretation process, but
+given the timing, and especially since statement functions are
+obsolescent, it seems simpler just to make the change to F2015.
+
+
+3. Edits to 16-007r2
+
+[30:30+] 4.3.3 Fortran 2008 compatibility, after p3,
+         insert new paragraph
+  "Fortran 2008 permitted a pure statement function to reference a
+   volatile variable, and permitted a local variable of a pure
+   subprogram or of a BLOCK construct within a pure subprogram to be
+   volatile (provided it was not used); this document does not permit
+   that."
+{Incompatibility with Fortran 2008.}
+
+[31:21+] 4.3.4 Fortran 2003 compatibility, after p9,
+         insert new paragraph
+  "Fortran 2003 permitted a pure statement function to reference a
+   volatile variable, and permitted a local variable of a pure
+   subprogram to be volatile (provided it was not used); this document
+   does not permit that.
+{Incompatibility with Fortran 2003.}
+
+[336:14] 15.7 Pure procedures, p1,
+  After "only pure functions"
+  insert "and does not contain the <designator> of a variable with
+          the VOLATILE attribute" (all in obsolescent font).
+{Prohibit pure statement function from referencing a volatile variable.}
+
+[336:29] same subclause, C1593,
+         between "not have the SAVE" and "attribute"
+         insert "or VOLATILE".
+{Prohibit a local volatile variable in a pure subprogram.}
+
+===END===

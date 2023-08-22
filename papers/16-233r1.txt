@@ -1,0 +1,287 @@
+                                                           J3/16-233r1
+To: J3
+From: Malcolm Cohen
+Subject: Allocatable components and structure constructors
+Date: 2016 June 10
+
+
+1. Introduction
+
+There are several problems with the descriptions for allocatable
+components in structure constructors.  Edits are supplied.
+
+TECHNICAL CHANGES:
+Fixing these inconsistencies necessarily involves some technical
+changes to the standard.  Please read carefully.
+
+
+2. Problem 0
+
+[84:6] 4.5.10 Construction of derived-type values, when the
+component-data-source for an allocatable component is itself allocatable,
+says that the allocation status of the component is that of the
+component-data-source, and...
+   "if a length parameter of the component is deferred, its value
+    is the same as the corresponding parameter of the expression"
+
+This only applies when the component-data-source has an allocation
+status of allocated, but this is not totally clear.
+
+
+3. Problems 1 and 2
+
+[84:7-8] same place, allocatable component and nonallocatable data source,
+         there is no statement as to what type the allocatable component
+         has while there is a statement for the allocatable data source
+         case.  This is inconsistent.  In the nonpolymorphic case there is
+         obviously no problem; example1 shows this.  However, for
+         consistency this should be stated.  (The polymorphic case will be
+         addressed later.)
+
+Program example1
+  Type t
+    Real,Allocatable :: x(:)
+  End Type
+  Type(t) a
+  a = t([1,2,3,4,5])
+  Print *,a%x
+End Program
+
+[84:6] same place, allocatable component and allocatable data source,
+       "if it is allocated, the same dynamic type".
+
+However, this can only be true when the component is polymorphic; for an
+intrinsic type the data source can be "compatible" rather than having
+exactly the same type, e.g. this states for a REAL component and an
+INTEGER allocatable data source, the dynamic type of the component will
+be INTEGER (obviously nonsense).  This is illustrated by example2 below.
+
+Program example2
+  Type t
+    Real,Allocatable :: x(:)
+  End Type
+  Type(t) a
+  Integer,Allocatable :: y(:)
+  Allocate(y,Source=[1,2,3,4,5])
+  a = t(y)
+  Print *,a%x
+End Program
+
+
+4. Problems shown by Examples 3 and 4
+
+Example 3 is the polymorphic version of example 1; that is, the data
+source is nonallocatable but polymorphic (could be a pointer or a dummy
+argument).  The standard is silent on the dynamic type of the component,
+and in this case it needs to say that it should be the dynamic type of the
+data source, for consistency both with polymorphic reallocating assignment
+and with an allocatable polymorphic data source (see example 4 below).
+
+Program example3
+  Type root
+    Integer code
+  End Type
+  Type,Extends(root) :: root2
+    Integer value
+  End Type
+  Type t
+    Class(root),Allocatable :: a
+  End Type
+  Type(t) x
+  Type(root2),Target :: y
+  Class(root),Pointer :: z
+  y = root2(123,456)
+  z => y
+  x = t(z)
+  Select Type(q=>x%a)
+  Type Is (root2)
+    Print *,q
+  Class Default
+    Error Stop 'Oops'
+  End Select
+End Program
+
+Example 4 is the polymorphic version of example 2 (or the allocatable data
+source version of example 3).  This is already described correctly in the
+standard.
+
+Program example4
+  Type root
+    Integer code
+  End Type
+  Type,Extends(root) :: root2
+    Integer value
+  End Type
+  Type t
+    Class(root),Allocatable :: a
+  End Type
+  Type(t) x
+  Class(root),Allocatable :: y
+  Allocate(y,Source=root2(123,456))
+  x = t(y)
+  Select Type(q=>x%a)
+  Type Is (root2)
+    Print *,q
+  Class Default
+    Error Stop 'Oops'
+  End Select
+End Program
+
+5. Problems shown by examples 5 and 6
+
+When the allocatable component is polymorphic, the standard correctly
+requires the data source to be acceptable in an intrinsic assignment, but
+then unnecessarily (and inconsistently) goes on to require that it obey
+the rules in Table 7.8.  That table is only for nonpolymorphic or
+nonallocatable assignment, and requires that a derived type variable have
+an expression of the same declared type (rather than type-compatible).
+This is shown in example 5 (for a nonpolymorphic data source) and example
+6 (for a polymorphic data source).
+
+TECHNICAL CHANGE:
+Fixing this inconsistency necessarily involves a technical change.
+This could warrant a mention in the Introduction?
+(This is actually even worse for CLASS(*) ALLOCATABLE, since it has
+ no declared type and thus no entry in Table 7.8, and therefore nothing
+ can satisfy this incorrect requirement.)
+
+Program example5
+  Type root
+    Integer code
+  End Type
+  Type,Extends(root) :: root2
+    Integer value
+  End Type
+  Type t
+    Class(root),Allocatable :: a
+  End Type
+  Type(t) x
+  Type(root2) y
+  y = root2(123,456)
+  x = t(y)
+  Select Type(q=>x%a)
+  Type Is (root2)
+    Print *,q
+  Class Default
+    Error Stop 'Oops'
+  End Select
+End Program
+
+Program example6
+  Type root
+    Integer code
+  End Type
+  Type,Extends(root) :: root1
+  End Type
+  Type,Extends(root1) :: root2
+    Integer value
+  End Type
+  Type t
+    Class(root),Allocatable :: a
+  End Type
+  Type(t) x
+  Type(root2),Target :: y
+  Class(root1),Pointer :: z
+  y = root2(123,456)
+  z => y
+  x = t(z)
+  Select Type(q=>x%a)
+  Type Is (root2)
+    Print *,q
+  Class Default
+    Error Stop 'Oops'
+  End Select
+End Program
+
+
+6. Further problems
+
+When the allocatable component has deferred type parameters,
+(a) if the data source is allocatable, the standard correctly states
+    that the component's deferred type parameter values come from the
+    data source,
+(b) but if the data source is not allocatable, it is silent.
+This needs to be corrected.
+
+
+7. Edits to 16-007r1
+
+[intro] In "Data usage and computation:", insert
+  "The declared type of the value supplied for a polymorphic allocatable
+   component in a structure constructor is no longer required to be the
+   same as the declared type of the component."
+
+[83:3-4] 4.5.10 Construction of derived-type values, p2,
+         Delete ", as specified in Table 7.8".
+{Remove unnecessary and unwanted requirement.}
+
+[84:1] Same subclause, p6,
+       Delete "either".
+{Undesirable.}
+
+[84:4] Same subclause, same paragraph,
+       after "has a status of unallocated.", break the paragraph,
+       and at the beginning of the new paragraph
+        "If the expression is an"
+        ->"If the component is allocatable and the expression is an".
+{This paragraph is too big and it is getting to hard to edit, let alone
+ understand.}
+
+[84:5] Was same paragraph, now a new one
+       after "same allocation status as that allocatable entity"
+       "and, if" -> ".  If".
+[84:6] "the same dynamic type, bounds, and value"
+       -> "it has the same bounds".
+[84:7] After "corresponding parameter of the expression." insert
+  "If the component is polymorphic, it has the same dynamic type and
+   value; otherwise, it has the value converted, if necessary, to the
+   declared type of the component."
+[84:7] "Otherwise"
+       -> new paragraph
+  "If the component is allocatable and the expression is not an
+   allocatable entity,"
+[84:7] "corresponding component of the constructor"
+       -> "the component".
+[84:8] "has the same bounds" -> "the same bounds",
+       after "the expression" insert
+       "; if a length parameter of the component is deferred, its value is
+        the same as the corresponding parameter of the expression".
+[84:8] Append a new sentence
+  "If the component is polymorphic,it has the same dynamic type and value;
+   otherwise, it has the value converted, if necessary, to the declared
+   type of the component.".
+
+This turns that whole paragraph into the following paragraphs:
+
+  If a component of a derived type is allocatable, the corresponding
+  constructor expression shall be a reference to the intrinsic function
+  NULL with no arguments, an allocatable entity of the same rank, or shall
+  evaluate to an entity of the same rank. If the expression is a reference
+  to the intrinsic function NULL, the corresponding component of the
+  constructor has a status of unallocated.
+
+  If the component is allocatable and the expression is an allocatable
+  entity, the corresponding component of the constructor has the same
+  allocation status as that allocatable entity.  If it is allocated, it
+  has the same bounds; if a length parameter of the component is deferred,
+  its value is the same as the corresponding parameter of the expression.
+  If the component is polymorphic, it has the same dynamic type and value;
+  otherwise, it has the value converted, if necessary, to the declared
+  type of the component.
+
+  If the component is allocatable and the expression is not an
+  allocatable entity, the component has an allocation status of allocated
+  and the same bounds as the expression; if a length parameter of the
+  component is deferred, its value is the same as the corresponding
+  parameter of the expression.  If the component is polymorphic, it has
+  the same dynamic type and value; otherwise, it has the value converted,
+  if necessary, to the declared type of the component.
+
+
+8. Unrelated edit
+
+[84:8+1-3] Delete NOTE 4.62.
+{This note is supremely uninteresting, and not even the most uninteresting
+ note in the standard.}
+
+===END===

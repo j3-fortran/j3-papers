@@ -1,0 +1,80 @@
+
+                                                  J3/06-327r1
+
+Date:    14 November 2006
+To:      J3
+From:    Bill Long
+Subject: Issue 77, bits storage sequence
+Reference: J3/06-007r1, 06-233r1
+
+---------------------
+
+Discussion of issue 77 (page 495)
+
+Issue 77 predicts various forms of conflict and disaster that will
+result from the sentence "Two nonpointer nonallocatable scalar objects
+for which the intrinsic function BIT_SIZE returns the same value
+occupy the same amount of storage." [495:10-11].  The motivation for
+this sentence is to ensure that passing an actual argument of type
+integer to a dummy argument that is of type bits and of the same
+bit_size actually works.  The current sentence imposes two classes of
+restrictions: (1) Storage sizes for a limited number of bits kinds are
+constrained to be the same as those for the corresponding integers and
+(2) bits or integer objects of the same type but in different contexts
+have the same storage size.
+
+Two options are proposed below.  Option 2 was selected by J3.
+
+Option 1: Accept the constraints implicit in the current text.  No
+edits are required for this option.
+
+Option 2: Remove the sentence at the expense of requiring explicit
+interfaces in a new situation.  If there is no storage correspondence
+requirement between a non-bits actual argument and a bits dummy
+argument then an explicit interface would be required for that case so
+the compiler could reformat the actual argument as needed as part of
+argument association. 
+
+Note that this option has the side effect of allowing (but certainly
+not requiring) a compiler to pack consecutive bits components in a
+structure.  For example, scalar objects of a type defined as
+
+ type flags
+    bits(13) :: a
+    bits(19) :: b
+ end type flags
+
+might occupy a single 32-bit word of memory. If a compiler used this
+design (perhaps under the control of a compiler switch), and assuming
+that a simple scalar of type bits(19) is actually stored in a 32-bit
+memory cell, then as assignment of the form
+
+type(flags) :: struct(100)
+bits(19)    :: bcomp(100)
+
+bcomp(:) = struct(:)%b
+
+would involve hidden unpacking of the structure to extract the correct
+19-bit field.  A similar restructuring would be required if
+struct(:)%b were an actual argument corresponding to a dummy argument
+bcomp.  Effectively a copy-in/copy-out would be coded.  In the case
+where the actual and dummy arguments are both of type bits the
+compiler would automatically know to create this code.  However, if
+the actual argument is not of type bits and some restructuring is
+needed to affect association with a dummy argument of type bits, the
+compiler would not be aware of this in the calling routine unless an
+explicit interface were visible.
+
+The second option requires edits.
+
+Edits to J3/06-007r1 for Option 2
+
+[495:10:11] Remove the sentence "Two nonpointer ... amount of storage."
+
+[298:1] At the end of item (1)(c) of the list of cases requiring
+an explicit interface , add "or"
+
+[298:1+] Add a new item (1)(d): "with an argument that is not of
+type bits corresponding to a dummy argument of type bits,"
+
+

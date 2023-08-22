@@ -1,0 +1,226 @@
+                                                            11-134
+To: J3
+From: Nick Maclaren
+Subject: Interop TR: CFI_desc_t pointer validity issues
+Date: 2011 January 29
+Reference: N1838, 10-235, 11-126
+
+
+
+1. Summary
+----------
+
+This issue was raised in 10-235, but the same remarks as in 11-126
+apply.
+
+Even ignoring the scope and lifetime issues (see 11-128), Fortran has a
+large number of constraints on how one object may be derived from
+another, most of which are specified syntactically.  Even if we assumed
+that every use of this TR were a Fortran expert, it is extremely unclear
+how those would map to the semantic constraints needed for C.  This
+paper describes some of the problems.
+
+My problem with this is that I tried phrasing the restrictions in the
+context of 10-251, and failed.  It isn't that I can't describe the
+constraints, but that I can't put them into suitable words in terms of
+the descriptor update model.  The following does the best I can, but
+can't deal with all issues - even if I have thought of them - and I
+don't regard what it does as entirely satisfactory!
+
+
+2. Background
+-------------
+
+There are essentially three ways to define an interface of the sort
+being considered in C:
+
+    1) To make the objects opaque, and have all accesses via defined
+functions, as for MPI handles.  That was rejected at an earlier stage.
+
+    2) To specify the fields, and allow unconstrained access, but to
+require that all creation and update is via defined functions.  This
+was the approach suggested in 10-235.
+
+    3) To specify the requirements and constraints of the structure,
+precisely, and to leave the details of how to construct it up to the
+programmer.
+
+The reason that adding new facilities with the required constraints does
+not help is because all they do is to make the C programming more
+convenient, and not constrain the C code to not do things that will
+cause trouble for the Fortran compiler.  There are just too many ways
+to construct a structure in C, such as:
+
+    A) Structure copy, whether by structure assignment or memcpy etc.
+(see 11-126).
+
+    B) Structure initialisation (see 11-105).
+
+    C) Direct assignment of the members.
+
+As N1838 is currently written, CFI_create_cdesc, CFI_initialize_cdesc
+and CFI_associate are merely convenience functions, and do nothing
+that cannot be done in other ways.
+
+Also, the TR has added a new type concept (the macro values), but not
+bound it into Fortran's existing model.
+
+The last piece in the jigsaw is that the base pointers in descriptors
+(and elsewhere) are typeless in C terms (i.e. void *), and the only
+attribute that has a reasonable equivalent in C is VOLATILE.  For
+reasons I shall mention later, INTENT(IN) and const are very different.
+
+
+3. The TARGET Attribute
+-----------------------
+
+Fortran 2008 (15.2.3.3) forbids the creation of a Fortran pointer from a
+C pointer that is the address of a Fortran variable without the TARGET
+attribute.  N1838 does not, and should.  I assume that I don't need to
+justify this one.  The wording in N1826 15.2.3.3 is a suitable basis.
+
+
+4. Type Compatibility
+---------------------
+
+The existing standard doesn't specify this well, but this TR adds a
+new source of confusion.  Let us summarise the situation, and ignore
+the mistake that is C_SIZE_T:
+
+    Fortran simple types are compatible if their base type (e.g. REAL
+or whatever) are the same and any type parameters evaluate to same
+value.
+
+    C has separate concepts of two type names being synonyms, and two
+types being compatible.  The last is far more liberal than Fortran's
+concept of compatibility.
+
+    This TR introduces the concept of type macros, which refer to the
+same type if their values are the same.
+
+There seems to be a simple oversight in not binding the macro values
+to the KIND values, in the sense that equivalence of one implies
+equivalence of the other.
+
+The question here is exactly what constraint there is when building one
+descriptor using an address derived from another.  With the above
+oversight corrected, the obvious solution is to require the macros to
+evaluate to the same value, but CFI_type_unspecified really puts the
+cat among the pigeons.
+
+
+5. Storage Compatibility
+------------------------
+
+Despite historical assumptions, I believe that it has NOT been allowed
+to associate one type with the storage of another using argument
+association since at least Fortran 66.
+
+However, C does allow this (very clearly), though let's skip the arcane,
+ill-defined and unstable rules about exactly what is allowed.  The point
+is that it is relied on in functions like MPI_Buffer_attach.
+
+The question is what should be said about this.  My inclination would be
+either an explicit statement that any support for such use is
+processor-dependent, or a NOTE stating that such use is outside the
+scope of the Fortran standard.
+
+
+6. INTENT(IN), PROTECTED etc.
+-----------------------------
+
+Again, this is an area where the existing standard doesn't specify it
+well.
+
+In Fortran, there are a lot of syntactic constraints forbidding certain
+attributes from being dropped or inserted over a procedure call.  Let's
+consider just converting an INTENT(IN) to an INTENT(INOUT).  That is
+obvious unacceptable - or is it?
+
+The same is NOT true in C, where there are legal ways to 'lose' const,
+and an update through a non-const pointer variable derived from a const
+pointer is illegal only if the ORIGINAL lvalue were const.  That is also
+true in Fortran, EXCEPT that the access must be by a different route
+that does not involve INTENT(IN).
+
+Even worse, INTENT(IN) has effects on the metadata, especially for
+pointers, which is a concept with no C equivalent, so there are
+things that must not be done to descriptors with that attribute.
+
+I don't offhand know how many other attributes have such properties of
+'stickiness', though obviously PROTECTED does.  ASYNCHRONOUS may.
+
+This TR contains no wording that blocks such use, and clearly should.
+
+
+7. Shape Compatibility
+----------------------
+
+Despite appearances, it IS possible to change the rank of an array
+(under some circumstances) in Fortran by passing it through a procedure
+call, by using sequence association.  However, in C, it is possible
+to do not just that, but also more esoteric transformations.
+
+I don't think that this causes any major trouble for assumed-shape
+descriptors, because compilers have to allow for the previous use, and I
+am not sure about whether it might for pointer descriptors.  The TR has
+already closed for allocatable ones (5.2.7 paragraph 1) - which is the
+flip side of the problem referred to in 11-126.
+
+I am raising this because I don't know if it is a problem.
+
+
+8. VOLATILE
+-----------
+
+Ugh.  Really, truly, ugh.  I have an outstanding task to produce an
+interpretation request on this, because Fortran is inconsistent, and C
+is both very different and much, much worse.
+
+This might not look like a new problem, but the TR does introduce a new
+aspect, because descriptors are metadata (as described in 11-128),
+and therefore are affected in subtly different ways to the data by
+such things as VOLATILE.
+
+I don't know where to start.
+
+
+9. Edits
+--------
+
+These are only the edits for the issues I regard as simple, and are
+NOT enough to resolve the problems raised in this paper.
+
+[12:10] Add to the end of the paragraph:
+
+    "Two macros for the same Fortran type shall evaluate to the same
+positive value if and only if the C type is interoperable with a
+single Fortran type and kind."
+
+[16:18+] Append a new paragraph and a NOTE:
+
+    "The base address of a pointer descriptor shall not be the C address
+of a Fortran variable that does not have the TARGET attribute."
+
+    NOTE ???
+    Using the storage allocated for one type to store the values of
+    another is outside the scope of the Fortran standard, though it
+    is within the scope of the C standard.  This Technical Report
+    defines no behaviour for that usage."
+
+
+10. Open Issues
+---------------
+
+    1) What to say about type issues (see section 4 above).
+
+    2) What to say about INTENT(IN), PROTECTED, and possibly other
+'sticky' attributes (see section 6 above).
+
+    3) What to say about shape compatibility, if it is a potential
+problem (see section 7 above).
+
+    4) What to say about VOLATILE (see section 8 above).
+
+At least the first two are important, with problems that are not
+present in N1826, and so need fixing.

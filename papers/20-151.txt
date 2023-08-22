@@ -1,0 +1,167 @@
+To: J3                                                     J3/20-151
+From: Robert Corbett
+Subject: PURE and default initialization
+Reference: 18-007r1
+Date: 2020-October-11
+
+----------------------------------------
+
+NUMBER: F18/019
+TITLE: PURE and default initialization
+DEFECT TYPE: Erratum
+STATUS: Submitted
+
+QUESTION:
+
+An essential property of pure procedures is that they do
+not modify the values of nonlocal variables except through
+dummy arguments.  The addition of default initialization of
+pointer components made it possible to violate this
+property.  Because default initialization does not imply
+the SAVE attribute, a local variable of derived type in a
+pure procedure can include a pointer component whose target
+is a nonlocal variable.  The definition of pure procedures
+in subclause 15.7 of 19-007r1 allows a program to modify
+the value of a nonlocal variable through such a component.
+
+===========================================================
+
+      PROGRAM EXAMPLE1
+        REAL, TARGET :: X = 1.0
+        TYPE T
+          REAL, POINTER :: P => X
+        END TYPE T
+        CALL SUBR
+      PRINT *, X
+        CONTAINS
+        PURE SUBROUTINE SUBR
+          TYPE(T) Y
+          Y%P = 2.0
+        END SUBROUTINE SUBR
+      END
+
+===========================================================
+
+The problem introduced by default initialization of pointer
+components is not limited to variables.  Array and
+structure constructors and ALLOCATE statements also provide
+ways around the constraints restricting modification of
+nonlocal variables.
+
+===========================================================
+
+      MODULE V
+        REAL, TARGET :: X = 1.0
+      END
+
+      MODULE PRINT
+      USE V
+      PRIVATE X
+      CONTAINS
+        SUBROUTINE PRINTX
+          PRINT *, X
+        END SUBROUTINE PRINTX
+      END
+
+      MODULE T1
+        TYPE T
+          SEQUENCE
+          REAL, POINTER :: P
+        END TYPE T
+      END
+
+      MODULE T2
+      USE V
+      PRIVATE X
+        TYPE T
+          SEQUENCE
+          REAL, POINTER :: P => X
+        END TYPE T
+      END
+
+      PURE SUBROUTINE SUBR
+      USE T1
+      USE T2, TINIT => T
+        TYPE(T) Y
+        Y = TINIT()
+        Y%P = 2.0
+      END
+
+      PROGRAM EXAMPLE2
+      USE PRINT
+        CALL SUBR
+        CALL PRINTX
+      END
+
+===========================================================
+
+The problem is illustrated by programs EXAMPLE1 and
+EXAMPLE2.  In both programs, the PURE subroutine SUBR
+modifies a nonlocal variable.  EXAMPLE1 shows the simple
+case of using a local variable to produce a pointer value
+that can be used to modify a nonlocal variable.  EXAMPLE2
+is a convoluted example showing how a structure
+constructor can be used to produce such a pointer value.
+
+Q: Did the committee intend for default pointer
+   initializations to enable pure procedures to modify
+   the values of nonlocal variables?
+
+ANSWER:
+
+A: No. {A lot of text is needed here.}  Edits to 18-007r1
+   are {to be} supplied.
+
+{ I have considered about a dozen possible fixes for this
+  problem.  The only fix I find satisfying is to prohibit
+  default initialization of data pointer components to
+  targets other than NULL().  All solutions based on 
+  adding new constraints to the definition of pure
+  procedures either restrict the use of types or data
+  entities in ways I think people will find unacceptable
+  or are unreasonably complicated.
+
+  The possible fixes I have   considered are mainly focused
+  on restricting the use of types with pointer components
+  with default initializations or with restrictions on the
+  use of the components.  Of course, restrictions on the
+  use of types constitute blanket restrictions on use of
+  components of those types.
+
+  My favorite fix as of 2020-10-11 is based on adding
+  constraints to prohibit type-names that name types
+  defined by type definitions that include default
+  initialization of a data pointer component to a
+  non-null value from appearing in a pure procedure.
+  An ALLOCATE statement shall not specify a data entity
+  that has such a type in a MOLD= specifier.  I know
+  that some people will find those restrictions too
+  confining.  I settled on this approach because it is
+  easy to understand and it does not restrict
+  programs that do not use default initializations.
+  There are many other possible fixes offering other
+  virtues.
+
+  As I have worked on this interp request, I have found
+  the definition of what should constitute a pure
+  procedure to be unclear.  Note 4 on page 325 of 19-007r1
+  is the closest the standard comes to explaining the
+  motivation for pure procedures.  I do not find the
+  explanation given there to be adequate to assist with
+  the design of the rules needed to implement pure
+  procedures in the standard.  I think the committee needs
+  to rethink and better define the intended uses of pure
+  procedures and the constraints that define pure
+  procedures.  Because elemental and simple procedures
+  are based on pure procedures, they also need to be
+  reconsidered.
+}
+
+
+EDITS to 18-007r1:
+
+TDB
+
+SUBMITTED BY: Robert Corbett
+
+HISTORY: 20-nnn m222 Submitted

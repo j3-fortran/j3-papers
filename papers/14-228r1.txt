@@ -1,0 +1,207 @@
+                                                             J3/14-228r1
+To:      J3
+From:    Nick Maclaren & Malcolm Cohen
+Subject: Types with coarray components
+Date: 2014 October 15
+
+1. Additional question/answer that is not part of the interp request
+
+Q7. 15.3.5p1 says "A named scalar Fortran variable is interoperable if
+    and only if its type and type parameters are interoperable, it is
+    not a coarray, it has neither the ALLOCATABLE nor the POINTER
+    attribute, and if it is of type character its length is not
+    assumed or declared by an expression that is not a constant
+    expression."
+
+    In the context of TS 29113, which removes the ALLOCATABLE and
+    POINTER restrictions, is this intended also to apply to objects
+    with coarray components?
+
+A7. TS 29113 does not remove the ALLOCATABLE or POINTER restrictions
+    on components, so this question is moot: a user-defined type with
+    an ALLOCATABLE or POINTER component is never interoperable.
+
+    This is enforced by C1506 at [450:4-5] in 14-007r2, which states
+
+    "C1506 (R426) Each component of a derived type with the BIND
+           attribute shall be a nonpointer, nonallocatable data
+           component with interoperable type and type parameters."
+
+
+2. Interpretation Request
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0122
+TITLE: Types with coarray components
+KEYWORD: Coarrays, derived types
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTIONS:
+
+Q1.  Consider
+
+   Module m
+     Type t
+       Real,Allocatable :: co[:]
+     End Type
+     Type(t) x
+     Real,Allocatable :: xco[:]
+   Contains
+     Subroutine dubious
+       Volatile x
+       Volatile xco
+       ...
+     End Subroutine
+   End Module
+   Program bad
+     Use m
+     Volatile x
+     Volatile xco
+     ...
+   End Program
+
+5.3.19 C560 says "The VOLATILE attribute shall not be specified for a
+coarray that is accessed by use (11.2.2) or host (16.5.1.4)
+association."
+
+That means that the two "VOLATILE XCO" statements are not conforming.
+However, the "VOLATILE X" statements have essentially the same effect,
+but are unaffected by the constraint, which seems inconsistent.
+
+Was this constraint also intended to apply to objects with coarray
+components?
+
+Q2.  Consider
+
+    Program blockvolatile
+      Type t
+        Real,Allocatable :: co[:]
+      End Type
+      Type(t) x
+      Real,Allocatable :: xco[:]
+      ...
+      Block
+        Volatile x
+        Volatile xco
+      End Block
+
+5.3.19 C561 says "Within a BLOCK construct (8.1.4), the VOLATILE
+attribute shall not be specified for a coarray that is not a construct
+entity (16.4) of that construct."
+
+That means that VOLATILE XCO is not standard-conforming.  However, the
+constraint apparently does not apply to X, so VOLATILE X is standard-
+conforming, even though it has essentially the same effect as the
+forbidden case.
+
+Was this constraint intended also to apply to objects with coarray
+components?
+
+Q3. 5.3.19p1 says "A noncoarray object that has the VOLATILE attribute
+    may be associated with an object that does not have the VOLATILE
+    attribute..."; does this apply to objects with a coarray component?
+
+Q4. 12.4.2.2p1 says "A procedure other than a statement function shall
+    have an explicit interface if it is referenced and ... (2) the
+    procedure has a dummy argument that ... (c) is a coarray, ...."
+
+    Is this intended also to apply to objects with coarray components?
+
+Q5.  Consider:
+
+    Program volatility
+      Type t
+        Real,Allocatable :: co[:]
+      End Type
+      Type(t) :: x
+      Type(t),Volatile :: y
+      ...
+      Call s1(x)
+      Call s2(x) ! Dummy is volatile, X is not.
+      Call s1(y) ! Y is volatile, dummy is not.
+      Call s2(y)
+    Contains
+      Subroutine s1(a)
+        Type(t) :: a
+        ...
+      End Subroutine
+      Subroutine s2(b)
+        Type(t),Volatile :: b
+        ...
+      End Subroutine
+    End Program
+
+12.5.2.8p1 says "If the dummy argument is a coarray, the corresponding
+actual argument shall be a coarray and shall have the VOLATILE
+attribute if and only if the dummy argument has the VOLATILE
+attribute."
+
+That means that if the program were passing the component CO directly
+(and the TYPE(T) declarations in S1 and S2 were changed to REAL), the
+second and third calls would not be conforming because of the VOLATILE
+mismatch.
+
+It seems inconsistent that there is no requirement for VOLATILE to
+match when there are coarray components, since it has the same effect
+that X%CO is VOLATILE in S2 but not in the caller, and Y%CO is
+VOLATILE in the caller but not in S1.
+
+Was this requirement also intended to apply to objects with coarray
+components?
+
+Q6. 12.8.1 C1289 says "All dummy arguments of an elemental procedure
+    shall be scalar noncoarray dummy data objects and shall not have
+    the POINTER or ALLOCATABLE attribute."
+
+    Is this intended also to apply to objects with coarray components?
+
+ANSWER:
+
+A1. Yes, this constraint was intended to apply to objects with coarray
+    components.  An edit is supplied to correct this omission.
+
+A2. Yes, this constraint was intended to apply to objects with coarray
+    components.  An edit is supplied to correct this omission.
+
+A3. No, this does not apply to objects with coarray components, as
+    there is no way of giving the noncoarray parts of the object the
+    VOLATILE attribute without giving the coarray part the VOLATILE
+    attribute, which is forbidden.  That the quoted text gives
+    permission for a noncoarray to have the VOLATILE attribute does
+    not override any other requirements in the standard.
+
+A4. No.  A dummy argument that has a coarray component is still just
+    an ordinary dummy argument, so this text does not apply.
+
+A5. Yes, this requirement was intended to apply to objects with
+    coarray components.  An edit is supplied to correct this omission.
+
+A6. No.  A dummy argument that has a coarray component is still just
+    an ordinary dummy argument, so this text does not apply.
+
+EDITS:
+
+[102:9] 5.3.19 VOLATILE attribute, C560,
+        Between "for a coarray" and "that is accessed by use or"
+        insert ",or a variable with a coarray ultimate component,".
+{A1.}
+
+[102:11] 5.3.19 VOLATILE attribute, C561,
+         Between "for a coarray" and "that is not a construct entity"
+         insert ",or a variable with a coarray ultimate component,".
+{A2.}
+
+[295:4+] 12.5.2.4 Ordinary dummy variables, p18+,
+  "If the dummy argument has a coarray ultimate component, the
+   corresponding actual argument shall have the VOLATILE attribute if
+   and only if the dummy argument has the VOLATILE attribute."
+{A5.}
+
+SUBMITTED BY: Nick Maclaren
+
+HISTORY: 14-228   m205 Submitted
+         14-228r1 m205 Revised questions, with answers
+
+----------------------------------------------------------------------

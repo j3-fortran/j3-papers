@@ -1,0 +1,127 @@
+To: J3                                                     11-110
+From: Rolf Rabenseifner and Craig Rasmussen
+Subject: Interop TR: Additional constants for Table 15.2
+Date: 2011 January 23
+
+
+The Fortran sub-committee of the MPI-3 Forum would like to define the
+MPI Fortran interface with explicit interfaces. To ease the
+implementation of portable MPI libraries, it would be helpful if this
+interface can be defined as BIND(C). With BIND(C), the MPI library can
+be implemented portably across different Fortran compilers.  For
+backward-compatibility reasons, it is essential to guarantee that
+existing MPI programs still run with MPI libraries based on the new
+Fortran 2003 compatible MPI interface specification.
+
+To achieve this goal, all existing intrinsic types (with default kind
+parameter) should be usable as an actual arguments in routines defined
+with BIND(C), Unfortunately, intrinsic Fortran types with default kind
+parameter may not be interoperable.
+
+For example, the following interface,
+
+INTERFACE
+   SUBROUTINE example(mpi_tag) BIND(C)
+      INTEGER :: mpi_tag
+END INTERFACE
+
+when compiled with gfortran gives the warning,
+
+   "Warning: Variable 'i' at (1) is a parameter to the BIND(C)
+    procedure 'example' but may not be C interoperable"
+
+The problem is that there is no defined C type corresponding to a
+fortran default INTEGER, only with INTEGER(C_INT).  This problem could
+be easily resolved by supplying typedefs in ISO_Fortran_binding.h, for
+example CFI_integer_t.  The C implementation of the interface could cast
+to whatever size C integer is appropriate for the implementation.
+
+Currently, C types play a dominant role.  One can interoperate with a C
+int from Fortran by using INTEGER(C_INT) from Fortran.  But symmetry
+doesn't hold in that one can't let Fortran types play the dominant role;
+one can't interoperate with a default Fortran INTEGER from C.  One might
+widh to define the example function in C as follows:
+
+void example(CFI_integer_t mpi_tag)
+{
+  // a C int will hold an mpi_tag so cast it to int
+  int tag = (int) mpi_tag;
+  return use_mpi_tag(tag);
+}
+
+The CFI_integer_t can be typedef'd in ISO_Fortran_binding.h as, for
+example,
+
+#ifdef VENDOR_INTEGER_PROMOTED
+ typedef long CFI_integer_t;
+#else
+ typedef int CFI_integer_t;
+#endif
+
+This allows C files to be compiled with, for example,
+
+gcc -DVENDOR_INTEGER_PROMOTED example.c
+
+to complement Fortran compiler options that promote variables.
+
+It might be desirable to standardize the macro VENDOR_INTEGER_PROMOTED,
+though edits are not provided to do this.
+
+
+EDITS
+
+Section 15.2.2: Insert the following sentence at the end of paragraph 1:
+
+  The C types, CFI_integer_t, CFI_real_t, CFI_double_real_t,
+  CFI_complex_t, CFI_double_complex_t, CFI_logical_t, and
+  CFI_character_t listed in the third column of table 15.2 are defined
+  in ISO_Fortran_binding.h.
+
+Section 15.2.2: Insert the following sentence at the end of paragraph 2:
+
+  The value of F_DEFAULT_INTEGER shall be a valid value for an integer
+  kind parameter on the processor if the corresponding C type
+  CFI_integer_t exists on the companion processor or -2 otherwise.
+
+Section 15.2.2: Insert the following paragraph after paragraph 3:
+
+  The values of F_DEFAULT_REAL and F_DEFAULT_DOUBLE_REAL shall each be a
+  valid value for a real kind parameter on the processor if the
+  corresponding C type CFI_real_t or CFI_double_real_t exists on the
+  companion processor or -4 otherwise.  The values of F_DEFAULT_COMPLEX
+  and F_DEFAULT_DOUBLE_COMPLEX shall each be a valid value for a real
+  kind parameter on the processor if the corresponding C type
+  CFI_complex_t or CFI_double_complex_t exists on the companion
+  processor or -4 otherwise.
+
+Section 15.2.2: Insert the following sentence at the end of paragraph 4:
+
+  The value of F_DEFAULT_LOGICAL shall be a valid value for a logical
+  kind parameter on the processor if the corresponding C type
+  CFI_logical_t exists on the companion processor or -2 otherwise.
+
+Section 15.2.2: Insert the following sentence at the end of paragraph 5:
+
+  The value of F_DEFAULT_CHARACTER shall be a valid value for a
+  character kind type parameter on the processor if the corresponding C
+  type CFI_character_t exists on the companion processor or -2
+  otherwise.
+
+
+Section 15.3.2, Table 15.2: Insert the following lines in Table 15.2 at
+the appropriate location.
+
+integer                 F_DEFAULT_INTEGER             CFI_integer_t
+real                    F_DEFAULT_REAL                CFI_real_t
+real                    F_DEFAULT_DOUBLE_REAL         CFI_double_real_t
+complex                 F_DEFAULT_COMPLEX             CFI_complex_t
+complex                 F_DEFAULT_DOUBLE_COMPLEX      CFI_double_complex_t
+logical                 F_DEFAULT_LOGICAL             CFI_logical_t
+character               F_DEFAULT_CHARACTER           CFI_character_t
+
+Section 15.3.2, paragraph 3: Replace the last line in paragraph 3 by,
+
+  The C types mentioned in table 15.2 are defined in
+  ISO_Fortran_binding.h or in subclauses 6.2.5, 7.17, and 7.18.1 of
+  ISO/IEC 9899:1999.
+

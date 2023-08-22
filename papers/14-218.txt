@@ -1,0 +1,71 @@
+                                                             J3/14-218
+To:      J3
+From:    Nick Maclaren
+Subject: ASYNCHRONOUS and argument passing
+Date: 2014 August 07
+
+----------------------------------------------------------------------
+
+NUMBER: TBD
+TITLE: ASYNCHRONOUS and argument passing
+KEYWORD: ASYNCHRONOUS
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Is the following program conforming?
+
+PROGRAM Main
+    INTEGER, ASYNCHRONOUS :: array(5) = -1
+    OPEN (11, FILE='junk', ASYNCHRONOUS='yes', ACTION='read')
+    READ (11, *, ASYNCHRONOUS='yes') array
+    CALL Fred(array(::2))
+    WAIT (11)
+    PRINT *, array
+    CLOSE(11)
+CONTAINS
+    SUBROUTINE Fred (arg)    ! In general, an external procedure
+        INTEGER :: arg(*)    ! Otherwise unused
+        CONTINUE    ! In general, something that takes more time
+    END SUBROUTINE Fred
+END PROGRAM Main
+
+
+DISCUSSION:
+
+Note that this problem also affects any asynchronous or parallel use,
+including OpenMP and coarrays.
+
+It is not excluded by 5.3.4p2, because 'array' is merely associated with
+'arg' in subroutine Fred, and not used in an executable statement or
+specification expression there.  It will obviously not work if the
+copy-in/copy-out mechanism is used, and the actual I/O transfer occurs
+while the body of subroutine Fred is being executed.
+
+It might seem that this affects only sequence association, but Fortran
+does not forbid the use of copy-in/copy-out for most ordinary dummy
+arguments, doing so can sometimes improve performance considerably, and
+so it is a standard optimisation.
+
+The simplest fix would seem to be to add dummy arguments without the
+ASYNCHRONOUS attribute to the excluded uses.  5.3.4p3 and 9.6.2.5p4 mean
+that this is unlikely to affect any existing program.
+
+
+ANSWER:
+
+The program is not conforming.  Edits are provided to correct the
+oversight.
+
+
+EDITS:
+
+5.3.4p2 change "executable statement" to "dummy argument without the
+ASYNCHRONOUS attribute, executable statement".
+
+
+SUBMITTED BY: Nick Maclaren
+
+
+HISTORY: m205   14-nnn   Submitted

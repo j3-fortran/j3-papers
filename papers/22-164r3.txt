@@ -1,0 +1,199 @@
+To: J3                                                     J3/22-164r3
+From: Mark LeAir
+Subject: Flang Liaison Report
+Date: 2022-July-16
+
+Flang Open-Source Fortran Report
+================================
+
+Flang is an open-source compiler for Fortran.  It is an official
+subproject of the LLVM Project (llvm.org).  NVIDIA's portion of the work
+is partially sponsored by the US Department of Energy
+Exascale Computing Project (particularly, LLNL, Sandia and LANL).
+
+The goals of the project are to
+    - Create a new, open source Fortran 2018 compiler with
+      Apache 2.0 licensing,
+    - that can be used for language and parallelization
+      experimentation,
+    - that exists as a peer in the LLVM community of languages,
+      like Clang,
+    - that can rely on LLVM code generation and parallelism
+      support for CPUs and GPUs.
+
+There is a Slack workspace for Flang and a number of conference calls
+related to Flang development.
+    - Flang biweekly sync call ("umbrella call")
+    - Flang biweekly technical call
+    - "Classic Flang" biweekly call
+    - OpenMP in Flang Technical Call
+
+Details can be found on the Getting Involved page
+http://flang.llvm.org/docs/GettingInvolved.html.
+
+The New LLVM Flang Compiler
+---------------------------
+
+The new front-end is available at https://github.com/llvm/llvm-project
+(the LLVM monorepo) in the flang/ directory. 
+
+LLVM Flang is being developed under the Apache 2.0 license with LLVM
+exceptions (the same as LLVM, Clang, OpenMP, etc.).
+
+Recent efforts have concentrated on
+    - upstreaming the remaining lowering code from the 'fir-dev' branch to
+      LLVM 'main'. 
+    - As of June 30, 2022, upstreaming is complete and no more development 
+      will occur in the 'fir-dev' branch. All new development will now go
+      right into LLVM 'main'.
+    - Testing. NVIDIA now runs approximately 15,500 tests on flang nightly.
+      More than 85% of the tests are from the Numerical Algorithms Group
+      (NAG). The tests guided us to prepare the compiler for a wider
+      audience by emitting TODO messages for unimplemented features, 
+      improving error messages, and fixing compiler crashes and assertion
+      failures.
+   
+Flang Front-End Work that has been completed in Q2 (i.e., between April
+1, 2022, and June 30, 2022):
+
+Development of Fortran semantic analysis continues. Semantic testing with
+the NAG test suites and NVIDIA's internal test suites serve as a guidepost
+for the front-end work. NVIDIA runs over 13,000 NAG tests on a nightly
+basis. We also addressed a handful of issues reported on GitHub by the 
+Flang Community. There were 147 merges to llvm-project/main related to
+Flang's parsing and/or semantics during Q2.
+
+Flang Lowering work that has been completed in Q2 (i.e., between 
+April 1, 2022, and June 30, 2022):
+
+Note: Lowering is the translation of Fortran syntax into the 
+semantic-based Fortran IR (FIR) and then into LLVM IR.
+
+Lowering features completed in Q2 include:
+    * Set lower bounds to 1 when assigning an array section to a pointer.
+    * Handle reversed bounds and negative bounds in ALLOCATE statements.
+    * FORALL statement enhancements
+      - Detect overlaps when the LHS is used to index itself 
+         (e.g., a(a(i)) = i).
+      - Support basic pointer assignments inside FORALLs (i.e.: no 
+         assignment to pointer components) and add TODO for the rest.
+      - Hoist RHS scalar outside of FORALL loops.
+      - Better support for FORALL where the indices do not appear in the 
+         left-hand side expression.
+      - Fix temp deallocation issue in user assignments inside FORALL.
+      - Detect overlapping assignment with substrings inside FORALL.
+    * Support default assignment between derived types that are the same
+      but declared in deferent scopes (F2018 7.5.2.4).
+    * Procedures calls and definitions
+      - Support internal subprogram in alternate entry point.
+      - Support passing to OPTIONAL VALUE dummy arguments.
+      - Avoid clash between several procedure with the same Fortran name
+        but different BIND(C) names.
+      - Support ENTRY points appearing in generic interface.
+      - Support all kinds of ENTRY point dummy arguments appearing in one 
+        entry point but not in some others.
+      - Support calling functions whose result depends on a host procedure
+        variable inside an internal procedure.
+    * Intrinsic procedures
+      - Support PRESENT with optional dummy procedures.
+      - Handle dynamically optional argument in EXIT, 
+        GET_COMMAND_ARGUMENT, and GET_ENVIRONMENT_VARIABLE.
+      - LBOUND and UBOUND fixes.
+      - ICHAR of ISO_10646 to default integer was hitting a MLIR verifier.
+      - MERGE with logical arguments that are both variables and 
+        expressions.
+    * Variable lowering
+      - Support implied shape PARAMETERs indexing by non-constant indices.
+      - Respect BIND( C ) on in the mangling of module and common block
+        variables.
+    * Expression lowering
+      - Support lowering of Nan and Inf constant literals.
+      - Fix MLIR type mismatch coming from FIR real types being used with
+        MLIR real types in COMPLEX expressions.
+      - Fixing issue addressing multi-dimensional arrays mixing compile 
+        time constant and non-constant extents.
+      - Fixing character arrays indexing.
+      - Fixing array section indexing issue caused by bad fir.box_addr 
+        folding after lowering.
+    * IO statements
+      - Update asynchronous IO runtime calls to the new API.
+      - Use descriptors to output reals that are not f32 or f64.
+    * Destroy the selector in a select case construct after usage if it 
+      is a temporary variable.
+    * Other improvements or nonfunctional changes
+      - Use current location when lowering compiler generated symbols that
+        have no source location.
+      - Catch unit number out of range in I/O with a runtime check.
+      - Nonfunctional changes (function renaming, comment clean-up, etc.).
+      - Transform asserts into clearer TODO messages.
+      - Add support to detect and lower intrinsic module procedures. 
+        Implement IEEE_IS_FINITE, IEEE_CLASS_EQ , IEEE_CLASS_NE, 
+        IEEE_ROUND_EQ, IEEE_ROUND_NE, and add TODOs for the rest.
+      - Use MLIR math operations to lower Fortran math intrinsics when the
+        MLIR operations exist and exact precision is not required.
+
+Runtime Changes in Q2 (i.e., between April 1, 2022, and 
+June 30, 2022):
+
+    There were 82 merges made to llvm-project/main that affected the Flang 
+    IO and runtime support library. 
+
+The current state of the LLVM Flang compiler is
+    - Written in modern C++ following LLVM conventions
+    - Over 200,000 lines of code, tests and scripts
+    - Parses all of Fortran 2018 to abstract syntax trees (AST)
+    - Parses  OpenMP 4.5 and some OpenMP 5.0
+    - Parses OpenACC 3.0
+    - Defines a "Fortran Intermediate Representation" (FIR) based on
+      LLVM's MLIR
+    - Can lower most OpenMP and OpenACC constructs. We do not currently
+      lower any of the target/device constructs in OpenMP.
+    - Can compile and correctly run Fortran 77 programs (passes FCVS
+      test suite) and nearly all Fortran 95 programs.
+    - Can compile and run programs that use most OpenMP 1.1 features
+      and some task and simd constructs. OpenMP 1.1 features that still
+      need to be added are lastprivate, reduction, default clause and some
+      atomic constructs.
+
+Upcoming work:
+    - Retool our internal development process, build automation, and test 
+      framework to work directly in llvm-project now that upstreaming is 
+      complete and fir-dev is closed. Reviews and commits for Flang going
+      forward will be done directly in open source.
+    - Repoint our internal testing to llvm-project to identify regressions 
+      and improvements.
+    - Create a design document for array and character lowering and 
+      propose an update of the expression lowering design with the 
+      objectives of filling the functional gaps of the current framework
+      and making the framework easier to understand, more auditable, and
+      extendable. The proposal will cover all of Fortran, through Fortran
+      2018, and include a plan to transition from the current framework. 
+      Depending on the community feedback, it is expected that the 
+      implementation work could also start in Q3.
+    - Propose designs for the lowering of polymorphic types and 
+      parameterized derived types (PDTs). Depending on the community 
+      feedback, we expect to start implementation work on at least one of 
+      these two features in Q3.
+    - Continue to address runtime errors that are not blocked by 
+      not-yet-implemented messages and are not covered by the in-progress
+      design documents.
+
+     
+Current ("Classic") Flang Compiler
+----------------------------------
+
+The previous version of Flang, now known as Classic Flang, is derived from
+the PGI Fortran compiler, with some proprietary features removed (e.g.,
+OpenACC support, inter-procedure analysis). It is the basis for commercial
+Fortran compilers from Arm, AMD, and Huawei. 
+
+Classic Flang is available for Linux on x86-64, OpenPOWER, and Arm
+processors. OpenPower support is not currently being maintained but it is
+still available. 
+
+The Classic Flang Community has made progress with bug fixes. Support for
+Mac and Windows architectures, quad-precision, and improved debug support
+are also in progress.
+
+Detailed status can be found in the biweekly call Google doc at:
+docs.google.com/document/d/1-OuiKx4d7O6eLEJDBDKSRnSiUO2rgRR-c2Ga4AkrzOI

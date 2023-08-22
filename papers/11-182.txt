@@ -1,0 +1,206 @@
+                                                            11-182
+To: J3
+From: Nick Maclaren
+Subject: Interop TR: extending the type codes
+Date: 2011 June 12
+Reference: N1854, 11-173, 11-180, 11-181
+
+
+I do not think that it is feasible to include the changes in this paper
+at this stage, but that is not my point in writing it.  I believe that
+it is essential that we do not include anything that would prevent it or
+a functional equivalent being done fully compatibly, including by vendor
+extension.
+
+I favour simply eliminating the type member, as proposed in 11-181.
+
+
+1. Extra Type Codes
+-------------------
+
+I believe that we can extend the type codes in a clean, easily
+implementable and useful fashion to meet most or all of the requirements
+in 11-180.  I am NOT proposing that this TR extends the basic
+interoperability at this stage, but draft how it could be done at the
+end.  I also believe that such codes should be chosen according to the
+following criteria:
+
+    1) They have distinct and useful properties for interoperability,
+and there are at least some identifiable, significant reasons for
+distinguishing them.
+
+    2) They are clearly distinct in the standard, where possible, and
+all compilers will be able to identify them from the parse tree.
+
+    3) They do not conflate types that have some similar, important
+properties but others that are very different.
+
+    4) They do not conflict with the existing interoperability.
+
+1.1 Intrinsic Types
+-------------------
+
+Because of operations like reductions, there is a very strong case for
+keeping each Fortran intrinsic type's codes separate from 'simply
+copyable' derived types (as described in 11-180).  Conflating them makes
+it impossible to implement generic reduction functions.
+
+N1854 already has codes for standard C types, and there have been many
+requests to support the interoperability of Fortran default types.
+
+I can see no good reason not to provide the Fortran type (in the strict
+sense) for other intrinsic types, as every compiler will have it
+available and it (together with the element length) is all that is
+needed for many companion processors.
+
+I am not proposing to add any support for type parameters (meaning
+KIND), but we already permit compilers to provide an extra field as an
+extension.
+
+1.2 Derived Types
+-----------------
+
+There are essentially four categories here: sequence types, BIND(C)
+derived types, other simply copyable derived types, and other derived
+types.  The question is how many should be conflated.
+
+There is no strong reason to separate sequence types and BIND(C) derived
+types, except for reason (2).  The TR should follow the standard, and
+that distinguishes them fairly strongly.
+
+Other derived types are more problematic, as described in 11-180.  I do
+NOT think that this TR should impose constraints on implementations that
+are not already in the main standard, which is why I disagree with the
+approach taken in 11-173.  I believe that we should punt on this one,
+and make the distinction between simply copyable and other
+processor-dependent.
+
+This also applies to conflating simply copyable types with sequence
+types and BIND(C) derived types.  It is cleaner not to mix
+standard-defined and processor-dependent classifications.
+
+1.3 Minor Omission in N1854
+---------------------------
+
+N1854 specifies that CFI_type_other shall be distinct from all other
+type codes, but not that CFI_type_int shall be distinct from
+CFI_type_float, and so on.  Also, Fortran distinguishes CHARACTER from
+INTEGER in a way that C does not, and it needs to be clarified that
+CFI_type_char refers to the former (as MPI does with MPI_CHAR).  That
+wording needs improvement, anyway.
+
+
+Edits to N1854:
+---------------
+
+[11:16] Replace paragraph 7 by:
+
+"The macros in Tables 5.2 and 5.2a are for use as type specfiers.  If a
+C type is not interoperable with a Fortran type and kind supported by
+the Fortran processor or a Fortran default type is not interoperable
+with a C type supported by the companion processor, its macro shall
+evaluate to a negative value. Otherwise, the value shall be positive."
+
+[11:18+] After "type codes" append "for C types".
+
+[12:0+] Delete the line "| CFI_type_other | Any other type |".
+
+[12:0+] Replace Note 5.5 by a new Table 5.2a, some new paragraphs, a new
+Note and a Table 5.2b:
+
+"
+
+    Table 5.2a: Macros specifying type codes for Fortran types
+
+    Macro                                    Fortran type
+
+    CFI_type_integer_default                 INTEGER
+    CFI_type_integer_other                   other integer
+    CFI_type_real_default                    REAL
+    CFI_type_real_double                     REAL(KIND=KIND(0.0D0))
+    CFI_type_real_other                      other real
+    CFI_type_complex_default                 COMPLEX
+    CFI_type_complex_double                  COMPLEX(KIND=KIND(0.0D0))
+    CFI_type_complex_other                   other complex
+    CFI_type_logical_default                 LOGICAL
+    CFI_type_logical_other                   other logical
+    CFI_type_character_default               CHARACTER
+    CFI_type_character_other                 other character
+    CFI_type_derived_sequence                sequence type
+    CFI_type_derived_interoperable           interoperable derived type
+    CFI_type_derived_copyable                other simply copyable type
+    CFI_type_derived_other                   other derived type"
+
+{{{ The following could be more concisely and clearly defined by adding
+extra columns in the tables and referring to them, but is done this way
+to minimise the changes. }}}
+
+"CFI_type_integer_other, CFI_type_real_other, CFI_type_complex_other,
+CFI_type_logical_other and CFI_type_character_other shall be used for an
+argument that is of intrinsic type but is not interoperable.
+CFI_type_derived_copyable shall be used for one of a processor-dependent
+set of derived types that are neither sequence types nor interoperable,
+but where the value can be copied from one object of that type to
+another by using the C memcpy() function; when that is not the case,
+CFI_type_derived_other shall be used.
+
+If two type codes for intrinsic types correspond to different Fortran
+types or Fortran types with different kind values or to incompatible C
+types, and both are positive, they shall evaluate to different values.
+All of CFI_type_cptr, CFI_type_cfunptr, CFI_type_integer_other,
+CFI_type_real_other, CFI_type_complex_other, CFI_type_logical_other,
+CFI_type_character_other, CFI_type_derived_sequence,
+CFI_type_derived_interoperable, CFI_type_derived_copyable and
+CFI_type_derived_other shall be positive and evaluate to values that are
+different from all other type codes.
+
+CFI_type_char, CFI_type_integer_other, CFI_type_real_other,
+CFI_type_complex_other, CFI_type_logical_other,
+CFI_type_character_other, CFI_type_derived_sequence,
+CFI_type_derived_interoperable, CFI_type_derived_copyable and
+CFI_type_derived_other are referred to as unknown size type codes
+elsewhere in this Technical Report.
+
+    NOTE 5.5
+
+The macros in Table 5.2b are 1 for use as type names.  If the type code
+macro corresponding to the Fortran type evaluates to a positive value,
+the macro shall be defined to evaluate to a typedef name for a C type
+that is interoperable with that Fortran type.
+
+    Table 5.2b: Macros specifying typedef names for Fortran types
+    Macro                            Fortran type
+
+    CFI_logical_default              LOGICAL
+    CFI_integer_default              INTEGER
+    CFI_real_default                 REAL
+    CFI_real_double                  REAL(KIND=KIND(0.0D0))
+    CFI_complex_default              COMPLEX
+    CFI_complex_double               COMPLEX(KIND=KIND(0.0D0))
+    CFI_character_default            CHARACTER
+
+"
+
+{{{ The remainder of the changes are simply replacing references to
+CFI_type_other by ones to an unknown size type code, and a few related
+changes. }}}
+
+[14:27] Replace "CFI_type_other or a character type.  If the type is
+CFI_type_other," by "an unknown size type code.  Otherwise"
+
+[16:7] Replace "CFI_type_other or a character type.  If the type is
+CFI_type_other," by "an unknown size type code.  Otherwise"
+
+[16:36] After "the array a(:)" append "where the processor supports
+copying values of type type(t) using memcpy()".
+
+[16:45] Replace "CFI_type_other" by "CFI_type_derived_copyable".
+
+[18:21] Replace "CFI_type_other or a character type.  If the type is
+CFI_type_other," by "an unknown size type code.  Otherwise"
+
+[21:1-5] Replace "from Table 5.2 that" to "otherwise, CFI_type_other."
+by:
+
+"from Table 5.2 or Table 5.2a that is the corresponding value for the
+dynamic type of the effective argument."

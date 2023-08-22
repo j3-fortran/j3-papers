@@ -1,0 +1,220 @@
+                                                           J3/14-250r1
+To: J3
+From: John Reid & Bill Long
+Subject: Stalled images
+Date: 2014 October 13
+
+Discussion
+----------
+
+At the June meeting, we added the concept of temporary failure for
+an image. This occurs if the image cannot progress because it needs
+to access data on a failed image. The TEAM construct is treated as an
+exception block and control is transferred to the END TEAM statement.
+Previously, such an image would have become failed, which is very
+undesirable because there may be many such images and they are all in
+working order.
+
+The proposal here is to replace the concept of temporary failure
+by the concept of a stalled image. Failure and stalling are very
+different and deserve to be treated separately.
+
+I have added the term "active" for an image that has not stopped,
+stalled, or failed.
+
+I have assumed that a stalled image continues to support atomic
+operations.
+
+I have given the collectives a error return if the team contains an
+image that is not active. It seems wrong to required the support of
+a collective on a team that is missing some of its images.
+
+I have not extended NUM_IMAGES to return the number of stalled images
+because this would make it clumsy. In his ballot, Reinhold Bader says
+that we no longer need to return the number of failed images from
+NUM_IMAGES now that we have the intrinsic FAILED_IMAGES. I agree with
+this view and will propose this in a separate paper.
+
+
+Edits to N2007:
+---------------
+
+Change every occurrence of "nonfailed" to "active", except
+[18:2, 18:4, 18:6].
+
+[5:3+] Add
+"3.0 <<active image>>
+An image that has not failed, stalled, or initiated termination."
+
+[5:31] Before "has not initiated" insert "is not a stalled image or".
+{Ensure stalled and failed are distinct states.}
+
+[5:32+] Add
+"3.4a <<stalled image>>
+An image that has encountered an <image-selector> that identifies an
+image that has failed and has not yet executed an END TEAM statement
+that makes it active again (5.9)"
+
+[12:22] Change "failed" to "failed or stalled".
+
+[13:23] Before "has not initiated" insert "is not a stalled image or".
+{Ensure stalled and failed are distinct states.}
+
+[13:25] Delete "unless ... paragraph".
+
+[13:21-24] Move the two sentences "A failed image is one ... program
+execution." to a separate paragraph following the first paragraph of
+5.8.
+
+[13:25-26] After "one nonzero status value" add "other than
+STAT_STALLED_IMAGE ".
+{Make STAT_STALLED_IMAGE lowest, STAT_FAILED_IMAGE second lowest.}
+
+[14:1] Change "STAT_FAILED_IMAGE is" to
+       "STAT_FAILED_IMAGE and STAT_STALLED_IMAGE are".
+
+[14:5-7] At line 6, change "is treated as a failed" to "becomes a
+stalled". Then move this paragraph to a new section after NOTE 5.9
+headed "5.9 STAT_STALLED_IMAGE".
+
+[14:NOTE 5.8] Delete the last sentence of Note 5.8.
+{The is a stalled image, and the note is for failed images.}
+
+[14:7+] At the beginning of the new subclause 5.9 insert a new
+paragraph:
+"If the processor has the ability to detect that an image has stalled,
+the value of the default integer constant STAT_STALLED_IMAGE is
+positive; otherwise the value of STAT_STALLED_IMAGE is
+negative. STAT_STALLED_IMAGE is defined in the intrinsic module
+ISO_FORTRAN_ENV.  If the processor detects that an image involved in
+execution of an image control statement or a collective subroutine has
+stalled, the value of STAT_STALLED_IMAGE is assigned to the variable
+specified in a STAT=specifier in an execution of an image control
+statement, or the STAT argument in an invocation of a collective
+procedure If the STAT= specifier of an execution of a CHANGE TEAM,
+FORM TEAM, SYNC ALL, SYNC IMAGES, or SYNC TEAM statement is assigned
+the value STAT_STALLED_IMAGE, the intended action shall have taken
+place for all the active images involved.
+If more
+than one nonzero status value is valid for the execution of a
+statement, the status variable is defined with a value other than
+STAT_STALLED_IMAGE."
+
+"
+
+[14:7+] At the end of the paragraph moved from [14:5-7], add
+"If an <image-selector> identifies an image that has failed and a team
+that is the initial team, the executing image becomes a stalled
+image for the rest of the execution of the program."
+
+[17:6] Before "STOPPED_IMAGES" add "STALLED_IMAGES,".
+
+[18:2, 18:4, 18:6] Delete "nonfailed".
+
+[18:18-19] Change "if no ... failed" to "if all images of the current
+team are active".
+
+[18:20]. Change "or STAT_FAILED_IMAGE" to ", STAT_FAILED_IMAGE, or
+STAT_STALLED_IMAGE".
+
+[18:21-22] Replace by "Otherwise, if an image of the current team has
+been detected as failed, the argument is assigned the value of the
+constant STAT_FAILED_IMAGE. Otherwise, if an image of the current team
+has been detected as stalled, the argument is assigned the value of the
+constant STAT_STALLED_IMAGE."
+
+[27:3] After "failed," add "STAT_STALLED_IMAGE if the specified image
+has stalled,".
+
+[27:4-5]. Change "STAT_FAILED_IMAGE" to "STAT_FAILED_IMAGE,
+STAT_STALLED_IMAGE,".
+
+[27:6+] Add
+"7.4.18a STALLED_IMAGES([TEAM, KIND])
+
+<<Description.>> Indices of stalled images.
+
+<<Class.>> Transformational function.
+
+<<Arguments.>>
+
+TEAM (optional) shall be a scalar of the type TEAM_TYPE defined in
+the ISO_FORTRAN_ENV intrinsic module. Its value shall represent an
+ancestor team.
+
+KIND (optional) shall be a scalar integer constant expression. Its
+value shall be the value of a kind type parameter for the type
+INTEGER. The range for integers of this kind shall be at least as
+large as for default integer.
+
+<<Result Characteristics.>> Integer. If KIND is present, the kind
+type parameter is that specified by the value of KIND; otherwise,
+the kind type parameter is that of default integer type. The result
+is an array of rank one whose size is equal to the number of images in
+the specified team that are known by the invoking image to have
+stalled.
+
+<<Result Value.>> If TEAM is present, its value specifies the team;
+otherwise, the team specified is the current team. The elements of the
+result are the values of the image indices of the known stalled images
+in the specified team, in numerically increasing order.
+
+<<Examples.>> If image 3 is the only stalled image in the current team,
+STALLED_IMAGES() has the value [3]. If there are no images in the
+current team that are known by the invoking image to have stalled,
+STALLED_IMAGES() is a zero-sized array.
+
+[28:26] Change "failed" to "failed or stalled".
+
+[29:3] After ISO_FORTRAN_ENV add "; otherwise, if a stalled image is
+detected and execution is otherwise successful, the STAT= specifier
+is assigned the value STAT_STALLED_IMAGE in the intrinsic module
+ISO_FORTRAN_ENV.
+
+[29:7]. Change "or STAT_FAILED_IMAGE" to ", STAT_FAILED_IMAGE, or
+STAT_STALLED_IMAGE".
+
+[29:9] Change "failed" to "failed or stalled".
+
+[32:4] Before "has not initiated" insert "is not a stalled image or".
+{Ensure stalled and failed are distinct states.}
+
+[32:5+] Add
+"1.3.132a
+<<stalled image>>
+An image that has encountered an <image-selector> that identifies an
+image that has failed and has not yet executed an END TEAM statement
+that makes it active again."
+
+[34:6] After "(13.8.2)" add "{\ul ; otherwise, if a stalled image is
+detected and execution is otherwise successful, the STAT= specifier
+is assigned the value STAT_STALLED_IMAGE in the intrinsic module
+ISO_FORTRAN_ENV.}"
+
+[34:12-13]. Change "or STAT_FAILED_IMAGE" to ", STAT_FAILED_IMAGE, or
+STAT_STALLED_IMAGE".
+
+[34:17] Change "failed" to "failed or stalled".
+
+[35:29] After "(13.8.2)" add "; otherwise, if a stalled image is
+detected and execution is otherwise successful, the STAT= specifier
+is assigned the value STAT_STALLED_IMAGE in the intrinsic module
+ISO_FORTRAN_ENV."
+
+[35:35]. Change "or STAT_FAILED_IMAGE" to
+", STAT_FAILED_IMAGE, or STAT_STALLED_IMAGE".
+
+[36:1, 36:2, 36:9] Change "failed" to "failed or stalled".
+
+[37:1-] Before the line for STOPPED_IMAGES add
+STALLED_IMAGES  ([TEAM, KIND])     T   Indices of stalled images
+
+[40:15+] Add a new edit:
+"In 13.8.2 The ISO FORTRAN ENV intrinsic module, insert a new
+subclause 13.8.2.23a consisting of subclause 5.8 STAT_STALLED_IMAGE of
+this Technical Specification, but omitting the second sentence of the
+first paragraph."
+
+[40:21] Before "STAT_STOPPED_IMAGE" insert "STAT_STALLED_IMAGE, ".
+{Insert STAT_STALLED_IMAGE in the list of constants with distinct
+values.}

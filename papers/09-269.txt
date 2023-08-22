@@ -1,0 +1,188 @@
+                                                                09-269
+To: J3
+From: Robert Corbett
+Subject: assumed character length functions
+Date: 2009 July 27
+References: 09-007r2
+
+1.  Introduction
+--  ------------
+
+The FORTRAN 77 standard added an intrinsic character type to the
+Fortran language.  Among the features added to make programming
+with the new character type easier were character dummy variables
+and character functions whose lengths are not fixed at
+compile-time.  The FORTRAN 77 standard was designed to permit
+implementations that allocated all storage for a program
+statically.  That design criterion put severe restrictions on
+what could be done with entities of character type whose lengths
+were not fixed.
+
+Fortran 90 eliminated the restrictions that allowed processors to
+avoid dynamic storage allocation.  The text that described
+character variables, functions, and expressions was amended to
+allow greater flexibility in the use of character data.
+
+Fortran 95 declared assumed character length functions to be
+obsolescent.  The text regarding assumed character length
+functions was largely unchanged.  In Fortran 2003 and the
+Fortran 2008 draft, the text has been reorganized, but with no
+obvious alterations other than making some restrictions
+constraints.
+
+The FORTRAN 77 standard is unclear in several instances regarding
+assumed character length functions.  Amendments made in the
+Fortran 90 standard exacerbated the problems.  FORTRAN 77
+implementations offer consistent behavior for programs that use
+assumed character length functions provided vendor extensions are
+avoided.  Implementations of the subsequent Fortran standards are
+less consistent, which makes programs that use assumed character
+length functions less portable.
+
+This paper proposes edits to the draft Fortran 2008 standard to
+improve portability of programs that use assumed character length
+functions.
+
+2.  Discussion
+--  ----------
+
+This paper assumes that assumed character length functions in recent
+editions of the Fortran standard are intended to be backward
+compatible with assumed character length functions in FORTRAN 77.
+That assumption might not be correct.  I do not have access to the
+interpretations issued for FORTRAN 77 or to a record of the decisions
+that guided the development of Fortran 90.
+
+Some of the information regarding Fortran implementations presented
+here is based on documentation only.  Such information is not as
+reliable as information obtained by running programs.
+
+FORTRAN 77 does not provide a way for a main program or subprogram
+that references a function of type CHARACTER to know whether the
+function being called has constant length or assumed length.
+Therefore, an implementation must pass the length specified for the
+function to the called function, even in cases where the function
+being referenced has constant length.  Although not required by the
+FORTRAN 77 standard, most implementations also pass a pointer to a
+return area to the referenced function.
+
+The conventions for representing dummy procedures of type CHARACTER
+vary among implementations.  Three conventions stand out.
+
+The convention used by the greatest number of compilers is to pass only
+the address of the routine that is accessed by the actual argument to
+the dummy procedure.  No length is passed.  This convention depends on
+the requirement that the length of the function be specified in any
+program unit that invokes an assumed character length function.
+
+The second most widely used convention is to reserve space for a length
+with all arguments, regardless of whether they are variables or
+procedures and regardless of their types.  This convention is very
+flexible.  It even allows users to pass values to dummy arguments of
+the wrong type as long as the subprogram that finally invokes the
+function properly declares its type.
+
+The third convention is to pass a pointer to a descriptor that provides
+both the address of the routine to be referenced and a length.  This
+convention is not used by many implementations, but one of the
+implementations that used it was very important.  This convention is
+also very flexible.
+
+The problems with assumed character length functions begin with the
+following statement from Section 8.6.2 of the FORTRAN 77 standard:
+
+   If an external function has a _len_ of (*) declared in a
+   function subprogram, the function name must appear as the
+   name of a function in a FUNCTION or ENTRY statement in the
+   same subprogram.  When a reference to such a function is
+   executed, the function assumes the length specified in the
+   referencing program unit.
+
+A literal reading of this statement is that a function definition
+cannot declare an external function that is not defined in the
+function definition to be an assumed character length function.
+There is no corresponding prohibition for main programs, subroutines,
+or block data subprograms.  I see no reason to ban declarations of
+assumed character length external functions in function definitions.
+
+Fortran 90 extended the ban on declaring assumed character length
+functions to subroutines, main programs and block data subprograms.
+Here is where the missing historical data would be useful.  The ban
+serves no obvious purpose.  A program unit can pass an external
+function declared with a constant length to an assumed character
+length dummy procedure is every implementation I have tried.
+External functions with constant character length can also be passed
+to constant character length functions with different lengths in
+every implementation I tried.  The following example shows how such
+a capability might be used
+
+      CHARACTER*(*) FUNCTION FUNC()
+        FUNC = '1234567890'
+      END
+
+      SUBROUTINE SUBR(F)
+        CHARACTER*8 F
+        EXTERNAL F
+        PRINT *, F()
+      END
+
+      PROGRAM MAIN
+        CHARACTER*4 FUNC
+        EXTERNAL FUNC
+        PRINT *, FUNC()
+        CALL SUBR(FUNC)
+      END
+
+FORTRAN 77 ensured that the type of a dummy procedure used as the
+function name in a function reference would match the type of the
+function that was called by requiring that the type of an actual
+argument passed to a dummy procedure must match the type of that
+procedure.  Fortran 90 dropped that requirement and did not provide
+a substitute way of ensuring type compatibility.  Fortran 90 also
+added IMPLICIT NONE, which makes it possible for the actual argument
+or the dummy procedure to not have a type.  Every implementation I
+tried allowed an untyped actual argument to be passed to a dummy
+procedure.
+
+None of the conventions for passing dummy procedures of type
+CHARACTER that I described above requires the type to be maintained
+consistently across calls.  As long as any scoping unit that invokes
+the function specifies the dummy procedure to be of the correct type,
+the code will work.  Nonetheless, I would like to add the requirement
+that any function passed as an actual argument to a dummy procedure
+must be typed, that the dummy procedure with which it is associated
+must be typed, and that the types must match.  Furthermore, if dummy
+procedure that has a type is passed as an actual argument to another
+dummy procedure, the latter dummy procedure shall be typed and the
+types shall match.  The problem fixed by this change is not
+restricted to assumed character length functions.
+
+No edition of the Fortran standard has allowed a subroutine to be
+passed as an actual argument to a dummy procedure that is explicitly
+typed.  FORTRAN 77 and Fortran 90 did not allow CHARACTER*(*) as a
+type in an implicit statement.  Fortran 95 and later editions of the
+standard do.  Until Fortran 95, a program could not pass a subroutine
+as the actual argument to an assumed character length dummy procedure.
+
+3.  Edits
+--  -----
+
+[57:31 4.4.3.2p3]
+In the first bullet item of constraint C418, change "dummy argument,"
+to "dummy argument or external function.
+
+[57:38 4.4.3.2p3]
+In constraint C419, change "dummy" to "dummy procedure or external".
+
+[298:22+, 12.5.2.9p7+]
+Following paragraph 7 add
+"If an external function or a dummy procedure that is implicitly or
+explicitly typed is used as an actual argument and the interface of
+the corresponding dummy procedure is implicit, the corresponding
+dummy procedure shall be implicitly or explicitly typed and it shall
+have the same type as the actual argument and compatible type
+parameters.  The type parameters are compatible if they are the same.
+If the type is CHARACTER, the length parameter is compatible if it
+is an integer constant or * and the actual parameter is or is
+ultimately associated with an external function whose result is
+declared to be CHARACTER*(*) in its function definition."

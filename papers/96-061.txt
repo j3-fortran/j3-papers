@@ -1,0 +1,251 @@
+                                                            X3J3/96-061
+
+Date:     April 3, 1996
+To:       X3J3
+From:     Richard Bleikamp
+Subject:  Derived Type I/O
+
+
+A previous version of this paper was emailed to the x3j3 alias.  This
+revision incorporates some of the comments from Richard Maine and
+Baker Kearfott.
+
+I am still looking for alternative approaches to providing the desired
+functionality.  Please send me any suggestions for references/approaches.
+- The approach described here is somewhat similar to what Ada users might
+  expect, if we chose to overload a small set of function names.
+  A C++ user would also see similarities.  Neither C++ nor Ada provide
+  any implicitly defined support for formatted derived type I/O.
+
+As with the Async I/O paper presented at the last meeting, this paper is
+intended primarily to generate discussion on this topic, and to serve
+as part of a tutorial on derived type I/O.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Overview
+
+The obvious mechanism for supporting formatted derived type I/O is to
+allow the user to provide their owning formatting routines.  These
+routines would be called by the I/O runtime library, when a derived-type
+item is encountered in the I/O list during formatted I/O.
+
+Assumptions and comments (these are new):
+
+  - Internal I/O would be allowed in the user written formatting routines.
+    This is an extension to the standard, which prohibits recursive I/O
+    operations now.
+
+  - Baker Kearfott pointed out a unique requirement for interval arithmetic
+    I/O, namely the ability to tell the I/O library which way to round
+    "interval"s (upper and lower bounds) when doing I/O, and a requirement on
+    the library to get it "right".
+    I think this requirement can best be dealt with separately, and in a
+    general manner (i.e. add edit descriptors (similar to BN/BZ) which control
+    the rounding mode).
+
+The following questions come to mind:
+
+  - Edit descriptors:
+      + should we provide new edit descriptors for this capability
+        (i.e. FORMAT(UA12.2)), 
+      + allow some existing edit descriptors to be used ("G" comes to mind) ?
+      + both
+      + undecided
+
+
+  - should the usual "w.d.m" syntax be allowed to specify the field width,
+    etc., and "w" be required to be the actual field width ?
+    + yes           + no           + undecided
+
+  - should the user supplied formatting routine be allowed to cause a
+    record to be written/read ?
+    + yes           + no           + undecided
+
+    I think not, if the user needs to use multiple records for I/O on a
+    single derived type item, then they should be required to provide
+    their own routines to do it.  Extending this proposal to support
+    record processing in the user's I/O routine complicates the
+    interfaces and increases the implementation cost.
+
+  - how do we handle error conditions ?  especially in the user's formatting
+    routine.
+
+  - how does the I/O library actually interface with the user's formatting
+    routines ?
+       + should just one routine name be "called" from the I/O library,
+	 thereby requiring the user to overload these routines, based on the
+	 "type" of the list item ?  (richard maine's preference)
+         (does this interfere with sequenced derived types or different
+	 modules overloading the same routine names for different derived
+	 types? (i don't think so))
+       + or should the user be required to supply a uniquely named set of
+         routines for each derived type (on which I/O is performed) ?
+         (a derived type defined in a MODULE should probably have the
+	  MODULE name included in the routine names somehow)
+       + undecided
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+One possible approach:
+
+  The following are my current thoughts on all this.  It is provided to
+  suggest one possible compromise between functionality, ease of use, and
+  implementation cost; and because I like getting beat up :).  It may
+  also clarify some points.  THIS IS NOT a proposal yet.  We need to
+  decide on the funtionality required before we decide anything at this
+  level of detail.
+
+  - Allow the A, E, F, G, I, and L edit descriptors to be used with a
+    derived type value.
+
+  - Also allow the "UA", "UB", ..., thru "UZ" edit descriptors.
+    These edit descriptors would only be valid for derived type items.
+    We could also allow this edit descriptors to be used for intrinsic
+    datatypes, calling the user provided formatting routine for that
+    intrinsic datatype.
+
+  - Pass the edit descriptor specified in the format to the user's format-
+    ting routine, as a CHARACTER (LEN=2 ?) argument.
+
+  - Require the user to provide TWO routines for any derived type
+    used in an I/O list, one for reading, one for writing.
+    Actually, only the routine matching the I/O statement actually need
+    exist.
+
+  - The interface for the user provided formatting routines is fixed, as
+    below.  The names of these routines are pre-determined, based on the
+    "real" name of the derived type (before USE renaming occurs, similar
+    to namelist variable names today).  ALTERNATIVE, overload just TWO
+    function names, one for READs, another for WRITEs.
+
+    The "write" routine interface will be 
+    INTERFACE 
+      INTEGER FUNCTION formatted_write_xxx (edit_desc,w,d,m,buffer,dt)
+						! where "xxx" is the name of 
+						! the derived type.
+	INTEGER, INTENT (INOUT) :: w
+	INTEGER, INTENT (IN) :: d, m
+	CHARACTER*2 edit_desc
+	CHARACTER (LEN=132), INTENT(OUT):: buffer
+					! could be LEN=w, but we may want
+					! to support "w=0" for minimal
+					! field width editing.  is 132 enough?
+	TYPE (xxx), INTENT(IN) :: dt
+      END FUNCTION
+    END INTERFACE
+
+    The routines will return a "status" code, zero for success, non-zero
+    for failure ?
+    possibly required to be positive ?  should probably imitate IOSTAT ?
+
+    If the routine is successful, the argument "buffer" will have the
+    character string to be copied into the output buffer at the current
+    position.  The user's routine is responsible for storing the desired
+    characters into buffer.
+
+    The format specification MUST supply a "w".  It may be "zero", in
+    which case the user's routine should produce the "shortest" practical
+    character string, and return the length of the string in "w".  "w"
+    can be defined by the user's routine when "w" was positive on entry,
+    but any value stored shall be ignored by the I/O library.
+
+    "d" and "m" will be zero if they were not present in the format
+    specification.
+
+    The user's routine should fill "buffer" with "*"s to indicate an
+    insufficient field width, except when "w" was zero.
+
+    The dummy arg "edit_desc" will have the edit descriptor from the
+    format specification, left justified, blank padded on the right
+    (if needed).
+
+
+
+    The "read" routine interface will be 
+
+    INTERFACE 
+      INTEGER FUNCTION formatted_read_xxx (edit_desc,w,d,m,buffer,dt)
+		! where "xxx" is the name of the derived type.
+
+		INTEGER, INTENT (INOUT) :: w
+		INTEGER, INTENT (IN) :: d, m
+		CHARACTER*2 edit_desc
+		CHARACTER (LEN=132), INTENT(IN):: buffer
+					! could be LEN=w, but may want to
+					! support "w=0" for minimal field width
+					! editing.  is 132 enough?
+		TYPE (xxx), INTENT(OUT) :: dt
+      END FUNCTION
+    END INTERFACE
+
+    The read routine is similar to the write routine, with these
+    exceptions.
+
+    - "w" cannot be zero.  This is a restriction on the format
+      specification.  See later notes about list directed support.
+
+    - The buffer will contain the remainder of the characters from the
+      current input record (up to a maximum of ?). Buffer is intent (in).
+
+    - The variable "dt" is defined, by the user's routine, with the
+      desired value.
+
+With the above proposal, I believe implementations will need the follow-
+ing sorts of changes:
+
+  - when passing a derived type item to an I/O routine, the compiler will
+    also have to pass the address of the appropriate user written I/O
+    formatting routine.  The external name for this puppy should be
+    easily derivable by the compiler at this point.
+
+  - The runtime library I/O routine for derived types will swallow up the
+    next edit descriptor, and pass the relevent info to the user written
+    formatting routine.
+
+    For input, this includes passing the I/O buffer to the formatting
+    routine, and updating the current position in the buffer afterwards.
+
+    For output, when the user routine returns, the returned buffer should
+    be copied into the I/O libraries output buffer.
+
+  - I have not clearly thought out the impact of non-advancing I/O on
+    all this, but it should be manageable.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Miscellaneous Questions (which don't need to be resolved immediately) :
+
+  - should list directed I/O be supported, yes ?
+    no ?
+    undecided ?
+    
+    The same user routines could be used, with w=0 or -1 to indicate list
+    directed I/O.  If you think minimal field editing and list directed I/O
+    are equivalent, "0" is a good choice.
+
+    Richard Maine suggested using a different edit descriptor string
+    to indicate list directed I/O, such as "* ".
+    
+    There are still some questions to be answered about expected behavior
+    for the user's routine when doing list directed I/O.  Multiple record
+    stuff may be a problem.  List directed I/O often introduces
+    "extraneous" record boundaries.
+
+    Note that there is a pending interpretation concerning mixed list
+    directed and FORMAT type I/O, when non-advancing is used.
+
+  - what about namelist I/O.
+    I'm think we should define namelist I/O for derived types in the
+    standard, independent of this proposal.  We could do the same for
+    list directed also.
+
+  - Richard Maine commented:
+    I don't like hard-wired character lengths in interface definitions.
+    How about len=*?
+    This issue here is how long is the buffer?  We should probably require
+    some minimum length, but allow implementations to use larger buffers.
+    What we don't want to do is to require an implementation to support
+    infinitely long formatted I/O records.
+
+ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Rich Bleikamp			    bleikamp@convex.com or bleikamp@rsn.hp.com
+Hewlett Packard Company         (Convex Technology Center, Richardson TX)
+

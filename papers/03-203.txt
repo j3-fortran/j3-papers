@@ -1,0 +1,296 @@
+
+                                                         J3/03-203
+
+Date: 04 August 2003
+To: J3
+From: Dan Nagle
+Subject: Fixing NEW_LINE
+
+Re:  WG5/N1533
+
+                                         ISO/IEC JTC1/SC22/WG5 N1533
+
+                       Fixing NEW_LINE
+
+                          Dan Nagle 
+
+
+In our zeal to make a NEW_LINE intrinsic, we omitted a few aspects
+which, I believe, are needed to make NEW_LINE actually work as
+intended.  No doubt, this was due to the combination of the last-minute
+adding of the feature and the (perhaps unexpected) size of the
+feature.
+
+The motivation for adding NEW_LINE is that we want an abstraction to
+make formatted streams work for any character type, not only those we
+know ACHAR(10) supports; to wit, ASCII, ISO_10646 and EBCDIC.  At the
+very least, NEW_LINE ought to be required to work for any possible
+default character type.  For nondefault character types, it appears the
+design is to return the newline character, or to return a blank to
+signal failure.
+
+The current difficulties are several, basically, we don't treat
+possible future character sets very generally:
+
+First, we don't acknowledge the possibility that the default character
+type may not have control characters, let alone one which may be used
+as newline, and
+
+Second, we say where control characters are prohibited, but we don't
+say how a program may obtain one (even in a note, even though we say
+you need one to use all the features of formatted streams), and
+
+Third, in fact, we don't say anything about control characters at all
+(other than parenthetically remarking that newline is one), even how
+they might affect the collating sequence (which might change an
+existing program in an unexpected way), and
+
+Fourth, we allow processor to prohibit (some) control characters from
+appearing in formatted streams!  Evidently, we want to specificly allow
+newline, and
+
+Fifth, we want to require that the C_NEW_LINE character be the same as
+the character returned by NEW_LINE for the C_CHAR character type
+(rather than noting that we anticipate a coincidence), and
+
+Sixth, we ignore the effects of newline in formatted records (whether a
+character expression written to a formatted stream can be written to a
+formatted record), and
+
+Seventh, while not required but since NEW_LINE is modeled after the
+inquiry intrinsics, it would be nice to allow NEW_LINE to return its
+value even when its argument is a nonpresent optional dummy argument of
+the procedure in which it appears (this allows a print procedure to
+print an empty line or a default line when passed no string), and
+
+Eighth, again, while not required but since NEW_LINE is modeled after
+the inquiry intrinsics, it would be nice to allow NEW_LINE in
+initialization expressions (where many programmers will want to put
+it), and
+
+Lastly, we don't say how we want NEW_LINE to work with any default,
+non-ASCII, non-ISO_10646 character types ('processor-dependent' isn't
+much of a hint).
+
+We also neglected to add NEW_LINE to the list of new stuff in the
+Introduction.  But then, we forgot to add lots of other new features to
+the Introduction on the first pass, too.
+
+In analysing these issues, I found a couple of other character issues
+which may as well be addressed.  See the new text at 42:12-14: ASCII
+and ISO_10646 are defined, other character sets are not.  Specifically,
+we say that for nondefault character types, the blank character is
+processor dependent.  In fact, for nondefault ASCII and ISO_10646
+characters types, the blank character is specified.  For the default
+character type, if not ASCII nor ISO_10646, blank is, in fact,
+processor dependent.  Furthermore, for non-ASCII, non-ISO_10646
+character types, newline is processor dependent.  For default character
+types, the definition of NEW_LINE punts to the definition of ACHAR,
+which punts (again, 'processor-dependent' isn't much of a hint).
+
+In short, NEW_LINE as specified is broken and should be either removed
+or fixed.  I propose to fix it.  New language added at 164 regarding
+characters breaks several other claims regards blanks in Notes in the
+standard, I propose to fix those as well.
+
+There are several questions which should be answered before proceeding
+to fix NEW_LINE.  These are:
+
+0. Do we want newline to be required to be a control character?  Or is
+a vendor permitted to choose a graphic character if a character set
+lacks control characters?  (I suggest NO, the programmer is better
+situated to choose the graphic character to be so used, if needed.)
+
+1. Do we intend that the default character type will always support a
+newline character? (I suggest YES.)
+
+2. Do we intend that any character type will always support a newline
+character? (I suggest MAYBE.)
+
+3. If it's possible for NEW_LINE to fail to provide a newline
+character, do we want the failure to be signaled by the same character
+for any character kind?  Or may the failure be signaled by a processor
+dependent value? (I suggest YES.)
+
+4. Since the standard is now for the first time describing uses for
+control characters, and we limit where control characters may be
+specified and where control characters may be used, do we want to
+provide notes giving some guidance or rationale regarding the
+limitations on control characters?  (I suggest YES, we certainly give
+hints for lesser issues.)
+
+To fix NEW_LINE:
+
+We can either declare that newline is a part of the Fortran character
+set (which default characters must support) or add newline to the
+requirements for the default character set as a separate requirement.
+I propose further edits to require that NEW_LINE either return a
+newline character or a blank to allow a program to detect failure of
+NEW_LINE to supply the necessary character, and I propose Notes to
+explain why control characters work as they do.  I also propose to fix
+the erroneous Notes regarding which characters are specified and which
+are processor dependent.
+
+I provide edits for several approaches.  Where there are alternative
+edits, I indicate the choices.
+
+EDITS
+
+--add NEW_LINE to intro--
+
+xiii:(5) after "record structure)," add
+         "the NEW_LINE intrinsic (to portably signal
+          the end-of-record within stream formatted files),"
+
+--newline now has a specific meaning--
+
+3:24+ add "(4) Earlier Fortran standards left unspecified
+           the effects of any control character.  This
+           standard specifies a use of the newline
+           control character."
+
+--choose one--
+
+23:13 change "and special characters" to
+      "special characters, and the newline control character"
+
+--or--
+
+24:15 after "set." add "The default character type
+      shall support a newline control character."
+
+--end choose one--
+
+--choose none or either but not both--
+--newline should be a control character--
+
+24:20 after "character." add "Each nondefault character
+      type shall designate a character as the newline character."
+
+24:20+ add the notes
+       "NOTE 3.1+ Within the ASCII and ISO 10646 character
+	standards, the Fortran character blank is called space (or sp,
+	code 32) and the Fortran character newline is called newline
+	(or nl, code 10).  Within non-ASCII, non-ISO 10646 character
+	sets, the designated newline character should be a control
+	character, if possible."
+
+--or--
+--newline must be a control character--
+
+24:20 after "character." add "Each nondefault character type shall
+      designate a control character as the newline character."
+
+24:20+ add the notes
+       "NOTE 3.1+ Within the ASCII and ISO 10646 character
+	standards, the Fortran character blank is called space (or sp,
+	code 32) and the Fortran character newline is called newline
+	(or nl, code 10).  Within non-ASCII, non-ISO 10646 character
+	sets, to enable full use of the formatted stream features, a
+	designated control character must be chosen as the newline
+	character."
+
+--end choose none or either but not both--
+
+--note whence control characters--
+
+41:1- add a new paragraph to NOTE 4.12
+      "Note that control characters may not portably appear
+       in character literals, nor portably appear in
+       formatted input/output.  The portable means of
+       obtaining control characters is via unformatted
+       input/output, or via the ACHAR (13.7.2), CHAR (13.7.19)
+       or NEW_LINE (13.7.85) intrinsic procedures."
+
+--control characters don't interfere with collating sequences--
+
+42:11 after "letters." add "The newline character shall
+      not appear within any of the collating sequences
+      specified in items (1), (2) or (4) above."
+
+--fix untruths about blank--
+
+At 137: NOTE 7.29, 143: NOTE 7.39, 185: NOTE 9.19, 235: NOTE 10.16
+Change "nondefault" to "non-ASCII, non-ISO_10646" in each 
+of the above notes.
+
+--allow newlines of nonpresent optional dummys--
+
+127:41+ Add to the list (and renumber the rest)
+
+        "(4+) The other inquiry function NEW_LINE,"
+
+--say why no newlines allowed in formatted records--
+
+173:35+ add "NOTE 9.1+ This standard does not specify
+        the mechanism of file storage.  Therefore,
+        processors are allowed to prohibit newline characters from
+        formatted records because newline characters may
+        interact with the processor's record separation
+        mechanism."
+
+--allow newline in formatted stream--
+
+177:10 after "file." add "However, the processor shall not
+       prohibit a newline control character from appearing
+       in the characters sent to a formatted stream."
+
+177:10+ add the note
+        "NOTE 9.9+  The effect of the newline control character
+         is to end the current record.  Its representation
+         in the file, including the number of file storage units
+         required, is unspecified."
+
+--note that newline is only specified for ascii, iso-10646--
+
+235: Note 10-17 add at the end "For non-ASCII, non-ISO_10646
+     character types, the newline character is processor dependent."
+
+--unneeded if 23:13 or 24:15 is done--
+--choose one--
+
+341:21 change "ACHAR(10)." to "ACHAR(10), if the default
+       character type supports one.  Otherwise, the result is
+       the blank character."
+
+--or--
+
+--OUT-OF-ORDER !--
+
+302:2 change "processor dependent" to "the blank character"
+
+3:25- add "(5) Earlier Fortran standards left unspecified
+      the default character returned by ACHAR when the default
+      character type did not support the ASCII character
+      specified.  This standard specifies that a default blank
+      character is returned."
+
+--end choose one--
+
+--require NEW_LINE( C_CHAR_'') == C_NEW_LINE--
+--and require that NEW_LINE either work or return a blank--
+
+341:21-26 reorder the cases of the results (i) --> (iii),
+          (ii) --> (ii), (iv) --> (iv)
+
+341:21+ insert "<case(i)> If the kind value of A is equal to the
+        named constant C_CHAR from the ISO_C_BINDING intrinsic module,
+        the result is the named constant C_NEW_LINE
+        from the ISO_C_BINDING intrinsic module."
+
+--note why NEW_LINE( C_CHAR_'') == \n--
+
+341:26+ add "Note 13.16+  The requirement
+        that C_NEW_LINE = NEW_LINE( C_NEW_LINE) means that
+        the Fortran processor and the C coprocessor must agree
+        on the newline character.  This is necessary for character
+        entities to be processed in either Fortran procedures or C
+        procedures, and allow the input/output of those character
+        entities to occur via either Fortran input/output or C
+        input/output."
+
+394 Note 15.3 change "." to " in order for character
+        entities to be processed in either Fortran procedures or
+        C procedures, and allow the input/output of those character
+        entities to occur via either Fortran input/output or C
+        input/output."

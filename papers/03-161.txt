@@ -1,0 +1,270 @@
+
+
+Subject: UK Item TC11                                   J3/03-161
+From: Kurt W. Hirchert                  (Meeting 164) 14 Mar 2003
+
+Item TC11 from the UK ballot proposes to add the functionality to
+reallocate allocatable objects.  As it happens, I have given
+considerable thought to this particular subject.  For what it's
+worth, here is a condensed presentation of that thought:
+
+===========
+The Problem
+===========
+
+The basic problem is to change the allocation of an allocatable
+object while retaining some part of its existing value.
+
+When we start considering the practicalities of doing this, we
+can divide the possible reallocations into two classes which I
+will label simple reallocations and general reallocations.
+
+Simple reallocations are those where the retained values stay at
+the same positions relative to each other and the beginning of the
+object.  The classic example of this is also the single most common
+kind of reallocation -- adding (or removing) elements at the end
+of a one-dimensional array.  Other simple problems include
+*  changing the upper bound of the outer dimension of a multi-
+   dimensional array,
+*  changing a type parameter of a scalar object that affects only
+   the upper bound of that last component in the object, and
+*  changing the type (but not the type parameters) of a scalar
+   polymorphic object (thus adding or removing components at the
+   end of the object),
+but these problems occur much less frequently than the classic
+problem.
+
+General reallocations, then, are those where positions of the
+retained values shift.  These include
+*  adding (or removing) elements at beginning of an array,
+*  adding (or removing) elements in the middle of an array (e.g.,
+   to change the resolution of a solution grid),
+*  altering a dimension of a multi-dimensional array other than
+   the outer dimension, and
+*  changing the type or type parameters of an array.
+Although individually less common than the classic simple
+reallocation, collectively these problems represent a significant
+part of the problem space, especially if one moves away from "toy"
+problems to "serious" ones.
+
+Your experience may be different, but in my estimation, if you
+provide a facility that only adequately addresses simple
+reallocations, you have, at best, address only half the problem.
+
+===============
+Implementations
+===============
+
+o  Conventional reallocation of allocatable objects (two copy
+   reallocation):
+   1.  Allocate a temporary object large enough to hold the values
+       to be retained.
+   2.  Copy the values to be retained to the temporary object.
+   3.  Deallocate the original object.
+   4.  Allocate the original object in its new size.
+   5.  Copy the retained values to their proper locations in the
+       new allocation.
+   6.  Deallocate the temporary.
+   The significant costs of this method are the two copies of
+   the retained values and the likely fragmentation of both the
+   old allocation and the temporary allocation (2c+2f).
+
+o  Conventional reallocation of objects located through pointers
+   (one copy reallocation):
+   1.  Allocate the new allocation through a temporary pointer.
+   2.  Copy the values to be retained from the original object to
+       the new allocation.
+   3.  Deallocate the original object.
+   4.  Transfer the allocation from the temporary pointer to the
+       pointer being reallocated.
+   The significant costs of this method are the single copy of
+   the retained values and the likely fragmentation of the old
+   allocation (1c+1f).  In other words, it costs about half the
+   previous method.  The reason it cannot be applied to allocatable
+   objects in Fortran 9x is that we have nothing analogous to
+   pointer assignment for performing step (4).
+
+o  In-place reallocation:
+   1.  If the space needed for the new allocation can be satisfied
+       by the existing allocation and available memory following
+       it, just "append" the necessary memory to the existing
+       allocation, rearrange the retained values if necessary,
+       and return.
+   For simple reallocations, this method costs 0c+0f and is
+   sometimes seen as a kind of "holy grail" of reallocation.  For
+   general reallocations, the cost is 1c+0f.  (Although writing
+   code to rearrange the retained values in place is often a major
+   pain, its CPU cost should be roughly equivalent to that of a
+   copy.) In practice, however, this kind of reallocation is not
+   always possible, so an actual implementation would have to try
+   this and do something else (probably one copy reallocation) if
+   this is not possible.  If the success rate of the in-place part
+   is 10%, the effective cost for simple reallocations is .9c+.9f.
+   If the success rate is only 1%, the effect cost for simple
+   reallocations is .99c+.99f.
+
+o  VM in-place reallocation:
+   In comp.lang.fortran, James Giles has suggested a variation on
+   on in-place reallocation:  Instead of using one copy
+   reallocation as the backup for ordinary in-place reallocation,
+   the backup is to change the virtual memory page map to put
+   the object somewhere an in-place reallocation _is_ possible.
+   Since this remapping fragments the address space like one copy
+   but does not impose the copy cost, the effective cost of simple
+   reallocation, given a 10% success rate on the initial attempt,
+   would be 0c+.9f.  In practice, it is not cost effective to
+   allocate everything in whole pages, so there are additional
+   complications related to deciding which things to allocate in
+   pages and which in smaller units, and there has to be a backup
+   method for reallocating objects that were initially allocated
+   in the smaller units, but such complications will tend to have
+   only a small effect on the effective cost of reallocation
+   because objects that are reallocated tend to be bigger and thus
+   will tend to have been allocated in pages in the first place.
+
+My thoughts about the implementations:
+*  For general reallocations, the in-place methods are a pain to
+   write (because of the difficulty of rearranging the retained
+   values in place), offer _no_ reduction in copy costs, and offer
+   only a small saving in fragmentation costs, so I would stick to
+   one copy reallocation for general reallocations.
+*  My estimation of the initial success rate for in-place
+   reallocation is that it will be quite low, so even for simple
+   reallocation, I do not see enough benefit from ordinary in-place
+   reallocation to make it worth attempting.
+*  The VM variant of in-place reallocation looks interesting for
+   simple reallocations, provided one is prepared to deal with the
+   complications it adds to the overall memory management system.
+
+=================
+Language Features
+=================
+
+Proposals for reallocation facilities often are "single-statement"
+solutions; that is, they often provide for a complete reallocation
+to be expressed as a single statement.  In the past, they have
+typically been for a REALLOCATE statement or some kind of option
+to reallocate using the ALLOCATE statement.  In the current UK
+ballot, the proposal is for an intrinsic procedure to perform the
+reallocation.  The contentious design issue in such proposals has
+been the question of where the retained values end up.  One common
+choice, reflected in the UK proposal, is for the values to remain
+at the same relative positions.
+*  By definition, such a facility does simple reallocations and
+   gives the implementor the possibility of doing them using
+   whatever method would be optimal in the environment.  Even if
+   this method is no more efficient than what the user could write
+   explicitly, its packaging as a single statement makes it
+   attractive for simple reallocations.
+*  On the other hand, one should not delude oneself into believing
+   that this has _any_ value in address the problem of general
+   reallocations:
+   +  The necessity of the user doing additional value copying
+      after the single-statement reallocation wipes out any
+      efficiency advantage that might have resulted if, for
+      example, the implementation were able to do an in-place
+      reallocation, and the odds are that the cummulative cost
+      will be higher.
+   +  Moving values to where they belong is a nuisance for
+      one-dimensional arrays.  For multi-dimensional arrays, it
+      becomes a seriously difficult problem.  Compact, convenient
+      notations, such as the suggestion in the UK ballot to use
+      RESHAPE, are also likely to be even more inefficient
+      because of the likelihood that the processor will
+      evaluate the RHS to a temporary and then copy it back to the
+      original array.
+   +  The UK proposal does not address reallocation that changes
+      type or type parameters, although I believe this is something
+      people will want to do.  However, if one tries to extend this
+      approach to such problems, moving the values to the right
+      place becomes nearly impossible, because component values
+      may be left is locations that are now interpreted to have
+      a different type or attributes.  (This can cause other
+      semantic problems, including interesting issues about
+      finalization and default initialization in such
+      reallocations.)
+
+A second alternative is that values are retained in the position
+that has the same subscript or substring values.
+*  In theory, this means that there are simple reallocations that
+   the facility no longer performs, but simple reallocations where
+   it is desired that subscript or substring values change are
+   rare.
+*  This does allow the processor to do many general reallocations as
+   part of the single statement.  It also avoids putting values in
+   locations with the wrong component type when changing the type
+   or type parameters of the object.  However, in those general
+   reallocations where this is still the wrong place for the
+   retained values, it is potentially even less efficient.
+
+In theory, a third alternative would be to offer an option for the
+single statement to specify explicitly where the retained values
+are to end up.  There are various minor problems associated with
+this approach, but the major problem thus far has been that no one
+has yet proposed a satisfactory syntax for the specification.
+
+An alternative to the single-statement approach is to provide tools
+that allow the user to program reallocation methods explicitly.
+Such solutions are likely to be more verbose, but they give the
+user more control.
+
+The obvious tool to provide is some kind of analog to pointer
+assignment for allocatables, so the user can explicitly code a
+one-copy reallocation.
+
+Other tool possibilities are less obvious, but they include a
+conditional in-place extension of an allocatable object, the
+ability to associate more space with an allocatable object than
+it immediately requires, and the ability to remap the space
+belonging to an allocatable object.
+
+===========
+Conclusions
+===========
+
+The following are _my_ conclusions from the above analysis:
+
+o  The single most valuable thing we could do is to provide the
+   pointer assignment analog.  This improves the situation for
+   all allocations by making possible one-copy reallocations
+   in place of the two-copy allocations that must be performed
+   now.
+   *  This is "small" enough, technically and editorially to do
+      in the time frame availabe.
+   *  Because such a feature has many uses beyond reallocation,
+      adopting it should be neither a political nor a technical
+      impediment to adopting other reallocation features, now
+      or in a future revision.
+   For this reason, I am separately submitting a paper (J3/03-162)
+   with edits to add a MOVE_ALLOC intrinsic subroutine and/or a
+   SWAP_ALLOC intrinsic.  My personal preference would be for
+   MOVE_ALLOC, but I have prepared both in case others think
+   SWAP_ALLOC would be more useful.
+
+o  Given that we have XXXX_ALLOC to cover general case, I might
+   then consider a single-statement solution to provide more
+   convenient packaging for as many cases as we can cover.
+   *  My leaning would be towards adding a keyword to ALLOCATE
+      rather than adding an intrinsic procedure, because it
+      offers a more natural notation for expressing the
+      attributes one might wish to change.
+   *  I would lean towards the same subscripts solution rather
+      than the same position solution, because I think it would
+      make the single statement applicable a greater percentage
+      of the time and because it seems to be better behaved
+      semantically in the general cases.  (As a compromise, I
+      could accept limiting the facility to those cases where
+      the same subscript and same position models yield the
+      same result.)
+   *  I am nervous, however, about whether we do an adequate
+      job on any form of the single-statement solution in one
+      meeting.
+
+o  Even if we do both of the above, it might be worth looking at
+   providing additional tools in the next revision.
+ 
+                              - end -
+
+-- 
+Kurt W Hirchert                                  hirchert@atmos.uiuc.edu
+UIUC Department of Atmospheric Sciences                  +1-217-265-0327

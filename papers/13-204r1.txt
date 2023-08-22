@@ -1,0 +1,99 @@
+                                                             J3/13-204r1
+
+To: J3
+From: Malcolm Cohen
+Subject: Interp concerning mixed-kind character assignment
+Date: 2013 February 10
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0087
+TITLE: Mixed-kind character assignment
+KEYWORDS: Mixed kind, character assignment
+DEFECT TYPE: Erratum
+STATUS: Under J3 consideration
+
+QUESTION:
+
+For a processor that supports both ASCII and ISO 10646 UCS-4
+character kinds, assuming without loss of generality that
+Selected_Char_Kind('ASCII') is equal to 1 and that
+Selected_Char_Kind('ISO_10646') is equal to 10646,
+consider the following program:
+
+  Module charkinds
+    Integer,Parameter :: ascii = 1
+    Integer,Parameter :: ucs4 = 10646
+  End Module
+  Module overload
+    Use charkinds
+    Interface Assignment(=)
+      Module Procedure char_asg
+    End Interface
+  Contains
+    Subroutine char_asg(a,b)
+      Character(*,ascii),Intent(Out) :: a
+      Character(*,ucs4),Intent(In) :: b
+      Do i=1,Min(Len(a),Len(b))
+        a(i:i) = Achar(Mod(Iachar(b(i:i))+1,127))
+      End Do
+      a(i:) = Repeat('*',Len(a)-Len(b))
+    End Subroutine
+  End Module
+  Program test
+    Use overload
+    Character(10,ascii) x
+    x = ucs4_'Hello'
+    Print *,'"',x,'"'
+  End Program
+
+This program conforms to Fortran 95, which permitted user-defined
+assignment betweeen all characters with different kinds.
+
+However, Fortran 2008 provides intrinsic assignment between
+ISO 10646 characters and ASCII characters, so user-defined assignment
+is not permitted (12.4.3.4.3 and Table 7.8).
+
+Thus there seems to be a contradiction between the Fortran 95
+compatibility description in 1.6.3 and 12.4.3.4.3.
+
+Is the program intended to conform to Fortran 2008?
+And if it does, does it print
+ "Hello     "
+(intrinsic assignment)
+ "Ifmmp*****"
+(user-defined assignment)?
+
+ANSWER:
+
+The program was not intended to conform to the standard.
+An edit is provided to remove the contradiction.
+
+EDITS:
+
+[24:14] 1.6.3p1, "Any"
+        -> "Except as identified in this subclause, any".
+{No longer true.}
+
+[24:15] Split the sentence "The ..." introducing the list into a
+        separate paragraph (which will be the third paragraph), and
+        insert a new paragraph (as the second paragraph) as follows:
+  "Fortran 95 permitted defined assignment between character strings
+   of the same rank and different kinds.  This part of ISO/IEC 1539
+   does not permit that if both of the different kinds are ASCII,
+   ISO 10646, or default kind."
+{Describe the incompatibility.}
+   
+[25:2+] 1.6.4, after p2, insert a new paragraph.
+  "Fortran 90 permitted defined assignment between character strings
+   of the same rank and different kinds.  This part of ISO/IEC 1539
+   does not permit that if both of the different kinds are ASCII,
+   ISO 10646, or default kind."
+{Describe the incompatibility.}
+
+SUBMITTED BY: Van Snyder
+
+HISTORY: 13-204    m200  F08/0087 submitted
+         13-204r1  m200  Revised.
+
+----------------------------------------------------------------------

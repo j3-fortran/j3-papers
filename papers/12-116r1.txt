@@ -1,0 +1,93 @@
+To: J3                                                        12-116r1
+From: Robert Corbett
+Subject: Pointer association and extended type arrays
+Date: 2012 January 30
+
+----------------------------------------------------------------------
+
+NUMBER:
+TITLE: Pointer association and extended type arrays
+KEYWORDS: pointer association, extended type
+DEFECT TYPE:
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Should a pointer that is pointer associated with a dummy array or an
+element or section of a dummy array remain associated after return
+from the procedure that contains the dummy array if the dummy array
+is not polymorphic and the dynamic type of the effective argument of
+the dummy array is not the same as the type of the dummy array?
+
+The restrictions on pointer association listed in paragraph 9 of
+Clause 12.5.2.4 [294:6-13] appear to miss a case.  Consider the
+program
+
+      MODULE TYPES
+        TYPE T1
+          INTEGER I
+        END TYPE
+        TYPE, EXTENDS(T1) :: T2
+          INTEGER J
+        END TYPE
+      END
+
+      MODULE GLOBALS
+        USE TYPES
+        TYPE(T1), POINTER :: P
+      END
+
+      SUBROUTINE SUB1(A, N)
+        USE TYPES
+        CLASS(T1), TARGET, INTENT(IN) :: A(N)
+        INTERFACE SUB2
+          SUBROUTINE SUB2(A, N)
+            USE GLOBALS
+            TYPE(T1), TARGET, INTENT(IN) :: A(N)
+          END SUBROUTINE
+        END INTERFACE
+        CALL SUB2(A, N)
+      END
+
+      SUBROUTINE SUB2(A, N)
+        USE GLOBALS
+        TYPE(T1), TARGET, INTENT(IN) :: A(N)
+        P => A(2)
+      END
+
+      PROGRAM MAIN
+        USE GLOBALS
+        TYPE(T2), TARGET :: A(5)
+        INTERFACE
+          SUBROUTINE SUB1(A, N)
+            USE TYPES
+            CLASS(T1), TARGET, INTENT(IN) :: A(N)
+          END SUBROUTINE
+        END INTERFACE
+        A = (/( T2(I, I + 1), I = 1, 10, 2 )/)
+        CALL SUB1(A, 5)
+        P = T1(11)
+        PRINT *, A
+      END
+
+The effective argument of the dummy argument A in the call of SUB2
+satisfies the requirements for being simply contiguous given in
+paragraph 2 of Clause 6.5.4 [125:2-14].  Therefore, according to
+the second bullet item in paragraph 9 of Clause 12.5.2.4, the
+pointer P be associated with the parent component of the second
+element of the array A when the second assignment statement in the
+main program is executed.  Therefore, the output of the program
+should be
+
+ 1 2 11 4 5 6 7 8 9 10
+
+None of the implementations tested produced that result.
+
+ANSWER:
+
+EDITS:
+
+SUBMITTED BY: Robert Corbett
+
+HISTORY: 12-116  m197  submitted
+	 12-116r1  m197  revised

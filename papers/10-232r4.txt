@@ -1,0 +1,114 @@
+                                                            10-232r4
+To: J3
+From: Nick Maclaren, Bill Long
+Subject: Interop TR: Using the CFI_desc_t type
+Date: 2010 October 13
+Reference: 10-165r2
+
+
+The type CFI_desc_t is a partially incomplete type, and may not be used
+directly as the type in a declaration .  This is no problem when
+descriptors are passed to C functions, because the type passed is
+actually a pointer to CFI_desc_t which is a complete type.  So the
+following function declaration (as used in the TR) is fine:
+
+    int Trivial ( CFI_desc_t * ) ;
+
+10-165r2 needs to be corrected to state this.
+
+
+Using malloc to allocate space for a descriptor of known rank is
+also straightforward, and the following allocates one of rank 5:
+
+    CFI_desc_t * desc =
+        (CFI_desc_t *)malloc(sizeof(CFI_desc_t)+5*sizeof(CFI_dim_t));
+
+While this is a bit more verbose, it is clear and that sort of thing
+is very common in C.  It is trivial to hide in a function or macro.
+
+Aside: for students of C99 arcana, the standard is ambiguous as to
+whether a structure with a flexible member is a complete type or not,
+but says that it has a known size in 6.7.2.1 paragraph 16, which is why
+the above code is legal.
+
+The problem arises when one wants to allocate such an object directly.
+That is likely to be relatively rare, as most descriptors will be passed
+as arguments.  It is also likely to be associated with the creation of
+allocatable and pointer arrays, when an extra use of malloc() and free()
+is not a problem.
+
+
+There is actually a way to declare a descriptor of known rank statically
+or on the stack with no extra mechanism, but it relies on a knowledge of
+the C standard's arcane minutiae and is truly revolting anyway, so I
+won't bother to describe it.  If this facility is regarded as essential,
+then the TR should define an extra macro to do the job, which is the
+solution adopted by several interfaces.
+
+The macro CFI_DESC_T is trivial to implement, but obviously needs to
+match the declaration of CFI_desc_t.  For example:
+
+    typedef struct {
+        void * base_addr;
+        size_t elem_len;
+        int version;
+        CFI_rank_t rank;
+        CFI_type_t type;
+        CFI_attribute_t attribute;
+        CFI_dim_t dim[];
+    } CFI_desc_t;
+
+    #define CFI_DESC_T(rankarg)              \
+        struct {                          \
+            void * base_addr;             \
+            size_t elem_len;              \
+            int version;                  \
+            CFI_rank_t rank;              \
+            CFI_type_t type;              \
+            CFI_attribute_t attribute;    \
+            CFI_dim_t dim[rankarg];          \
+        }
+
+
+Edits to 10-165r2:
+
+[9:19] After "CFI_cdesc_t is a named struct type defined by a typedef",
+insert:
+
+    ", containing a flexible array member".
+
+[10:1-4] The specification of the dim member should be replaced by:
+
+    "CFI_dim_t dim[]; Each element of the array contains the lower
+    bound, extent, and stride multiplier information for the
+    corresponding dimension of the object.  The number of elements in
+    an object of type CFI_cdesc_t shall be equal to the rank of the
+    object."
+
+
+[10:22] replace:
+
+    "Each evaluates to an integer constant expression."
+
+by:
+
+    "Except for CFI_DESC_T, each evaluates to an integer constant
+expression suitable for use in #if preprocessing directives."
+
+{Note: This edit supersedes the edit in 10-219r1.}
+
+[10:23+] after the definition of CFI_MAX_RANK, add:
+
+"CFI_DESC_T is a function-like macro that takes one argument, which is
+the rank of the descriptor to create, and evaluates to a type suitable
+for declaring a descriptor of that rank.  A pointer to a variable
+declared using CFI_DESC_T can be cast to CFI_desc_t *.
+
+    NOTE 5.?
+    The following code uses CFI_DESC_T to declare a descriptor of rank 5
+    and pass it to CFI_deallocate.
+
+    CFI_DESC_T(5) object;
+    ... code to define and use descriptor ...
+    CFI_deallocate((CFI_desc_t *)&object);"
+

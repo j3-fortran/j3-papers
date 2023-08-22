@@ -1,0 +1,173 @@
+                                                            J3/14-211r1
+To: J3
+From: Malcolm Cohen
+Subject: REDUCE
+Date: 2014 June 27
+
+
+1. Introduction
+
+The current definition of REDUCE is unclear and needs improvement.
+Furthermore, in light of discussion some changes to the specifications and
+syntax are warranted.
+
+
+2. Deficiencies of the current definition
+
+That the initial order of the sequence is intended to be "array element
+order" is implied but not specified.
+
+That the application of the function (to adjacent elements of the sequence)
+should be with the argument order being the same as the sequence order is
+implied
+  "OPERATION(x,y) for adjacent x and y in the sequence"
+but not rigorously specified.
+
+It might be thought useful to explain the consequences of a non-associative
+operation in slightly more detail than a simple recommendation.
+
+We could add something to Annex A, but since this already has the enormous
+catchall
+  - the values returned by some intrinsic functions (13);
+and indeed hardly any processor-dependent functions are individually
+listed, that would appear to be unnecessary.
+
+
+3. Discussion of ORDERED
+
+It has been proposed that there be an ORDERED argument that specifies that
+the operation "be applied to the elements of the sequence in order".  Taken
+at face value, this would prohibit application of the associative law, i.e.
+for 4 elements a1 to a4 would require computation of
+   ((a1 op a2) op a3) op a4)
+and not permit
+   (a1 op a2) op (a3 op a4)
+
+However, the proposal states
+  "The requirement for commutativity is removed when ORDERED is
+   absent or present with the value FALSE."
+
+This is puzzling since there is no requirement for commutativity in the
+current REDUCE specification/syntax/text.  Perhaps the intended meaning was
+that the requirement that *the processor* not "commute" the arguments be
+lifted.  This provides little benefit since computing a3 op a4 is not more
+onerous than computing a4 op a3.  Yes, there can potentially be some small
+benefit in a parallel execution environment [such as OpenMP] in the case
+where the cost of computing the operation is highly variable, but since
+enabling that involves higher overheads this only applies to a tiny
+minority of cases; this does not justify the extra complication to the
+standard.
+
+Furthermore, in discussion it was denied that ORDERED=.TRUE. was intended
+to prohibit re-associating the operations.  If that is indeed the case, it
+would imply that ORDERED would be a spectacularly poor choice of keyword.
+
+To sum up: there are three cases
+(1) strict in-order evaluation: in this case the REDUCE intrinsic cannot
+    run any faster than a trivial user function; the only benefit is that
+    of clarity/convenience: no need to write a simple function.
+(2) evaluation applying the associative law; that is, re-associating the
+    operand sequence is permitted.  This is the model envisaged by the
+    current text.  It gains nearly all of the possible performance
+    benefits.  The operation "should" be associative otherwise the result
+    will be indeterminate in some way.
+(3) evaluation applying both the associative and commutative laws: that is,
+    both re-associating and argument swapping are permitted.  This has
+    little if any performance benefit over case (2).  The operation
+    "should" be both commutative and associative for this to work.
+
+It is clear that the default should be case (2), as this provides the
+maximum benefit for a very reasonable requirement: that the operation
+"should" be mathematically associative - in practice, what this means is
+that any non-associativity should be unimportant to the user.
+
+If the convenience factor of allowing case (1) is wanted, then indeed an
+ORDERED argument would be in order.
+
+There really does appear to be little point to case (3), which is unsafe
+for a default and unlikely to give any significant benefit.  It could
+easily enough be provided by a compiler option such as "-Ounsafe" for the
+few people who might want to do it.  If we really do want to add this mode,
+a separate COMMUTE argument (COMMUTE=.TRUE. to permit argument swapping)
+would be in order.
+
+Potential straw votes:
+
+sv Add ORDERED= argument for strict evaluation.  Default ORDERED=.FALSE..
+result 8-3-4, ORDERED= added.
+
+sv Add COMMUTE= argument for (3) above.  Default COMMUTE=.FALSE..
+result 1-10-5, COMMUTE= not added.
+
+3. Revised Specifications
+
+(Changes marked with **)
+
+Add an intrinsic function that reduces an array by a user-defined
+operation.
+
+Similarly to the other reduction intrinsic functions,
+(a) reduction of a single dimension shall be provided, and
+(b) use of a logical mask array shall be supported.
+
+The array to be reduced may be of any intrinsic or derived type.  The
+result for reduction of a single element shall be that element.  The result
+for reduction of zero elements (the "identity" for the operation) shall be
+specifiable.
+
+** Reduction of a zero-sized array with no identify specification shall
+** cause error termination.
+
+The user-defined operation should be mathematically associative but need
+not be computationally associative.  In order to facilitate reduction of
+arrays of such things as quaternions and matrices, commutativity will not
+be required.  When more than two elements are being reduced, the operation
+may be associatively applied to elements and intermediate results in any
+order that does not commute (swap) operands.
+
+** It shall be possible to request strict in-order evaluation.
+
+
+4. Syntax
+
+Same as before, plus
+
+** Optional ORDERED argument, default .FALSE.,
+** for strict in-order evaluation.
+
+
+5. Edits to 14-007r1
+
+[383:34] 13.7.140 REDUCE, heading,
+         replace "IDENTITY" by "IDENTITY, ORDERED" twice.
+
+[384:13] 13.7.140 REDUCE, p5 Result Value, Case (i),
+         After "is the result of an iterative process."
+         Insert "The initial order of the sequence is array element order."
+{Specify initial sequence precisely.}
+
+[384:14-15] Ditto,
+            After "for adjacent x and y in the sequence,"
+            Insert "with x immediately preceding y,".
+{Specify the obvious.}
+
+[384:15] Ditto, p5 Result Value, Case (i),
+         After "x and y with r" insert
+  "; if ORDERED is present with the value true, x and y shall be the first
+   two elements of the sequence".
+{Strict left-to-right evaluation for ORDERED=.TRUE..}
+
+[384:17] Ditto,
+         Change "and is processor dependent otherwise"
+         To "and otherwise, error termination is initiated".
+{Specify error termination on missing IDENTITY and zero-sized array.}
+
+
+[384:33+] 13.7.140 REDUCE, after p6 Examples, insert note
+  "NOTE 13.nn
+   If OPERATION is not computationally associative, REDUCE without
+   ORDERED=.TRUE. with the same argument values might not always produce
+   the same result, as the processor can apply the associative law to the
+   evaluation."
+
+===END===

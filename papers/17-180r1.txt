@@ -1,0 +1,66 @@
+                                                             J3/17-180r1
+To: J3
+From: Van Snyder
+Subject: Problem with impure finalizers in DO CONCURRENT
+Date: 2017 June 28
+
+1. Introduction
+===============
+
+Notwithstanding C1138, which prohibits a reference to an impure
+procedure to appear within a DO CONCURRENT construct, there is a
+possibility to execute one by way of an impure finalizer:
+
+  module M
+
+    type :: T1
+    end type T1
+
+    type, extends(t1) :: T2
+    contains
+      final F
+    end type T2
+
+  contains
+
+    subroutine S ( X )
+      class(t1), allocatable, intent(inout) :: X
+      do concurrent ( integer :: I = 1, 10 )
+        if ( i == 7 ) deallocate ( x ) ! execute the impure finalizer
+      end do
+    end subroutine S
+
+    subroutine F ( V )
+      type(t2), intent(inout) :: V
+      print *, 'HaHaHa you executed an impure finalizer!'
+    end subroutine F
+
+  end module M
+
+  program P
+    use M, only: S, T1, T2
+    class(t1), allocatable :: X
+    allocate ( type(t2) :: x ) ! dynamic type has an impure finalizer
+    call s ( x )
+  end program P
+
+That is, constraint C1138 cannot work fully unless polymorphic
+finalization within DO CONCURRENT is prohibited.
+
+2. Edits to 17-007r1
+====================
+
+[31:3+ 4.3.3p4+ Fortran 2008 compatibility] Insert a paragraph:
+"Fortran 2008 permitted a polymorphic object to be finalized within a DO
+CONCURRENT construct; this document does not permit that."
+
+[194:20+ 11.1.7.5 Additional semantics for DO CONCURRENT constructs]
+Insert a constraint after C1139:
+
+"C1139a A statement that might result in the deallocation of a
+        polymorphic entity shall not appear within a DO CONCURRENT
+        construct."
+
+{Compare to C1595.  This includes declaration of an automatic variable
+that has an impure finalizer within a BLOCK construct within a DO
+CONCURRENT construct.}

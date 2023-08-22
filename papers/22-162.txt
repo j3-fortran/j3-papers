@@ -1,0 +1,222 @@
+To: J3                                                     J3/22-162
+From: Tom Clune
+Subject: Formal specs for TEMPLATE
+Date: 2022-July-12
+
+References: 22-161
+
+1. Introduction
+===============
+
+The purpose of this paper is to establish the formal specs for the
+proposed TEMPLATE feature with regard to semantics of defining a
+template.  Section 2 contains the specs.
+
+
+2. Formal specs
+===============
+
+A. TEMPLATE is a named scoping unit.
+
+B. A TEMPLATE can be defined in the specification section of:
+   - PROGRAM
+   - MODULE
+   - SUBMODULE
+   - procedure (including internal subprogram)
+   - BLOCK construct
+   - another TEMPLATE
+
+
+C. A TEMPLATE definition has the following elements:
+   - template name
+   - list of template dummy parameters
+   - specification section
+   - optional procedure section beginning with a CONTAINS statement
+
+   Notional syntax:
+
+      TEMPLATE T(param1[, param2[, ...]])
+      ! specification section
+      [CONTAINS
+        [! procedure definitions]]
+      END TEMPLATE T
+
+
+D.  The permitted order of statements within a TEMPLATE construct is
+    the following.
+
+    - TEMPLATE statement
+    - USE statements
+    - IMPORT statements
+    - IMPLICIT statements
+    - Misc. specifications in any order:
+      * REQUIRES statements
+      * RESTRICTION definitions
+      * Derived type definitions
+      * INTERFACE blocks
+      * TYPE declaration statements
+      * specification statements
+      * enumeration definitions
+      * TEMPLATE definitions
+    - CONTAINS statement
+    - TEMPLATE subprograms
+    - END TEMPLATE statement
+
+    Note: The order of statements within a MODULE will need
+          modification to permit TEMPLATE and RESTRICTION definitions.
+
+
+    Example: The following shows nested templates enable conditional
+             functionality.  I.e., a user that wants to only use some
+             subset of a template is not then forced to define
+             arbitrary extra parameters to satisfy requirements of
+             other portions of the template.
+
+
+        TEMPLATE T_outer(U)
+           TYPE U; END TYPE
+           TYPE :: LIST
+              TYPE(U), allocatable :: elements(:)
+           END TYPE
+        
+           TEMPLATE T_inner(F)
+              INTERFACE
+                 LOGICAL FUNCTION F(x,y)
+                   TYPE(U), INTENT(IN) :: x, y
+                 END FUNCTION
+              END INTERFACE
+           CONTAINS
+              SUBROUTINE sort(x)
+                 TYPE(LIST), INTENT(INOUT) :: x
+                 ...
+                 IF (F(x(i),x(j)) THEN ...
+        
+                 END SUBROUTINE sort
+           END TEMPLATE
+        CONTAINS
+           ...
+        END TEMPLATE  
+        
+        INSTANTIATE T_outer(REAL) ! makes T_INNER accessible
+        INSTANTIATE T_INNER(my_less), ONLY: sort_ascending => sort
+        INSTANTIATE T_INNER(my_greater), ONLY: sort_descending => sort
+
+        ! Another type that does not need sorting
+        INSTANTIATE T_outer(my_other_type), only: unsortable_list => LIST
+
+        TYPE(List) :: my_list ! list of REALs
+        CALL sort_descending(my_list)           
+
+
+C4. A dummy template parameter declaration must appear before any
+    reference to that parameter and must appear after any USE, IMPORT,
+    and IMPLICIT NONE statements in the TEMPLATE.
+
+    Example:
+
+       TEMPLATE TMPL(T, FLAG, sub)
+          TYPE :: T; END TYPE ! dummy type parameter
+          LOGICAL :: FLAG     ! dummy constant (logical) parameter
+          INTERFACE
+             SUBROUTINE sub(x, y)    ! dummy subroutine parameter
+	        TYPE(T), INTENT(IN) :: x
+	        TYPE(T), INTENT(OUT) :: y
+             END SUBROUTINE
+          END INTERFACE
+       END TEMPLATE
+
+E1. A dummy template parameter must be one of
+    - a type,
+    - a value, or
+    - a procedure
+
+E2. A dummy template parameter declaration that is a type may not
+    contain any components, type-bound procedures, or KIND or LEN type
+    parameters.
+
+E3. A dummy template parameter can be a value parameter of type
+    integer, logical, or character.
+
+    If the the dummy value template parameter is a character, it must
+    be of assumed length.
+
+    An array dummy value template parameter can either have explicit
+    shape, assumed shape, or assumed rank.  
+
+    Example using notional syntax:
+
+         TEMPLATE tmpl1(T, flag, n, pet_type)
+            TYPE T; END TYPE
+            LOGICAL, PARAMETER :: flag
+            INTEGER, PARAMETER :: n
+            CHARACTER(LEN=*), PARAMETER :: pet_type
+
+            TYPE(T), RANK(n), ALLOCATABLE :: data
+            
+         END TEMPLATE tmpl1 
+
+E4. A dummy procedure template parameter must have an
+    explicit interface.
+
+    Note: The interface may be defined in terms the template dummy
+          parameters.
+
+F1. Any procedure invoked within a template must have an explicit
+    interface.  
+
+    Entities of a type that is a dummy type parameter may only be
+    associated with procedure arguments whose declared type is that of
+    the dummy type parameter.
+
+    Intrinsic assignment is only defined for entities of dummy
+    parameter type with other entities of the same declared dummy
+    parameter type.
+
+    Note 1: An explicit interface may be provided by a REQUIRES
+            statement.
+
+    Note 2: Intrinsic operators on operands of intrinsic type are
+            allowed within a template definition.
+
+    Example:
+
+        TYPE :: U
+           ...
+        END TYPE
+
+        TEMPLATE tmpl(T)
+           type :: T; end TYPE
+        CONTAINS
+           SUBROUTINE s(x, y)
+              TYPE(T) :: x, y
+              ...
+           END SUBROUTINE s
+           FUNCTION f(x, i)
+              TYPE(T) :: f
+              TYPE(T), INTENT(IN) :: x
+              TYPE(U), INTENT(IN) :: i
+              ...
+           END FUNCTION f
+           SUBROUTINE run()
+              TYPE(T) :: t1, t2
+              TYPE(U) :: u1
+              REAL :: x
+
+              CALL s(t1,t2) ! Legal
+              CALL s(t1,x)  ! Illegal: x not declared to be of type T
+              t1 = f(t2,3)  ! Legal
+              ! The following assignmentis illegal because the return
+              ! value of f is of type T and x is not of declared type
+              ! T.
+              x  = f(t2,3)
+           END SUBROTUINE
+
+        END TEMPLATE tmpl
+
+        INSTANTIATE tmpl(INTEGER)
+        INSTANTIATE tmpl(REAL) ! does not make template legal
+
+===END===
+
+
+

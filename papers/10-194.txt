@@ -1,0 +1,77 @@
+To: J3                                                   10-194
+From: Craig Rasmussen
+Subject:
+Date: 2010 June 16
+References: 10-165, N1820
+
+Discussion:
+
+In 10-165 there a few examples of fortran interfaces with assumed-type
+and assumed-rank dummy arguments, as well as examples of how to call
+the procedures described by the interfaces from Fortran.  However,
+there are no examples of how to use the C descriptors in a C
+implementation of the interfaces.  This paper provides such an
+example.
+
+Edits to 10-165:
+
+[17:19] In A.2, paragraph 1, replace the sentence beginning with
+"NOTE: do we want ..."  by the following text.
+
+This example calculates the product of individual elements of arrays A
+and B and returns the result in array C.  The interface allows any
+type for the arrays and any dimension (up to 15).  However, the
+implementation in C shown below only supports two-dimension integer
+arrays.  Note that an array section may be passed to the C
+implementation so it cannot be assumed that the array elements are
+contiguous.
+
+The Fortran interface is:
+
+   interface
+      subroutine elemental_mult(A, B, C) bind(C,name="elemental_mult_c")
+         type(*), dimension(..) :: A, B, C
+      end subroutine elemental_mult
+   end interface
+
+The C implementation is:
+
+  void elemental_mult_c(CFI_cdesc_t * a_desc,
+                        CFI_cdesc_t * b_desc, CFI_cdesc_t * c_desc) {
+    int i, j, ni, nj;
+    int a_offset, b_offset, c_offset;
+    int aj_offset, bj_offset, cj_offset;
+
+    int * a = (int*) a_desc->base_addr;
+    int * b = (int*) b_desc->base_addr;
+    int * c = (int*) c_desc->base_addr;
+
+    /* only support two dimensions */
+    assert(a_desc->rank == 2 && b_desc->rank == 2 && c_desc->rank == 2);
+
+    /* only support integers */
+    assert(a_desc->type == CFI_type_int &&
+           b_desc->type == CFI_type_int && c_desc->type == CFI_type_int);
+
+    ni = a_desc->dim[0].extent;
+    nj = a_desc->dim[1].extent;
+
+    /* ensure the shapes conform */
+    assert(ni == b_desc->dim[0].extent && ni == c_desc->dim[0].extent);
+    assert(nj == b_desc->dim[1].extent && nj == c_desc->dim[1].extent);
+
+    /* multiply the elements of the two arrays */
+    for (j = 0; j < nj; j++) {
+      aj_offset = j*a_desc->dim[1].sm/sizeof(int);
+      bj_offset = j*b_desc->dim[1].sm/sizeof(int);
+      cj_offset = j*c_desc->dim[1].sm/sizeof(int);
+
+      for (i = 0; i < ni; i++) {
+        a_offset = i*a_desc->dim[0].sm/sizeof(int) + aj_offset;
+        b_offset = i*b_desc->dim[0].sm/sizeof(int) + bj_offset;
+        c_offset = i*c_desc->dim[0].sm/sizeof(int) + cj_offset;
+
+        c[c_offset] = a[a_offset] * b[b_offset];
+      }
+    }
+  }

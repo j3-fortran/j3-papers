@@ -1,0 +1,111 @@
+                                                                 08-135
+To:          J3
+From:        Malcolm Cohen
+Subject:     Interp 0102
+Date: 2008 February 14
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0102
+TITLE: Evaluation of bound-expr in data pointer assignment
+KEYWORDS: pointer, pointer assignment, bounds, expression
+DEFECT TYPE: Clarification
+STATUS: J3 consideration in progress
+
+DISCUSSION:
+
+Currently there are no rules in 7.4.2.1 to prohibit changing of a
+pointer's association status during evaluation of bound expressions
+in a data pointer assignment (pointer with either bounds-spec or
+bounds-remapping specified).  This may lead to ambiguous code with
+regard to the evaluation orders between the bound expression and
+the data pointer assignment itself.  Consider the following code,
+
+
+    integer,  target  :: tar2(100, 100)
+    integer,  target  :: tar1(100)
+    integer,  pointer :: ptr(:,:)
+
+    ptr(-2:, f1(ptr, tar1, 1, 1):) => tar2
+
+    print*, lbound(ptr)
+    print*, ubound(ptr)
+    print*, size(ptr)
+
+    contains
+
+    function f1(ptr, arr, i, j)
+        integer  :: i, j, f1
+        integer, pointer :: ptr(:, :)
+        integer, target  :: arr(:)
+
+        ptr (i:j, i:j) => arr
+        f1 = -1
+    end function
+
+    end
+
+
+In 7.4.1.3 for interpretation of intrinsic assignments, there are rules
+explicitly requesting evaluation of all expressions in variable occurred
+before the variable is defined [139:14-19].  It appears that data pointer
+assignment should also follow similar rules.
+
+Note the similar problem also exists for evaluating the <data-target> if
+it references a function that returns a data pointer.
+
+
+QUESTION:
+
+    (a) Is this program intended to be standard conforming?
+
+    (b) If it is standard conforming, then what would it print?
+
+
+ANSWER:
+
+This program does not conform to the Fortran Standard.
+
+The assertion that there are no rules about pointer association status
+is false because changes in pointer association status necessarily
+cause changes in definition status, as explained in the opening
+paragraph of "16.4.2 Pointer association status" which states
+  "If a pointer is associated with a target, the definition status
+   of the pointer is either defined or undefined, depending on the
+   definition status of the target."
+
+The reference to F1(PTR,TAR1,1,1) executes the pointer assignment
+PTR(I:J,I:J)=>ARR; this causes its actual argument PTR to become
+undefined (using the quoted rule from 16.4.2).
+
+In 7.1.8 paragraph 3, it says
+  "If a function reference causes definition or undefinition of
+   an actual argument of the function, that argument or any
+   associated entities shall not appear elsewhere in the same
+   statement."
+
+However, PTR appears elsewhere in that statement (as the base object
+of the variable in the assignment), violating this requirement.
+Therefore the program is not standard-conforming.
+
+EDITS:
+
+None.
+
+NOTE:
+
+This would be clearer if the undefinition case were also added to the
+list of "Events that cause variables to become undefined" in clause
+16, e.g.
+  "(n) When a pointer becomes associated with a target that is
+       undefined, the pointer becomes undefined."
+This is recommended for a future revision of the Standard.
+
+SUBMITTED BY: Jim Xia
+
+HISTORY: 07-297r1  m182  F03/0102 Submitted
+         07-297r2  m182  Passed by J3 meeting
+         08-133    m183  Failed J3 letter ballot
+         08-135    m183  Alternative answer
+
+----------------------------------------------------------------------

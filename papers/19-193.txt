@@ -1,0 +1,184 @@
+To: J3                                                     J3/19-193
+From: Tom Clune and Hamid Oloso
+Subject: Performance Portability - use case for generics
+Date: 2019-August-02
+
+#Reference:
+
+1. Introduction
+
+An unfortunate reality of extant high-performance computing platforms
+is that for a given computational kernel the optimal loop ordering
+_and_ data layout may vary from architecture to architecture.  This is
+particularly accute for GPU's vs CPU's where the optimal data layout
+for one may result in a 10x performance hit for the other.  (The exact
+driver for this is not crucial to the use case beyond the mere fact of
+the observed performance differences.)  Perhaps in theory, an
+optimizing compiler could eliminate this issue, but in practice this
+is a real problem facing HPC applications today.
+
+E.g., from Che et al:
+  "On the other hand, CPUs and GPUs may prefer different data layouts
+   for certain applications. This is due to the fact that better cache
+   locality is needed for contiguous memory accesses issued by
+   individual CPU threads, while an efficient GPU memory transaction
+   is desirable to feed data to multiple simultaneous SIMD threads."
+
+(http://www.cs.virginia.edu/~skadron/Papers/sc11_dymaxion_dist.pdf)
+
+For an application that is trying to optimize performance for multiple
+architectures there are currently few good options.  The most
+straightforward is to have 2 distinct implementations of each kernel
+where the data ordering of the arrays and the loop ordering differ.
+For smaller applications this may be possible, but for large evolving
+applications this approach is fundamentally impractical.
+
+A growing number of organizations are now choosing to address this
+concern through higher-level domain specific languages (DSL's) in
+which algorithms are expressed in a more architecture-neutral manner
+but are then effectively translated to different implementations on
+different machines.  Fortran may intend to achieve such performance
+portability directly, but these other approaches are successful now.
+
+Two such DSL layers that are currently being adopted within the
+weather and climate communites are kokkos from DOE, and GridTools from
+MeteoSwiss and ECMWF.  Both of these layers rely heavily on C++
+templating to achieve the necessary flexibility without sacrificing
+performance.
+
+Unfortunately, adopting these layers requires that the performance
+critical sections of an application _and_ the associated data
+structures must be converted to C++.  Such a (hopefully/ideally)
+one-time conversion is considered to be far more acceptable than
+maintainance of multiple versions within Fortran.  MeteoSwiss has
+essentially rewritten their entire weather model, and rerites of other
+major climate and weather models are well under way.  At NASA, we are
+evaluating kokkos and GridTools and have planend to hire several
+developers in the next few months to accelerate the conversion.
+
+
+2. Quick sketch of kokkos
+
+To better understand what might be involved in providing capabilities
+analogous to kokkos and GridTools in a Fortran context it is useful to
+understand the major elements of the existng C++ solutions.  While
+they rely heavily on C++ templates, other language features also play
+an important role in enabling user code to be expressed in a clean and
+familiar manner.  Here we describe the major aspects of kokkos, as the
+authors are more familiar with its details.
+
+Kokkos references:
+  https://github.com/kokkos/kokkos
+  https://github.com/kokkos/kokkos-tutorials
+
+2.1 Kokkos: user kernels
+
+Kokkos users write each of their numerical kernels as a functor or a
+lambda function that takes just one or more integer arguments that
+indicate a specific granule of work.
+
+2.2 Kokkos: Execution spaces
+
+Execution spaces are an abstraction that controls which granules of
+work will be exercised within a loop.  In the simplest cases,
+execution spaces can be thought of as loop bounds, but in general they
+can be set to chunk work granules and in multidimensional cases to
+reverse the order of nesting.
+
+2.3 Kokkos: Views
+
+Views can be thought of as generalizations of arrays, and their use
+strongly resembles array access: A(I,J) references an element.  The
+declaration of a View includes an optional "layout" template parameter
+that changes how elements are mapped to memory.  There are different
+defaults on each architecture.  Through this mechanism, one can have
+the same source code where A(I,J) is adjacent to A(I+1,J) on CPU's
+while A(I,J) is adjacent to A(I,J+1) on GPU's.  This is a key aspect
+that enables kernels to be written in a platform-agnostic manner.
+
+2.4 Kokkos: Parallel loops
+
+The canonical parallel mechanism in kokkos is the "parallel_for"
+template.  The template takes an execution space and a user defined
+kernel and implements a loop with appropriate ordering and any extra
+compiler directives (OpenMP, CUDA, OpenACC, ...)  A crucial
+performance issue here is that (a) user kernel's (functors and
+lambdas) are inlined and (b) access to elements of views incurs no
+overhead beyond that of native array accesses.  For (a) users
+instrument their kernels with a kokkos inline macro, which apparently
+works well enough in practice even though the language is not required
+to inline.  For (b) templates are crucial to avoid the run-time
+overhead that would otherwise be encountered in provide seemingly
+indirect access to memory.
+
+Kokkos has analogous templates for parallel reduction and parallel
+scan operations.
+
+
+3. Can we do something similar in Fortran?
+
+Converting large chunks of working Fortran code to C++ is unpalatable
+for a number of reasons, and it is highly desired to provide a
+mechanism that can support realistic performance portability in a
+Fortran-only context.
+
+Some of the generic programming mechanisms that have been floated for
+Fortran can support some of the necessary machinery for a kokkos-like
+approach.  In particular, functors for kernels, execution spaces and
+parallel loops seem relatively straigtforward with Intelligent Macros.
+Unfortunately analogs for kokkos Views with the ability to efficiently
+address data under multiple layouts are problematic for several
+reasons.
+
+Consider an simple kokkos kernel of the form:
+
+    a(i,j) = b(i,j) + c(i,j)
+
+where a, b, and c are Views, not arrays.  As in C++, Fortran arrays do
+not directly support variant data layouts, so we must try to represent
+the indirect addressing through some sort of user procedure.  Ideally
+this would be some type-bound function, "ref" on variables of derived
+type.  E.g.
+
+   a%ref(i,j) = b%ref(i,j) + c%ref(i,j)
+
+while klunky, the RHS is possibly tolerable in practice and would
+support the necessary layout variations.  Depending on the details of
+construction, ref(i,j) might access the (i,j) element or the (j,i)
+element of some private data component within the object.  The LHS is
+more problematic as Fortran does not permit such evaluations on the
+LHS.  We are thus left with either a subroutine call:
+
+   CALL a%set(i,j, b%ref(i,j) + c%ref(i,j))
+
+which gets much less friendly with more realistic expressions.  Or one
+introduces an intermediate variable with a custom type that uses
+overloaded assignment to accomplish the intented assignment in two steps
+
+
+   tmp = a%ref(i,j) ! holds a reference to the memory address
+   tmp = b(i,j) + c(i,j) ! stores into the referenced memory address
+
+
+A much better approach would be if there were some mechanism to allow
+the evaluation of the indirect layout on the LHS.  And while less
+critical, a cleaner mechanism for indirect addressing on the RHS would
+also simplify conversion of legacy kernels as well as keeping
+expressions looking like conventional Fortran inner-loop expressions.
+
+The C++ syntax for these types of operations results in
+easily-understood code that looks more familiar to Fortran programmers
+than the ugly expressions above that would be required for Fortran.
+
+
+Summary:
+
+If Fortran wishes to remain a contender for high-performance computing
+in the GPU era then it must address the ability to write performance
+portable code.  Existing Fortran capabilities are provably inadequate
+and not just by percentages.  The differences discussed here can often
+make 3x-10x differences in actual performance on modern hardware.
+
+
+
+

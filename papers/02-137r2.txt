@@ -1,0 +1,139 @@
+
+                                                        J3/02-137r2
+
+Date:    26 February 2002
+To:      J3
+From:    /interop
+Subject: Dynamic arrays and interfacing with C
+
+The aim of this paper is to ensure that
+
+   1. It is possible for a Fortran procedure, while being called from
+      C, to allocate an array and make that array available to the C
+      code; and
+
+   2. It is possible for a C function, while being called from Fortran,
+      to allocate an array and make that array available to the Fortran
+      code.
+
+Re 1: 
+We already have a procedure for constructing a C pointer, but it 
+is not applicable to an allocatable array, so an allocatable array
+cannot be passed to C. We propose to remove this restriction, while
+continuing to disallow pointer arrays and assumed-shape arrays since
+these need not be a contiguous subarray of the original declared or
+allocated parent array.
+
+Re 2: 
+Explicit-shape and assumed-size arrays are already interoperable with 
+C. The underlying assumption is that it is the address of the first
+element that is passed. Thus an array allocated in C can be passed to
+an explicit-shape or assumed-size dummy argument. However, it cannot be
+passed as a component of a structure. The mechanism in C is to have a
+pointer component. We need a mechanism in Fortran to reference its
+target. William Mitchell (J3/00-168) proposed a function that accepts a
+C pointer and returns a Fortran pointer result. We think it would be
+better to have a subroutine that performs a pointer assignment to a
+given pointer.  Then, the pointer itself provides a natural
+specification of the type and rank. We have included some restrictions
+for the new subroutine to avoid the possibility of back-door pointer
+associations that cannot happen within Fortran 95 and which compiler
+optimizations may rely upon.
+
+We have extended the examples in C.10.2.1 and C.10.3 (which should be
+C.10.2.2) to illustrate the new features.
+
+EDITS
+
+372:24. Change 'C_LOC function is' to 'C_LOC, C_ASSOCIATED, and 
+C_F_POINTER procedures are'.
+
+374:4. Change 'inquiry functions' to 'procedures'.
+
+374:7 Add: 'The C_F_POINTER subroutine provides a means of associating a
+Fortran pointer with the target of a C pointer.'
+
+374:11-12. Replace sentence by 'X shall be a procedure that is
+interoperable, a variable that has the TARGET attribute and is
+interoperable, or an allocated allocatable variable that has 
+the TARGET attribute and has interoperable type and type parameters.'
+
+375:17+. Add:
+
+C_F_POINTER (CPTR, FPTR [, SHAPE])
+
+  Description.  Associates a pointer with the target of a C pointer
+       and specifies its shape.
+
+  Class. Subroutine.
+
+  Arguments
+
+  CPTR shall be a scalar of type C_PTR. It is an INTENT(IN)
+       argument. Its value shall be the C address of a C entity
+       that is interoperable with variables of the type and
+       type parameters of FPTR. It shall not be the C address of
+       a Fortran variable that does not have the TARGET
+       attribute.
+
+  FPTR shall be a pointer. It becomes pointer associated with
+       the target of CPTR. If it is an array, its shape is specified 
+       by SHAPE.
+
+  SHAPE (optional) shall be of type integer and rank one. It is an
+       INTENT(IN) argument. If SHAPE is present, its size shall be
+       equal to the rank of FPTR. If FPTR is an array, SHAPE shall
+       be present.
+
+   NOTE. Execution of this subroutine could cause FPTR to become 
+   associated with a target that has a different type and type 
+   parameters from FPTR. In such a case, definition of either FPTR 
+   or the original target causes the other to become undefined.
+
+457:40. Replace by
+
+       INTEGER (C_INT), ALLOCATABLE, TARGET :: RECVCOUNTS(:)
+       ...
+       ALLOCATE ( RECVCOUNTS(100) )
+
+457:41. At line end, delete '}'.
+
+458:15. Replace 'array RECVCOUNTS, with' by  'allocatable array
+        RECVCOUNTS, which'.
+
+458:19. Replace 'C.10.3' by  'C.10.2.2'.
+
+458:21. Change 'DELTA' to 'DELTA, ARRAYS'
+
+458:27+ Add:
+   TYPE, BIND(C) :: PASS
+      INTEGER (C_INT) :: LENC, LENF
+      TYPE (C_PTR) :: C, F
+   END TYPE PASS
+   TYPE (PASS), INTENT(INOUT) :: ARRAYS
+   REAL (C_FLOAT), ALLOCATABLE, TARGET, SAVE :: ETA(:)
+   REAL (C_FLOAT), POINTER :: C_ARRAY(:)
+   ...
+   ! Associate C_ARRAY with an array allocated in C
+   CALL C_F_POINTER (ARRAYS%C, C_ARRAY, (/ARRAYS%LENC/) )
+   ...
+   ! Allocate an array and make it available in C
+   ARRAYS%LENF = 100
+   ALLOCATE (ETA(ARRAYS%LENF))
+   ARRAYS%F = C_LOC(ETA)
+
+458:30+. Add
+   C Struct Declaration
+
+     struct pass {int lenc, lenf; float* f, c}
+
+458:32 Change 'delta[]' to 'delta[], pass *arrays'.
+
+458:34 Change 'delta' to 'delta, &arrays'.
+
+459:14+ Add:
+
+The fifth Fortran dummy parameter is ARRAYS, which is a structure
+for accessing an array allocated in C and an array allocated in Fortran.
+The lengths of these arrays are held in the components LENC and LENF
+and their C addresses are held in components C and F.

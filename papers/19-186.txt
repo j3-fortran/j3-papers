@@ -1,0 +1,141 @@
+To: J3                                                     J3/19-186
+From: Vipul S. Parekh
+Subject: Option to derive an inextensible type
+Date: 2019-July-28
+References: 18-007r1
+
+
+Introduction
+------------
+18-007r1 states in section 7.5.7.1 Extensible, extended, and abstract
+types, "A derived type, other than the type C_PTR or C_FUNPTR from the
+intrinsic module ISO_C_BINDING, that 7 does not have the BIND attribute
+or the SEQUENCE attribute is an extensible type."  An extension type can
+thus be derived from any other user derived type which does not have the
+BIND or the SEQUENCE attributes.
+
+Consider a user derived type in Fortran that does not have the BIND or the
+SEQUENCE attributes and which is employed toward calculational
+needs involving data structures of some complexity in scientific and
+technical computing, particulary in industry: the allowance
+per current standard to extend said type is a matter of great concern in
+terms of security and predictability of computer operations and results,
+especially to senior software design architects, computational technology
+leaders, and budget and business managers.
+
+The facility in current Fortran standard to be able to extend all derived
+types except as stated above makes it feasible, at least conceptually, to
+manipulate the data and states of objects of such types and to corrupt or
+otherwise misuse them via type extension, either intentionally or
+unknowingly.  It then becomes difficult, if not impossible, to develop
+technical software involving specialized derived types because it leaves
+open the possibility of violation of a technical/business understanding
+across or within teams not to override some type behavior or functionality
+via type inheritance.
+
+This situation hinders the adoption of Fortran in new engineering and/or
+scientific software projects where the design paradigm of
+object-orientation is important but where the needs of the projects also
+include the requirement to encapsulate the business/technical logic using
+data structures which are 'sealed' so that objects of such structures can
+then be consumed across the program or libraries without concern of easy
+alteration.
+
+In addition to the above-stated use case of added security and reliability
+of a 'sealed' derived type, it is also expected that a few or all of the
+processor implementations will be able to provide some performance benefit
+with the use of bound procedures with such 'sealed' types.  This is on
+account of some or all processors succeeding in providing more efficient
+code via nonpolymorphic descriptors of the passed-object dummy argument
+utilized in procedure calls.
+                  
+
+Formal Requirements
+-------------------
+Coders want the option to attribute a declaration toward a derived type
+that is not an abstract type as inextensible.
+
+The passed-object dummy argument in all the bound procedures of
+inextensible types shall be nonpolymorphic in order to allow for the
+possibility of additional efficiency and performance improvement in
+invocations of type-bound procedures. 
+
+Formal Specification
+--------------------
+type-attr-spec under derived type definition e.g., section 7.5.2 of
+18-007r1 shall include a new attribute called SEALED.  (If SEALED is
+found unsuitable as a name, the attribute can be termed INEXTENSIBLE
+or some such adjective.) 
+
+It is expected the description of type extension will be changed to state
+something to the effect of, "A derived type, other than the type C_PTR or
+C_FUNPTR from the intrinsic module ISO_C_BINDING, that does not have the
+BIND attribute or the SEQUENCE attribute or the SEALED attribute is an
+extensible type"
+
+A new constraint shall be introduced in the section toward "Syntax of a
+derived-type definition":
+Cxxx (Rxxx) If EXTENDS appears, SEALED shall not appear
+
+Constraint "C734 (R726) If ABSTRACT appears, the type shall be
+extensible." shall remain in effect.
+
+Constraint C760 too shall remain in effect: "The passed-object dummy
+argument shall be a scalar, nonpointer, nonallocatable dummy data object
+with the same declared type as the type being defined; all of its length
+type parameters shall be assumed; it shall be polymorphic (7.3.2.3) if
+and only if the type being defined is extensible (7.5.7). It shall not
+have the VALUE attribute"
+
+Constraint C760 will necessitate the type declaration of passed-object
+dummy arguments in procedures bound with an inextensible type to have
+the TYPE keyword in place of CLASS.
+
+Syntax
+------
+
+It is expected this facility in the standard shall support code along
+the following theme:
+
+--- begin snippet ---
+module SpecializedWidget_m
+! Module delivered to customers of highly Specialized Widgets of ACME Inc.
+   
+   use GeneralizedWidget_m, only : GeneralizedWidget_t
+   ..
+   
+   type, extends(GeneralizedWidget_t), SEALED :: SpecializedWidget_t
+   ! This type extends a generlized widget type but it is marked itself
+   ! inextensible to 'protect' its specializations.
+
+      private
+      ..
+   contains
+
+      private
+      ..
+      procedure, pass(this), public :: SuperWidgetProc
+      ..
+   end type
+   
+   interface
+      ..
+      module subroutine SuperWidgetProc( this, SuperResults )
+      ! The passed-object dummy argument is nonpolymorphic
+      
+         ! Argument list
+         type(SpecializedWidget_t), intent(in) :: this
+         type(SuperResults_t), intent(out)     :: SuperResults
+
+      end subroutine
+      ..
+   end interface
+   
+end module
+--- end snippet ---
+
+Edits
+-----
+
+
+

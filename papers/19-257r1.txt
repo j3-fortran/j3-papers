@@ -1,0 +1,145 @@
+To: J3                                                     J3/19-257r1
+From: Robert Corbett & Malcolm Cohen
+Subject: Interpretation request regarding host association
+Date: 2019-October-18
+Reference: 18-007r1
+
+Our friend Ian Harvey posted to a thread on comp.lang.fortran
+noting that the Fortran 2018 standard does not explicitly allow
+submodules to access entities from their hosts via host
+association.  The Fortran 2008 standard explicitly allowed such
+access.
+
+On close examination there seem to be multiple problems with the
+current specification of host association.
+
+----------------------------------------------------------------------
+
+NUMBER: F18/0016
+TITLE: Host association changes in Fortran 2018
+KEYWORDS: Host association
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 meeting
+
+QUESTION:
+
+The default semantics for accessing entities by host association from
+an interface body appear to be different in Fortran 2018 than in
+Fortran 2008.
+
+Problem 1:
+In Fortran 2008, an interface body that is not a module procedure
+interface body cannot access entities in its host by host association
+unless an IMPORT statement is present in the interface body.  The same
+rule applies by default in Fortran 2018 if the interface body is for
+an external or dummy procedure, but not if the interface body is for
+an abstract interface or a procedure pointer that is not a dummy
+procedure pointer (see 8.8 "IMPORT statement" [117:17-19]).
+
+For example, in
+    DOUBLE PRECISION X
+    ABSTRACT INTERFACE
+        SUBROUTINE SUB(A)
+            REAL(KIND(X)) A
+        END SUBROUTINE
+    END INTERFACE
+Fortran 2008 specifies that X is default REAL, and that therefore so
+is argument A, but Fortran 2018 specifies that X is accessed by host
+association and so argument A is double precision.
+
+Problem 2:
+The Fortran 2008 standard specified that a submodule has access to
+host entities, but the Fortran 2018 standard does not specify any
+default host association semantics for a submodule (it specifies
+IMPORT semantics only for nested scoping units (see 8.8 "IMPORT
+statement" [117:23-26]).  That makes submodules using host association
+not conforming.
+
+For example, in
+    MODULE mod
+        INTERFACE
+            MODULE SUBROUTINE S
+            END SUBROUTINE
+        END INTERFACE
+        INTEGER,PARAMETER :: WP = KIND(0.0)
+    END MODULE
+    SUBMODULE (mod) submod
+        REAL(WP) X
+    END SUBMODULE
+the submodule references WP by host association in Fortran 2008, but
+Fortran 2018 does not specify any semantics and so the whole thing is
+not conforming.
+
+Problem 3:
+The Fortran 2008 standard specified that generic identifiers were
+accessible by host association, but the Fortran 2018 standard specifies
+that host association is for named entities.
+
+For example, in
+    INTERFACE OPERATOR(.plus.)
+        PROCEDURE plusfun
+    END INTERFACE
+    ...
+    CONTAINS
+        SUBROUTINE SUB(a,b,c)
+        ...
+        c = a.plus.b
+Fortran 2018 would not permit access to the user-defined operator.
+
+Problem 4:
+The Fortran 2018 standard specifies that BLOCK constructs access named
+entities in their hosts by host association.  This makes no sense
+because BLOCK constructs already have access to entities in their
+hosts through inclusive scoping.
+
+Were these changes intended?
+
+ANSWER:
+
+No, none of these changes were intended.
+
+Edits are provided to restore the semantics specified in the Fortran
+2008 standard.
+
+EDITS to 18-007r1:
+
+[117:18-19] 8.8 IMPORT statement, p2, second sentence,
+            Replace "interface body for an ... procedure."
+            with
+                "interface body that is not a module procedure
+                 interface body."
+
+        making the sentence read
+
+        "This is the default for an interface body that is not
+         a module procedure interface body."
+
+[117:25-26] 8.8 IMPORT statement, p4, second sentence,
+            Change "for a nested scoping unit ... procedure"
+            to "for a derived-type definition, internal subprogram,
+                module procedure interface body, module subprogram, or
+                submodule"
+            making the sentence read
+                "This is the default for a derived-type definition,
+                 internal subprogram, module procedure interface body,
+                 module subprogram, or submodule."
+
+[502:7] 19.5.1.4 "Host association", p1, first sentence
+        Change "nested scoping unit"
+        to "derived-type definition, interface body, internal
+            subprogram, module subprogram, or submodule",
+        Delete "named",
+        Making the sentence read
+            "A derived-type definition, interface body, internal
+             subprogram, module subprogram, or submodule has access to
+             entities from its host as specified in 8.8."
+
+SUBMITTED BY: Robert Corbett
+
+HISTORY: 19-257   m220  F18/0016 Submitted
+         19-257r1 m220  Revised draft - Passed by J3 meeting
+
+----------------------------------------------------------------------
+
+
+

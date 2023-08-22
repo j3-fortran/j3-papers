@@ -1,0 +1,59 @@
+To: J3                                                 09-211
+From: Jim Xia
+Subject: support non-blocking calls in Fortran
+Date: 2009 April 24
+References: 09-192, further C-interop TR
+
+09-192 officially asks WG5 for guidance on support of split phase
+communications.  In particular the following example is given to
+illustrate the request:
+
+CALL MPI_IRecv(buffer,...,request,...) ! request receive into buffer
+...! do other work while the buffer transfer in progress
+CALL MPI_Wait(request,...)             ! wait for communication to finish
+
+call foo(buffer)                       ! do work with buffer
+
+
+The current Fortran standard allows a compiler to perform some aggressive
+optimizations (e.g. code motion) that subroutine foo can be moved before
+MPI_wait, thus resulting in incorrect program execution.  An analysis on
+this situation points to a lack of alaising association between variable
+buffer and procedure MPI_wait as the root cause.  In the case of
+MPI_Irecv, buffer is used as an actual argument in the call so compilers
+have sufficient information on the aliasing association between buffer
+and the procedure itself.  However in the MPI_wait call, there is no such
+relationship clearly visible to compilers.  In order to establish such
+aliasing between buffer and MPI_wait, the programmer has to explicitly
+specify such relationship using some language constructs.  The following
+presents a proposal that allows programmers to explicitly specify aliasing
+between data objects and procedures within a particular block of code.
+
+The proposal is to achieve the non-blocking calls with ASYNCHRONOUS
+attribute in conjunction with a new block construct, namely ASYNC_BLOCK.
+
+The example given in 09-192 then can be modified as follows,
+
+ASYNCHRONOUS buffer
+...
+ASYNC_BLOCK (buffer)
+    CALL MPI_IRecv(buffer,...,request,...) ! request receive into buffer
+    ...! do other work while the buffer transfer in progress
+    CALL MPI_Wait(request,...)        ! wait for communication to finish
+    ...
+    call foo(buffer)                       ! do work with buffer
+END ASYNC_BLOCK
+...
+
+
+The new ASYNC_BLOCK serves the purpose to allow compilers to understand
+that within the ASYNC_BLOCK, the variable buffer (has to be declared
+with ASYNCHRONOUS attribute) is potentially involved in non-blocking
+procedure calls (any of the procedures within the block could possibly
+be a non-blocking call) so that certain optimizations, such as code
+motion, are not allowed.
+
+
+EDITS:
+
+    TBD.

@@ -1,0 +1,102 @@
+
+                                                          J3/06-360
+
+Date: 6 November 2006
+To: J3
+From: Dick Hendrickson
+Subject: Clause 3.  Macros, kinds, and feature creep
+References: J3/06-007, J3/06-007R1, 06-273, 06-277R1
+
+This is basically a rewrite, with some additions, of paper 237
+from meeting 177.  I was going to do a more extensive paper
+much earlier, but A) I lost my notes from 177, and B) stuff
+came up.
+
+I'm also not proposing edits.  It strikes me as pointless to
+do detailed edits unless we have a reasonable consensus that
+these are things we want to do.  And, let's get real, or be
+logical, any edits I do would be substantially redone by
+Malcolm because he understands macros much better than I do.
+
+This paper proposes three new features:
+
+1)   An assignment to a macro variable.  The syntax is
+      MACRO  macro-local-variable = macro-expr
+
+This is fundamentally syntactic sugar. . But look at note
+3.15 on page 39.  The token "SELECTED_INT_KIND(i)"
+appears in 3 places.  Some short of short-hand will make
+things easier to read.
+
+2)   Add some sort of "get next kind" capability, and maybe
+      enhance the MACRO DO.
+
+Paper 273 proposed adding this to the existing MACRO design
+and the straw vote was 9-1-1 in favor of investigating this.
+
+I propose adding a set of new MACRO pseudo functions,
+MACRO_NEXT_???_KIND.  Where ??? can be INT, REAL, CHAR,
+LOGICAL, or BIT.  Each function returns the next used
+kind number for the appropriate type.  This will
+make it easy to run over all of the available kinds.  If the
+argument is zero or missing, the functions return the lowest
+kind value.  If the argument is greater than zero, they return
+the next higher kind value.  If there are no more kinds, they
+return -1.  If the argument is negative, they generate an
+expansion-time error.
+
+
+Normal usage would be
+        MACRO  J = 0
+        MACRO DO
+          MACRO J = MACRO_NEXT_INT_KIND(J)
+          MACRO IF (J<0) MACRO EXIT
+             blah blah
+        MACRO END DO
+
+This requires also allowing a MACRO DO with no limit.  We could
+merely require the user to do  MACRO DO JJ = 1,1000000000000000
+to simulate an infinite DO.  But, that is silly.  An unlimited
+MACRO DO also requires a MACRO EXIT.
+
+An alternative would be to define integer arrays that hold the
+kind values.  MACRO_???_KIND_VALUES, for example.  Then the
+above loop could be written as
+
+        MACRO DO  JJ = 1, size(MACRO_INT_KIND_VALUES)
+          MACRO J = MACRO_INT_KIND_VALUES(JJ)
+             blah blah
+        MACRO END DO
+
+With no need for extending the MACRO DO capability.  A possible
+drawback to this approach is BITs.  An expectation is that
+processors will allow billions and billions of BIT kinds.
+However, depending on what 53:30 really means, the array
+might be trivial because MACRO_BIT_KIND_VALUES(J) will be J.
+
+Either the function or arrays could be placed in chapter 13
+and available outside of the macro facility.  That's an
+orthogonal decision.
+
+3)  Add a MACRO ERROR statement.
+
+It's folly to think macro writers and users won't make
+mistakes.  Add a new statement
+       MACRO ERROR  [something useful]
+
+There are obvious straw votes.
+
+1)  Should we do proposal 2, the get kinds feature?
+
+     If Yes, should we do
+            the function option (with MACRO DO and MACRO EXIT)
+     or     the array option (with a potential BIT problem)
+
+2)  Should we do a MACRO assignment statement?  (If we don't do
+     anything for the kind proposals, this is less useful)
+
+3)  Should we add the MACRO ERROR statement?
+
+4)  If we do the function or array for kind values, should the
+     names go in chapter 13 and be available for general use
+     outside of macros?

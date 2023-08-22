@@ -1,0 +1,141 @@
+To:      J3                                           J3/16-280r1
+From:    R. Bader & Bill Long
+Subject: coarray dummy arguments and aliasing rules
+Date: 2016 October 12
+References: 16-007r2, TS18508, 16-174
+
+Introduction:
+~~~~~~~~~~~~~
+
+This paper is a rewrite of 16-174 that attempts to resolve a problem
+with coindexed write accesses to dummy arguments. Paper 16-174 was
+submitted to meeting 210 and had "no action".
+
+Discussion:
+~~~~~~~~~~~
+
+Consider the following example program, to be executed with at least
+2 images:
+
+PROGRAM example_1
+  INTEGER :: a[*], il
+
+  il = this_image()
+  CALL sub(a, il)
+CONTAINS
+  SUBROUTINE sub(b, il)
+    INTEGER :: b[*], il
+
+    SELECT CASE (this_image())
+    CASE (1)
+      b[2] = il     ! (X)
+      SYNC ALL
+    CASE (2)
+      SYNC ALL
+      il = b        ! (Y)
+      WRITE(*,*) il
+    CASE DEFAULT
+      SYNC ALL
+    END SELECT
+  END SUBROUTINE
+END PROGRAM
+
+Question 1A: Was it intended that the program example_1 is conforming?
+
+Answer 1A: Yes, it is intended that this example is conforming. It
+compiles with no errors and executes:
+
+> ftn test.f90
+> srun -n2 ./a.out
+ 1
+
+
+{It appears to me that this example currently is not conforming based
+ on the F2008 as well as 16-007r2 specifications, because the statement
+ marked (X) constitutes a violation of the anti-aliasing rule
+ 16-007r2/15.5.2.13 para 1 item (3) on image 2: The object a on image
+ 2 is modified through something else than image's 2 dummy argument.
+ If this reasoning is correct and the intent is for the program to
+ be conforming, edits are needed to fix the problem.}
+
+Question 1B: Was it intended that the program example_1 is conforming
+ if statement (Y) is replaced by "il = a"?
+
+Answer 1B: No, with this change the code would violate the
+anti-aliasing rules.
+
+{If the answer to 1A is "no", this question is of course trivial.}
+
+
+
+Next, consider a second example program, again for at least 2 images:
+
+PROGRAM example_2
+  USE, INTRINSIC :: iso_fortran_env
+  INTEGER(atomic_int_kind) :: a[*]=0, il
+
+  il = this_image()
+
+  SELECT CASE (this_image())
+  CASE (1)
+    CALL sub_1(a, il)
+  CASE (2)
+    CALL sub_2(a, il)
+    WRITE(*,*) il
+  END SELECT
+CONTAINS
+  SUBROUTINE sub_1(b, il)
+    INTEGER(atomic_int_kind) :: b[*], il
+    CALL ATOMIC_DEFINE(b[2],il)          ! (Z)
+  END SUBROUTINE
+  SUBROUTINE sub_2(b, il)
+    INTEGER(atomic_int_kind) :: b[*], il
+    il = 0
+    DO WHILE (il == 0)
+      CALL ATOMIC_REF(il, b)
+    END DO
+  END SUBROUTINE
+END PROGRAM
+
+Question 2: Was it intended that the program example_2 is conforming?
+
+Answer 2: Yes, it is intended that this example is conforming. It
+compiles with no errors and executes:
+
+> ftn test2.f90
+> srun -n2 ./a.out
+ 1
+
+{To my knowledge, the intent was that it should be possible to
+ coordinate actions between two procedures in the manner illustrated
+ by the code above. See also MR&C, Modern Fortran Explained, Section
+ 19.6, last two paras. However, again the rule 16-007r2/15.5.2.13
+ para 1 item (3) appears to be violated, namely by statement (Z).}
+
+
+Edits to 16-007r2:
+------------------
+
+[324:16+] In 15.5.2.13 Restrictions on entities associated with dummy
+arguments, Add another item to (3):
+
+  "(d) the dummy argument is a coarray and the action is a coindexed
+  access to its corresponding coarray dummy argument."
+
+[324:26+] In 15.5.2.13 Restrictions on entities associated with dummy
+arguments, Add another item to (4):
+
+  "(d) the dummy argument is a coarray and the reference is a
+  coindexed access to its corresponding coarray dummy argument."
+
+
+[326:1-] At the end of 15.5.2.13 Restrictions on entities associated
+with dummy arguments, After NOTE 15.40 add
+
+  "NOTE 15.40+1 The exception to the aliasing restrictions for dummy
+  coarrays enables cross-image definition for them within the
+  procedure. Because nonatomic accesses from different images
+  typically must be separated by an image control statement, code
+  optimization within segments is not unduly inhibited."
+
+

@@ -1,0 +1,193 @@
+To: J3                                                     J3/23-168
+From: Mark LeAir 
+Subject: Flang Liaison Report 
+Date: 2023-June-10
+ 
+Flang Open Source Fortran Report 
+================================ 
+ 
+Flang is an open-source compiler for Fortran. It is an official 
+subproject of the LLVM Project (llvm.org). NVIDIA's portion of the work 
+was partially sponsored by the US Department of Energy 
+Exascale Computing Project (particularly, LLNL, Sandia and LANL). 
+ 
+The current goals of the project are to 
+    - Create  an open source Fortran compiler with 
+      LLVM  licensing, 
+    - that can be used for language and parallelization 
+      experimentation, 
+    - that exists as a peer in the LLVM community of languages, 
+      like Clang, 
+    - that can rely on LLVM code generation and parallelism 
+      support for CPUs and GPUs. 
+ 
+There is a Slack workspace for Flang and a number of conference calls 
+related to Flang development. 
+    - Flang biweekly sync call ("umbrella call") 
+    - Flang biweekly technical call 
+    - "Classic Flang" biweekly call 
+    - OpenMP in Flang Technical Call 
+ 
+Details can be found on the Getting Involved page 
+http://flang.llvm.org/docs/GettingInvolved.html. 
+ 
+The New LLVM Flang Compiler 
+--------------------------- 
+ 
+The new front-end is available at https://github.com/llvm/llvm-project 
+(the LLVM monorepo) in the flang/ directory.  
+ 
+LLVM Flang is being developed under the LLVM license with LLVM 
+exceptions (the same as LLVM, Clang, OpenMP, etc.). 
+ 
+   
+Flang Work that has been completed in Q1 and Q2 (i.e., between January
+1, 2023 and May 25, 2023): 
+ 
+ 
+* Higher Level FIR (HLFIR) 
+
+  HLFIR is in-depth change to Flang's internal representation in how
+  variables and expression evaluations are represented in MLIR.
+ 
+    - The goal of this new representation is to simplify expression 
+      lowering and high-level optimization.
+    -  It now supports post F77 calls like elemental calls or calls with
+       assumed shape and optional. 
+    - Support was completed for variable and designator representations,
+      including       array component with non-default lower bounds.
+    - Support for array constructor was added. 
+    - The assignment representation can deal with array assignment, and
+      assignment to whole allocatable and polymorphic entities.
+    - Partial support was added for FORALL and WHERE, allowing to
+      decorrelate expression lowering from those constructs.
+    -  Work is still being done to close the gaps, mainly with vector 
+       subscripted entities, user defined assignments, structure 
+       constructors, and to finish forall and where support. 
+  
+* Polymorphic Entities 
+
+ The support for polymorphic entities in lowering is near completion. 
+ During Q1 and Q2, the following features were added:
+
+   - Support for pointer assignments with polymorphic pointers and
+     allocate statement with polymorphic entities (with SOURCE and MOLD)
+   - Added support for intrinsics taking polymorphic arguments (i.e., 
+     EXTENDS_TYPE_OF, SAME_TYPE_AS, STOREAGE_SIZE, RESHAPE, PACK, 
+     TRANSFER, EOSHIFT, CSHIFT, TRANSPOSE, MERGE, UNPACK).
+
+* Block Supported Completed.
+
+* Support for IGNORE_TKR directive
+
+* Support for user defined derived type I/O with non-type-bound procedures.
+  - Previously, these procedures were only supported if defined inside
+    the same scope as the type. This is no longer a restriction.
+
+* is_iostat_end and is_iostat_eor intrinsics were implemented 
+
+* New Compiler/Language Extensions
+  - Forward references in common blocks under implicit none are now 
+    allowed. 
+  - Compiler directives can be used in macros.
+  - Keyword macro can rename function-like macros.
+  - Pointer components are now initialized to NULL() for more safety.
+  - Logical other than C_BOOL is accepted in BIND(C) interfaces.
+
+* Patches to parse and check CUDA Fortran have been submitted for review 
+  by the community. 
+
+Improvements to existing features for Q1 and Q2 2023 (i.e., between 
+January 1, 2023 and May 25, 2023)
+
+* OpenMP 
+
+  - Continued to add missing features like reductions of intrinsics,
+    privatization of allocatables/pointers.
+
+  - Implementation hardening using Fujitsu and Gfortran test suites.
+
+  - Work in progress for a subset of the target and data mapping
+    constructs.
+
+* OpenACC lowering work resumed
+  - A new design document was produced for OpenACC MLIR dialect for data 
+    operations.
+  - It is now being implemented both in MLIR and lowering.
+
+* Assignment runtime improvements
+  - It can now do runtime overlap analysis and skip the temporary copy in 
+    cases where compile-time analysis is not able to deduce that the copy
+    is not needed. 
+  - Improvements include character assignment and whole allocatable 
+    assignment support.
+
+* TBAA info is now generated in flang LLVM IR code generation from FIR
+  - This allows LLVM to produce more performant code thanks to this new
+    aliasing information. 
+
+* Better compile time assignment overlaps analysis that improves SPEC
+  CPU2017.  
+
+* Descriptors can now represent bfloat real and complex 
+  (REAL(3)/Complex(3)).
+
+* An alias analysis utility was added for FIR as a follow-up of the design
+  documents produced in Q4. 
+
+* Loop optimizations
+  - A loop versioning pass was added to optimize loops that operate on
+    Assumed Shape arrays. 
+  - The loop versioning pass provides around a 36% improvement for the
+    Spec-2017 roms benchmark. 
+
+* Inlining
+  - Further inlining of various intrinsics were added.
+  - Improves the Spec-2017 exchange2 benchmark by approximately 30%.
+
+
+Summary 
+
+The current state of the LLVM Flang compiler: 
+    - written in modern C++ following LLVM conventions 
+    - over 200,000 lines of code, tests and scripts 
+    - parses all of Fortran 2018 to abstract syntax trees (AST) 
+    - parses  OpenMP 4.5 and some OpenMP 5.0 
+    - parses OpenACC 3.0 
+    - defines a "Fortran Intermediate Representation" (FIR) based on 
+      LLVM's MLIR 
+    - can analyze most OpenMP and OpenACC constructs 
+    - can compile and correctly run Fortran 77 programs (passes FCVS 
+      test suite), nearly all Fortran 95 programs, and some programs that
+      use Fortran 2003+ modern features.  
+    - supports end-to-end compilation of all OpenMP 1.1 except for  
+      reduction, privatization, and one atomic construct.     
+    - for later versions of OpenMP, Flang has support for simd, task,  
+      taskgroup etc. 
+
+ 
+Current ("Classic") Flang Compiler 
+---------------------------------- 
+ 
+The previous version of Flang, now known as Classic Flang, is derived from 
+the PGI Fortran compiler, with some proprietary features removed (e.g., 
+OpenACC support, inter-procedure analysis). It is the basis for commercial 
+Fortran compilers from Arm, AMD, and Huawei. 
+ 
+Classic Flang is available for Linux on x86-64, OpenPOWER, and Arm 
+processors. OpenPower support is not currently being maintained but it is 
+still available.  
+
+Classic Flang developers continue to make progress with Windows support,
+Quad precision support, and several bug fixes. LLVM 16 is now supported. 
+
+Detailed status can be found in the biweekly call Google doc at: 
+docs.google.com/document/d/1-OuiKx4d7O6eLEJDBDKSRnSiUO2rgRR-c2Ga4AkrzOI 
+ 
+
+
+ 
+
+
+
+

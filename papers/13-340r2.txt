@@ -1,0 +1,111 @@
+To:      J3                                           J3/13-340r2
+From:    Bill Long & John Reid
+Subject: Comments on SYNC TEAM and Failed images
+Date: 2013 October 17
+References: N1983, N1989, 13-336, 13-337r1
+
+
+
+Discussion - Responses with edits
+---------------------------------
+
+{John 1.1c}: The effect of SYNC ALL and SYNC TEAM in the presence of
+failed images should be to synchronize the images that have not
+failed. This should be stated.  I am not sure about SYNC IMAGES.
+Response: SYNC IMAGES should not rely on a synchronization of the
+nonfailed images.  Edits are provided for SYNC TEAM and SYNC ALL.
+
+{John 1.1a}: It is not clear how execution is intended to continue in
+the presence of failed images.
+
+For most calculations, the failure of one image leads to the failure
+of the whole calculation. To recover from this, the program probably
+needs to revert to a previous "check point" and continue the execution
+from there using images that have not failed. One possibility is to
+not to use all the images for the calculation but keep a few
+"spares". Execution is within a CHANGE TEAM construct, with spares in
+a separate team and idle. When an image fails, the CHANGE TEAM
+construct is left, a new team is formed by substituting a spare for
+the failed image, the check point data are recovered, and the CHANGE
+TEAM construct is re-entered. This avoids any need in the main code
+for remapping of data - it only has to detect failed images and exit
+the construct if there are any.
+
+Some calculations are "massively parallel". Most of the work is done
+completely independently on separate images. Perhaps one image acts as
+"master" handing out tasks and collecting results. As long as the
+master does not fail, the calculation can continue happily with failed
+images. The master sends the work that it gave to a failed image to
+the next image that is free.
+
+I will assume that we want to cater for both situations. Even in the
+first case, the parent team needs to execute in a team that has failed
+images while it forms the new team and recovers the check-point data.
+
+Response: Partly overlaps with {Daniel 2}. The ability of FORM SUBTEAM
+to ignore failed images is covered in 13-336. Examples in Annex A is
+provided in 13-350.
+
+{Dan 3}: Are the STAT_* errors (>0) or information (<0)?
+Response: The intent is that these be errors. An edit is supplied.
+
+{Bill I5}: At [12:4+] Would it be useful to have another Note that
+says failure of image 1 of the initial team of images is particularly
+problematic because of the lost connection to standard input?
+Response: Yes. Related question: Is the new image 1 of each team
+intended to be able to read from stdin?  If not, it is hard for the
+programmer to know if reading is possible without checking the
+distance to the initial team. An edit for the new note is provided.
+
+
+Discussion - Responses only
+---------------------------
+
+{Malcolm Reason 1b}: Cross-team access and Synchronization has made
+TEAMs too complicated.
+Response: See 13-336 for cross-references. There is a very useful
+simple use case for SYNC TEAM - executing SYNC TEAM when the
+<team-variable> specifies the a subteam of the current team. In that
+case team members synchronize with other images of their subteam, but
+not with images in other subteams. This is uncomplicated, useful, and
+should be significantly better performing that corresponding SYNC
+IMAGES statements.  Even if cross-image references are modified, this
+simple special-case of SYNC TEAM should be retained.
+
+{Daniel 2.}: How is the state of a failed image handled? (i.e. Should
+it undo everything up to the failing point?)
+Response: How other images of the program adapt in the event of a
+failed image is algorithm-dependent. How the processor handles a
+failed image depends on the capabilities of the hardware and run time
+environment and why the image failed.  There is no requirement that
+the actions on every image be journaled so that a "rewind" of the
+actions is possible. A reasonable expectation is that the system
+software will mark the processor that had been executing the failed
+image as no longer part of the available processor pool and the failed
+image no longer part of the current program.
+
+
+Edits to N1983
+--------------
+
+[11:22] {John 1.1c} Change "the team" to "the image with each of the
+other nonfailed images of the team"
+
+[11:23] {John 1.1c} Change "other image" to "other nonfailed image".
+
+[11:28] {Dan 3} Change "is different" to "is positive and different".
+
+[12:4+] {Bill I5} At the end of 5.7 add a new Note
+
+"NOTE 5.5
+Continued execution after the failure of image 1 might be difficult
+because of the lost connection to standard input.  However, the
+likelihood of a given image failing on modern hardware is small. With
+a large number of images, the likelihood of some image other than
+image 1 failing is significant and it is for this circumstance that
+STAT_FAILED_IMAGE is designed."
+
+[28:9] {John 1.1c} Change "of all images" to "of all nonfailed images".
+
+[28:10] {John 1.1c} Change "until each other image" to "until each
+other nonfailed image".

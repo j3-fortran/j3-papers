@@ -1,0 +1,119 @@
+                                                            J3/13-nnn
+To: J3
+From: Malcolm Cohen
+Subject: Varying Strings
+Date: 2013 February 12
+
+
+1. Introduction
+
+Allocatable deferred-length character strings directly provide most
+of the functionality that was provided by 1539-2.  This paper
+identifies the missing functionality and proposes handling them.
+
+
+2. Functionality examination
+
+2.1 GET(unit,string,set,separator,maxlen,iostat)
+
+Although it is possible to write a function to do this in Fortran as
+is, it is unnecessarily inefficient to do so, potentially requiring
+repetitive memory allocation and multiple copying operations.
+
+2.2 PUT(unit,string,iostat)
+
+This is equivalent to
+   WRITE(unit,'(A)',ADVANCE='NO',IOSTAT=iostat) string
+and so wholly redundant.
+
+2.3 PUT_LINE(unit,string,iostat)
+
+This is equivalent to
+   WRITE(unit,'(A)',IOSTAT=iostat) string
+and so wholly redundant.
+
+2.4 EXTRACT(string,start,finish)
+
+This is usually equivalent to
+  string(start:finish)
+except that when start<=finish, start<1 and finish>LEN(string) are not
+errors.
+
+There is an argument that Fortran would be a safer language if substring
+selection always acted thus, but that is unrelated to the purpose of
+varying length strings as such.
+
+2.5 INSERT(string,start,substring)
+
+This is nearly equivalent to
+  string(:start-1)//substring//string(start:)
+except that start<1 is not an error.
+
+There is also a safety argument to be made here, but again it is unrelated
+to the purpose of varying length strings.
+
+2.6 REMOVE(string,start,finish)
+
+This is nearly equivalent to
+  string(:start-1)//string(finish+1:)
+except that finish<-1 and start>LEN(string)+1 are not errors.
+
+2.7 REPLACE...
+
+REPLACE(string,start,substring)
+= string(:start-1)//substring//string(start+LEN(substring):)
+qua bounds errors.
+
+REPLACE(string,start,finish,substring)
+= string(:start-1)//substring//string(MAX(start,finish+1):)
+qua bounds errors.
+
+REPLACE(string,target,substring,every,back)
+is completely different; the result is the replacement of the
+first/last/every occurrence of target in string by substring.
+
+2.8 SPLIT(string,word,set,separator,back)
+
+This is somewhat reminiscent of C's strtok;
+it is a subroutine doing
+  i = scan(string,set,back)
+  if (i>0) then
+    word = string(:i-1)
+    if (present(separator)) separator = string(i:i)
+    string = string(i+1:)
+  else
+    word = string
+    string = ''
+    if (present(separator)) separator = ''
+  end if
+
+
+3. Summary
+
+GET is potentially more efficient as an intrinsic so is a good candidate
+for action.
+
+PUT, PUT_LINE, INSERT, REMOVE are almost trivially replacable and do not
+warrant any further action.
+
+The first two forms of REPLACE are easily replacable so does not warrant
+action.  The third form is different and possibly worthy of consideration.
+
+SPLIT is not terribly difficult to write, but is a commonly required
+function so worthy of consideration.
+
+
+4. Proposal
+
+In order of importance (highest to lowest):
+
+(a) That the GET functionality be added as an intrinsic (perhaps with
+    a slightly different name).
+
+(b) That the SPLIT functionality be added as an intrinsic.
+
+Although the third form of REPLACE is not so trivial, this is not
+considered sufficiently important to be worth adding (usually people want
+to do more than just a blind replacement).
+
+===END===

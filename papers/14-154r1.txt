@@ -1,0 +1,277 @@
+                                                             J3/14-154r1
+To:      J3
+From:    Van Snyder
+Subject: Interp concerning LOCK_TYPE
+Date: 2014 May 28
+
+----------------------------------------------------------------------
+
+NUMBER: TBD
+TITLE: LOCK_TYPE, ultimate components, subcomponents, and coarrays
+KEYWORD: LOCK_TYPE, ultimate components, subcomponents, coarrays
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+DISCUSSION:
+
+Constraint C433 in subclause 4.5.2.1 reads:
+
+C433 (R425) If EXTENDS appears and the type being defined has an
+  ultimate component of type LOCK_TYPE from the intrinsic module ISO
+  FORTRAN ENV, its parent type shall have an ultimate component of type
+  LOCK TYPE.
+
+This was intended to prevent compromising protection of objects of type
+LOCK_TYPE by using type extension and polymorphism.
+
+According to subclause 1.3.33.4, an ultimate component is a
+
+  component that is of intrinsic type, a pointer, or allocatable; or an
+  ultimate component of a nonpointer nonallocatable component of derived
+  type
+
+The type LOCK_TYPE is not intrinsic.  Therefore, if a type has a
+nonallocatable component of type LOCK_TYPE, it does not have an ultimate
+component of type LOCK_TYPE.  Therefore, constraint C433 fails to
+protect entities of type LOCK_TYPE.
+
+Constraint C433 prohibits reasonable constructions, such as extending
+the type LOCK_TYPE, or extending a type that has an allocatable
+component that has a component of type LOCK_TYPE, because the parent
+type does not have an ultimate component of type LOCK_TYPE.
+
+Constraint C1302 in subclause 13.8.2.16 reads:
+
+C1302 A named variable of type LOCK TYPE shall be a coarray. A named
+  variable with a noncoarray subcomponent of type LOCK TYPE shall be a
+  coarray.
+
+This was intended to require that components of type LOCK_TYPE, at any
+level of component selection, be coarrays.
+
+According to subclause 1.3.33.3, a subcomponent is a
+
+  <structure> direct component that is a subobject of a structure
+
+According to subclause 1.3.33.1, a direct component is
+
+  one of the components, or one of the direct components of a nonpointer
+  nonallocatable component.
+
+The definition of the term "subcomponent" does not include components of
+allocatable components.  Therefore, because of the use of the term
+"subcomponent," if an object has an allocatable component that in turn
+has a component of type LOCK_TYPE, C1302 can fail to require a component
+of type LOCK_TYPE to be a coarray.
+
+QUESTIONS:
+
+Assume type LOCK_TYPE from ISO_Fortran_Env is accessible.
+
+1. Is the definition of type One below standard conforming?
+
+type, extends(LOCK_TYPE) :: One
+  type(lock_type), allocatable :: LOCK[:]
+end type One
+
+2. Is the definition of type Four below standard conforming?
+
+type :: Two
+  type(lock_type), allocatable :: LOCK[:]
+end type Two
+
+type :: Three
+  type(two), allocatable :: L
+end type Three
+
+Type, extends(Three) :: Four
+  type(lock_type), allocatable :: LOCK[:]
+end type Four
+
+3. Is the definition of type Six below standard conforming?
+
+type :: Five
+end type Five
+
+type, extends(Five) :: Six
+  type(two), allocatable :: L
+end type Six
+
+4. Is the declaration of the variable X below standard conforming?
+
+  type :: Seven
+    type(lock_type) :: L
+  end type Seven
+
+  type :: Eight
+    type(seven), allocatable :: C
+  end type Eight
+
+  type(eight) :: X
+
+5. Is the second ALLOCATE statement below permitted?
+
+  type(eight) :: A[*]
+  type(eight) :: SRC[*]
+
+  allocate ( SRC%C%L )
+
+  allocate ( A[*], source=SRC )
+
+6. Is the ALLOCATE statement below permitted?
+
+  type :: Nine(P)
+    integer, len :: P
+    type(lock_type) :: L
+    character(len=p) :: S
+  end type Nine
+
+  type(nine(:)), allocatable :: A[*]
+
+  type(nine(42)) :: SRC[*]
+
+  allocate ( A[*], mold=SRC )
+
+ANSWERS:
+
+1.  The LOCK component of type One is allocatable.  Therefore, it is
+an ultimate component of type LOCK_TYPE.  Type LOCK_TYPE is not,
+however, specified to have an ultimate component of type LOCK_TYPE.
+C433 requires the parent type to have an ultimate component of type
+LOCK_TYPE if the extension has an ultimate component of type LOCK_TYPE.
+Therefore the definition of type One is not permitted.
+
+Extending type LOCK_TYPE, as in the definition of type One, was intended
+to be permitted.  Edits are provided to correct this.
+
+2.  The L component of type Three, having type Two, is allocatable.
+Therefore type Three does not have an ultimate component of type
+LOCK_TYPE.  C433 requires the parent type to have an ultimate component
+of type LOCK_TYPE if the extension has an ultimate component of type
+LOCK_TYPE.  Therefore, the definition of type Four, an extension of type
+Three, is not permitted.
+
+Extending a type that has an allocatable component, that in turn has a
+component of type LOCK_TYPE, as in the definition of type Four, was
+intended to be permitted.  Edits are provided to correct this.
+
+3.  Type Six does not have an ultimate component of type LOCK_TYPE
+because its L component, of type Two, is allocatable.  C433 requires
+the parent type to have an ultimate component of type LOCK_TYPE if a
+type extension has an ultimate component of type LOCK_TYPE.  Therefore,
+the definition of type Six is permitted.
+
+Extending a type that has nothing to do with type LOCK_TYPE, and adding
+a component such that an object of the extension type would have a
+component of type LOCK_TYPE at some level of component selection, but
+that is not an ultimate component, as in the definition of type Six, was
+intended to be prohibited.  Permitting it would allow to compromise the
+integrity of the type LOCK_TYPE component of the L component using
+polymorphism and intrinsic assignment.  Edits are provided to correct
+this.
+
+4.  X%C%L is not a subcomponent of X because X%C, of type Seven, is
+allocatable.  C1302 requires a named variable with a noncoarray
+subcomponent of type LOCK_TYPE to be a coarray.  The declaration of the
+variable X of type Eight is permitted because X does not have a
+subcomponent of type LOCK_TYPE.  Therefore, C1302 does not require
+X%C%L, an entity of type LOCK_TYPE, to be a coarray.
+
+The intent of C1302 was to require that a <lock-variable> in a LOCK or
+UNLOCK statement be a coarray or a coindexed object.  Edits are provided
+to correct this.
+
+5. SRC%C%L is of type LOCK_TYPE, but it is not a subcomponent of SRC.
+Therefore the second allocate statement is permitted by C642 and
+paragraph 4 in subclause 6.7.1.1.
+
+It was intended that this not be permitted.  Edits are provided to
+correct this.
+
+6. The variable A is a coarray, and the <source-expr> has a subcomponent
+of type LOCK_TYPE.  Therefore the allocate statement is prohibited by
+C642 and paragraph 4 in subclause 6.7.1.1.
+
+It was intended that this be permitted.  Edits are provided to correct
+this.
+
+EDITS:
+
+After definition 1.3.33.2 "parent component", introduce a definition
+
+"1.3.33.2a potential subobject component
+   a nonpointer component, or a potential subobject component of a
+   nonpointer component"
+
+In C433 in subclause 4.5.2.1, replace "ultimate" with "potential
+subobject" twice.  After "parent type" insert "shall be LOCK_TYPE or".
+
+Replace C642 in subclause 6.7.1.1:
+
+"C642  If an <allocate-object> is a coarray, the declared type of
+       <source-expr> shall not be C_PTR or C_FUNPTR.
+
+"C642a If an <allocate-object> is a coarray, the declared type of
+       <source-expr> in a SOURCE= specifier shall not be LOCK_TYPE
+       (13.8.2.16), nor shall it have a potential subobject component of
+       type LOCK_TYPE."
+
+Replace Subclause 6.7.1.1, paragraph 4:
+
+"If an <allocate-object> is a coarray, the ALLOCATE statement shall not
+have a <source-expr> with a dynamic type of C_PTR or C_FUNPTR.
+
+"If an <allocate-object> is a coarray and SOURCE= appears, the ALLOCATE
+statement shall not have a <source-expr> with a dynamic type of
+LOCK_TYPE, or with a component at any level of selection whose dynamic
+type is LOCK_TYPE."
+
+In C1302 in subclause 13.8.2.16, replace "with a noncoarray
+subcomponent" with "of a type that has a noncoarray potential subobject
+component".
+
+ALTERNATIVE EDITS:
+
+Replace C433 in subclause 4.5.2.1:
+
+"C433 (R425) If EXTENDS appears and the type being defined has a
+  component of type LOCK_TYPE at any level of component selection, the
+  parent type shall be LOCK_TYPE, or shall have a component of type
+  LOCK_TYPE at some level of component selection."
+
+"C642  If an <allocate-object> is a coarray, the declared type of
+       <source-expr> shall not be C_PTR or C_FUNPTR.
+
+"C642a If an <allocate-object> is a coarray, the declared type of
+       <source-expr> in a SOURCE= specifier shall not be LOCK_TYPE
+       (13.8.2.16), nor shall it have a component of type LOCK_TYPE at
+       any level of component selection."
+
+Replace Subclause 6.7.1.1, paragraph 4:
+
+"If an <allocate-object> is a coarray, the ALLOCATE statement shall not
+have a <source-expr> with a dynamic type of C_PTR or C_FUNPTR.
+
+"If an <allocate-object> is a coarray and SOURCE= appears, the ALLOCATE
+statement shall not have a <source-expr> with a dynamic type of
+LOCK_TYPE, or with a component at any level of selection whose dynamic
+type is LOCK_TYPE."
+
+Replace C1302 in subclause 13.8.2.16:
+
+"C1302 A named variable of type LOCK_TYPE, or that has a component of
+  type LOCK_TYPE that is not a coarray, at any level of component
+  selection, shall be a coarray."
+
+ALTERNATIVE EDIT FOR C1302:
+
+Remove C1302 in subclause 13.8.2.16.
+
+In C853 in subclause 8.5.6, after "shall be", insert "a coarray or
+coindexed object".
+
+SUBMITTED BY: Van Snyder
+
+HISTORY: m204  13-xxx    F08/xxxx  Submitted
+
+----------------------------------------------------------------------

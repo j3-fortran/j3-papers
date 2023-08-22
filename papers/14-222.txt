@@ -1,0 +1,110 @@
+                                                             J3/14-222
+To:      J3
+From:    Nick Maclaren
+Subject: Coarrays and pointer components
+Date: 2014 August 07
+
+----------------------------------------------------------------------
+
+NUMBER: TBD
+TITLE: Coarrays and pointer components
+KEYWORD: Coarrays, pointers
+DEFECT TYPE: Clarification
+STATUS: J3 consideration in progress
+
+QUESTION 1:
+
+Is the following program intended to be conforming?
+
+PROGRAM Main
+    TYPE :: Mytype
+        INTEGER, POINTER :: ptr(:) => NULL()
+    END TYPE Mytype
+    TYPE(Mytype) :: coarray[*]
+    IF (THIS_IMAGE() == 1) THEN
+        coarray%ptr = coarray[2]%ptr    ! OK
+        coarray = coarray[2]    ! Case 1
+        coarray[3] = coarray    ! Case 2
+    END IF
+END PROGRAM Main
+
+
+QUESTION 2:
+
+Should a diagnostic be required for the following program?
+
+PROGRAM Main
+    TYPE :: Mytype
+        INTEGER, POINTER :: ptr(:)
+    END TYPE Mytype
+    TYPE(Mytype) :: coarray[*]
+    ALLOCATE(coarray%ptr(THIS_IMAGE()))
+    coarray%ptr = 10*THIS_IMAGE()
+    SYNC ALL
+    IF (THIS_IMAGE() == 1) THEN
+        coarray%ptr = coarray[2]%ptr    ! OK
+        coarray = coarray[2]    ! Case 1
+        coarray[3] = coarray    ! Case 2
+    END IF
+END PROGRAM Main
+
+
+DISCUSSION:
+
+Question 1:
+
+13.7.125p1 says that NULL returns a disassociated pointer.  7.2.2.3p2
+states that pointers may not become associated with targets on other
+images, but that does not apply here because there is no such target.
+It isn't obvious that this should be allowed, as there are reasonable
+implementations where a disassociated pointer would be an image-specific
+special value.  For example, to distinguish it from a missing optional
+argument, or for debugging and validation purposes.
+
+Question 2:
+
+This is clearly not conforming by 7.2.2.3p2, but the question is whether
+it was an oversight not to have a constraint that forbids all of the
+above.
+
+Coarrays cannot be pointers (C546).  Coindexed objects cannot be pointer
+or target objects (C723 and C725), allocated or deallocated (C644),
+associated using ASSOCIATE (C803), or an actual argument corresponding
+to a dummy pointer (C1242).  Coindexed objects with pointer ultimate
+components may not be an actual argument to a procedure (C1237).  All
+of these are constraints, and thus require a diagnostic.
+
+There is essentially only one way to use coarrays with pointer
+components correctly across images, which is as in the statements marked
+'OK'.  All of the most likely user errors are blocked by constraints,
+except for direct assignment.
+
+I can see no realistic purpose in allowing the first example and not the
+last, and doing so seems tricky, so the simplest solution would be to
+block this 'gotcha' entirely by adding a constraint.  It would also be
+the best software engineering.  Edits are supplied to do this.
+
+
+ANSWER:
+
+Neither of the examples are intended to be conforming, and a diagnostic
+should be required in all cases.  Edits are provided to correct the
+oversight.
+
+
+EDITS:
+
+[153] At the end of 7.2.1.1 C713, add
+
+    ", or a coindexed-named-object with a pointer ultimate component"
+
+[153] After of 7.2.1.1 C713, add a new constraint
+
+    "C7xx (R732) The expr shall not be a coindexed-named-object with a
+     pointer ultimate component."
+
+
+SUBMITTED BY: Nick Maclaren
+
+
+HISTORY: m205   14-nnn   Submitted

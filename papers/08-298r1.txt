@@ -1,0 +1,141 @@
+To: J3                                                 08-298r1
+From: Malcolm Cohen
+Subject: Interpretation request on duration of procedure execution
+Date: 2008 November 18
+References: J3/08-007r2 (WG5/N1723)
+
+1. Introduction
+
+This paper contains an interp request together with edits to the current
+F2008 draft.  It is believed that these edits make no technical change to
+the standard, they just remove ambiguities, so we can do them now.
+
+2. Interp Request
+
+
+----------------------------------------------------------------------
+
+NUMBER: F03/nnnn
+TITLE: Duration of procedure execution
+KEYWORDS: argument association, procedure
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+In the following questions, the following type definition and procedure
+are assumed:
+
+  TYPE T
+    INTEGER :: C = 17
+  END TYPE
+
+  SUBROUTINE S(A,B)
+    TYPE(T),INTENT(IN) :: A
+    TYPE(T),INTENT(OUT) :: B
+    ...
+  END
+
+(1) Consider
+
+  TYPE(T) X
+  X%C = 3
+  CALL S(X,X)
+
+Q1. Is this valid, and if so, is A%C equal to 3 or 17?
+
+Discussion: B is default-initialized "on invocation", and A is not
+  permitted to be changed "during execution", so this depends on
+  whether "during execution" was intended to include the process of
+  invocation.
+
+(2) Consider
+
+  TYPE(T) X
+  X%C = 3
+  CALL S(F(),X)
+
+where F is the internal function
+
+  TYPE(T) FUNCTION F()
+    F = X
+  END FUNCTION
+
+Q2. Is this valid?  If so, what is the value of B%C (3 or 17)?
+
+Discussion: The reference to procedure F is not permitted to "affect
+  or be affected by the evaluation of any other entity within the
+  statement" (7.1.8 paragraph 3).  However, X is not being affected by
+  "evaluation" (it is not being evaluated by becoming argument-associated
+  with dummy argument A).  A becomes defined "on invocation" of S and it
+  is not clear whether that precedes argument evaluation or not.
+
+(3) Consider
+
+  SUBROUTINE V(AA,BB)
+    TYPE(T),VALUE :: AA
+    TYPE(T),INTENT(OUT) :: BB
+    ...
+  END
+
+  TYPE(T) X
+  X%C = 3
+  CALL V(X,X)
+
+Q3. Is this valid?  If so, what is the value of AA%C (3 or 17)?
+
+Discussion: AA gets its value by argument association, so happens at the
+  same time as the definition of BB (which defines the actual argument).
+  It is not clear what the semantics are here.
+
+Q4. It is similarly unclear as to what is or is not permitted during
+    invocation of a procedure when an actual argument might be modified
+    by some other activity, for example if it has the VOLATILE or
+    ASYNCHRONOUS attribute.
+
+ANSWER:
+
+The standard does not unambiguously supply an interpretation of these, and
+therefore they are invalid by subclause 1.5, first sentence.  Edits are
+supplied to clarify this.
+
+EDITS:
+
+[81:15] 5.1.2.7, paragraph beginning "The INTENT(IN)",
+  change "during the execution"
+  to "during the invocation and execution".
+{Makes example 1 clearly invalid, and makes it clear that INTENT(IN)
+ variables are unchanged from the start of invocation.}
+
+[81:26] Append to the INTENT(OUT) paragraph
+  "Any undefinition or definition implied by association of an actual
+   argument with an INTENT(OUT) dummy argument shall not affect any other
+   entity within the statement that invokes the procedure."
+{Makes examples 2 and 3 clearly invalid.}
+
+[275:2] Change "during the execution"
+  To "during the invocation and execution".
+{Makes it clear that the anti-aliasing rules apply for the whole process
+ of procedure invocation and execution, not just the execution part.}
+
+SUBMITTED BY: Malcolm Cohen.
+
+HISTORY: 08-298r1  m186  Submitted.
+
+----------------------------------------------------------------------
+
+3. Edits to 08-007r2
+
+[95:5.3.10p2] Change "during the execution" to
+  "during the invocation and execution".
+
+[95:5.3.10p3] Append to INTENT(OUT) paragraph
+  "Any undefinition or definition implied by association of an actual
+   argument with an INTENT(OUT) dummy argument shall not affect any other
+   entity within the statement that invokes the procedure."
+
+[297:12.5.2.13p1 item (2)] second line,
+  Change "during the execution"
+  To "during the invocation and execution".
+
+===END===

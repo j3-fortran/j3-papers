@@ -1,0 +1,114 @@
+To: J3                                                     J3/19-155
+From: Tom Clune
+Subject: Restricting generic parameters
+Date: 2019-February-14
+
+1. Introduction
+
+Except for the most trivial generic use cases, only some values of
+template parameters will be sensible.  Instantiation of the generic
+(wether this is templates, macros, or whatever, with other parameters
+will generally result in non-standard code.
+
+2. Use cases
+
+2.1  A generic sort implementation
+
+Suppose we were to implement a sort algorithm that only requires that
+the types to be sorted support the compare operator (<).  (Yes, for
+many choices this may be inefficient if it leads to procedure calls,
+but ... sometim<
+Lacking a true generic facility, we will consider an implementation of
+slow sort that relies on FPP
+
+#define SLOW_SORT(T) \
+    SUBROUTINE slow_sort(A); \
+       TYPE(T), INTENT(INOUT) :: A(:); \
+       INTEGER :: m, n; \
+                       ;\
+       LOGICAL :: flag             
+       TYPE(T) :: tmp; \
+       RESTRICT flag = tmp < tmp ;\
+                      ; \
+       IF (size(A) == 0) return; \
+       m = (i+j)/2; \
+       CALL slow_sort(A(i:m)); \
+       CALL slow_sort(A(m+1:)); \
+       n = size(A); \
+       IF (A(n) < A(m)) call swap(A(n),A(m)); \
+       CALL slow_sort(A(:j-1)); \
+    END SUBROUTINE slow_sort
+
+
+The RESTRICT statement requests the processor to verify the
+consistency of the remainder of the statement with regard to type
+consistency, but does not produce an executable statement.  If the
+verification fails, then the code is not standard conforming and the
+compiler is required to report the error.  The intent is both to make
+the restriction more visible other developers as well as to allow
+compilers to produce more informative error messages during
+instantiation in a generic context.
+
+To some degree
+
+    RESTRICT <statement>
+
+is equivalent to
+
+    IF (.false.) <statement>
+
+However, RESTRICT is clearer to both the user and the processor.
+
+
+2.2  Suport all non-scalar ranks
+
+Another somewhat similar situation that can arise in a generic context
+is to only support some range of a parameter.  E.g. a root-finding
+algorithm that is generally unreliable below a certain precision.
+Here we show an example where an algorithm needs to fill the halo of
+an arbitrary rank array, but is not defined for scalars:
+
+#define HALO(A) \
+    REQUIRE(RANK(A) > 0); \
+    call halo(A)
+
+
+REQUIRE(<logical-expr>) requires the processor to fail compilation if
+<logical-expr> is not constant or evaluates to false.  Because
+<logical-expr> it is required to be constant, the REQUIRE statement is
+suitable for appearing in the spcecification part of a scoping unit.
+The intent is to indicate the requirement to the user and to help the
+processor to produce a more informative message.
+
+Variant:
+
+REQUIRE(<logical-expr>, <string-expr>) allows the user to specify a
+custom error message for when the expression is false.
+
+As above, in terms of functionality this is largely equivalent to:
+
+if (.not. <logical-expr>) ERROR STOP ...
+
+or
+
+if (.not. <logical-expr>) ERROR STOP  <string-expr>
+
+
+3. Requirements
+
+RESTRICT and REQUIRE cannot appear in the source before the referenced
+types and values have been defined.  Certainly this should be allowed
+in the executable section of a procedure, but there may be value in
+allowing such statements in the specification part of modules and
+procedures.
+
+
+
+
+
+
+
+
+
+
+

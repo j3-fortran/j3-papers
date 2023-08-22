@@ -1,0 +1,1062 @@
+
+                                                             X3J3/96-090
+
+Date:    May 10, 1996
+To:      X3J3
+From:    John K. Reid
+Subject: Draft TR for Floating-Point Exception Handling
+
+
+0. NOTES
+
+This is a draft Technical Report using procedures in two modules for
+exception handling. I will explain the changes made since the version
+of 2 February 1996.
+
+I have made the following changes with the consent of X3J3 in February:
+
+1. Changed IEEE_MODE to IEEE_LEVEL. This seems to me to be a
+better name.
+
+2. Made IEEE_TEST_FLAG into a subroutine. The case for a subroutine is
+that it gives a clear separation between statements that can change the
+flag values and those that can access them. It avoids breaking the rule
+that a function value should depend solely on argument values, which
+applies to all the intrinsic functions.
+
+X3J3 made no further suggestions for changes at its February meeting.
+
+This version has draft edits to the standard (section 3). Constructing
+the edits made me want the following technical changes:
+
+1. Change IEEE_HALT to IEEE_SET_HALTING_MODE, since this does not
+cause a halt but a change to the halting mode.
+
+2. Remove the optional argument X from IEEE_SUPPORT_HALTING,
+IEEE_GET_HALTING_MODE, and IEEE_SET_HALTING_MODE. It seems to me that we
+want the processor to halt or continue after an IEEE exception occurs,
+regardless of the cause of the exception. Picky rules would otherwise
+be needed for mixed kind operations.
+
+3. Change IEEE_TEST_FLAG to IEEE_GET_FLAG, since this is more 
+appropriate for a subroutine and is consistent with 
+IEEE_GET_HALTING_MODE.
+
+4. Remove the subroutine IEEE_CLEAR_FLAG and add the argument
+FLAG_VALUE to IEEE_SET_FLAG. This is to allow the old values of several
+flags to be restored by a single procedure call.
+
+5. Make IEEE_GET_HALTING_MODE and IEEE_SET_HALTING_MODE elemental for
+consistency with IEEE_GET_FLAG and IEEE_SET_FLAG, and to allow several
+exceptions to be treated together.
+
+6. IEEE_COPYSIGN => IEEE_COPY_SIGN (since copy and sign are words), and
+IEEE_NEXTAFTER => IEEE_NEXT_AFTER (since next and after are words).
+I asked the Development Body to consider these on 22 April and there
+have been no objections.
+
+7. At the request of DIN, I have made the edits highlighted with change
+bars. Please consider carefully the paragraph on exception handling in
+the existing intrinsics that I have added to the edits for 15.2. For
+the enable proposal, many people had a model of two versions of the
+intrinsics: one for within enable blocks and one for outside them. Do
+we need something similar here? The new paragraph reflects my
+(tentantive) view is that we should not require invalid intrinsic calls
+to result in continued execution, but allow processors to do this.
+
+
+I wonder about making the changes:
+
+8. IEEE => STD either globally or partially. We might leave IEEE
+for the elemental functions since they apply only to IEEE data types.
+DIN would like it to be clearer that non-IEEE processors are being
+addressed.
+
+9. Add the function IEEE_RINT for rounding to an integer value of the
+same real kind, using the current rounding mode (see section 5.4 of
+IEEE standard). This is my interpretation of DIN's request. I see no
+need for IEEE_INT, since INT(IEEE_RINT(X)) would do the job. Are there
+any more functions needed to support IEEE?
+
+
+I would appreciate hearing of any objections to changes 1-7 and opinions
+on 8-9. 
+
+ 
+
+1. RATIONALE
+
+Exception handling is required for the development of robust and
+efficient numerical software.  In particular, it is necessary in order
+to be able to write portable scientific libraries.  In numerical
+Fortran programming, current practice is to employ whatever exception
+handling mechanisms are provided by the system/vendor.  This clearly
+inhibits the production of fully portable numerical libraries and
+programs. It is particularly frustrating now that IEEE arithmetic is so
+widely used, since built into it are the five conditions: overflow,
+invalid, divide_by_zero, underflow, and inexact. Our aim to to provide
+support for these conditions.
+
+We have taken the opportunity to provide support for other aspects of    |
+the IEEE standard through a set of elemental functions that are          |
+applicable only to IEEE data types.                                      |
+
+This proposal involves two standard modules, IEEE_ARITHMETIC and
+IEEE_SUBSET, each containing four derived types, some named constants
+of these types, an integer named constant IEEE_LEVEL, and a collection
+of simple procedures. They allow the flags to be tested, cleared, set,
+saved, or restored. To facilitate maximum performance, each of the
+proposed functions does very little processing of arguments. In many
+cases, a processor may generate only a few inline machine code
+instructions rather than library calls. Any feature supported on a
+processor for IEEE_SUBSET must also be supported for IEEE_ARITHMETIC.
+Some processors may execute faster using IEEE_SUBSET.
+
+In order to allow for the maximum number of processors to provide the
+maximum value to users, we do NOT require complete IEEE conformance.
+What a vendor must do is to provide the module, and support the
+overflow and divide-by-zero flags and the basic inquiry functions. A
+user must utilize the inquiry functions to determine if he or she can
+count on specific features of the IEEE standard, before using other
+inquiry or value setting procedures.
+
+Note that a processor ought not implement these as "macros", as IEEE
+conformance is often controlled by compiler switches. A processor which
+offers a switch to turn off a facility should adjust the values
+returned for these inquiries. For example, a processor which allows
+gradual underflow to be turned off (replaced with flush to zero) should
+return .FALSE. for IEEE_SUPPORT_DENORMAL(X) when a source file is
+processed with that option on. Naturally it should return .TRUE. when
+that option is not in effect.
+
+The most important use of a floating-point exception handling facility
+is to make possible the development of much more efficient software
+than is otherwise possible. The following "hypotenuse" function,
+sqrt(x**2 + y**2), illustrates the use of the facility in developing
+efficient software.
+
+REAL FUNCTION HYPOT(X, Y)
+! In rare circumstances this may lead to the signaling of the OVERFLOW flag
+   USE, INTRINSIC :: IEEE_ARITHMETIC 
+   REAL X, Y
+   REAL SCALED_X, SCALED_Y, SCALED_RESULT
+   LOGICAL, DIMENSION(2) :: FLAGS, OLD_FLAGS
+   TYPE (IEEE_FLAG_TYPE), PARAMETER, DIMENSION(2) :: &
+          OUT_OF_RANGE = (/ IEEE_OVERFLOW, IEEE_UNDERFLOW /)
+   INTRINSIC SQRT, ABS, EXPONENT, MAX, DIGITS, SCALE
+! Store the old flags and clear them
+   CALL IEEE_GET_FLAG(OUT_OF_RANGE,OLD_FLAGS)
+   CALL IEEE_SET_FLAG(OUT_OF_RANGE,.FALSE.)  
+! Try a fast algorithm first
+   HYPOT = SQRT( X**2 + Y**2 )
+   CALL IEEE_GET_FLAG(OUT_OF_RANGE,FLAGS)
+   IF ( ANY(FLAGS) ) THEN
+      CALL IEEE_SET_FLAG(OUT_OF_RANGE,.FALSE.)  
+      IF ( X==0.0 .OR. Y==0.0 ) THEN
+         HYPOT = ABS(X) + ABS(Y)
+      ELSE IF ( 2*ABS(EXPONENT(X)-EXPONENT(Y)) > DIGITS(X)+1 ) THEN
+         HYPOT = MAX( ABS(X), ABS(Y) )!  one of X and Y can be ignored
+      ELSE     ! scale so that ABS(X) is near 1
+         SCALED_X = SCALE( X, -EXPONENT(X) )
+         SCALED_Y = SCALE( Y, -EXPONENT(X) )
+         SCALED_RESULT = SQRT( SCALED_X**2 + SCALED_Y**2 )
+         HYPOT = SCALE( SCALED_RESULT, EXPONENT(X) ) ! may cause overflow
+      END IF        
+   END IF        
+   IF(OLD_FLAGS(1)) CALL IEEE_SET_FLAG(IEEE_OVERFLOW,.TRUE.)  
+   IF(OLD_FLAGS(2)) CALL IEEE_SET_FLAG(IEEE_UNDERFLOW,.TRUE.)  
+END FUNCTION HYPOT
+
+An attempt is made to evaluate this function directly in the fastest
+possible way. (Note that with hardware support, exception checking is
+very efficient; without language facilities, reliable code would
+require programming checks that slow the computation significantly.)
+The fast algorithm will work almost every time, but if an exception
+occurs during this fast computation, a safe but slower way evaluates
+the function.  This slower evaluation may involve scaling and
+unscaling, and in (very rare) extreme cases this unscaling can cause
+overflow (after all, the true result might overflow if X and Y are both
+near the overflow limit).  If the overflow or underflow flag is signaling on
+entry, it is reset on return, so that earlier exceptions are not
+lost.
+
+Can all this be accomplished without the help of an exception handling
+facility? Yes, it can - in fact, the alternative code can do the job,
+but of course it is much less efficient. That's the point. The HYPOT
+function is special, in this respect, in that the normal and
+alternative codes try to accomplish the same task. This is not always
+the case. In fact, it very often happens that the alternative code
+concentrates on handling the exceptional cases and is not able to
+handle all of the non-exceptional cases. When this happens, a program
+which cannot take advantage of hardware flags could have a structure
+like the following:
+    if ( in the first exceptional region ) then
+        handle this case
+    else if ( in the second exceptional region ) then
+        handle this case
+      :
+    else
+        execute the normal code
+    end
+But this is not only inefficient, it also "inverts" the logic of the
+computation.  For other examples, see Hull, Fairgrieve and Tang (1994)
+and Demmel and Li (1994).
+
+The code for the HYPOT function can be generalized in an obvious
+way to compute the Euclidean Norm, sqrt( x(1)**2 + x(2)**2 + ... +
+x(n)**2 ), of an n-vector; the generalization of the alternative code is
+not so obvious (though straightforward) and will be much slower
+relative to the normal code than is the case with the HYPOT function.
+
+Of the five IEEE conditions, underflow and inexact are obviously milder
+than the other three (inexact is particularly mild and signals almost
+all the time in typical codes). We therefore group the other three
+together as 'usual'.
+
+There is a need for further intrinsic conditions in connection with
+reliable computation. Examples are 
+   a. INSUFFICIENT_STORAGE for when the processor is unable to find
+      sufficient storage to continue execution.
+   b. INTEGER_OVERFLOW and INTEGER_DIVIDE_BY_ZERO for when an 
+      intrinsic integer operation has a very large result or 
+      has a zero denominator. 
+   c. INTRINSIC for when an intrinsic procedure has been unsuccessful.
+   d. SYSTEM_ERROR for when a system error occurs. 
+This proposal has been designed to allow such enhancements in the future.
+
+References
+
+Demmel, J.W. and Li, X. (1994). Faster Numerical Algorithms via 
+   Exception Handling. IEEE Transactions on Computers, 43,
+   no. 8, 983-992.
+Hull, T.E., Fairgrieve, T.F., and Tang, T.P.T. (1994).
+   Implementing complex elementary functions using exception handling.
+   ACM Trans. Math. Software 20, 215-244. 
+
+2. TECHNICAL SPECIFICATION
+
+2.1 The model
+
+This proposal is based on the IEEE model with flags for the
+floating-point exceptions (invalid, overflow, divide-by-zero,
+underflow, inexact), a flag for the rounding mode (nearest, up, down,
+to zero), and flags for whether halting occurs following exceptions. It
+is not necessary for the hardware to have any such flags (they may be
+simulated by software) or for it to support all the modes. Inquiry
+procedures are available for determining the extent of support. The
+minimum requirement is for the support of overflow and divide-by-zero.
+Inquiries are in terms of reals, but the same level of support is
+provided for the corresponding complex kind.
+
+As well as the IEEE exceptions, the model contains the 
+exceptions 'usual' and 'all'. The flag usual is regarded as signaling
+if any of invalid, overflow, divide-by-zero is signaling. Explicitly
+setting usual (by invoking a procedure) has the corresponding effect on
+all three flags. The flag all is similarly related to all five flags.
+
+Some hardware may execute faster with compiled code that provides only
+partial support of these features than with code than provides fuller
+support. This proposal therefore involves two intrinsic modules, which
+gives the programmer control over the extent of support. They are named
+IEEE_ARITHMETIC and IEEE_SUBSET. Any feature supported on a processor
+for IEEE_SUBSET must also be supported for IEEE_ARITHMETIC.
+
+The modules contain four derived types (section 2.3), an integer
+constant to control the level of support (section 2.4), and a
+collection of procedures (sections 2.5 to 2.10). None of the procedures
+is permitted as an actual argument.
+
+2.2  The use statement for an intrinsic module
+
+New syntax on the USE statement provides control over whether it is
+intended to access an intrinsic module:
+      USE, INTRINSIC :: IEEE_ARITHMETIC
+or not:
+      USE, NON_INTRINSIC :: MY_IEEE_ARITHMETIC
+The INTRINSIC statement is not extended. For the Fortran 90 form
+      USE IEEE_ARITHMETIC
+the processor looks first for a non-intrinsic module.
+
+2.3 The derived types
+
+The modules contain the following derived types
+
+  1. IEEE_FLAG_TYPE, for identifying a particular exception flag. Its
+     only possible values are those of constants defined in the module:
+     IEEE_INVALID, IEEE_OVERFLOW, IEEE_DIVIDE_BY_ZERO, IEEE_USUAL,
+     IEEE_UNDERFLOW, IEEE_INEXACT, and IEEE_ALL.
+
+  2. IEEE_CLASS_TYPE, for identifying a class of floating-point values.
+     Its only possible values are those of constants defined in the
+     module: IEEE_SIGNALING_NAN, IEEE_QUIET_NAN, IEEE_NEGATIVE_INF,
+     IEEE_NEGATIVE_NORMAL, IEEE_NEGATIVE_DENORMAL, IEEE_NEGATIVE_ZERO,
+     IEEE_POSITIVE_ZERO, IEEE_POSITIVE_DENORMAL, IEEE_POSITIVE_NORMAL,
+     IEEE_POSITIVE_INF.
+
+  3. IEEE_ROUND_TYPE, for identifying a particular rounding mode. Its
+     only possible values are those of constants defined in the module:
+     IEEE_NEAREST, IEEE_TO_ZERO, IEEE_UP,  IEEE_DOWN, and IEEE_OTHER.
+
+  4. IEEE_STATUS_TYPE, for saving the current floating point status.
+
+2.4 The level of support
+
+Both modules contain the constant IEEE_LEVEL of type default integer.
+It has the value 1 in IEEE_SUBSET and the value 2 in IEEE_ARITHMETIC.
+
+The extent of IEEE support must be no less for IEEE_ARITHMETIC than for
+IEEE_SUBSET. If a scoping unit has access to IEEE_LEVEL of
+IEEE_ARITHMETIC, the scoping unit must provide the corresponding level
+of support. If a scoping unit has access to IEEE_LEVEL of IEEE_SUBSET
+and does not have access to IEEE_LEVEL of IEEE_ARITHMETIC, the scoping
+unit must provide the subset level of support. Execution may be faster
+with the subset. If a scoping unit has access to neither IEEE_LEVEL,
+the level of support is processor determined, and need not include
+support for any exceptions. Following execution of code in such a
+scoping unit, the values of the flags are processor determined.
+
+The minimum requirement when IEEE_LEVEL of either module is accessible    |
+is for the support of IEEE_OVERFLOW and IEEE_DIVIDE_BY_ZERO. Whether      |
+the other exceptions are supported may be determined by the elemental     |
+inquiry function IEEE_SUPPORT_FLAG, see section 2.6. The extent of further|
+support for the IEEE standard may be determined by the other inquiry      |
+functions of section 2.6.                                                 |
+
+2.5 The exception flags
+
+The flags are initially quiet and signal when an exception occurs. The
+value of a flag is determined by the elemental subroutine
+
+    IEEE_GET_FLAG (FLAG,FLAG_VALUE)
+
+where FLAG is of type IEEE_FLAG_TYPE and FLAG_VALUE is of type default
+LOGICAL. Being elemental allows an array of flag values to be obtained
+at once and obviates the need for a list of flags.
+
+Flag values may be assigned by the elemental subroutine
+
+    IEEE_SET_FLAG (FLAG,FLAG_VALUE)
+
+An exception must not signal if this could arise only during              |
+execution of a process further to those required or permitted by the      |
+standard.  For example, the statement                                     |
+           IF (F(X)>0.) Y = 1.0/Z                                         |
+must not signal IEEE_DIVIDE_BY_ZERO when both F(X) and Z are zero and the |
+statement                                                                 |
+           WHERE(A>0.0) A = 1.0/A                                         |
+must not signal IEEE_DIVIDE_BY_ZERO. On the other hand, when              |
+X has the value 1.0 and Y has the value 0.0, the expression               |
+           X>0.00001 .OR. X/Y>0.00001                                     |
+is permitted to cause the signaling of IEEE_DIVIDE_BY_ZERO.               |
+
+2.6 Inquiry functions for the features supported
+
+The modules contain the following inquiry functions:                      |
+
+IEEE_SUPPORT_DATATYPE([X])  True if the processor supports IEEE arithmetic
+  for all reals (X absent) or for reals of the same kind type parameter as
+  the argument X.  Here support means employing an IEEE data format and
+  performing the operations of +, -, and * as in the IEEE standard
+  whenever the operands and result all have normal values.
+
+IEEE_SUPPORT_DENORMAL([X])  True if the processor supports the IEEE
+  gradual underflow facility for all reals (X absent) or for reals of
+  the same kind type parameter as the argument X.
+  
+IEEE_SUPPORT_DIVIDE([X])  True if the processor supports IEEE divide
+  for all reals (X absent) or for reals of the same kind type parameter
+  as the argument X.
+
+IEEE_SUPPORT_FLAG(FLAG [, X])  True if the processor supports an
+  exception flag for all reals (X absent) or for reals of the same kind
+  type parameter as the argument X.
+
+IEEE_SUPPORT_HALTING(FLAG)  True if the processor supports the
+  ability to control during program execution whether to abort or
+  continue execution after an exception.
+
+IEEE_SUPPORT_INF([X])  True if the processor supports the IEEE infinity
+  facility for all reals (X absent) or for reals of the same kind type
+  parameter as the argument X.
+
+IEEE_SUPPORT_NAN([X])  True if the processor supports the IEEE
+  Not-A-Number facility for all reals (X absent) or for reals of the
+  same kind type parameter as the argument X.
+
+IEEE_SUPPORT_ROUNDING(ROUND_VALUE [, X])  True if the processor
+  supports a particular rounding mode for all reals (X
+  absent) or for reals of the same kind type parameter as the argument
+  X. Here, support includes the ability to change the mode by 
+  CALL IEEE_SET_ROUNDING(ROUND_VALUE).
+
+IEEE_SUPPORT_SQRT([X])  True if the processor supports IEEE square root
+  for all reals (X absent) or for reals of the same kind type parameter
+  as the argument X.
+
+IEEE_SUPPORT_STANDARD([X])  True if the processor supports all the IEEE
+  facilities defined in this standard for all reals (X absent) or for
+  reals of the same kind type parameter as the argument X.
+
+2.7. Elemental functions
+
+The modules contain the following elemental functions for reals X and Y  |
+for which IEEE_SUPPORT_DATATYPE(X) and IEEE_SUPPORT_DATATYPE(Y) are      |
+true:                                                                    |
+
+IEEE_CLASS(X)  Returns the IEEE class (see Section 2.3 for the possible
+   values).
+
+IEEE_COPY_SIGN(X,Y)  IEEE copysign function, that is X with the sign of Y.
+
+IEEE_IS_FINITE(X)  IEEE finite function. True if CLASS(X) has one of
+  the values IEEE_NEGATIVE_NORMAL, IEEE_NEGATIVE_DENORMAL,
+  IEEE_NEGATIVE_ZERO, IEEE_POSITIVE_ZERO, IEEE_POSITIVE_DENORMAL,
+  IEEE_POSITIVE_NORMAL.
+
+IEEE_IS_NAN(X)  True if the value is IEEE Not-a-Number.
+
+IEEE_IS_NEGATIVE(X)  True if the value is negative.
+
+IEEE_IS_NORMAL(X)  True if the value is a normal number.
+
+IEEE_LOGB(X) IEEE logb function, that is, the unbiased exponent of X.
+
+IEEE_NEXT_AFTER(X,Y)  Returns the next representable neighbor of X in
+  the direction toward Y.
+
+IEEE_SCALB (X,I)  Returns X * 2**I.
+
+IEEE_SQRT(X)  Square root as defined in the IEEE standard.
+
+IEEE_UNORDERED(X,Y)  IEEE unordered function. True if X or Y is a NaN
+  and false otherwise.
+
+IEEE_VALUE(X, CLASS)  Generate an IEEE value. The
+  value of CLASS is permitted to be
+   (i) IEEE_SIGNALING_NAN or IEEE_QUIET_NAN if IEEE_SUPPORT_NAN(X) has
+       the value true,
+   (ii) IEEE_NEGATIVE_INF or IEEE_POSITIVE_INF if IEEE_SUPPORT_INF(X)
+       has the value true, 
+   (iii) IEEE_NEGATIVE_DENORMAL or IEEE_POSITIVE_DENORMAL if
+       IEEE_SUPPORT_DENORMAL(X) has the value true,
+   (iv) IEEE_NEGATIVE_NORMAL, IEEE_NEGATIVE_ZERO, IEEE_POSITIVE_ZERO    |
+       or IEEE_POSITIVE_NORMAL.                                         |
+   Although in most cases the value is processor dependent, the value
+   does not vary between invocations for any particular X kind type
+   parameter and CLASS value.
+
+2.8. Elemental subroutines
+
+The modules contain the following elemental subroutines:
+
+IEEE_GET_FLAG(FLAG,FLAG_VALUE) Get an exception flag.
+
+IEEE_GET_HALTING_MODE(FLAG, HALTING)  Get halting mode for an exception.
+  The initial halting mode is processor dependent. Halting is not
+  necessary immediate, but normal processing does not continue.
+
+IEEE_SET_FLAG(FLAG,FLAG_VALUE) Set an exception flag.
+    
+IEEE_SET_HALTING_MODE(FLAG,HALTING)  Controls continuation or halting
+  on exceptions. IEEE_SUPPORT_HALTING(FLAG) must be true.               |
+
+
+2.9. Non-elemental subroutines
+
+The modules contain the following non-elemental subroutines:
+
+IEEE_GET_ROUNDING_MODE(ROUND_VALUE)  Get the current IEEE rounding
+  mode.  ROUND_VALUE is of type IEEE_ROUND_TYPE.
+
+IEEE_GET_STATUS(STATUS_VALUE)  Get the current values of the set of
+  flags that define the current state of the floating point
+  environment.  STATUS_VALUE is of type IEEE_STATUS_TYPE.
+
+IEEE_SET_ROUNDING_MODE(ROUND_VALUE)  Set the current IEEE rounding
+  mode.  ROUND_VALUE is of type IEEE_ROUND_TYPE, with value
+  IEEE_NEAREST, IEEE_TO_ZERO, IEEE_UP, or IEEE_DOWN.
+  If this is invoked, IEEE_SUPPORT_ROUNDING(ROUND_VALUE,X) must be true  |
+  for any X such that IEEE_SUPPORT_DATATYPE(X) is true.                  |
+
+IEEE_SET_STATUS(STATUS_VALUE)  Restore the values of the set of flags
+  that define the current state of the floating point environment
+  (usually the floating point status register). STATUS_VALUE is of type
+  IEEE_STATUS_TYPE and has been set by a call of IEEE_GET_STATUS.
+
+2.10. Transformational function
+
+The modules contain the following transformational function:
+
+IEEE_SELECTED_REAL_KIND ( [P,] [R]) As for SELECTED_REAL_KIND but gives
+  an IEEE kind.
+
+3. EDITS TO THE DRAFT STANDARD (N1176, March 1996)
+
+xvi/16. Add 'A module may be intrinsic (defined by the standard) or
+nonintrinsic (defined by Fortran 90 code).'
+
+19/6. After 'procedures,' add 'modules,'.
+
+131/33. Add: 'If any exception (15) is signaling, the processor shall
+issue a warning on the unit identified by * in a WRITE statement,
+indicating which exceptions are signaling.'.
+
+186/17. Add 'An <<intrinsic module>> is defined by the standard.
+A <<nonintrinsic module>> is defined by Fortran 90 code.
+
+187/22-23. Change to 
+
+ R1107	use-stmt      is USE [,module-nature::] module-name [, rename-list]  
+                      or USE [,module-nature::] module-name, ONLY : [only-list]
+ R1107a module-nature is INTRINSIC  
+                      or NON_INTRINSIC  
+ Constraint: If <module-nature> is INTRINSIC, module-name must be the name
+             of an intrinsic module.
+ Constraint: If <module-nature> is NON_INTRINSIC, module-name must be the name
+             of an nonintrinsic module.
+ 
+187/31+. A <use-stmt> without a <module-nature> provides access either
+to an intrinsic or to a nonintrinsic module. If the <module-name> is
+the name of both an intrinsic and a nonintrinsic module, the
+nonintrinsic module is accessed.
+
+228/36. Change '.' to ', unless IEEE_LEVEL of one of the intrinsic modules
+IEEE_ARITHMETIC and IEEE_SUBSET (Section 15) is accessible and there is
+support for an infinite or a NaN result, as appropriate. If an infinite
+result is returned, the flag IEEE_OVERFLOW or IEEE_DIVIDE_BY_ZERO shall
+signal;  if a NaN result is returned, the flag IEEE_INVALID shall
+signal. If all results are normal, the exception flags must have the
+same status as when the intrinsic procedure was invoked.'
+
+292+. Add
+
+<<15. Intrinsic modules for support of exceptions and IEEE arithmetic>>
+
+The intrinsic modules IEEE_ARITHMETIC and IEEE_SUBSET provide support
+for the floating point exceptions associated with overflow and divide
+by zero for real or complex data with any kind parameter. If the type
+and kind parameter implements IEEE arithmetic (IEEE 754-1985), the
+modules provide more extensive support, including the exceptions
+invalid, underflow, and inexact. There are inquiry functions that
+permit the extent of support of IEEE 754-1985 to be determined.  
+Both modules contain the constant IEEE_LEVEL of type default integer.
+It has the value 1 in IEEE_SUBSET and the value 2 in IEEE_ARITHMETIC.
+
+The extent of IEEE support must be no less for IEEE_ARITHMETIC than for
+IEEE_SUBSET. If a scoping unit has access to IEEE_LEVEL of
+IEEE_ARITHMETIC, the scoping unit must provide the corresponding level
+of support. If a scoping unit has access to IEEE_LEVEL of IEEE_SUBSET
+and does not have access to IEEE_LEVEL of IEEE_ARITHMETIC, the scoping
+unit must provide the subset level of support. Execution may be faster
+with the subset. If a scoping unit has access to neither IEEE_LEVEL,
+the level of support is processor determined, and need not include
+support for any exceptions. Following execution of code in such a
+scoping unit, the values of the flags are processor determined.
+
+Note: A processor with no support for IEEE data need not supply the      |
+elemental functions of 15.8.2.                                           |
+
+<<15.1 Derived data types defined in the module>>
+
+The module contains four data types, whose components are private. 
+No operation is defined for any of them and only intrinsic assignment
+is available for them. They are:
+
+  1. TYPE(IEEE_FLAG_TYPE), for identifying a particular exception flag. Its
+     only possible values are those of constants defined in the module:
+     IEEE_INVALID, IEEE_OVERFLOW, IEEE_DIVIDE_BY_ZERO, IEEE_USUAL,
+     IEEE_UNDERFLOW, IEEE_INEXACT, and IEEE_ALL.
+
+  2. TYPE(IEEE_CLASS_TYPE), for identifying a class of floating-point values.
+     Its only possible values are those of constants defined in the
+     module: IEEE_SIGNALING_NAN, IEEE_QUIET_NAN, IEEE_NEGATIVE_INF,
+     IEEE_NEGATIVE_NORMAL, IEEE_NEGATIVE_DENORMAL, IEEE_NEGATIVE_ZERO,
+     IEEE_POSITIVE_ZERO, IEEE_POSITIVE_DENORMAL, IEEE_POSITIVE_NORMAL,
+     IEEE_POSITIVE_INF.
+
+  3. TYPE(IEEE_ROUND_TYPE), for identifying a particular rounding mode. Its
+     only possible values are those of constants defined in the module:
+     IEEE_NEAREST, IEEE_TO_ZERO, IEEE_UP,  IEEE_DOWN, and IEEE_OTHER.
+
+  4. TYPE(IEEE_STATUS_TYPE), for saving the current floating point status.
+
+<<15.2 The exceptions>>
+
+The exceptions are:
+
+   IEEE_OVERFLOW
+   This exception occurs when the result for an intrinsic real operation
+   has a very large processor-dependent absolute value, or the real or
+   imaginary part of the result for an intrinsic complex operation has a
+   very large processor-dependent absolute value.
+
+   IEEE_DIVIDE_BY_ZERO
+   This exception occurs when a real or complex division has a nonzero
+   numerator and a zero denominator.
+
+   IEEE_INVALID
+   This exception occurs when a real or complex operation is invalid.  
+
+   IEEE_UNDERFLOW
+   This exception occurs when the result for an intrinsic real operation
+   has a very small processor-dependent absolute value, or the real or
+   imaginary part of the result for an intrinsic complex operation has a
+   very small processor-dependent absolute value.
+
+   IEEE_INEXACT
+   This exception occurs when the result of a real or complex operation
+   is not exact.
+
+   IEEE_USUAL
+   This exception occurs whenever any of the exceptions IEEE_OVERFLOW,
+   IEEE_DIVIDE_BY_ZERO, and IEEE_INVALID occur.
+
+   IEEE_ALL
+   This exception occurs whenever any of the exceptions IEEE_OVERFLOW,
+   IEEE_DIVIDE_BY_ZERO, IEEE_INVALID, IEEE_UNDERFLOW, IEEE_INEXACT occur.
+
+Each exception has a flag whose value is either quiet or signaling. The
+value may be determined by the function IEEE_GET_FLAG. Its initial
+value is quiet and it signals when the associated exception occurs. Its
+status may also be changed by the subroutine IEEE_SET_FLAG or the
+subroutine IEEE_SET_STATUS. Once signaling, it remains signaling unless
+set quiet by an invocation of the subroutine IEEE_SET_FLAG or the
+subroutine IEEE_SET_STATUS. If any exception is signaling when the program
+terminates, the processor shall issue a warning on the unit identified
+by * in a WRITE statement, indicating which conditions are signaling.
+
+If a flag is signaling on entry to a pure procedure, the flag shall not
+be set to quiet unless it is reset before return. 
+
+If an intrinsic procedure executes normally, the values of the flags       |
+IEEE_OVERFLOW, IEEE_DIVIDE_BY_ZERO, IEEE_INVALID, and IEEE_USUAL shall     |
+be as on entry to the procedure, even if one or more signals during the    |
+calculation. If a result is too large for the intrinsic to handle,         |
+IEEE_OVERFLOW shall signal. If a requirement of the standard is not met    |
+(for example, LOG(-1.0)), IEEE_INVALID may signal.  These rules also       |
+apply to the evaluation of specification expressions on entry to a         |
+procedure, to format processing, and to an intrinsic operation that is     |
+implemented with software.                                                 |
+
+In a sequence of statements that contains no invocations of                |
+IEEE_GET_FLAG, IEEE_SET_FLAG, IEEE_GET_STATUS, or IEEE_SET_STATUS, if      |
+the execution of a process would cause an exception to
+signal but after execution of the sequence no value of a variable
+depends on the process, whether the exception is signaling is processor
+dependent.  For example, when Y has the value zero, whether the code
+           X = 1.0/Y
+           X = 3.0
+signals IEEE_DIVIDE_BY_ZERO is processor dependent. 
+
+An exception must not signal if this could arise only during
+execution of a process further to those required or permitted by the
+standard.  For example, the statement
+           IF (F(X)>0.) Y = 1.0/Z
+must not signal IEEE_DIVIDE_BY_ZERO when both F(X) and Z are zero and the
+statement
+           WHERE(A>0.0) A = 1.0/A
+must not signal IEEE_DIVIDE_BY_ZERO. On the other hand, when
+X has the value 1.0 and Y has the value 0.0, the expression
+           X>0.00001 .OR. X/Y>0.00001
+is permitted to cause the signaling of IEEE_DIVIDE_BY_ZERO.
+
+Note: It is intended that implementations be free to use code motion
+techniques except across an invocation of IEEE_GET_FLAG,                  |
+IEEE_SET_FLAG, IEEE_GET_STATUS, or IEEE_SET_STATUS.                       |
+
+The processor need not support IEEE_INVALID, IEEE_UNDERFLOW, and
+IEEE_INEXACT. If an exception is not supported, its flag is always
+quiet.  The function IEEE_SUPPORT_FLAG may be used to inquire whether a
+particular flag is supported.
+
+<<15.3 The rounding modes>>
+
+IEEE 754-1985 specifies four rounding modes:
+
+  IEEE_NEAREST rounds the exact result to the nearest representable value.
+
+  IEEE_TO_ZERO rounds the exact result towards zero to the next
+  representable value.
+
+  IEEE_UP rounds the exact result towards +infinity to the next
+  representable value.
+
+  IEEE_DOWN rounds the exact result towards -infinity to the next
+  representable value.
+
+The function IEEE_GET_ROUNDING_MODE may be used to inquire which 
+rounding mode is in operation. Its value is one of the above four
+or IEEE_OTHER if the rounding mode does not conform to IEEE 754-1985.
+
+If the processor supports the alteration of the rounding mode during
+execution, the subroutine IEEE_SET_ROUNDING_MODE may be used to alter
+it.  The function IEEE_SUPPORT_ROUNDING may be used to inquire whether
+this facility is available for a particular mode.
+
+<<15.4 Halting>>
+
+If the processor supports the ability to control during program
+execution whether to abort or continue execution after an exception,
+such control may be exercised by invocation of the subroutine
+IEEE_SET_HALTING_MODE. Halting is not precise and may occur any time
+after the exception has occurred. The function IEEE_SUPPORT_HALTING may
+be used to inquire whether this facility is available.
+
+<<15.5 The floating point status>>
+
+The values of all the supported flags for exceptions, rounding mode,
+and halting may be saved in a scalar variable of type
+TYPE(IEEE_STATUS_TYPE) with the function IEEE_GET_STATUS and restored with
+the subroutine IEEE_SET_STATUS. There are no facilities for finding the
+values of particular flags held within such a variable.
+
+Note. Some processors hold all these flags in a floating point 
+status register that can be saved and restored as a whole much
+faster than all individual flags can be saved and restored. These
+procedures are provided to exploit this feature.  
+
+<<15.6 Exceptional values>>
+
+IEEE 754-1985 specifies the following exceptional floating point values:
+
+   Denormalized values have very small absolute values and lowered precision.
+
+   Infinite values (+Inf and -Inf) are created by overflow or division by zero.
+
+   Not-a-Number (NaN) values are undefined values or values created by
+   an invalid operation.
+
+The functions IEEE_IS_FINITE, IEEE_IS_NAN, IEEE_IS_NEGATIVE, and
+IEEE_IS_NORMAL are provided to test whether a value is finite, NaN,
+negative, or normal. The function IEEE_VALUE is provided to generate an
+IEEE number of any class, including an infinity or a NaN.  The
+functions IEEE_SUPPORT_DENORMAL, IEEE_SUPPORT_DIVIDE, IEEE_SUPPORT_INF,
+and IEEE_SUPPORT_NAN may be used to inquire whether this facility is
+available for a particular kind of real.
+
+<<15.7 IEEE arithmetic>>
+
+The function IEEE_SUPPORT_DATATYPE may be used to inquire whether IEEE
+arithmetic is available for a particular kind of real.  Complete
+conformance with the IEEE standard is not required, but the normalized
+numbers must be exactly those of IEEE single or IEEE double; the
+arithmetic operators must be implemented with at least one of the IEEE
+rounding modes; and the functions copysign, scalb, logb, nextafter, and
+unordered must be provided by the functions IEEE_COPY_SIGN, IEEE_SCALB,
+IEEE_LOGB, IEEE_NEXT_AFTER, and IEEE_UNORDERED.
+
+IEEE 754-1985 specifies a square root function that returns -0.0 for the
+square root of -0.0. The function IEEE_SQRT is provided for this and the
+function IEEE_SUPPORT_SQRT may be used to inquire whether this facility
+is available for a particular kind of real.
+
+The inquiry function IEEE_SUPPORT_STANDARD is provided to inquire whether the
+processor supports all the IEEE facilities defined in this standard for
+a particular kind of real.
+
+<<15.8 Tables of the procedures>>
+
+In this section, the procedures are tabulated with the names of their
+arguments and a short description. 
+
+<<15.8.1 Inquiry functions>>
+
+IEEE_SUPPORT_DATATYPE([X]) Inquire if the processor supports IEEE arithmetic.
+
+IEEE_SUPPORT_DENORMAL([X]) Inquire if the processor supports IEEE gradual
+   underflow.
+
+IEEE_SUPPORT_DIVIDE([X]) Inquire if the processor supports IEEE divide.
+
+IEEE_SUPPORT_FLAG(FLAG [, X]) Inquire if the processor supports an exception.
+
+IEEE_SUPPORT_HALTING(FLAG)  Inquire if the processor supports control 
+   of halting after an exception.
+
+IEEE_SUPPORT_INF([X])  Inquire if processor supports the IEEE infinity.
+
+IEEE_SUPPORT_NAN([X])  Inquire if processor supports the IEEE Not-A-Number.
+
+IEEE_SUPPORT_ROUNDING(ROUND_VALUE [, X])  Inquire if processor supports
+   a particular rounding mode.
+  
+IEEE_SUPPORT_SQRT([X])  Inquire if the processor supports IEEE square root.
+
+IEEE_SUPPORT_STANDARD([X]) Inquire if processor supports all IEEE facilities.
+
+<<15.8.2  Elemental functions>>
+
+IEEE_CLASS(X)  IEEE class.
+
+IEEE_COPY_SIGN(X,Y)  IEEE copysign function.
+
+IEEE_IS_FINITE(X)  Determine if value is finite.
+
+IEEE_IS_NAN(X)  Determine if value is IEEE Not-a-Number.
+
+IEEE_IS_NORMAL(X)  Whether a value is normal, that is, neither an
+   Infinity, a NaN, nor denormalized.  
+
+IEEE_LOGB(X)  Unbiased exponent in the IEEE floating point format.
+
+IEEE_NEXT_AFTER(X,Y)  Returns the next representable neighbor of X in the 
+   direction toward Y.
+
+IEEE_SCALB(X,I)  Returns X * 2**I.
+
+IEEE_SQRT(X)  Square root as defined in the IEEE standard.
+
+IEEE_UNORDERED(X,Y)  IEEE unordered function. True if X or Y is a NaN
+   and false otherwise.
+
+IEEE_VALUE(X, CLASS)  Generate an IEEE value. 
+
+<<15.8.3 Elemental subroutines>>
+
+IEEE_GET_FLAG(FLAG,FLAG_VALUE) Get an exception flag.
+
+IEEE_GET_HALTING_MODE(FLAG, HALTING)  Get halting mode for an exception.
+
+IEEE_SET_FLAG(FLAG,FLAG_VALUE) Set an exception flag.
+
+IEEE_SET_HALTING_MODE(FLAG,HALTING)  Controls continuation or halting on
+  exceptions.  
+
+<<15.8.4 Non-elemental subroutines>>
+
+IEEE_GET_ROUNDING_MODE(ROUND_VALUE)  Get the current IEEE rounding mode. 
+
+IEEE_GET_STATUS(STATUS_VALUE)  Get the current state of the floating point
+  environment.  
+
+IEEE_SET_ROUNDING_MODE(ROUND_VALUE)  Set the current IEEE rounding mode.  
+
+IEEE_SET_STATUS(STATUS_VALUE)  Restore the state of the floating point
+  environment.
+
+<<15.9 Specifications of the procedures>>
+
+IEEE_CLASS(X)
+
+   Description. IEEE class function.
+
+   Class. Elemental function. 
+
+   Argument. X shall be of type real and such that
+   IEEE_SUPPORT_DATATYPE(X) has the value true.
+
+   Result Characteristics. TYPE(IEEE_CLASS_TYPE). 
+
+   Result Value. The result value is one of: IEEE_SIGNALING_NAN,
+   IEEE_QUIET_NAN, IEEE_NEGATIVE_INF, IEEE_NEGATIVE_NORMAL,
+   IEEE_NEGATIVE_DENORMAL, IEEE_NEGATIVE_ZERO, IEEE_POSITIVE_ZERO,
+   IEEE_POSITIVE_DENORMAL, IEEE_POSITIVE_NORMAL, IEEE_POSITIVE_INF.
+   Neither of the values IEEE_SIGNALING_NAN and IEEE_QUIET_NAN shall be
+   returned unless IEEE_SUPPORT_NAN(X) has the value true. Neither of
+   the values IEEE_NEGATIVE_INF and IEEE_POSITIVE_INF shall be returned
+   unless IEEE_SUPPORT_INF(X) has the value true. Neither of the
+   values IEEE_NEGATIVE_DENORMAL and IEEE_POSITIVE_DENORMAL shall be
+   returned unless IEEE_SUPPORT_DENORMAL(X) has the value true.
+
+   Example. IEEE_CLASS(-1.0) has the value IEEE_NEGATIVE_NORMAL.
+
+IEEE_COPY_SIGN(X,Y)
+
+   Description. IEEE copysign function.
+
+   Class. Elemental function. 
+
+   Arguments. The arguments shall be of type real and such that both
+   IEEE_SUPPORT_DATATYPE(X) and IEEE_SUPPORT_DATATYPE(Y) have the value true.
+
+   Result Characteristics. Same as X. 
+
+   Result Value. The result has the value of X with the sign of Y.
+   This is true even for IEEE special values, such as NaN and Inf (on
+   processors supporting such values).
+
+   Examples. The value of IEEE_COPY_SIGN(X,1.0) is ABS(X) even when X is
+   NaN.  The value of IEEE_COPY_SIGN(-X,1.0) is X copied with its sign
+   reversed, not 0-x; the distinction is germane when X is +0, -0, or
+   NaN.
+
+   IEEE_GET_FLAG(FLAG,FLAG_VALUE)
+
+   Description. Get an exception flag.
+
+   Class. Elemental subroutine.
+
+   Arguments.
+
+   FLAG shall be of type TYPE(IEEE_FLAG_TYPE). It is an INTENT(IN)
+   argument and specifies the IEEE flag to be obtained.
+
+   FLAG_VALUE shall be of type default logical. It is an INTENT(OUT)
+   argument and returns:
+
+   Case (i): If the value of FLAG is IEEE_INVALID, IEEE_OVERFLOW,
+        IEEE_DIVIDE_BY_ZERO, IEEE_UNDERFLOW, or IEEE_INEXACT,
+        the result value is true if the corresponding exception flag 
+        is signaling and is false otherwise.
+
+   Case (ii): If the value of FLAG is IEEE_USUAL, the result value is true if
+        the invalid, divide_by_zero, or overflow flag is signaling and 
+        is false otherwise. 
+
+   Case (iii): If the value of FLAG is IEEE_ALL, the result value is true if
+	 any flag is signaling and is false otherwise.
+
+   Example. Following CALL IEEE_GET_FLAG(IEEE_OVERFLOW,FLAG_VALUE),
+   FLAG_VALUE is true if the overflow flag is signaling and is false if it 
+   is quiet.
+
+IEEE_GET_HALTING_MODE(FLAG,HALTING)  
+
+   Description. Get halting mode for an exception.
+
+   Class. Elemental subroutine. 
+
+   Arguments. 
+
+   FLAG shall be of type TYPE(IEEE_FLAG_TYPE). It is an INTENT(IN)
+   argument and specifies the IEEE flag. It shall have one of the
+   values IEEE_INVALID, IEEE_OVERFLOW, IEEE_DIVIDE_BY_ZERO,
+   IEEE_UNDERFLOW, and IEEE_INEXACT.
+
+   HALTING shall be scalar and of type default logical. It is of
+	   INTENT(OUT). The value is true if the exception specified
+	   by FLAG will cause halting. Otherwise, the value is false.
+
+   Example. To store the halting mode for overflow, do a calculation
+   without halting, and restore the halting mode later:
+
+      USE, INTRINSIC :: IEEE_ARITHMETIC 
+      LOGICAL HALTING
+         :
+      CALL IEEE_GET_HALTING_MODE(IEEE_OVERFLOW,HALTING) ! Store halting mode
+      CALL IEEE_SET_HALTING_MODE(IEEE_OVERFLOW,.FALSE.) ! No halting 
+        :  ! calculation without halting
+      CALL IEEE_SET_HALTING_MODE(IEEE_OVERFLOW,HALTING) ! Restore halting mode
+
+IEEE_GET_ROUNDING_MODE(ROUND_VALUE)
+
+   Description. Get the current IEEE rounding mode.
+
+   Class. Subroutine. 
+
+   Argument. ROUND_VALUE shall be scalar of type TYPE(IEEE_ROUND_TYPE). It
+   is an INTENT(OUT) argument and returns the floating point rounding
+
+   mode, with value IEEE_NEAREST, IEEE_TO_ZERO, IEEE_UP, or IEEE_DOWN
+   if one of the IEEE modes is in operation and IEEE_OTHER otherwise.
+
+   Example. To store the rounding mode, do a calculation
+   with round to nearest, and restore the rounding mode later:
+
+      USE, INTRINSIC :: IEEE_ARITHMETIC 
+      TYPE(IEEE_ROUND_TYPE) ROUND_VALUE 
+         :
+      CALL IEEE_GET_ROUNDING_MODE(ROUND_VALUE) ! Store the rounding mode
+      CALL IEEE_SET_ROUNDING_MODE(IEEE_NEAREST)  
+        :  ! calculation with round to nearest
+      CALL IEEE_SET_ROUNDING_MODE(ROUND_VALUE) ! Restore the rounding mode
+
+Note. The result can legally be used only in an IEEE_SET_ROUNDING_MODE
+invocation.
+
+IEEE_GET_STATUS(STATUS_VALUE)
+
+   Description. Get the current values of the set of flags that define
+   the current floating point status, including all the exception
+   flags.
+
+   Class. Subroutine. 
+
+   Arguments. STATUS_VALUE shall be scalar of type
+   TYPE(IEEE_STATUS_TYPE). It is an INTENT(OUT) argument and returns the
+   floating point status.
+
+   Example. To store all the exception flags, do a calculation
+   involving exception handling, and restore them later:
+
+      USE, INTRINSIC :: IEEE_ARITHMETIC 
+      TYPE(IEEE_STATUS_TYPE) STATUS_VALUE 
+         :
+      CALL IEEE_GET_STATUS(STATUS_VALUE) ! Get the flags
+      CALL IEEE_SET_FLAG(IEEE_ALL,.FALSE.) ! Set the flags quiet.  
+        :  ! calculation involving exception handling
+      CALL IEEE_SET_STATUS(STATUS_VALUE) ! Restore the flags
+
+Note. The result can be used only in an IEEE_SET_STATUS invocation.
+
+IEEE_IS_FINITE(X)
+
+   Description. Whether a value is finite.
+
+   Class. Elemental function. 
+
+   Argument. X shall be of type real and such that IEEE_SUPPORT_DATATYPE(X)
+   has the value true.
+
+   Result Characteristics. Default logical scalar. 
+
+   Result Value. The result has the value true if the value of X is
+   finite, that is, IEEE_CLASS(X) has one of the values
+
+   IEEE_NEGATIVE_NORMAL, IEEE_NEGATIVE_DENORMAL, IEEE_NEGATIVE_ZERO,
+   IEEE_POSITIVE_ZERO, IEEE_POSITIVE_DENORMAL, and IEEE_POSITIVE_NORMAL;
+   otherwise, the result has the value false.
+
+   Example. IEEE_IS_FINITE(1.0) has the value true. 
+
+IEEE_IS_NAN(X)
+
+   Description. Whether a value is IEEE Not-a-Number.
+
+   Class. Elemental function. 
+
+   Argument. X shall be of type real and such that IEEE_SUPPORT_NAN(X)
+   has the value true.
+
+   Result Characteristics. Default logical scalar. 
+
+   Result Value. The result has the value true if the value of X is an
+   IEEE NaN; otherwise, it has the value false.
+
+   Example. IEEE_IS_NAN(IEEE_SQRT(-1.0)) has the value true. 
+
+IEEE_IS_NEGATIVE(X) 
+
+   Description. Whether a value is negative.
+
+   Class. Elemental function. 
+
+   Argument. X shall be of type real and such that IEEE_SUPPORT_DATATYPE(X)
+   has the value true.
+
+   Result Characteristics. Default logical scalar. 
+
+   Result Value. The result has the value true if CLASS(X) has one of
+   the values IEEE_NEGATIVE_NORMAL, IEEE_NEGATIVE_DENORMAL,
+   IEEE_NEGATIVE_ZERO and IEEE_NEGATIVE_INF; otherwise, the result has
+   the value false.
+
+   Example. IEEE_IS_NEGATIVE(0.0)) has the value false. 
+
+IEEE_IS_NORMAL(X) 
+
+   Description. Whether a value is normal, that is, neither an
+   Infinity, a NaN, nor denormalized.
+
+   Class. Elemental function. 
+
+   Argument. X shall be of type real and such that IEEE_SUPPORT_DATATYPE(X)
+   has the value true.
+
+   Result Characteristics. Default logical scalar. 
+
+   Result Value. The result has the value true if CLASS(X) has one of
+   the values IEEE_NEGATIVE_NORMAL, IEEE_NEGATIVE_ZERO,
+   IEEE_POSITIVE_ZERO and IEEE_POSITIVE_NORMAL; otherwise, the result has
+   the value false.
+

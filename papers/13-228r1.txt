@@ -1,0 +1,201 @@
+                                                            13-228r1
+To:       J3
+From:     Malcolm Cohen
+Subject:  Interp on variable-denoting functions
+Date: 2013 February 07
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0089
+TITLE: 	Variable-denoting functions change existing semantics
+KEYWORDS: Pointer function, argument, ASSOCIATE, SELECT TYPE
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Questions 1 and 2 use this module:
+
+  Module m200c2
+    Integer,Target :: x = 42
+  Contains
+    Function fx()
+      Integer,Pointer :: fx
+      fx => x
+    End Function
+  End Module
+
+Q1. Consider this main program
+
+  Program q1
+    Use m200c2
+    Call test(x,fx())                  ! The call.
+  Contains
+    Subroutine test(a,b)
+      Integer :: a,b
+      a = a*10                         ! The assignment.
+      Print *,a,b
+    End Subroutine
+  End Program
+
+According to Fortran 2003, "fx()" in the CALL statement is an
+expression and not a variable, and has the value 42.  It follows
+that the assignment "a = a*10" is standard-conforming and does
+not affect the value of B.  Therefore this program prints
+ 420 42
+
+However, according to Fortran 2008, "fx()" in the CALL statement is a
+variable, and therefore the assignment does not conform to the
+standard because it affects the value of B and so violates 12.5.2.13
+item (3) which requires all updates to B to go through the dummy
+argument, and therefore the behaviour of the program is unspecified.
+
+This conflicts with the statement in clause 1 that all Fortran 2003
+programs remain conforming in Fortran 2008.
+
+Is this program intended to remain standard-conforming?
+
+Q2. Consider this main program
+
+  Program q2
+    Use m200c2
+    Associate(y=>fx())   ! The association.
+      x = 0              ! The assignment.
+      Print *,x,y
+    End Associate
+  End Program
+
+This main program apparently conforms to both Fortran 2003 and Fortran
+2008, but according to Fortran 2003 "fx()" in the association is an
+expression, evaluated on entry to the construct, and therefore Y
+becomes associated with the value 42, and therefore the program prints
+the values (spacing may differ)
+
+ 0 42
+
+whereas according to Fortran 2008 "fx()" in the association is a
+variable, and every reference to Y is a reference to the associated
+variable, so the assignment also changes the value of Y and therefore
+the program prints the values
+
+ 0 0
+
+This apparently conflicts with the statement in clause 1 that Fortran
+2008 is an upwards compatible extension to Fortran 2003.
+
+Is this program intended to have altered semantics?
+
+Q3. Consider this program
+
+  Module m200c2_q3
+    Integer,Target :: x = 42
+  Contains
+    Function fx()
+      Class(*),Pointer :: fx
+      fx => x
+    End Function
+  End Module
+  Program q3
+    Use m200c2_q3
+    Select Type (q=>fx())
+    Type Is (Integer)
+      x = 0
+      Print *,x,q
+    End Select
+  End Program
+
+Using the same logic as Q2, this should print the values
+ 0 42
+in Fortran 2003, but the values
+ 0 0
+in Fortran 2008.
+
+Again, this is not upwards compatible with Fortran 2003.
+
+Is this program intended to have altered semantics.
+
+ANSWER:
+
+Fortran 2008 was intended to be an upwards compatible extension to
+Fortran 2003.  The feature of denoting a variable by a pointer
+function reference is not upwards compatible, so an edit is provided
+to remove it.
+
+ALTERNATIVE ANSWER:
+
+A1. This program is not intended to be conforming to Fortran 2008.
+    An edit is supplied to note the incompatibility between Fortran
+    2008 and previous Fortran standards.
+
+A2. This program was intended to have different semantics in Fortran
+    2008.  An edit is supplied to note the incompatibility.
+
+A3. This program was intended to have different semantics in Fortran
+    2008.  An edit is supplied to note the incompatibility.
+
+EDIT to 10-007r1:
+
+[xv] Delete
+       "A pointer function reference can denote a variable in any
+        variable definition context."
+
+[104:26-27] Delete the first sentence of C566 as modified by
+            Corrigendum 2 "A <data-stmt-object> ... <designator>.".
+
+[117:13] Delete.
+
+ALTERNATIVE EDIT to 10-007r1:
+
+[24:11+] 1.6.2 "Fortran 2003 compatibility", insert new paragraphs
+  "An actual argument that corresponds to a nonpointer dummy argument
+   and which is a <function-reference> to a pointer function is
+   regarded as a variable by this part of ISO/IEC 1539 but was
+   regarded as an expression by Fortran 2003; if the target of the
+   pointer result is modified other than through that dummy argument
+   during execution of the called procedure, the program does not
+   conform to this part of ISO/IEC 1539.
+
+   A <selector> for an ASSOCIATE or SELECT TYPE construct that is a
+   <function-reference> to a pointer function is regarded as a
+   variable by this part of ISO/IEC 1539; if the target of the pointer
+   result is modified during execution of the construct, any further
+   references to the <associate-name> will have the modified value
+   according to this part of ISO/IEC 1539 instead of the initial value
+   as specified by ISO/IEC 1539-1:2004."
+
+[24:14-16] 1.6.3 "Fortran 95 compatibility", paragraph 1, sentence 2,
+  Change "Any" to "Except as identified in this subclause, any",
+  Delete "The following Fortran 95 features .. 1539."
+{We are about to add a non-conformance, so the last sentence will
+ become wrong and it is in any case unnecessary.}
+
+[24:17-27] Change all bullet points into separate paragraphs.
+{These are no longer a list.}
+
+[24:27+] Insert new paragraph at end of subclause
+  "An actual argument that corresponds to a nonpointer dummy argument
+   and which is a <function-reference> to a pointer function is
+   regarded as a variable by this part of ISO/IEC 1539 but was
+   regarded as an expression by Fortran 95; if the target of the
+   pointer result is modified other than through that dummy argument
+   during execution of the called procedure, the program does not
+   conform to this part of ISO/IEC 1539."
+
+[24:30] 1.6.4 "Fortran 90 compatibility", paragraph 1
+  Change "Any" to "Except as identified in this subclause, any",
+
+[25:6+] Insert new paragraph at end of subclause.
+  "An actual argument that corresponds to a nonpointer dummy argument
+   and which is a <function-reference> to a pointer function is
+   regarded as a variable by this part of ISO/IEC 1539 but was
+   regarded as an expression by Fortran 95; if the target of the
+   pointer result is modified other than through that dummy argument
+   during execution of the called procedure, the program does not
+   conform to this part of ISO/IEC 1539."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 13-228    m200  Submitted by Malcolm Cohen.
+         13-228r1  m200  Revised.
+
+------------------------------------------------------------------------

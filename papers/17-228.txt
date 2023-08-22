@@ -1,0 +1,107 @@
+                                                            J3/17-228
+To: J3
+From: Malcolm Cohen
+Subject: Possible intrinsic assignment flaw (TECHNICAL CHANGE)
+Date: 2017 October 12
+
+
+1. Introduction
+
+The rules for intrinsic assignment are intended to prohibit
+"auto-(re)allocation" of coarrays and coindexed objects.
+However, they do not appear to achieve this.
+(Perhaps there is a requirement somewhere I missed?
+ In which case we can ignore this paper...)
+
+This could be handled by the interp process, but if we are all agreed that
+this is a mistake, perhaps we could just fix it now.
+NOTE: This will be an incompatibility with Fortran 2008.
+
+
+2. Analysis
+
+For coindexed objects, the rules are as follows:
+   "If the variable in an intrinsic assignment statement is a coindexed
+    object,
+    - the variable shall not be polymorphic,
+    - the variable shall not have an allocatable ultimate component,
+    - the variable shall be conformable with expr, and
+    - each deferred length type parameter of the variable shall have the
+      same value as the corresponding type parameter of expr.
+
+For coarrays, the rules are conveniently scattered all over the place to
+make is easier to overlook them, my summary is:
+    - the variable shall not be polymorphic,
+    - the variable and expr shall be conformable, and
+    - if the variable is of derived type each length type parameter of the
+      variable shall have the same value as the corresponding type
+      parameter of expr.
+
+Note that if the variable has a deferred length type parameter, satisfying
+the final subcondition in each case requires that the variable not be
+unallocated.  Though it says it in a particularly bad way since we do not
+define the semantics of "length type parameter value" when it the type
+parameter is deferred and the object is unallocated, i.e. we're falling
+back on the "no interpretation is established" catchall, which is very bad
+practice.
+
+However, when the variable has no deferred length type parameters, and is
+not an array, all the conditions can be satisfied even when unallocated.
+Then, the semantics of assignment state:
+    "If the variable is... an unallocated allocatable variable,
+     it is then allocated..."
+which means either remote allocation (coindexed object) or implicit
+allocation of a coarray with no synchronisation (coarray).
+
+Here are two examples:
+
+  Program bad1
+    Integer,Allocatable :: x[:]
+    x = This_Image() ! Coarray auto-allocation.
+    Sync All
+    Print *,'FAIL',x
+  End Program
+
+Program bad1 appears to conform to Fortran 2008.
+It allocates coarray X outside of an ALLOCATE statement, and without
+specifying what its cobounds should be.
+
+  Program bad2
+    Type t
+      Integer,Allocatable :: c
+    End Type
+    Type(t) y[*]
+    If (This_Image()==2) Then
+      y[1]%c = 999 ! Remote auto-allocation.
+    End If
+    Sync All
+    If (This_Image()==1) Print *,'FAIL',y%c
+  End Program
+
+Program bad2 appears to conform to Fortran 2008.
+It allocates an allocatable variable that is not located on the
+executing image.
+
+Edits are provided to prohibit these examples.  The edits also fix the
+"prohibition by lack of interpretation establishment" issue.
+
+
+3. Edits to 17-007r2 (N2137)
+
+[intro] No edit is proposed for the Introduction, as this is not a new
+        feature, and it is unlikely that anyone implemented the mistake.
+
+[31:11+] 4.3.3 Fortran 2008 compatibility, after p8 (end of subclause),
+         Append new paragraph
+   "Fortran 2008 permitted an unallocated allocatable coarray or coindexed
+    object to be allocated by an assignment statement, provided it was
+    scalar, nonpolymorphic, and had no deferred type parameters; this
+    document does not permit that."
+{Describe the mistake.}
+
+[170:8] 10.2.1.2 Intrinsic assignment statement, p3, append new sentence
+  "If the variable is a coarray or a coindexed object, it shall not be an
+   unallocated allocatable variable."
+{TECHNICAL CHANGE.}
+
+===END===

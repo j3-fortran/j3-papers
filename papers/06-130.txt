@@ -1,0 +1,96 @@
+
+                                                             J3/06-130
+
+Date: January 30, 2006
+To:   J3
+From: Craig Rasmussen
+Subject: An Owner Computes Model for Co-Array Fortran
+Reference: WG5 worklist item, Co-Array Fortran
+-----------------------------------------------------------------------
+
+When a serial program executes the following
+
+  integer :: a       ! first example
+  a = 0
+  a = a + 1
+
+the result is clear; the memory location represented by the
+variable a contains the value 1.  Likewise, if a is a co-scalar,
+
+  integer :: a[*]    ! second example
+  a = 0
+  a = a + 1
+
+the result is again unambiguous; the memory location represented by
+the variable a on each image will contain the value 1.  This is
+equivalent (shorthand) to writing
+
+  integer :: a[*]    ! third example
+  a[me] = 0
+  a[me] = a[me] + 1
+
+where me is THIS_IMAGE.  Each of the above three examples follows
+an owner computes model for the assignment operator.  While the
+following,
+
+  integer :: a[*]    ! fourth example
+  a[1] = 0
+  a[1] = a[1] + 1
+
+may appear to be similar to the first three examples, it is radically
+and surprisingly different.  In particular, it should be emphasized that
+it is different from the serial execution in the first example.  In
+the current Co-Array Fortran proposal, the fourth example follows
+an all computes execution model, leads to race conditions, and is
+therefore a non-conforming program.  The programmer must explicitly
+state which image is to execute these two statements or use
+a critical section construct.
+
+It is proposed that Co-Array Fortran adopt an owner computes model
+for the assignment operator.  Semantically it is as if there
+were an if statement for every assignment, i.e.,
+
+  if (me == 1) a[1] = a[2]
+
+Since the owning image is the only image that can store to its memory,
+there is no need for the critical construct for the assignment operator.
+
+While not absolutely necessary, some algorithms are more conveniently
+expressed (and require less synchronization) if a non-owning image is
+allowed to store to a co-array variable.  However, because of the
+possibility of dangerous race conditions (as noted above), it is
+proposed that a different syntax be employed to denote both the
+change from serial semantics and the dangerous aspects.  Perhaps the
+two symbols <- could be used, for example,
+
+  if (me == 2) a[1] <- a[2]
+
+Advantages of the owner computes model:
+
+1. Array-section notation may be specified in either the local or the
+co-dimension, thus unifying its usage.  Currently array sections are not
+allowed in the co-dimension.
+
+2. If statements denying concurrent writes are not needed.  This makes the
+initialization phase of a program more appealing, e.g.,
+
+  if (me == 1) a[1] = 2; if (me == 2) a[2] = 1; ....
+
+is not required.
+
+3. The programmer does not need to be artificially aware of memory affinity.
+The owner computes model allows the programmer to think of the co-dimension
+as a memory address rather than an image index.
+
+4. While get semantics (owner computes) is specified, the compiler is
+free to choose whether a get or a put is most efficient for point-to-
+point communication.  Currently in CAF, the programmer must choose which
+image executes point-to-point communication and the programmer may guess
+wrong (as the most efficient choice is hardware dependent).
+
+5. Collective statements may be specified using section notation rather than
+be explicitly coded.  In the current CAF specification, gather and allgather
+collectives must be explicitly coded with if and do constructs.  It is
+extremely important for the compiler to be able to recognize and optimize
+collectives operations and it is likely easier for the compiler to
+recognize a single collective statement rather than if and do constructs.

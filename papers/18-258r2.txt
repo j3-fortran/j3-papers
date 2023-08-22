@@ -1,0 +1,144 @@
+To: J3                                                     J3/18-258r2
+From: Dan Nagle & Steve Lionel
+Subject: cstring-fstring
+Date: 2018-October-18
+
+
+I Introduction
+
+When interoperating between C and Fortran, strings may need to be passed
+between procedures written in C and those written in Fortran.  This
+raises the issue of how to convert strings between the representation
+used by either language.
+
+Fortran strings have a length, which is stored as metadata.
+C strings have a starting address and may be terminated
+by a null character.  
+
+
+II Use-cases
+
+
+Fortran to C
+
+15.5.2.4p3 makes an exception to the requirement that length type
+parameters of the actual and dummy arguments agree "for the case 
+of the character length parameter of an actual argument of type 
+character with default kind or C character kind (18.2.2) 
+associated with a dummy argument that is not assumed-shape or 
+assumed-rank. " This means that one typically declares character
+dummy arguments for C functions to be arrays of characters.
+
+C, however, typically wants to see a NUL at the end of the string
+to indicate its length, so Fortran code will usually pass
+
+TRIM(char-value)//C_NULL_CHAR
+
+Having an intrinsic that performs this function would allow for
+cleaner code. Some users might not want the TRIM operation
+so it would make sense to have this as an option.
+
+
+C to Fortran
+
+When a C function passes a string to a Fortran interoperable procedure
+it can't be received as type CHARACTER except as an array of single
+characters. There is no straightforward way to convert this to a
+Fortran character value of the proper length (determined by searching
+for a NUL.) An intrinsic that takes such a character array as an
+argument and returns a character value of the correct length would
+make this much less painful.
+
+
+III Specification
+
+Add two new procedures to intrinsic module ISO_C_BINDING to provide 
+the conversion. 
+
+C_F_STRPOINTER (STRARRAY, FSTRPTR, MAXLEN)
+
+Class: Subroutine
+
+STRARRAY shall be a rank-1 character array of default kind or kind
+C_CHAR, and with a length type parameter of 1. It is INTENT(IN) and
+has the TARGET attribute.
+
+FSTRPTR shall be a deferred-length character pointer of default
+kind or kind C_CHAR. It is INTENT(OUT).
+
+MAXLEN (optional) shall be a nonnegative scalar integer. It is INTENT(IN).
+
+I am having trouble coming up with proper wording for this. The idea is:
+
+This procedure is modeled on C_F_POINTER. FSTRPTR becomes pointer 
+assigned with a character length that is one less than that of the
+smallest index of STRARRAY whose element contains the value CHAR(0),
+but no greater than MAXLEN if it is present. The target of FSTRPTR
+is STRARRAY.
+
+For informational purposes, here is a Fortran implementation of
+C_F_STRPOINTER.
+
+subroutine C_F_STRPOINTER (STRARRAY, FSTRPTR, MAXLEN)
+use, intrinsic :: ISO_C_BINDING
+implicit none
+character, dimension(*), target, intent(in) :: STRARRAY
+character(:), pointer, intent(out) :: FSTRPTR
+integer, intent(in), optional :: MAXLEN
+
+integer :: curlen
+
+curlen = 0
+do
+  curlen = curlen +1
+  if (PRESENT(MAXLEN)) THEN
+    if (curlen > MAXLEN) exit
+    end if
+  if (STRARRAY(CURLEN) == CHAR(0)) exit
+  end do
+
+call doassign(C_LOC(STRARRAY), FSTRPTR, curlen-1)
+
+contains
+subroutine doassign(CSTRPTR, FSTRPTR, STRLEN)
+type(C_PTR), intent(in) :: CSTRPTR
+character(:), pointer, intent(out) :: FSTRPTR
+integer, intent(in) :: STRLEN
+
+character(STRLEN), pointer :: p
+
+call C_F_POINTER(CSTRPTR, p)
+FSTRPTR => p
+return
+end subroutine doassign
+end subroutine C_F_STRPOINTER
+
+
+F_C_STRING (STRING [, TRIM])
+
+Class: Transformational function
+
+STRING shall be a character scalar of default kind or of kind C_CHAR
+
+TRIM (optional) shall be a logical scalar
+
+Result characteristics: The result is of type character with
+the same kind type parameter as STRING. 
+
+Result value: 
+
+Case (i): if TRIM is absent or has the value true, the value
+of the result is the value of STRING with any trailing blanks 
+removed, and a NUL character (CHAR(0)) appended to the trimmed
+value. The length type parameter is one greater than the length 
+of STRING less the number of trailing blanks in STRING.
+
+Case (ii): if TRIM is present with the value false, the
+value of the result is the value of STRING with a NUL character
+(CHAR(0)) appended. The length type parameter of the result is one
+greater than the length of STRING.
+
+
+
+
+

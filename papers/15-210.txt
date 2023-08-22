@@ -1,0 +1,141 @@
+To: J3                                                     J3/15-210
+From: Nick Maclaren
+Subject: What ordering is implied by collectives?
+Date: 2015 August 06
+Reference: 15-186r1, 15-190
+
+
+Discussion
+----------
+
+This is a first step in trying to get consensus on a consistency model,
+and is couched in very loose terms.  The sole point of interest is
+whether it reflects our intent - it is NOT intended as draft wording.
+It primarily addresses collectives.
+
+The intention is that, if this is agreed as the direction, future work
+will include normative wording added to the main standard by the usual
+J3 process.
+
+Most users will expect collectives to impose a logical ordering.  This
+is proposed to be integrated with the segment ordering in the sense that
+the aggregate ordering remains a partial ordering.  For example,
+Collective_Six_A (below, taken from 15-190) is NOT allowed to print '1'.
+
+
+Actual Rules
+------------
+
+The execution on image SOURCE_IMAGE before a CO_BROADCAST temporally
+precedes the execution of code on all other images after the
+corresponding CO_BROADCAST.
+
+The execution on image RESULT_IMAGE after a collective with RESULT_IMAGE
+temporally succeeds the execution of code on all other images before the
+corresponding collective.
+
+For collectives with neither SOURCE_IMAGE nor RESULT_IMAGE, the
+execution on all images before the collective temporally precedes the
+execution of code on all images after the collective.
+
+A temporal ordering is an acceptable user-defined ordering for the
+purposes of SYNC MEMORY (8.5.5).
+
+If two complete segments are temporally ordered, then they are ordered
+in the partial ordering specified in 2.3.5.  This is needed to ensure
+that code like Collective_One_A (below, taken from 15-190) does what we
+want (and the same for CRITICAL).
+
+
+Open Question
+-------------
+
+Should temporal ordering apply to atomics as well?
+
+This is a much trickier issue, and people are requested not to waste
+time on it until after studying the main issue.  See examples
+Collective_One and Collective_Six below (taken from 15-186r1).
+
+
+Examples
+--------
+
+    PROGRAM Collective_One_A
+! Does a collective imply any ordering?  The implication of Note 8.4
+! is that it does, and this must print '1 0' - but is that so?
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(LOCK_TYPE) :: lock[*]
+        INTEGER :: data = 0, remote[*], temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            LOCK(lock[3])
+            remote[3] = 1
+            UNLOCK(lock[3])
+        END IF
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 2) THEN
+            LOCK(lock[3])
+            temp = remote[3]
+            UNLOCK(lock[3])
+            PRINT *, temp, data
+        END IF
+    END PROGRAM Collective_One_A
+
+
+    PROGRAM Collective_Six_A
+! Can a segment that precedes a 'send' see a value that is set after
+! a segment that succeeds a 'receive'?  This uses the locked value as
+! an argument to the collective.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(LOCK_TYPE) :: lock[*]
+        INTEGER :: data = 0, remote[*], temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            LOCK(lock[3])
+            data = remote[3]
+            UNLOCK(lock[3])
+        END IF
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 2) THEN
+            LOCK(lock[3])
+            remote[3] = 1
+            UNLOCK(lock[3])
+            PRINT *, data
+        END IF
+    END PROGRAM Collective_Six_A
+
+
+Examples Using Atomics
+----------------------
+
+    PROGRAM Collective_One
+! Does a collective imply any ordering?  The implication of Note 8.4
+! is that it does, and this must print '1' - but is that so?
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: data = 0, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) CALL ATOMIC_DEFINE(atom[3],1)
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 2) THEN
+             CALL ATOMIC_REF(temp,atom[3])
+            PRINT *, temp
+        END IF
+    END PROGRAM Collective_One
+
+
+      PROGRAM Collective_Six
+! Can a segment that precedes a 'send' see a value that is set after
+! a segment that succeeds a 'receive'?  This uses the atomic value as
+! an argument to the collective.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: data = 0, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) CALL ATOMIC_REF(data,atom[3])
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 2) THEN
+            CALL ATOMIC_DEFINE(atom[3],1)
+            PRINT *, data
+        END IF
+    END PROGRAM Collective_Six

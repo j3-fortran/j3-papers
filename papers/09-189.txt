@@ -1,0 +1,679 @@
+To: J3                                                           09-189
+From: R. Bader
+Subject: TR29113 - a non-descriptor variant
+Date: 2009 April 14
+References: N1761, N1766
+
+This is an opinionated attempt to provide the TR's functionality without
+descriptors. Account is taken of various (but probably not all)
+objections voiced during the balloting procedure on N1761 by
+
+* improving proper separation of concerns: users should not be required
+  to manipulate Fortran wiring hanging out on the C side since all they
+  want is to get at the data contained within a dummy argument, or define
+  an entity with properties which are not normally available within C,
+  which can then be provided as a dummy argument to a Fortran procedure,
+* putting the onus on the processor to auto-generate code which under
+  the present proposal must be inserted manually, and thereby improve
+  usability,
+* enabling those vendors who do not use full-featured descriptors
+  to more easily implement the extended C interoperation,
+* enabling support for the combination of the OPTIONAL and VALUE
+  attributes,
+* being flexible enough for future extension, especially since multiple
+  types of descriptors might be used on the Fortran side for various
+  classes of dummy arguments. Another area of interest might be (at
+  least limited) support for vararg interfaces.
+
+To this end, two type definitions and five function calls are used.
+Five examples illustrate the use of the extended facilities.
+
+Scope of the extended interoperability:
+---------------------------------------
+
+The following table gives an overview of the support for C interoper-
+ability for the various possibilities of Fortran dummy arguments and
+their attributes. A "2003" entry indicates direct interoperability as
+described in the Fortran 2003/2008 standard, a "TR" entry denotes
+functionality which is required to be provided via the Technical Report.
+The TR's prescriptions should not preclude extensions in future re-
+visions of the standard. In particular, under the scheme proposed here,
+a "handle" entry means that an interoperable interface can be created,
+while Fortran-generated data in an entity with the given characteristics
+will not be accessible from C by using the facilities from Fortran
+2008 + TR (but may be accessible in a processor-dependent manner).
+
++----------------------------+------------------------------------------+
+|  Property of entity        |                    type                  |
+|                            |  interop.  assumed   non-interop. polym. |
++----------------------------+------------------------------------------+
+|  scalar                    |   2003       TR        handle?   handle  |
+|             dynamic        |    TR        TR          no        no    |
+|             optional       |    TR        TR        handle    handle  |
+|  array      assumed-size   |   2003       TR          no        no    |
+|             assumed-shape  |    TR        TR        handle    handle  |
+|             dynamic        |    TR        TR          no        no    |
+|             optional       |    TR        TR        handle    handle  |
+|  assumed rank              |    TR        TR        handle    handle  |
+|             dynamic        |    TR        TR          no        no    |
+|  coarray                   |    no        no          no        no    |
++----------------------------+------------------------------------------+
+|  Procedure Argument        |   2003       n/a         no       n/a    |
+|  Procedure Pointer Argument|   2003       n/a         no       n/a    |
++----------------------------+------------------------------------------+
+
+NOTE: for non-interoperable static scalars of intrinsic type
+      portability is questionable (but then so is it generally with C
+      interoperability); it may be necessary to say "no" at least
+      for that case.
+
+For the "no" entries, constraints should be retained or added to
+prevent non-conforming code from being compiled. Assumed/dynamic
+rank entities are further commented upon in 09-185. Section IV. provides
+some remarks about assumed type.
+
+For extended C interoperability the Fortran processor must provide a
+unitary header ISO_Fortran_binding.h which provides all type definitions,
+named constants and function prototypes needed for C code making use of
+the extended facilities. The namespace used for all C entities is
+defined by using CFI_ as their first four characters.
+
+
+I. Declarations and attributes:
+-------------------------------
+
+A non-interoperable Fortran entity will be handled from C via a
+proxy object. To this end, ISO_Fortran_binding.h contains a type
+definition named CFI_f_obj. Any object of this type will be called
+a Fortran object; it may be a variable created within C or a dummy
+argument. The possible states of such an object with respect to its
+dynamic attribute are described by a set of named constants of type
+CFI_dyn_attr which may be one of the following:
+
+  CFI_attribute_undefined     (for a C-defined variable before
+                               Fortran attributes have been set
+                               at run time)
+  CFI_attribute_allocatable
+  CFI_attribute_pointer
+  CFI_attribute_static        (for a dummy argument which does not
+                               have the ALLOCATABLE or POINTER
+                               attribute)
+
+With exception of calls to CFI_allocate() or CFI_c_f_obj() (see
+below), the dynamic attribute of a Fortran object will be implicitly
+determined. A change of the dynamic attribute is only allowed if
+its present value is CFI_attribute_undefined.
+While it is recommended to use Fortran implementations for dynamic
+allocation of memory (which will attend to all of the above issues
+in a TKR-safe manner), a facility to do this is also provided here
+for the case where the element size is known to the C programmer;
+for interoperable entities, sizeof(<used-type>) would typically
+be provided as elem_size argument:
+
+  int CFI_allocate(CFI_f_obj *obj, CFI_shape shape[], int rank, \
+                   size_t elem_size, CFI_dyn_attr attr);
+
+The shape argument of type must be an array of size rank and type
+CFI_shape, describing the bounds and strides to be provided to the
+Fortran object:
+
+typedef struct {
+  size_t lbound
+  size_t ubound
+  size_t stride
+} CFI_shape
+
+The constant CFI_MAX_RANK giving the maximum rank of arrays supported
+by the processor is provided as a convenience.
+
+CFI_allocate returns
+
+  CFI_status_success    (allocation successful. This also applies
+                         if the resulting array is zero-sized)
+  CFI_status_allocated  (cannot reallocate an already allocated
+                         entity with the ALLOCATABLE attribute)
+  CFI_status_invalid    (One of the arguments was invalid:
+                         non-allocatable Fortran object,
+                         rank out of range or invalid
+                         shape specifier e.g., a stride unequal
+                         to 1, or invalid dynamic attribute)
+  CFI_status_fail       (failed to provision needed memory).
+
+The dynamic attribute attr may be one of CFI_attribute_allocatable,
+CFI_attribute_pointer. However, the Fortran object must at input
+either have the attribute CFI_attribute_undefined, or its dynamic
+attribute must be consistent with what is provided in the attr
+argument. To check the allocation status of a Fortran object, the
+function
+
+  int CFI_allocated(CFI_f_obj *obj)
+
+can be used, which returns
+
+  CFI_status_allocated    (entity is an allocated ALLOCATABLE)
+  CFI_status_unallocated  (entity is an unallocated ALLOCATABLE)
+  CFI_status_invalid      (invalid argument:
+                           Fortran object has the POINTER attribute
+                           or is undefined or non-allocatable).
+
+For deallocation one has
+
+  int CFI_deallocate(CFI_f_obj *obj);
+
+with the return values
+
+  CFI_status_success    (deallocation successful)
+  CFI_status_invalid    (invalid or non-dynamic or already
+                         deallocated argument).
+  CFI_status_fail       (failed to free memory).
+
+ Open questions:
+ (1) Can one expect ALLOCATABLE Fortran objects defined in C to become
+     deallocated when the scope is left? If not, should this behaviour
+     not also be pointed out in the TR?
+ (2) For entities with the POINTER attribute it might also be
+     appropriate to provide additional facilities, at least
+     NULLification and query on ASSOCIATEDness. This is also not
+     specified in N1761.
+ (3) For entities which are of non-interoperable type or which are
+     dynamically typed, no support for definition inside a C routine
+     is provided. With the interface mapping described in the next
+     chapter, it will however be possible to hand Fortran-defined
+     entities of such types through intermediate C code. Referencing
+     or defining such entities in C will be processor dependent.
+
+
+II. Interface Mapping:
+----------------------
+
+Since for non-interoperable arguments no direct counterpart to the
+Fortran dummy argument exists in C, two names shall be defined for
+all BIND(C) interfaces which contain at least one non-interoperable
+argument:
+  * the local Fortran name, which will be dereferenced if the
+    procedure is called from Fortran,
+  * an additional C interface (the "mapped interface") which fully
+    conforms to the C standard, and which will be dereferenced
+    if called by the companion processor.
+The processor needs to be able to disambiguate between interoperable
+and non-interoperable arguments i.e., interoperability of an argument
+must be included as a characteristic of the Fortran interface. If a
+label is provided on the BIND statement, the name of the mapped
+interface must match this label. The interface corresponding to the
+local Fortran name must be explicit.
+
+Argument resolution is performed as follows: Each interoperable
+argument will be handed on as-is and treated in the C interface in the
+same manner as within the scope of Fortran 2003/8 C interoperation. For
+each non-interoperable argument, the dummy argument in the mapped
+interface shall be a pointer of type CFI_f_obj.
+
+For functions with a non-interoperable function result, a mapped
+interface must be created even if all dummy arguments are interoperable.
+The mapped C function then creates an object which is a pointer to an
+entity of type CFI_f_obj. This entity can be C-deallocated using free(),
+possibly after execution of CFI_deallocate().
+
+For execution of the mapped interface calls, the following rules apply:
+
+Case 1 - Implementation in Fortran:
+-----------------------------------
+
+This is the case where the procedure is either a module procedure or
+an external procedure (which must have the BIND(C) attribute)
+described by an explicit interface (which then may *not* have the
+BIND(C) attribute, cf. Case 2 below). The local Fortran name
+dereferences to the procedure created by the programmer. The mapped
+interface is a wrapper procedure created by the processor which
+performs the following execution sequence when called from a
+companion processor:
+
+(1) For each non-interoperable dummy argument, the corresponding
+    Fortran object is checked:
+    * If it is undefined, processing shall abort, unless the Fortran
+      dummy argument is ALLOCATABLE or POINTER and not INTENT(IN),
+      in which case the interface-specified attribute is inherited
+      by the Fortran object. Similarly, the rank will then also be
+      inherited from the Fortran interface.
+    * If it (then) is defined, its type is regarded as being that
+      of the corresponding dummy argument in the Fortran interface.
+      NOTE: A processor may provide run time type consistency checks
+      as a convenience. N1761 has a long list of intrinsic types,
+      but the programmer can cheat anyway, and different derived
+      types cannot be disambiguated, so why care at all?
+    * If the dummy argument in the Fortran interface has the ALLOCATABLE
+      or POINTER attribute and the corresponding Fortran object does
+      not have the same attribute or the attribute
+      CFI_attribute_undefined, processing shall abort.
+    * If the Fortran object has a defined rank which does not match
+      the rank in the Fortran interface, processing shall abort.
+
+(2) The Fortran procedure is invoked based on the argument resolution
+    rules described above.
+
+(3) If necessary due to a change inside the Fortran procedure, the
+    properties of the Fortran object are updated.
+
+
+Case 2 - Implementation within a companion processor:
+-----------------------------------------------------
+
+The module procedure may be implemented by the companion processor.
+While this is supposed to be the exception, this case might for
+example be relevant for efficient implementation of a C wrapper
+to MPI (see example 4 below).
+In Fortran, an explicit interface with the BIND(C) attribute,
+but without an implementation, must be created by the programmer.
+The local Fortran name then dereferences to a wrapper procedure
+generated by the processor which performs the following execution
+sequence when called from a Fortran program unit:
+
+(1) For each non-interoperable dummy argument, a corresponding
+    Fortran object is created. Its properties are inherited from
+    the dummy argument, and the dummy argument is wrapped inside
+    the Fortran object.
+(2) The companion processor's implementation is invoked based on
+    the argument resolution rules described above.
+(3) All Fortran objects created in (1) above are destroyed.
+
+
++++Example 1+++
+~~~~~~~~~~~~~~~
+Calling a Fortran implementation based on assumed-shape arrays
+
+module mod_foo
+! BIND(C) extended for TR29113
+  use, intrinsic :: iso_c_binding
+  type, BIND(C) :: foo
+    integer(c_int) :: i
+    real(c_float) :: r(3)
+    character(c_char) :: c
+  end type
+  interface
+    subroutine process_foo(this) BIND(C)
+      type(foo), intent(inout) :: this(:,:)
+      :
+    end subroutine
+  end interface
+contains
+  subroutine construct_foo(this, stat) BIND(C, NAME='Construct_Foo')
+    type(foo), allocatable, intent(out) :: this(:,:)
+    integer(c_int), intent(out) :: stat
+    : ! code for constructing "this" e.g., from a file
+  end subroutine
+  subroutine destruct_foo(this) BIND(C)
+    type(foo), allocatable, intent(inout) :: this(:,:)
+    :
+  end subroutine construct_foo
+end module mod_foo
+
+For calling e.g., the constructor from C, the processor would create
+a symbol with the following C signature:
+
+void Construct_Foo(CFI_f_obj *fobj, int *stat);
+
+The C client making use of these procedure calls might be
+
+#include <ISO_Fortran_binding.h>
+
+void Construct_Foo(CFI_f_obj *fobj, int *stat);
+void destruct_foo(CFI_f_obj *fobj);
+void process_foo(CFI_f_obj *fobj);
+
+int main() {
+  CFI_f_obj foo_fobj;
+  int stat;
+
+  Construct_Foo(&foo_fobj, stat);
+  if (stat != 0) {
+     process_foo(&foo_fobj);
+  }
+  destruct_foo(&foo_fobj);
+}
+
+In this example, no access to the data contained within the Fortran
+object is (explicitly) required. As long as this is the case, even
+certain variants of noninteroperable entities could be handled via the
+mapped interface.
+For a call of construct_foo from Fortran, the local Fortran name would
+be invoked. It is imaginable and allowed that the programmer write
+
+interface
+  subroutine my_constructor(fobj, stat) BIND(C, NAME='Construct_Foo')
+    use, intrinsic :: iso_c_binding
+    type(c_ptr), value :: fobj
+    integer(c_int), intent(out) :: stat
+  end subroutine
+end interface
+
+thereby accessing the mapped C interface via a Fortran 2003 style
+C-interoperable interface, but it would be - apart from the unnecessary
+call overhead - much more cumbersome to use since the needed Fortran
+objects need to be explicitly set up by writing additional C code.
+
++++End of Example 1+++
+
+
+III. Transferring data between Fortran and C:
+---------------------------------------------
+
+In order to access the data contained inside a Fortran object from C,
+either for reading or for writing, the following function is provided:
+
+int CFI_f_c_pointer(CFI_f_obj *fobj, void *cptr, CFI_shape shape[], \
+                    int *rank);
+
+Given a Fortran object fobj, it returns
+* a C pointer cptr which points to the C address of the first
+  element of the entity if the Fortran object is defined and
+  NULL otherwise.
+* a pointer to an object "shape" of type CFI_shape with "rank" entries,
+  which describes the shape of the object. If "rank" contains zero,
+  shape will be the NULL pointer, and the Fortran object is a scalar.
+
+The return status value may be one of
+
+CFI_status_undefined        (Fortran object is undefined)
+CFI_status_noninteroperable (Fortran object defined but with non-
+                             interoperable entries - further processing
+                             may or may not be supported)
+CFI_status_interoperable    (Fortran object defined and can be processed
+                             within C)
+Processing of type information is performed at run time based
+on the programmer's knowledge of the Fortran interface.
+
+Open questions:
+(1) Do we wish to explicitly handle INTENT or is this
+    the programmer's responsibility?
+(2) How are assumed length character entities treated or, more generally,
+    parameterized types with interoperable components?
+
++++Example 2+++
+  Expanding on Example 1, we now look at a C implementation of the
+  module procedure "process_foo":
+
+#include <ISO_Fortran_binding.h>
+
+/* matching type definition */
+typedef struct {
+  int i;
+  float r[3];
+  char c;
+} Foo;
+
+/* function implementation */
+void process_foo(CFI_f_obj *this) {
+  Foo *foo_arg;
+  CFI_Shape fshape[CFI_MAX_RANK];
+  int stat, rank;
+  size_t i, j, index;
+
+  stat = CFI_f_c_pointer(this, foo_arg, fshape, &rank);
+
+  if (stat == CFI_status_interoperable && rank == 2) {
+     for (i=fshape[0].lbound; i<=fshape[0].ubound; \
+                                  i+=fshape[0].stride) {
+       for (j=fshape[1].lbound; j<=fshape[1].ubound; \
+                                    j+=fshape[1].stride) {
+/* process this(j, i); hope I have index right ...  */
+           index = (fshape[1].ubound - fshape[1].lbound + 1) * \
+                   (i - fshape[0].lbound) + j - fshape[1].lbound
+	   foo_arg[index] = (Foo) ...;
+        }
+     }
+  } else {
+/* error */
+  }
+}
++++End of Example 2+++
+
+
+It is also possible to create a Fortran object from an existing C entity
+by encapsulating the latter inside the former; for this purpose, the
+function
+
+  int CFI_c_f_obj(void *cptr, CFI_shape shape[], int rank, \
+                  size_t elem_size, CFI_dyn_attr attr, CFI_f_obj *fobj);
+
+is available. Since C objects do not have rank and shape information,
+these must be provided as input. Since the type information
+is not explicitly handed on, the element size of a single item
+must be provided as input. The dynamic attribute may be
+CFI_attribute_allocatable or CFI_attribute_pointer; it must however be
+consistent with the Fortran objects' if the latter does not have
+the attribute value CFI_attribute_undefined. If the dynamic attribute is
+CFI_attribute_pointer, it is also permissible to use stride sizes
+unequal to 1. The return value of this function is one of
+
+  CFI_status_success    (creation of Fortran object successful)
+  CFI_status_invalid    (one of the arguments was invalid:
+                         NULL C pointer, rank out of range, invalid
+                         shape specifier, or invalid dynamic attribute)
+
++++Example 3+++
+Establishing pointer association in C for use with existing Fortran
+function. This also illustrates non-interoperable function results.
+
+module mod_ptr
+  use, intrinsic :: iso_c_binding ! extended by TR29113
+contains
+  function column_op(matrix, icol) BIND(C)
+    real(c_float), pointer :: matrix(:,:)
+    real(c_float), pointer :: column_op(:)
+    integer(c_int) :: icol
+    if (icol >= matrix(inp, 2) .and. icol <= ubound(matrix, 2)) then
+       column_op => matrix(:,icol)
+!      do something with column in-place
+       :
+    else
+       column_op => null()
+    end if
+  end function column
+end module mod_ptr
+
+Here the client code:
+
+#include <ISO_Fortran_binding.h>
+
+CFI_f_obj *column_op(CFI_f_obj *inp, int *icol);
+
+int process_col(float *mat, int ncol, int icol, int stride) {
+  /* pointer *mat with ncol*ncol entries is handed in */
+  CFI_f_obj *f_col;
+  CFI_f_obj f_mat;
+  CFI_shape :: fshape[2];
+  int :: stat;
+
+  fshape[1].lbound = 1;
+  fshape[1].ubound = ncol;
+  fshape[1].stride = stride;
+  fshape[0].lbound = 1;
+  fshape[0].ubound = ncol;
+  fshape[0].stride = 1;
+
+  stat = CFI_c_f_obj(mat, fshape, 2, sizeof(float), \
+                     CFI_attribute_pointer, &f_mat);
+
+  if (stat == CFI_status_success) {
+    f_col = column_op(&f_mat, icol+1);
+  } else {
+    /* error */
+  }
+
+  /* can now hand on Fortran pointer f_col to Fortran, or
+     unpack CFI_f_c_pointer, receiving a 1-dimensional
+     strided array for use in C */
+
+  free(f_col);
+}
++++End of Example 3+++
+
+
+
+IV. Remarks on assumed type entities:
+-------------------------------------
+
+For assumed type (TYPE(*)) dummy arguments with the ALLOCATABLE or
+POINTER attributes, or having assumed-shape or assumed-rank, a mapped
+interface will be created. Thereby potential disambiguation problems
+are avoided.
+However, if an entity of non-interoperable type (intrinsic or not)
+is handed over to an assumed type dummy which does not have one of
+the above attributes, this will still be directly mapped to a
+C-interoperable pointer to void; the programmer may then use this
+pointer as a handle; referencing or defining the data pointed at by
+the pointer inside C may or may not be possible.
+
++++Example 4+++
+Compatibility MPI calls for sending and receiving data, implemented
+as C wrappers. The Fortran interface is
+
+module mpi
+  use, intrinsic :: iso_c_binding ! extended by TR29113
+  implicit none
+  interface
+    subroutine mpi_send(buf, count, datatype, dest, tag,
+               &        comm, ierror) BIND(C, NAME='MPIF_Send')
+      type(*), dimension(..), intent(in), contiguous :: buf
+      integer, intent(in) :: count, datatype, dest, tag, comm, ierror
+    end subroutine
+    subroutine mpi_recv(buf, count, datatype, source, tag,
+               &        comm, status, ierror) BIND(C, NAME='MPIF_Recv')
+    type(*), dimension(..), intent(out), contiguous :: buf
+    integer, intent(in) :: count, datatype, dest, tag, comm, ierror
+    integer, intent(out) :: status(MPI_STATUS_SIZE)
+  end interface
+end module
+
+Since the buf argument is of assumed rank, a mapped interface is
+created (case 2 above). The C implementation might read
+
+#include <ISO_Fortran_binding.h>
+
+void MPIF_Send(CFI_f_obj *obj, int *count, int *datatype, int *dest, \
+               int *tag, int *comm, int *ierror)
+  MPI_Datatype ctype;
+  MPI_Comm     ccomm;
+  void         *cobj;
+  int          stat, rank;
+  CFI_Shape    fshape[CFI_MAX_RANK];
+/* conversion macros or functions */
+  ctype = MPI_DATATYPE(*datatype);
+  ccomm = MPI_COMM(*comm);
+
+  stat = CFI_f_c_pointer(obj, cobj, fshape, &rank);
+  if (stat != CFI_status_undefined) {
+    *ierror = MPI_Send(cobj, *count, ctype, *dest, *tag, ccomm);
+  } else {
+    /* error handling */
+  }
+}
+void MPIF_Recv(CFI_f_obj *obj, int *count, int *datatype, int *source, \
+               int *tag, int *comm, int status[]; int *ierror) {
+  MPI_Datatype ctype;
+  MPI_Comm     ccomm;
+  void         *cobj;
+  MPI_Status   cstatus;
+  int          stat, rank;
+  CFI_Shape    fshape[CFI_MAX_RANK];
+/* conversion macros or functions */
+  ctype = MPI_DATATYPE(*datatype);
+  ccomm = MPI_COMM(*comm);
+/* relying on consistent interface use by programmer -
+   rank and shape are not transmitted and hence not checked */
+  stat = CFI_f_c_pointer(obj, cobj, fshape, &rank);
+  if (stat != CFI_status_undefined) {
+    *ierror = MPI_Recv(cobj, *count, ctype, *source, *tag, ccomm, \
+                       &cstatus);
+    status = MPI_STATUS(cstatus);
+  } else {
+/* error handling */
+  }
+}
+
+This provides nearly full backward compatibility to the previously
+used MPI Fortran interface. The only exception is that no whole
+assumed size actual arguments can be provided as MPI buffers (remember
+DIMENSION(**) was disliked by J3). For this particular call,
+even non-interoperable types would be supported; however e.g.,
+MPI_Reduce is more challenging with respect to non-interoperable types.
+
+
+V. OPTIONAL and VALUE arguments:
+--------------------------------
+
+If one of the arguments has the OPTIONAL attribute, it is
+replaced by a NULL value in the C interface, provided the VALUE
+attribute is not also specified for entities which are not
+of type c_ptr or non-interoperable (for non-interoperable entities,
+a pointer argument is always created). This rule holds whether the
+Fortran interface is interoperable or not.
+
+For a non-interoperable argument with the VALUE attribute, the
+Fortran object will point to the temporary copy generated by a
+Fortran implementation (Case 1), or the Fortran wrapper must
+generate such a copy before passing it on to the C implementation
+(Case 2).
+
+If both the OPTIONAL and the VALUE attribute are specified for any
+interoperable entity not of type c_ptr, the difficulty appears to
+be on the C side, since this combination is not really supported
+there. Hence, in this case it is necessary to create a mapped
+interface with the following properties with respect to the dummy
+argument in question:
+
+Case 1: implementation in Fortran
+
+The argument in the C wrapper will be a pointer entity, and
+value semantics will be enforced via execution of the Fortran
+procedure which will generate a temporary copy of the entity. If
+NULL is provided as an actual argument in a call from the companion
+processor, the argument will be regarded as not PRESENT in Fortran.
+
+
+Case 2: implementation through a companion processor
+
+The implementation must use a pointer entity. When called from Fortran,
+the wrapper must generate a copy of the argument and hand a reference
+to this on to the C routine, unless the argument is not present, in
+which case NULL is handed on. After execution of the C routine the
+copy, if one exists, is destroyed again.
+
+
++++Example 5+++
+Treatment of optional arguments
+
+module mod_optional
+  use, intrinsic :: iso_c_binding ! extended by TR29113
+  implicit none
+contains
+  subroutine foo_opt(x, n) BIND(C)
+    real(c_float), optional :: x(:)
+    integer, optional, value :: n
+    :
+! check for presence of x and n and do work
+  end subroutine foo_opt
+end module
+
+Usage on the client:
+
+#include <ISO_Fortran_binding.h>
+
+void foo_opt(CFI_f_obj *x, int *n);
+
+int main() {
+  CFI_f_obj fx;
+  int n, stat;
+  CFI_shape :: fshape[1];
+  int rank;
+  n = 2;
+  stat = CFI_allocate(&fx, fshape, 1, sizeof(float), \
+                      CFI_attribute_allocatable);
+  if (stat == CFI_status_success) {
+    foo_opt(&fx, NULL); /* n is not present */
+    foo_opt(NULL, 3);   /* x is not present, copy of n is produced,
+                           so may be changed inside foo_opt */
+  }
+  stat = CFI_deallocate(&fx);
+}
++++End of Example 5+++

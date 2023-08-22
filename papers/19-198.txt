@@ -1,0 +1,272 @@
+To: J3                                                     J3/19-198
+From: Gary Klimowicz
+Subject: Add reductions to DO CONCURRENT (US20)
+Date: 2019-August-05
+
+Reference: 18-007r1, 18-266r4, 19-158
+
+Motivation
+==========
+
+Performing a reduction on the array elements computed
+in DO CONCURRENT can be inefficient for large arrays.
+The naive expression of a reduction is non-conforming:
+
+        real :: a(:)
+        real :: s
+        integer :: i
+
+        ...
+
+        ! With DO CONCURRENT, the use of 's' in the
+        ! loop below is not defined before it is referenced.
+        s = 0
+        do concurrent (i = 1:size(a))
+          s = s + (2 * a(i) - 1)
+        end do
+
+        print *, s
+        end
+
+Potential solutions using temporary arrays (used to
+accumulate intermediate results) followed by REDUCE are
+inefficient in the use of data and the potential data
+management required in highly threaded environments.
+
+When the programmer is interested in performing a simple
+reduction of the data in the DO CONCURRENT, this overhead
+can exceed the gains from the computational parallelism.
+
+Also, with knowledge of the reduction, a processor could optimize
+DO CONCURRENT to be scaled to the number of threads available
+at runtime (the number of which are not known to the
+programmer), chunking computations.
+
+At meeting 218, J3 approved continued work on this item.
+
+Note that this paper only describes REDUCE for scalar variables.
+Once we get the semantics of that right we can expand this to
+cover REDUCE on non-scalar variables.
+
+Simple Use Cases
+================
+
+    ! With current semantics, the code below is not
+    ! conformant. 's' is not defined in the iteration
+    ! before it is referenced.
+    s = 1000
+    DO CONCURRENT (i = 1:SIZE(a))
+      s = s + (2 * a(i) - 1)
+    END DO
+    ! s = 1000 + SUM(2*A-1)
+
+    ! Likewise, with 'foo', not defined before used.
+    foo = a(1)
+    DO CONCURRENT (i = 2:SIZE(a))
+      foo = MIN(foo, a(i))
+    END DO
+    ! foo = MINVAL(a)
+
+We would like programs with semantics similar to the above to be
+conformant and still be able to exploit all available runtime
+parallelism.
+
+
+Requirements
+============
+
+Provide Fortran support for some of the features of the OpenMP
+reduction clause.
+
+The proposal should support:
+    1. Extend DO CONCURRENT to include the addition of scalar
+       "reduction variables" and corresponding "reduction operators"
+       on the reduction variables.
+
+    2. Allow multiple reduction variables to be defined for a
+       DO CONCURRENT.
+
+    3. Support intrinsic binary and n-ary operators as reduction
+       operators:
+           + * .AND. .OR. .EQV. .NEQV. MIN MAX IAND IOR IEOR
+
+    4. Provide for the initialization of the reduction variables
+       consistent with the reduction operators.
+
+    5. Have reduction variable semantics aligned with existing
+       locality specifications for DO CONCURRENT.
+
+    6. Have behavior that is a good analog to the OpenMP reduction clause.
+
+
+The proposal need not support:
+    1. Reduction variables with the ALLOCATABLE, POINTER,
+       INTENT (IN), or OPTIONAL attribute.
+
+
+Proposal
+========
+Add a new locality-spec to describe reduction variables. These
+reduction variables are local to each iteration of the loop,
+initialized with a suitable value upon entry to the loop, but are
+related to a defined instance of the reduction variable in the
+scope outside the loop.
+
+Define a limited set of binary operators or procedures that can
+be used to combine values of the reduction variables.
+
+Limit the definition and use of reduction variables in each
+iteration that makes the implementation less complex. Allow
+variations on
+  var = var op expression
+  var = expression op var
+  var = function (var, expression)
+  var = function (expression, var)
+for suitable values of op and function.
+
+Upon completion of the DO CONCURRENT, the value of each
+reduction variable is the initial value of the outside variable
+combined (via the reduction operator) with the values of the
+reduction variable at the end of each iteration of the loop body,
+performed in any order.
+
+The processor may make assumptions about how to parallelize the
+reduction to optimize or eliminate synchronized access to each
+reduce-var.
+
+
+Details
+=======
+Add a REDUCE option to rule R1129, locality-spec.
+
+    R1129  locality-spec is LOCAL ( variable-name-list )
+                         or LOCAL_INIT ( variable-name-list )
+                         or SHARED ( variable-name-list )
+                         or DEFAULT ( NONE )
+                         or REDUCE (reduce-op : reduce-var-name-list)
+
+Add rules to define reduce-ops.
+
+    R1129a  reduce-op binary-reduce-op
+                            or function-reduce-op
+
+    R1129b  binary-reduce-op is +
+                            or *
+                            or .AND.
+                            or .OR.
+                            or .EQV.
+                            or .NEQV.
+
+    R1129c  function-reduce-op is MIN
+                            or MAX
+                            or IAND
+                            or IOR
+                            or IEOR
+
+Add a rule to define reduce-vars.
+
+    R1129d  reduce-var-name-list is scalar-variable-name-list
+
+The reduce-var is treated with semantics similar to LOCAL_INIT.
+The initial value before execution of each iteration of the
+DO CONCURRENT body is based on the reduce-op as defined
+in the table below.
+
+Upon exit from the iteration, its value is combined with
+the outside variable using the reduce-op.
+
+Modify constraints:
+    C1128   Extend to add REDUCE to the list of locality-specs:
+            "A variable-name that appears in a LOCAL, LOCAL_INIT
+            or REDUCE locality-spec shall not have the ALLOCATABLE,
+            INTENT (IN), or OPTIONAL attribute, shall not be of
+            finalizable type, shall not be a nonpointer
+            polymorphic dummy argument, and shall not be a coarray
+            or an assumed-size array. A variable-name that is
+            not permitted to appear in a variable definition
+            context shall not appear in a LOCAL, LOCAL_INIT
+            or REDUCE locality-spec."
+
+Modify 11.1.7.5 to add a bullet entry for REDUCE:
+    - a variable with REDUCE locality has the pointer association
+      status of the outside variable with that name; the outside
+      variable shall not be an undefined pointer or a nonallocatable
+      nonpointer variable that is undefined. Upon entry to an
+      iteration, the variable is defined to have the value
+      corresponding to its reduce-op in the table above as if by
+      intrinsic assignment.
+
+Add constraints to the use of the reduce-var-names.
+    C1130a  Each reduce-var-name in a reduction-spec shall be
+            of an intrinsic type.
+
+    C1130b  Each reduce-var-name shall be defined before execution
+            of the DO CONCURRENT.
+
+    C1130c  The reduce-var-name can only appear on the
+            left-hand-side of statements that look like
+                    reduce-var = &
+                            reduce-var binary-reduce-op expression
+                or
+                    reduce-var = &
+                            expression binary-reduce-op reduce-var
+                or
+                    reduce-var = &
+                          function-reduce-op (reduce-var, expression)
+                or
+                    reduce-var = &
+                          function-reduce-op (expression, reduce-var)
+
+The types of the allowed operands are defined in the table below,
+using the type designators used in Table 10.2.
+
+      OPERATOR          INITIAL VALUE         ALLOWED TYPES
+      --------          -------------         -------------
+        +                     0                   I, R, Z
+        *                     1                   I, R, Z
+      .AND.                .TRUE.                    L
+      .OR.                 .FALSE.                   L
+      .EQV.                .TRUE.                    L
+      .NEQV.               .FALSE.                   L
+       MIN            HUGE(reduce-var)          I, R
+       MAX           -HUGE(reduce-var)          I, R
+       IAND                 NOT(0)                   I
+       IOR                    0                      I
+       IEOR                   0                      I
+
+
+Revisited Use Cases
+===================
+    s = 1000
+    DO CONCURRENT (i = 1:size(a)) REDUCE(+:s)
+      s = s + (2 * a(i) - 1)
+    END DO
+
+    foo = a(1)
+    DO CONCURRENT (i = 2:size(a)) REDUCE(MIN:foo)
+      foo = MIN(foo, a(i))
+    END DO
+
+
+Benefits
+========
+Adding REDUCE will:
+    - Increase the usefulness of DO CONCURRENT
+    - Increase opportunities to exploit SIMD and other parallelism
+    - Increase ability to optimize parallelism according to the
+      available threads
+    - Make it easier to write conforming programs
+    - Make it easier to check the programmer's intent about reductions
+    - Reduce memory allocation needs or explicit data management when
+      offloading to target processors
+    - Eliminate explicit synchronization
+    - Reduce need for explicit temporaries
+
+
+
+
+Edits
+=====
+To come.
+
+

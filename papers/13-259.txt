@@ -1,0 +1,89 @@
+                                                               J3/13-259
+From:    Van Snyder
+To:      J3
+Date:    2013 May 21
+Subject: Reference-counted pointer targets
+
+Title: Reference-counted pointer targets
+
+Submitted by: Van Snyder
+
+Status: For consideration
+
+Basic functionality: Define a class of pointers whose targets include
+reference counters.  When and only when the reference counter is
+decreased to zero, the target is deallocated.  Such a pointer never has
+undefined association status.  The reference counter of the target of a
+local pointer with this attribute, other than a dummy argument, is
+decreased when the scoping unit in which the pointer is declared
+completes execution.  Therefore, these pointers and their targets behave
+in important ways similarly to allocatable variables.
+
+Rationale: It is difficult to develop and deploy a reference-counted
+pointer target system.  It must be based upon derived types, and
+separate versions of procedures for allocation, deallocation, pointer
+assignment and nullification are needed for each type, kind, and rank of
+the value component.  When developed and deployed, its use is
+cumbersome, especially in existing programs that are to be revised to
+exploit the system, since allocation, deallocation, pointer assignment,
+and nullification must be replaced by subroutine calls.  To maintain
+counts accurately, if a nonlocal pointer might be associated with the
+same target as a local pointer, care must be taken that the reference
+count of the local pointer is decreased before the procedure in which it
+is declared completes execution.  It would be better to require all such
+"pointers" and their targets to be derived-type objects with a private
+pointer component that represents the association, and a final
+subroutine, but there is no mechanism to prevent pointer assignment for
+specified types.  An intrinsic solution is therefore desirable.
+
+Estimated impact: Minor
+
+Detailed specification: Add an attribute to data pointers, say COUNTED
+or CONTROLLED, that indicates their targets have reference counters.
+
+A subobject of a target of a pointer that has this attribute does not
+have the attribute, unless the subobject is a pointer component that
+has the attribute.
+
+The initial association status of such a pointer is disassociated, not
+undefined; this does not need to be specified by initialization or
+default initialization.
+
+When such a pointer is the allocate-object in an ALLOCATE statement,
+before the allocation, if the pointer has a target, the target's
+reference count is decreased by one, and the target is deallocated if
+the reference count becomes zero.  After allocation, the target's
+reference count is set to one.
+
+In pointer assignment, either explicitly by a pointer assignment
+statement or implicitly by intrinsic assignment, either both the pointer
+object and target shall have the attribute, or neither shall.  Thereby,
+one cannot associate a pointer with this attribute with a target that
+has no counter, and one cannot associate a target that has a counter
+with a pointer upon which actions do not respect or control the value of
+the counter.  During pointer assignment, before assignment takes place,
+if the pointer object is associated with a target, the target's
+reference count is decreased by one, and then the target is deallocated
+if its reference count is decreased to zero.  After assignment, if the
+pointer object has a target, the target's reference count is increased
+by one.
+
+When a NULLIFY statement is executed, before the pointer is nullified,
+the reference count of its target (if it has one) is decreased by one,
+and the target is deallocated if the reference count becomes zero.
+
+When such a pointer is the deallocate object in a DEALLOCATE statement,
+the target's reference count is decreased by one, and then the target is
+deallocated if and only if its reference count is decreased to zero.  In
+any case, the pointer's association status becomes disassociated.
+
+When a scoping unit completes execution, pointers declared within the
+scoping unit, other than dummy arguments, that have this attribute are
+nullified, as if by a NULLIFY statement, rather than becoming undefined.
+
+A consequence of these definitions is that, like allocatable variables,
+a pointer with this attribute never has undefined association status.
+
+It does not seem to be necessary, or even useful, to provide an
+intrinsic function to inquire the reference count of the target of a
+pointer with this attribute.

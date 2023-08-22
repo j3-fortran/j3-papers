@@ -1,0 +1,142 @@
+
+                                                    J3/06-360r1
+
+Date:       16 November 2006
+To:         J3
+From:       Dick Hendrickson
+Subject:    Clause 3.  Macros, kinds, and feature creep
+References: J3/06-007, J3/06-007R1, 06-273, 06-277R1
+
+This is basically a rewrite, with some additions, of paper 237
+from meeting 177.  I was going to do a more extensive paper
+much earlier, but A) I lost my notes from 177, and B) stuff
+came up.
+
+I'm also not proposing edits.  It strikes me as pointless to
+do detailed edits unless we have a reasonable consensus that
+these are things we want to do.  
+
+This paper proposes three new features:
+
+1)   An assignment to a macro variable.  The syntax is
+      MACRO  macro-local-variable = macro-expr
+
+This is fundamentally syntactic sugar. . But look at note
+3.15 on page 39.  The token "SELECTED_INT_KIND(i)"
+appears in 3 places.  Some short of short-hand will make
+things easier to read.
+
+It would be nice to have two forms.  One to hold computed
+numeric values, such as a kind type, and the other to hold
+long concatenated strings.  Sort of a MACRO associate
+concept to shorten the source text.
+
+2)   Add some sort of "get next kind" capability, and maybe
+      enhance the MACRO DO.
+
+Paper 273 proposed adding this to the existing MACRO design
+and the straw vote was 9-1-1 in favor of investigating this.
+
+I propose adding a set of new MACRO pseudo functions,
+MACRO_NEXT_???_KIND.  Where ??? can be INT, REAL, CHAR,
+LOGICAL, or BIT.  Each function returns the next used
+kind number for the appropriate type.  This will
+make it easy to run over all of the available kinds.  If the
+argument is -1 or missing, the functions return the lowest
+kind value.  If the argument is greater than -1, they return
+the next higher kind value.  If there are no more kinds, they
+return -2.  If the argument is < -1, they generate an
+expansion-time error.  We need to start at -1 because 0
+is an allowed kind.
+
+
+Normal usage would be
+        MACRO  J = -1
+        MACRO DO
+          MACRO J = MACRO_NEXT_INT_KIND(J)
+          MACRO IF (J<-1) MACRO EXIT
+             blah blah
+        MACRO END DO
+
+This requires also allowing a MACRO DO with no limit.  We could
+merely require the user to do  MACRO DO JJ = 1,1000000000000000
+to simulate an infinite DO.  But, that is silly.  An unlimited
+MACRO DO also requires a MACRO EXIT.
+
+An alternative would be to define integer arrays that hold the
+kind values.  MACRO_???_KIND_VALUES, for example.  Then the
+above loop could be written as
+
+        MACRO DO  JJ = 1, size(MACRO_INT_KIND_VALUES)
+          MACRO J = MACRO_INT_KIND_VALUES(JJ)
+             blah blah
+        MACRO END DO
+
+With no need for extending the MACRO DO capability.  A possible
+drawback to this approach is BITs.  An expectation is that
+processors will allow billions and billions of BIT kinds.
+However, depending on what 53:30 really means, the array
+might be trivial because MACRO_BIT_KIND_VALUES(J) will be J.
+
+Either the function or arrays could be placed in chapter 13
+and available outside of the macro facility.  That's an
+orthogonal decision.
+
+3)  Add a MACRO ERROR statement.
+
+It's folly to think macro writers and users won't make
+mistakes.  Add a new statement
+       MACRO ERROR  [something useful]
+
+It's difficult to specify an error statement and describe what it
+means in standard terms.  For essentially all of the other rules,
+we basically say a standard conforming program shan't do something
+or other.  But, we don't say what should happen if it does and this
+allows processors to freely extend the standard.  How do we say 
+that the MACRO ERROR should stop the translation?  Malcolm's
+first thought was to say that a MACRO ERROR shall not be expanded.
+This is what most of the other constraints do.  If a processor
+wants to extend the standard by plowing through a MACRO ERROR,
+it's free to do so.
+
+--------------------------------------------------------------------
+
+Subgroup recommends the following:
+
+1)  Adding arrays of kinds to the ISO_FORTRAN_ENV module
+       The arrays would be processor dependent size and contain
+       values of the supported kind parameters for each type.
+
+   The /B subgroup favored the NEXT_KIND function approach, with
+the addition of an uncounted MACRO DO and a MACRO EXIT statement.
+
+2)  Adding a macro assignment statement.  Based on discussions with 
+/B, we believe two kinds of assignment are needed.  One to
+compute the value of a specification expressions and the other
+to hold a token string.
+
+3)  Adding a macro error statement
+
+There are obvious straw votes.
+
+1)  Add 4 parameter arrays, INT_KIND_VALUES, REAL_KIND_VALUES, 
+    LOGICAL_KIND_VALUES, and CHAR_KIND_VALUES to ISO_FORTRAN_ENV.
+   (But, NOT a BIT array.)  The values will be in non-decreasing order 
+    by storage size.
+
+OR
+
+    Add 5 new macro functions, one for each of the kinds BITS, INTEGER,
+    REAL, LOGICAL, and CHARACTER.  The functions would return the next
+    supported kind value, or -2 if there were no more kinds supported.
+
+2)  Add two forms of a MACRO assignment statement and add a new macro
+    variable type, which is an untyped token string.
+      MACRO  macro-local-variable = macro-expr
+      MACRO  macro-token-variable = basic-token-sequence
+
+See paper 06-380 from Malcolm for proposed specs, syntax, and edits.
+
+3)  Add a MACRO ERROR statement.
+       MACRO ERROR  [something useful]
+  CONSTRAINT   A MACRO ERROR statement shall not be expanded

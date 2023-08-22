@@ -1,0 +1,535 @@
+To: J3                                                     J3/23-102r1
+From: T. Clune & subgroup generics
+Subject: Formal syntax for generics
+Date: 2023-February-21
+
+Reference: 22-120r5, 22-151r3, 22-154r5
+
+UTI: Is existing BNF for subprograms sufficient for template
+     subprograms and variables/expressions that depend on deferred
+     entities.
+
+1. Introduction
+===============
+
+This paper contains the syntax for generic programming features.
+Section 2 contains a succinct, non-pedagogical example that exercises
+most of the proposed syntax.  Section 3 provides the formal syntax and
+is further broken into the following subsections:
+
+  3.1 Deferred entities
+  3.1.1 Syntax for deferred arguments
+  3.1.2 Deferred argument association
+
+  3.2 Syntax for the REQUIREMENT construct
+  3.2.1 Requirement interface body
+  3.3 Syntax for the REQUIRES statement
+
+  3.4 Syntax for the TEMPLATE construct
+  3.4.1 Template specification part
+  3.4.2 Template subprogram part
+  3.4.3 Additional constraint
+  3.5 Syntax for the INSTANTIATE statement
+
+2. Example
+==========
+
+MODULE A
+
+   REQUIREMENT R(T,F)
+      TYPE, DEFERRED :: T
+      FUNCTION F(x, i) RESULT(y)
+         TYPE(T) :: y
+         TYPE(T), INTENT(IN) :: x
+         INTEGER, INTENT(IN) :: i
+      END FUNCTION
+   END REQUIREMENT
+   
+   TEMPLATE B(T,F,C)
+      REQUIRES R(T,F)            ! provides interface for deferred F
+      TYPE, DEFERRED :: T        ! redundant confirmation of T
+      INTEGER, CONSTANT :: C(..) ! deferred rank constant
+
+   CONTAINS
+      SUBROUTINE SUB(x, i)
+         TYPE(T), INTENT(INOUT) :: x
+         INTEGER, INTENT(IN) :: x
+         x = F(x, SUM(C))
+      END SUBROUTINE SUB
+   END TEMPLATE B
+
+END MODULE A
+
+MODULE B
+  USE MODULE A
+
+  TYPE :: MY_TYPE
+     REAL :: val
+  END TYPE
+ 
+  INSTANTIATE B(MY_TYPE, POWER, [3,4]), ONLY: my_sub => sub
+
+CONTAINS
+   FUNCTION POWER(x, i) RESULT(y)
+      TYPE(MY_TYPE) :: y
+      TYPE(MY_TYPE), INTENT(IN) :: x
+      INTEGER, INTENT(IN) :: i
+      y%val = x%val ** i
+   END FUNCTION
+
+   SUBROUTINE DO_SOMETHING(x, n)
+      TYPE(MY_TYPE), INTENT(INOUT) :: x
+      INTEGER, INTENT(IN) :: n
+
+      INTEGER :: i
+      DO i = 1, n
+         CALL my_sub(x, i)
+      END DO
+   END SUBROUTINE
+END MODULE B
+
+
+3. Formal Syntax
+================
+
+3.1 Deferred entities
+--------------------
+
+A deferred entity is an entity, some aspects of which are deferred.  A
+deferred entity may appear in a REQUIREMENT or TEMPLATE construct
+(3.2, 3.3).  Association with non-deferred entities occurs in the
+INSTANTIATE and REQUIRES statements.
+
+A deferred constant is a deferred entity that can appear in constant
+expressions with a REQUIREMENT or TEMPLATE construct.
+
+A deferred type is a deferred entity that can appear as a type-spec
+within a REQUIREMENT or TEMPLATE construct.
+
+A deferred procedure (3.4.3) is a deferred entity that can appear in
+procedure references within a REQUIREMENT or TEMPLATE construct.  A
+deferred procedure's interface shall be defined by that REQUIREMENT or
+TEMPLATE construct, possibly in terms of deferred types and constants.
+
+3.1.1 Syntax for deferred arguments
+-----------------------------------
+
+A deferred argument declaration construct is used to declare
+REQUIREMENT or TEMPLATE arguments.
+
+<deferred-arg> <<is>> <deferred-arg-name>
+
+<deferred-arg-decl-construct> <<is>> <deferred-const-declaration-stmt>
+                              <<or>> <deferred-proc-declaration-stmt>
+                              <<or>> <deferred-type-declaration-stmt>
+                              <<or>> <requires-stmt>
+
+<deferred-const-declaration-stmt> <<is>>
+           <declaration-type-spec>, <deferred-attr-constant-spec> ::
+           <deferred-const-list>
+
+<deferred-attr-constant-spec> <<is>> [<deferred-attr-spec>,]...
+                                          CONSTANT
+                                          [,<deferred-attr-spec>]...
+
+<deferred-attr-spec> <<is>> CONTIGUOUS
+                        <<or>> <dimension-spec>
+                        <<or>> <rank-clause>
+
+Constraint: An entity declared in <deferred-const-declaration-stmt>
+            shall be INTEGER, LOGICAL, or assumed-length character.
+
+<deferred-const> <<is>> <deferred-const-name>
+
+Constraint: Each <deferred-const> shall appear in a
+            <deferred-const-declaration-stmt>.
+
+
+<deferred-proc-declaration-stmt> <<is>>
+     PROCEDURE[(<interface>)] :: <deferred-proc-decl-list>
+
+<deferred-proc-decl> <<is>> <procedure-entity-name>
+
+Constraint: Each <procedure-entity-name> that appears in a
+            <deferred-proc-declaration-stmt> shall appear in
+            <deferred-arg-list>.
+
+Constraint: Each <deferred-arg> must appear in a
+            <deferred-arg-decl-construct> or as a <function-name> or
+            <subroutine-name> within an <interface-body> or a
+            <requirement-interface-body>.
+
+Constraint: <generic-spec> shall not apper in <interface-stmt> within
+            a <deferred-interface-block>.
+
+<deferred-type-declaration-stmt>
+       <<is>>  TYPE, DEFERRED :: <deferred-type-list>
+
+<deferred-type> <<is>> <type-name>
+
+Constraint: Each <deferred-type> shall appear in
+            <deferred-arg-list>.
+
+Constraint: A <deferred-arg> declaration shall not have an
+            <access-spec> nor shall it appear in a PUBLIC statement.
+
+Note: Deferred arguments are local identifiers and are not externally
+      accessible.
+
+
+3.1.2 Deferred argument association
+-----------------------------------
+
+Actual deferred arguments are specified by either an INSTANTIATE or a
+REQUIRES statement.  
+
+<actual-deferred-arg-spec> <<is>>
+        [ <keyword> = ] <actual-deferred-arg>
+
+Constraint: Each <keyword> shall be the name of a <deferred-arg> in the
+            referenced requirement or template.
+
+In the absence of an argument keyword, an actual deferred argument
+corresponds to the dummy deferred argument occupying the corresponding
+position in <deferred-arg-list>; that is, the first actual deferred
+argument corresponds to the first dummy deferred argument in the
+reduced list, the second actual deferred argument corresponds to the
+second dummy deferred argument in the reduced list, etc.
+
+<actual-deferred-arg> <<is>> <constant-expr>
+                      <<or>> <type-spec>
+                      <<or>> <generic-spec>
+                      <<or>> <procedure-name>
+                      
+Constraint: <constant-expr> must be type INTEGER, LOGICAL or
+            CHARACTER.
+
+Constraint: An <actual-deferred-arg> that is a <constant-expr> shall
+            correspond to a <deferred-arg> that is declared as a
+            <deferred-const> in the referenced template or requirement.
+
+Constraint: The type and kind of an <actual-deferred-arg> that is a
+            <constant-expr> shall have the same type and kind of the
+            declaration of the corresponding <deferred-const> in the
+            referenced template or requirement.
+
+Constraint: If the shape of the corresponding <deferred-const> in the
+            referenced template or requirement is not assumed, then
+            <constant-expr> shall have the same shape.
+
+Constraint: If the rank of the corresponding <deferred-const> in the
+            referenced template or requirement is not assumed, then
+            <constant-expr> shall have the same rank.
+
+
+Constraint: An <actual-deferred-arg> that is a <type-spec> shall
+            correspond to a <deferred-arg> that is declared as a
+            <deferred-type> in the referenced template or requirement.
+
+Constraint: If an <actual-deferred-arg> is a <derived-type-spec>, its
+            <type-name> shall support intrinsic assignment.
+
+Constraint: An <actual-deferred-arg> that is a <generic-spec> or
+            <procedure-name> shall correspond to a <deferred-arg> that
+            is declared as a <deferred-proc> in the referenced
+            template or requirement.
+
+Constraint: An <actual-deferred-arg> that is a <procedure-name> shall
+            be consisntent with the characteristics of the corresponding
+            <deferred-proc> in the referenced template or requirement.
+
+Constraint: An <actual-deferred-arg> that is a <generic-spec> shall
+            have one specific procedure that is consistent with the
+            characteristics of the corresponding <deferred-proc> in
+            the referenced template or requirement.
+
+Note: The previous two constraints constitute what is referred to as
+      "weak constraints" in other languages.
+
+The <deferred-proc> shall be associated with the specific procedure
+that is consistent with the characteristics.
+
+3.2 Syntax for the REQUIREMENT construct
+----------------------------------------
+
+A REQUIREMENT is a named collection of deferred argument declarations
+intended to facilitate reuse of common patterns within templates and
+other requirements.
+
+<requirement>
+      <<is>> REQUIREMENT <requirement-name> ( [<deferred-arg-list>] )
+                [ <use-stmt> ] ...
+                <requirement-specification-construct> ...
+             END [REQUIREMENT [<requirement-name>]]
+
+Note: <requirement-interface-body> is defined in section 3.1.1, and
+      requirement declaration statements are define in section 3.1.2.
+
+<requirement-specification-construct>
+        <<is>> <deferred-arg-decl-construct>
+        <<or>> <requirement-interface-body>
+
+Constraint: Each <deferred-arg> shall appear in a
+            <requirement-specification-construct>.
+
+Note: If a <procedure-declaration-stmt> appears in the
+      <requirement-specification-part> it can only be used to define a
+      <requirement-arg>.
+
+Note: A <requirement> is a scoping unit that allows use and host
+      association.  Each <deferred-arg> is local to the REQUIREMENT
+      construct.
+
+3.2.1 Requirement interface body
+--------------------------------
+
+A <requirement-interface-body> declares a <deferred-arg-name> as a
+deferred procedure and defines its interface.
+
+<requirement-interface-body>
+      <<is>> <function-stmt>
+                [ <requirement-interface-specification-part> ]
+                <end-function-stmt>
+      <<or>> <subroutine-stmt>
+                [ <requirement-interface-specification-part> ]
+                <end-subroutine-stmt>
+
+Constraint: Each <function-name> and <subroutine-name> in a
+            <requirement-interface-body> shall be a
+            <deferred-arg-name>.
+
+<requirement-interface-specification-part>
+          <<is>> [ <use-stmt> ] ...
+                 [ <requirement-interface-declaration-stmt> ] ...
+
+<requirement-interface-declaration-stmt>
+          <<is>> <deferred-proc-declaration-stmt>
+          <<or>> <requirement-interface-type-declaration-stmt>
+          <<or>> <requirement-other-specification-stmt>
+
+<requirement-other-specification-stmt>
+        <<is>> <allocatable-stmt>
+        <<or>> <asynchronous-stmt>
+        <<or>> <codimension-stmt>
+        <<or>> <contiguous-stmt>
+        <<or>> <dimension-stmt>
+        <<or>> <intent-stmt>
+        <<or>> <optional-stmt>
+        <<or>> <paramter-stmt>
+        <<or>> <pointer-stmt>
+        <<or>> <target-stmt>
+        <<or>> <value-stmt>
+        <<or>> <volatile-stmt>
+
+<requirement-interface-type-declaration-stmt>
+          <<is>> <declaration-type-spec>
+                 [ [ , <requirement-interface-attr-spec> ] ... :: ]
+                 <entity-decl-list>
+
+<requirement-interface-attr-spec>
+        <<is>> ALLOCATABLE
+        <<or>> ASYNCHRONOUS
+        <<or>> CODIMENSION <lbracket> <coarray-spec> <rbracket>
+        <<or>> CONTIGUOUS
+        <<or>> DIMENSION ( <array-spec> )
+        <<or>> INTENT ( <intent-spec> )
+        <<or>> OPTIONAL
+        <<or>> PARAMETER
+        <<or>> POINTER
+        <<or>> <rank-clause>
+        <<or>> TARGET
+        <<or>> VALUE
+        <<or>> VOLATILE
+
+A <requirement-interface-body> is a scoping unit that has use and host
+association.
+
+Note: Unlike <interface-body> of the <inerface-block> or
+      <template-interface-block>, <requirement-interface-body> allows
+      access to host scope entities by default, and does not allow using
+      the IMPORT statement.
+
+3.3 Syntax for the REQUIRES statement
+-------------------------------------
+
+A REQUIRES statement provides declarations of deferred arguments by
+associating them with the deferred dummy arguments of a REQUIREMENT.
+
+<requires-stmt> <<is>>
+      REQUIRES [::] <requirement-name>
+            ( [<actual-deferred-arg-spec-list>] )
+
+Constraint: <requirement-name> shall be the name of a previously
+            defined <requirement>.
+
+<actual-deferred-arg-spec> <<is>>
+        [ <keyword> = ] <actual-deferred-arg>
+
+Constraint: Each <keyword> shall be the name of a <deferred-arg> in the
+            referenced requirement.
+
+
+3.4 Syntax for the TEMPLATE construct
+-------------------------------------
+
+A template is a set of declarations, specifications and definitions
+that are enabled by instantiation.  A TEMPLATE construct defines
+a template.  A template is a scoping unit to which use and host
+association and template argument association can be applied.  A
+template can appear in the specification part of a program unit or
+internal subprogram, or in <template-specification-part> of another
+template.
+
+<template> <<is>> <template-stmt>
+                      [ <template-specification-part> ]
+                      [ <template-subprogram-part> ]     
+                      <end-template-stmt>
+
+Note: <template-specification-part> is defined in section 3.3.1, and
+      <template-subprogram-part> is defined in section 3.3.2.
+
+A TEMPLATE construct may appear in the specification section of a
+program, external subprogram, module, submodule, module subprogram,
+internal subprogram, or in <template-specification-part> of another
+template.
+
+Note: TEMPLATE cannot appear in the specification section of
+      a BLOCK construct.
+
+<template-stmt> <<is>> TEMPLATE <template-name> ([<deferred-arg-list>])
+
+<end-template-stmt> <<is>>  END [TEMPLATE [<template-name>]]
+
+Constraint: If a <template-name> appears in the <end-template-stmt>,
+            it shall be identical to the <template-name>
+            specified in the <template-stmt>.
+
+Constraint: If a <procedure-declaration-stmt> appears in the
+            <template-specification-part> it can only be used to
+            declare a <deferred-arg>.
+
+
+3.4.1 Template specification part
+---------------------------------
+
+<template-specification-part> <<is>>
+            [ use-stmt ] ...
+            [ <template-declaration-construct> ] ...
+
+The implicit mapping within <template> is as if
+       IMPLICIT NONE(TYPE,EXTERNAL)
+is in place.
+
+<template-declaration-construct> <<is>> <template-specification-construct>
+                                 <<or>> <deferred-arg-decl-construct>
+                                 <<or>> <requirement>
+                                 <<or>> <template>
+                                 <<or>> <template-interface-block>
+
+<template-specification-construct> 
+                      <<is>> <access-stmt>
+                      <<or>> <derived-type-def>
+                      <<or>> <dimension-stmt>
+                      <<or>> <enum-def>
+                      <<or>> <enumeration-type-def>
+                      <<or>> <generic-stmt>
+                      <<or>> <instantiate-stmt>
+                      <<or>> <intrinsic-stmt>
+                      <<or>> <parameter-stmt>
+                      <<or>> <procedure-declaration-stmt>
+                      <<or>> <type-declaration-stmt>
+
+Note: The analogous construct for MODULE is divided into two separate
+      constructs: <specific-construct> and
+      <other-specification-construct>.  However, subgroup does not see
+      the criteria by which items were assigned to either construct.
+      Further since TEMPLATE admits fewer items, we have decided to
+      merge these two constructs.
+
+Note: A DATA, FORMAT, ENTRY or statement function statement shall not
+      appear in the template specification part.
+
+Note: An ALLOCATABLE, ASYNCHRONOUS, BIND, CODIMENSION, CONTIGUOUS,
+      EXTERNAL, INTENT, NAMELIST, OPTIONAL, POINTER, PROTECTED, SAVE,
+      TARGET, VOLATILE, VALUE, COMMON, or EQUIVALENCE statement shall
+      not appear in the template specification part. 
+
+
+Constraint: An entity declared by <type-declaration-stmt> shall have
+            the PARAMETER attribute.
+
+Note: This is to say, the template specification section cannot
+      declare variables.
+
+<template-interface-block> <<is>>
+       <interface-stmt>
+         [ <template-interface-specification> ] ...
+         <end-interface-stmt>
+
+<template-interface-specification> <<is>> <interface-body>
+                                   <<or>> <template-procedure-stmt>
+
+<template-procedure-stmt> <<is>> PROCEDURE [ :: ] <specific-procedure-list>
+
+Constraint: A <template-procedure-stmt> is allowed only in an
+            interface block that has a <generic-spec>.
+
+Constraint: In a <template-interface-block> the MODULE keyword shall
+            not appear.
+
+NOTE: Subgroup finds that using "MODULE PROCEDURE" for procedures
+      defined in a template to be confusing and unnecessarily verbose.
+      Thus, in this context, interfaces should only have "PROCEDURE".
+
+
+3.4.2 Template subprogram part
+------------------------------
+
+<template-subprogram-part> <<is>> <contains-stmt>
+                                     [ <template-subprogram> ] ...
+
+<template-subprogram> <<is>> <function-subprogram>
+                      <<or>> <subroutine-subprogram>
+
+3.4.3 Additional constraint
+---------------------------
+
+Constraint: <template> shall only reference intrinsic procedures,
+            procedures with explicit interfaces, and operators.
+
+Note: This constraint expresses the notion of "strong concepts".  In
+      particular, this allows a template implementation to be verified
+      to be internally consistent.
+
+3.5 Syntax for the INSTANTIATE statement
+----------------------------------------
+
+The INSTANTIATE statement specifies an instance of a template
+and deferred actual arguments that become associated with the deferred
+dummy arguments of that template.
+
+<instantiate-stmt>
+     <<is>> INSTANTIATE [::] <template-name> (
+            [ <actual-deferred-arg-spec-list> ] ) [, <rename-list> ]
+     <<or>> INSTANTIATE [::] <template-name> (
+            [ <actual-deferred-arg-spec-list> ] , ONLY : [ <only-list> ]
+
+<actual-deferred-arg-spec> <<is>> [ <keyword> = ] <actual-deferred-arg>
+
+Constraint: Each <keyword> shall be the name of a <deferred-arg> in the
+            referenced template.
+
+Constraint: Within an <instantiate-stmt>, <actual-deferred-arg> shall
+            not depend on any entity defined within the referenced
+            template.
+
+Note: <generic-spec> includes operators, defined assignment and
+      defined I/O.  The last may be somewhat awkward to use within a
+      template without re-expressing as defined I/O again.
+
+Constraint: <constant-expr> shall be of type integer, logical or
+            character.
+
+===END===
+
+

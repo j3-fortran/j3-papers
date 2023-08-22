@@ -1,0 +1,170 @@
+
+                                                    J3/02-312
+
+Date:     1 Nov 2002
+To:       J3
+From:     Richard Maine
+Subject:  Module initialization
+
+EXECUTIVE SUMMARY
+
+The dependency reversal of submodules suggests to me some
+powerful capabilities not mentioned in the modules TR draft.
+Realization of these capabilities requires one additional
+feature, which has been previously discussed in other contexts.
+That feature is initializer procedures for modules.
+
+What we can then get, in conjunction with type extension and
+type-bound procedures, is the ability for a submodule to usefully
+add type extensions without needing to modify the invoking
+code in any way (not even recompiling it).
+
+EXAMPLE OF A PROBLEM THIS CAN SOLVE
+
+As an example (based on actual applications of mine), consider
+applications that may want to read data from many different file
+formats.  Input for each format requires a separate module (or
+submodule as it will turn out) of procedures and associated data.
+In the current operational code of the application I'm thinking
+about, there are n+2 modules to support reading n file types.
+Each file type has dedicated module.  There is a low-level
+module, which has things that need to be accessible to all the
+file type modules.  There is a top-level file input module, which
+uses SELECT CASE to invoke procedures from the appropriate file
+type modules.  Only the top-level file input module is used by
+the main applications.  This is all in a library that is used by
+many applications (everything at Dryden that accesses any of our
+flight data).
+
+A single application may be simultaneously accessing multiple
+files using this library, so all state information about a
+file is stored in a derived type structure, one of which is
+allocated for each file.
+
+Suppose that a user needs to work with a previously unsupported
+file type.  This happens often, for various reasons.
+
+That user needs to write the module for the file type in question.
+He then needs to modify a copy of the top-level file-input
+module to add appropriate USE statements and extend the SELECT
+CASEs to incorporate the new file type.  The user then needs
+to recompile and relink all applications that will use the new
+file type.  This includes applications that the user didn't
+write and doesn't normally have the source code for.
+
+The capability we would like is for the user to be able to just
+write the module for the new file type and incorporate it into
+programs without recoding or recompiling anything else.
+
+I've presented this particular example because it is a real
+problem that I am personally familiar with, but I think this class
+of problem generalizes to lots of scenarios of adding support for
+a new specific type of object within an existing framework.
+
+HOW TYPE_BOUND PROCEDURES PLUS SUBMODULES ALMOST SOLVE IT
+
+Instead of using SELECT CASE to select the procedure for the
+appropriate file format, we make our derived type for file
+information, an extensible type.  We make the procedures to be
+invoked type-bound.  Each file type module extends the type and
+binds its procedures to the extended type.  The type extension
+turns out to be independently useful anyway because each file
+type has a different collection of state information specific
+to that file type, in addition to the information common to
+all types; this fits perfectly with type extension, which is
+much cleaner than the awkward hacks used in the f90/f95 version.
+
+The type-bound procedures get rid of the SELECT CASE statements.
+With submodules for the file types, we get rid of the USE
+statements for each file type in the top-level file input module.
+We also merge the low-level module back into the top-level one,
+where it more naturally goes; it was separated out only to avoid
+circular USEs (top-level module uses file type module, which uses
+top-level module), which no longer happen because the file type
+modules can get what they need by host association.
+
+If we have an object of the appropriate extended type for a
+particular file type module, invoking the read procedure for that
+object will get us to the submodule's read procedure without that
+particular procedure or submodule having ever been known about in
+the higher level code.
+
+So we can almost do the job without modifying or recompiling the
+top-level file input module, which in turn means that we won't
+have to recompile all the applications.
+
+ONE PIECE MISSING
+
+If nothing outside of the submodule knows about its particular
+type extension, how does an object of that extended type get
+created in the first place?  We need a hook to bootstrap with.
+But it doesn't need to be a very big hook - and it's one we can
+also use for other purposes.
+
+Suppose we have a procedure in the submodule that is executed to
+initialize the submodule.  Though this particular application
+only needs such a procedure for submodules, it makes sense to
+generalize initialization procedures to modules as well.  Such
+things have been proposed before, but fell off the train.
+
+The submodule could have a procedure (not the initialization
+procedure yet - we'll get to that), which is called to decide
+whether a particular file is one it supports or not.  This
+could be based on the file name, on a string naming the file
+type, on examining the file contents, or on anything else;
+the important thing is that it is a run-time determination.
+
+The top-level module could have a list (linked list, array,
+whatever) of pointers to these procedures, one for each file type.
+WHen a new file is opened, the procedures in this list are
+called until one of them recognizes a file type that it supports
+(or none of them do).  The procedure that suceeds will create
+the object.
+
+The submodule initialization procedure would likely consist of
+a single executable statement something like
+
+   call add_to_file_type_recognition_list(proc_to_recognize_my_files)
+
+where add_to_file_type_recognition_list is defined in the top-level
+file input module.
+
+THE RESULT
+
+All the user has to do is write the new submodule, make sure it is
+linked into each program, and support for the new file type will
+be done.  Multiple custom file types can be added to a single
+application.
+
+This even opens the possibility that dynamic linking could be
+used to load necessary support submodules during execution.  I
+don't propose that we directly address that kind of issue in the
+standard, but I do note that we'll have much of the underpinnings
+necessary for it.  (Yes, that is useful and I have applications
+that do it today, though it requires very nasty hackery.  I have
+a server application that runs 24x7, restarting only when the
+system goes down for maintenance or something of the sort a few
+times a year; it regularly loads modules that weren't even yet
+written when it started execution).
+
+PROPOSAL
+
+That the modules TR add a module/submodule initialization procedure,
+which is invoked once to initialize the module/submodule.  I don't
+particularly care about the order of invocation when there are
+multiple modules/submodules with such procedures - probably simplest
+to just let it be processor-dependent (otherwise that would turn into
+by far the most complicated part of this proposal).
+
+Van, if you want to use this as an excuse to also have the TR make all
+module variables SAVEd, I think I can buy that.  Though it isn't an
+integral part of this proposal, it would seem to go with the concept
+that the module is initialized only once.  I don't think I want to go
+into the complications involved if one thinks about a module being
+unloaded and possibly needing reinitialization - the initialization
+procedure ought to execute only once in any case.  If it initializes
+things that need saving (which it presumably will), then those things
+had just better be SAVED, either by user declaration or by being
+implicitly SAVEd.  I think that's a lot simpler than getting into the
+possibility of reinitialization on reloading of a module.
+

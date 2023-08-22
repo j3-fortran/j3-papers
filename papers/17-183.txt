@@ -1,0 +1,98 @@
+To:         J3 Members                                       J3/17-183
+From:       Van Snyder
+Subject:    Construct and statement entities in DO CONCURRENT
+References: 17-007r2
+Date: 2017 July 28
+
+1. Discussion
+=============
+
+C1129 concerning locality specifications in DO CONCURRENT constructs has
+the effect of prohibiting declarations within BLOCK constructs within DO
+CONCURRENT constructs if DEFAULT ( NONE ) appears, unless a variable of
+the same name as the declared variable also exists in the innermost
+executable construct or scoping unit that includes the DO CONCURRENT
+statement and the name is declared to have local locality:
+
+  do concurrent ( integer :: i = 1:10 ) default ( none )
+    block
+      real :: R ! C1129 prohibits this
+      r = a(i)
+      ...
+    end block
+  end do
+
+C1129 says
+
+"If the locality-spec DEFAULT ( NONE ) appears in a DO CONCURRENT
+statement, a variable that appears in the block of this construct and
+is not an index-name of that construct shall have its locality
+explicitly specified."  Therefore, the declaration
+
+  real :: R
+
+in the BLOCK construct is prohibited.  Even if a variable of the same
+name exists in the innermost executable construct or scoping unit that
+includes the DO CONCURRENT statement, and is named in a LOCAL
+<locality-spec>, it is not obvious whether a variable declared within a
+BLOCK construct is permitted if it does not have the same attributes as
+the one in the enclosing scope:
+
+  real, allocatable :: A(:)
+  do concurrent ( integer :: i = 1:10 ) local ( a ), default ( none )
+    block
+      integer, pointer :: A(:,:)
+    ....
+
+Is the declaration of A within the block permitted?  What are its
+attributes?  11.1.7.5p2 says the attributes of A within the block are
+the same as A outside the DO CONCURRENT construct.
+
+It is clear that a non-saved variable that is a construct entity of a
+BLOCK construct within a DO CONCURRENT construct has all the properties
+of one specified to have local locality.  This should be made clear, so
+that it is not ambiguous whether the variable is paralyzed by the
+requirements on variables with unspecified locality.
+
+There are similar problems for statement entities:
+
+  do concurrent ( integer :: i = 1:10 ) default ( none )
+    do concurrent ( integer :: j = 1:i )
+    ....
+
+  do concurrent (  integer :: i = 1:10 ) default ( none )
+    x = sum ( a(1:i) + [ ( j, integer :: j, j=1,2*i-1,2 ) ] )
+    ....
+
+In both cases the use of J is prohibited by C1129 because its locality
+is not specified.
+
+2. Edits
+========
+
+[191:27 C1129 11.1.7.2 Form of the DO construct]
+
+Insert ", is not a statement entity, is not a construct entity of a
+construct within that DO CONCURRENT construct," after "<block> of the
+construct".
+
+[194:24+ 11.1.7.5p1+ Additional semantics for DO CONCURRENT constructs]
+
+Insert a note
+
+" NOTE 11.10a
+    A statement entity of a statement within a DO CONCURRENT construct
+    is a different entity in every iteration.  A construct entity of a
+    DO CONCURRENT construct, or a nonsaved construct entity of a BLOCK
+    construct, within a DO CONCURRENT construct, is a different entity
+    in every iteration of the containing DO CONCURRENT construct.  A
+    saved variable that is a construct entity of a BLOCK construct
+    within a DO CONCURRENT construct is the same entity in every
+    iteration and has unspecified locality."
+
+[194:25 11.1.7.5p2 Additional semantics for DO CONCURRENT constructs]
+
+Replace "LOCAL or LOCAL_INIT locality is a construct entity with" with
+"LOCAL or LOCAL_INIT locality, and is not a construct or statement
+entity of a construct or statement within the DO CONCURRENT construct,
+is a construct entity of the DO CONCURRENT construct; it has".

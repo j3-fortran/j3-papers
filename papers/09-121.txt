@@ -1,0 +1,124 @@
+                                                            J3/09-121
+To: J3
+From: Malcolm Cohen
+Subject: Interoperability defects
+Date: 2009 January 27
+
+
+1. Introduction
+
+This paper contains an interp request against Fortran 2003 and a separate
+UTI insertion on a related (not the same) topic in Fortran 2008.
+
+
+2. Interp Request
+
+----------------------------------------------------------------------
+
+NUMBER: F03/?
+TITLE: C_LOC of character substrings
+KEYWORDS: interoperability
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+  SUBROUTINE S(A,I,K)
+    USE ISO_C_BINDING
+    CHARACTER(*),TARGET :: A
+    CHARACTER(:),ALLOCATABLE,TARGET :: B
+    TYPE(C_PTR) P1,P2,P3,P4,P5
+    P1 = C_LOC(A(1:1))    ! *1
+    P2 = C_LOC(A(I:I))    ! *2
+    P3 = C_LOC(A(1:))     ! *3
+    P4 = C_LOC(A(I:K))    ! *4
+    ALLOCATE(CHARACTER(1)::B)
+    P5 = C_LOC(B)         ! *5
+  END SUBROUTINE
+
+C_LOC (case 1) requires of its argument that it have interoperable
+type and type parameters (15.1.2.5, p395).  Case 2 does not apply
+because character type has a length type parameter.
+
+15.2.1 states
+  "if the type is character, interoperability also requires that the
+   length type parameter be omitted or be specified by an
+   initialization expression whose value is one".
+
+However, a substring does not have a declared type parameter that can
+be omitted or specified by an initialization expression.  Even in the
+reference marked *1, it is the substring starting and ending positions
+that are specified by initialization expressions, not the substring
+length.  In any case, if *1 satisfied the quoted requirement then *3
+also has its starting and ending positions specified by by
+initializations "or omitted".  In case *2, it must be totally obvious
+that the length has to be 1 since the expressions are lexically
+identical with no user function references, but neither are
+initialization expressions.  If I==K, it would be reasonable to expect
+*4 to be interoperable but it certainly does not satisfy the stated
+requirements.  Or, another interpretation would be that for substrings
+the length type parameter is by definition "omitted" since they have
+no syntax for its specification: in which case the question would
+arise as to what happens for zero-length substrings.
+
+It seems that the authors of the requirement forgot that "variables"
+include "substrings".
+
+Finally, case *5 is totally ambiguous because B has multiple length
+specifications, one which does not satisfy the requirement (the
+declaration) and one which does (the ALLOCATE statement).
+
+ANSWER:
+
+Yes, my head just exploded.
+
+Pick one of:
+(a) No interpretation is established therefore all of *1-*5 are invalid.
+(b) Only *1 should be conforming.  This seems unreasonable - why
+    should we even care how many characters are in the string when
+    we are returning the address of the first one only.
+(c) All *1-*5 should be valid: the length requirement for C_LOC should
+    be on the actual runtime length, not on the declaration (which
+    might not exist).
+(d) C_LOC should only require nonzero length - after all, that's what
+    we do for arrays, we just want the address of the first element we
+    don't care about the rest.
+(e) None of the above.
+
+EDITS:
+
+(a) If they are all invalid we should make it easier to read.
+
+(b) Requires text to spell out the requirement to allow *1 and exclude
+    the rest.
+
+(c) Smallest change is to have C_LOC just require the type and kind
+    type parameters to be interoperable, and for the character length
+    to be 1.
+
+    To do it properly the bit about how the length type parameter is
+    specified needs to be removed from the type interoperability
+    subclause, and put into the variable/procedure/component
+    subclauses as appropriate.
+
+(d) Like (c), but require the length to be >=1 instead.  Doing it
+    "properly" would also be desirable.
+
+In the case of (c) or (d) being chosen, I recommend providing the
+"proper" edits for at least the F2008 draft.
+
+SUBMITTED BY:  Malcolm Cohen
+
+HISTORY: 09-nnn      m187   Submitted.
+
+----------------------------------------------------------------------
+
+3. Additional Defect in 09-007
+
+Add UTI to c15 because C_LOC no longer allows character scalar
+operands: they are excluded from case 1 because scalars are not
+contiguous (the concept does not apply) and from case 2 because they
+have a length type parameter.
+
+===END===

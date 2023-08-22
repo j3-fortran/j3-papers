@@ -1,0 +1,253 @@
+To: J3                                                     J3/22-154r1
+From: Tom Clune & subgroup generics
+Subject: Generics formal specs: semantics of instantiating templates 
+Date: 2022-July-05
+
+References: 22-120r5, 22-151r1
+
+1. Introduction
+===============
+
+This paper is intended to establish the formal specs of generic
+programming with respect to the semantics of instantiating templates.
+
+
+2. Formal specs
+===============
+
+A. The INSTANTIATE statement defines instances of the entities
+   declared by the specified template.
+
+B1. The INSTANTIATE statement can only appear in the specification
+    section of a program unit.
+
+B2. The INSTANTIATE statement can not appear before any of the
+    following statements in the same program unit:
+      - USE statements
+      - IMPLICIT statements
+
+B3. References to entities defined by an INSTANTIATE statement must
+    appear after the INSTANTIATE statement, except for PUBLIC/PRIVATE
+    statements.
+
+
+C1. The INSTANTIATE statement must provide a mechanism that can limit
+    which template entities are visible in the instantiating scope.
+
+    Note: This is analogous to the ONLY clause of USE statements.
+
+C2. The INSTANTIATE statement must provide a rename mechanism that
+    alters the name by which template entities can be accessed in the
+    current scope.
+
+    Note: This is analogous to the rename capabilities of USE
+          statements.
+
+
+2.1 Association of actual template parameters in INSTANTIATE
+------------------------------------------------------------
+
+D1. The corresponding actual template parameter for a dummy type
+    template parameter must be a type-spec with constant specification
+    expressions.
+
+    Example:
+
+         TEMPLATE tmpl(T)
+             TYPE T; END TYPE
+             ...
+         END TEMPLATE tmpl
+
+         TYPE :: my_pdt(len, n)
+            INTEGER, LEN :: len
+            INTEGER, KIND :: n
+            INTEGER :: B(len)
+            REAL, RANK(n), ALLOCATABLE :: A
+            INTEGER :: data
+         END TYPE
+
+         INSTANTIATE tmpl(REAL)
+         INSTANTIATE tmpl(INTEGER(KIND=INT64))
+         INSTANTIATE tmpl(my_pdt(len=5, n=3)) ! ok
+         INSTANTIATE tmpl(my_pdt(len=:, n=3)) ! illegal; no deferred
+
+
+D2. The corresponding actual template parameter for a dummy value
+    template parameter must be a constant expression of the same type,
+    kind, and rank.
+
+    If the shape of a dummy template parameter is explicit then the
+    corresponding actual parameter must have the same shape.  If the 
+    shape of a dummy template parameter is assumed, then the 
+    corresponding actual parameter must have the same rank.  For an
+    assumed rank dummy template parameter the corresponding actual 
+    parameter can have any rank or shape.
+
+    NOTE: To avoid complexities about what "same" means for
+          user-defined types as well as round-off issues with
+          expressions involving numeric types, subgroup has decided to
+          restrict value dummy template parameters to be logical,
+          integer, or assumed-len strings.  These cover all of the
+          generics use cases, but the original requirements paper then
+          generalized to any const expression.  A revision to the
+          requirements paper will be submitted.
+
+    Example using notional syntax:
+
+         TEMPLATE tmpl1(T, flag, n, pet_type)
+            TYPE T; END TYPE
+            LOGICAL, PARAMETER :: flag
+            INTEGER, PARAMETER :: n
+            CHARACTER(LEN=*), PARAMETER :: pet_type
+
+            TYPE(T), RANK(n), ALLOCATABLE :: data
+            
+         END TEMPLATE tmpl1 
+
+         ! Legal instantiations
+         INSTANTIATE tmpl1(REAL,    .true.,  0, 'cat')
+         INSTANTIATE tmpl1(INTEGER, .false., 1, 'doggy')
+
+         ! The following are illegal.
+         INSTANTIATE tmpl1(REAL, 1, 1, 'cat') ! wrong type expr for 'flag'
+         INSTANTIATE tmpl2(REAL, .true., 0, &
+              [character(len=5)::'cat','doggy']) ! wrong rank for pet_type
+
+    Another example using assumed rank:
+
+         TEMPLATE tmpl2(C)
+            INTEGER, PARAMETER :: C(..)
+
+         CONTAINS
+
+            SUBROUTINE ACCUM(x y)
+               INTEGER, INTENT(IN),  RANK(RANK(C)) :: x
+               INTEGER, INTENT(OUT), RANK(RANK(C)) :: y
+               y = x + C
+            END SUBROUTINE 
+            
+         END TEMPLATE tmpl2
+
+            
+D3. A generic interface name may be used as an actual procedure
+    template parameter at instantiation provided one of its specific
+    procedures matches the required interface of the corresponding
+    dummy procedure template parameter.  The matching specific
+    procedure is then treated as the effective actual procedure
+    template parameter.
+
+    Note: Procedure dummy template parameters are not permitted to
+          have an implicit interface.  Thus, there can never be any
+          ambiguity in the generic resolution in this context.
+
+    Example:
+
+        TEMPLATE mytmpl(T, F)
+           TYPE :: T; END TYPE
+           INTERFACE
+              FUNCTION F(x)
+                 TYPE(T), INTENT(IN) :: x
+                 TYPE(T) :: F
+              END FUNCTION
+           END INTERFACE
+           ...
+        END TEMPLATE mytmpl
+
+        ...
+
+        INSTANTIATE mytmpl(REAL, sin)
+        INSTANTIATE mytmpl(DOUBLE PRECISION, sin)
+        
+D4. An operator may be used as an actual template parameter
+    at instantiation provided one of its specific procedures matches
+    the required interface of the corresponding dummy procedure
+    template parameter.  The matching specific procedure is then
+    treated as the effective actual procedure template parameter.
+
+    NOTE: This approach is arguably a bit klunky but it sidesteps
+          thorny issues related to how dummy operator parameters could
+          be declared, and allows template authors to define useful
+          operators inside the template.
+
+    Example:
+
+        TEMPLATE mytmpl(T, F)
+           TYPE :: T; END TYPE
+           INTERFACE
+              FUNCTION F(x, y)
+                 TYPE(T), INTENT(IN) :: x, y
+                 TYPE(T) :: F
+              END FUNCTION
+           END INTERFACE
+           ...
+        END TEMPLATE mytmpl
+
+        ...
+
+        INSTANTIATE mytmpl(REAL, +)
+        INSTANTIATE mytmpl(INTEGER, *)
+
+
+2.2 Identical instantiations
+----------------------------
+
+E1. Instantiations of a given template with the same corresponding
+    actual template parameters define the same concrete instance of
+    that template.
+
+E2. Two corresponding value actual template parameters are the same if
+    the constant expressions have the same value.
+
+    - Two logical actual template parameters are the same if they are
+      equivalent.
+
+    - Two integer actual template parameters are the same if they
+      evaluate to the same value.
+
+    - Two string actual template parameters  are the same if they
+      are equal and have the same length.
+
+E3. Two corresponding type-spec actual template parameters are the
+    same if they have the same type and have the same kind and
+    length-type parameters.  Note that assumed length-type parameters
+    are not permitted for type-spec actual template parameters.
+
+
+E4. Two corresponding procedure actual template parameters are the
+    same if they resolve to the same specific procedure within the
+    template.
+
+    Example:
+
+        INTERFACE A
+            MODULE PROCEDURE F1  ! operates on MY_T
+            MODULE PROCEDURE F2  ! operates on MY_U
+        END INTERFACE A
+
+        INTERFACE B
+            MODULE PROCEDURE F1  ! operates on MY_T
+            MODULE PROCEDURE F3  ! operates on MY_U
+        END INTERFACE B
+
+        TEMPLATE TMPL(T, F)
+            TYPE T; END TYPE
+            INTERFACE
+               SUBROUTINE f(x)
+                  TYPE(T), INTENT(INOUT) :: x
+               END SUBROUTINE f(x)
+            END INTERFACE
+        END TEMPLATE
+
+        INSTANTIATE TMPL(MY_T, A) ! Resolves to F1
+        INSTANTIATE TMPL(MY_T, A) ! Resolves to F1 ==> same
+
+        INSTANTIATE TMPL(MY_T, A) ! Resolves to F1
+        INSTANTIATE TMPL(MY_T, B) ! Resolves to F1 ==> same
+
+        INSTANTIATE TMPL(MY_U, A) ! Resolves to F2
+        INSTANTIATE TMPL(MY_U, B) ! Resolves to F3 ==> different
+        
+
+===END===
+
+

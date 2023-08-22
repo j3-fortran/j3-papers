@@ -1,0 +1,101 @@
+
+                                                  J3/06-338r1
+
+Date:    16 November 2006
+To:      J3
+From:    Bill Long
+Subject: Issues 5,6, STOP semantics
+Reference: J3/06-007r1, 06-236
+
+---------------------
+
+Discussion of issues 5 and 6 (page 194)
+
+Based on the straw vote at meeting 177 that recommended that executing
+STOP on one image not cause an immediate abort of other images, and
+the suggestion in the internal notes for issues 5 and 6 in 06-007r1,
+revised semantics for STOP are introduced as well as the concept of
+error termination and a new statement to force error termination.
+
+Semantics
+---------
+
+An image initiates termination if it initiates normal termination or
+if it initiates error termination. Only after all other images have
+initiated termination does termination complete on any image.  It is
+possible for some images to normally terminate while others error
+terminate. [Note: The implicit synchronization of all images at
+termination avoids the difficulties with the concept of executing a
+statement immediately after a SYNC ALL statement.]  Execution of
+cleanup tasks such as file closure and execution of the C exit()
+function occur after the implicit synchronization.
+
+Normal termination is initiated by execution of a STOP statement or an
+END PROGRAM statement.
+
+Error termination is initiated if 
+
+ 1) an ALL STOP statement is executed,
+
+ 2) an error condition occurs during execution of an ALLOCATE,
+    DEALLOCATE, SYNC ALL, SYNC TEAM, SYNC IMAGES, SYNC MEMORY, NOTIFY,
+    or QUERY statement without a STAT= specifier,
+
+ 3) an error occurs during execution of an OPEN, CLOSE, READ, WRITE,
+    BACKSPACE, ENDFILE, REWIND, FLUSH, WAIT, or INQUIRE statement
+    without an IOSTAT=, END=, or ERR= specifier,
+
+ 4) an error occurs during execution of a PRINT statement, 
+
+ 5) an error occurs during execution of the EXECUTE_COMMAND_LINE
+    intrinsic subroutine and the optional CMDSTAT argument is
+    not present, 
+
+ 6) an error occurs during execution of the FORM_TEAM intrinsic
+    subroutine and the optional STAT argument is not present,
+
+ 7) an error condition occurs by means outside Fortran.
+
+If an image initiates error termination, all other images that have
+not already initiated termination initiate error termination.  Within
+the performance limits of the processor's ability to send signals to
+other images, this propagation of error termination should be
+immediate.  The exact details are intentionally left processor
+dependent.
+
+Execution of an image control statement other than END PROGRAM that
+results in an attempt to synchronize with an image that has initiated
+termination is considered an error condition.  If such a statement is
+a SYNC ALL, SYNC TEAM, SYNC IMAGES, or blocking QUERY statement and
+the statement includes a STAT= specifier, the status variable is
+defined with the value -1, and the statement completes execution
+without synchronizing with any other images. Execution of an ALLOCATE,
+DEALLOCATE, OPEN, or CLOSE statement that results in an attempt to
+synchronize with an image that has initiated termination is considered
+an error condition. If such a statement includes a STAT= specifier the
+status variable is defined with the value -1 and the statement
+completes execution without performing the indicated operation.  In
+these cases where a status of -1 is returned, remote data references
+are allowed as if the preceding segment were still active.
+
+[Note: Instead of the particular value of -1 to represent failure
+caused by a stopped image, a named constant in ISO_FORTRAN_ENV might
+be specified.]
+
+[Note: The program might execute some form of data saving or
+checkpoint procedure, followed by execution of a STOP or ALL STOP
+statement.]
+
+Syntax
+------
+
+The syntax for the ALL STOP statement is
+
+R855a <allstop-stmt>     is ALL STOP [<stop-code>]
+
+The space between ALL and STOP is optional.
+
+
+Edits
+-----
+(deferred)

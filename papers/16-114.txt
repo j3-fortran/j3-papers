@@ -1,0 +1,187 @@
+                                                             J3/16-114
+To:         J3 Members
+From:       Bill Long
+Subject:    UTI 013, 014
+Date: 2016 January 21
+References: 16-007
+
+Discussion:
+----------
+
+UTI 13:
+
+Module m1
+  Real x
+End Module
+Module m2
+  Use m1
+  Private m1
+  Asynchronous x
+End Module
+
+According to 5.6.1, the "default accessibility" of X in M2 is
+PRIVATE. But according to the second sentence of the paragraph above,
+the accessibility of X in M2 is the default accessibility in M2, which
+is PUBLIC.
+
+Which is it?
+
+Answer: PUBLIC.
+
+
+UTI 14:
+
+Module m1
+  Real,Public :: x
+  Private
+End Module
+Module m2
+  Use m1
+  Private
+  Public x
+End Module
+Module m3
+Use m2
+  ! Hello X
+End Module
+
+X is accessed via module m2 (with default PRIVATE accessibility) and
+m1 (with default PRIVATE accessibility). Therefore by the third
+sentence in the paragraph above, the accessibility of X in m3 is
+PRIVATE. This is clearly wrong.
+
+
+Answer: It should be PUBLIC.
+
+
+General issue giving rise to UTI 013 and UTI 014:
+
+The syntax form private :: module_name is a new form of specifying a
+default accessibility.  Accessibility can be specified in one of three
+ways.
+
+Explicitly:
+
+ - Name is listed in a PUBLIC or PRIVATE statement, or
+
+ - PUBLIC or PRIVATE attribute is specified in the definition or
+   declaration of an object with that name.
+
+Default:
+
+  - PUBLIC or PRIVATE statement in the specification part of the
+    module, with no modules or names listed.
+
+Module default (new):
+
+  - PUBLIC or PRIVATE statement that lists a module name.
+
+Cases for a particular identifier:
+
+1) Object is NOT accessed by USE association (excludes module default
+   specification method):
+
+   a) If accessibility is explicitly specified for a name, then
+      accessibility via that name is the explicitly specified
+      accessibility. (Explicit specification overrides any default
+      that might apply for that name.)  Otherwise,
+
+   b) If accessibility is not explicitly specified, then accessibility
+      for that name is the default for the current module. (The new
+      form of specification applies only to names accessed by USE
+      association from another module.)
+
+2) Object is accessed by USE association, and not declared locally:
+
+   a) Same as 1(a).  Otherwise,
+
+   b) If module default accessibility is specified for the name of the
+      object for each module that provides access to the object, and
+      all of those defaults are PRIVATE, then the accessibility of the
+      name is PRIVATE.
+
+   c) If module default accessibility is specified as PUBLIC for the
+      name of an object for at least one module that provides access to
+      the object, then the accessibility of the object by that name is
+      PUBLIC.
+
+   d) If module default accessibility is not specified for any module
+      that provides access, then the accessibility is the default
+      accessibility for the current module. (This was the old rule -
+      before module defaults existed.)
+
+3) Object is accessed by USE association and declared locally:
+
+   a) If the object is declared locally, but without explicitly
+      specified accessibility, its accessibility is the default
+      accessibility of the module.
+
+
+Relation to existing text:
+
+5.5.2p3 (sentences separated):
+
+An identifier that is specified in a module or is accessible in a
+module by use association has either the PUBLIC attribute or PRIVATE
+attribute. [Just says no identifier gets left out.]
+
+[Possibly add: An identifier whose accessibility is explicitly
+specified has that accessibility.] [1(a) and 2(a)]
+
+An identifier whose accessibility is not explicitly
+specified and that is declared in the module has the default
+accessibility for that module (5.6.1). [3(a)]
+
+An identifier that is not declared in the module but which is
+accessible by use association is PRIVATE if and only if the default
+accessibility for each module via which it is accessed is
+PRIVATE,[2(b)] and PUBLIC otherwise.[Mix of 2(c), 2(d), but different
+result for 2(d)]
+
+Repair:
+
+..., is PUBLIC if the default accessibility for any module via which
+it is accessed in PUBLIC [2(c)], and the default accessibility of the
+module otherwise [2(d)].
+
+
+5.6.1p1:
+
+An access-stmt with an access-id-list specifies the accessibility
+attribute, PUBLIC or PRIVATE, of each access-id in the list that is
+not a module name. [1(a) and 2(a); explicit specification method].
+
+Appearance of a module name in an access-stmt specifies the default
+accessibility of the identifiers of entities accessed from that
+module. [Module default method]
+
+An access-stmt without an access-id list specifies the default
+accessibility of the identifiers of entities declared in the module,
+and of entities accessed from a module whose name does not appear in
+any access-stmt in the module. [Default method]
+
+If an identifier is accessed from another module and also declared
+locally, it has the default accessibility of a locally declared
+identifier. [3(a) confirmation]
+
+
+Edits to 16-007:
+-----
+
+[95:12] In 5.5.2 Accessibility attribute, after the first sentence of
+para 3, insert a new sentence:
+
+"An identifier whose accessibility is explicitly specified has that
+accessibility."
+
+
+[92:15] In 5.5.2 Accessibility attribute, at the end of para 3, change
+
+"and PUBLIC otherwise."
+
+to
+
+"is PUBLIC if the default accessibility for any module via which
+it is accessed in PUBLIC, and the default accessibility of the
+module otherwise."
+

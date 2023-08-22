@@ -1,0 +1,874 @@
+To:        J3                                      13-231r5
+From:      Bill Long and John Reid
+Subject:   Coarray teams
+Date: 2013 February 15
+Reference: WG5/N1883, WG5/N1930, 12-201
+
+1. Discussion
+-------------
+
+This paper proposes syntax and semantics for coarray teams.
+
+2. Requirements (copied from N1930)
+-----------------------------------
+
+Teams provide a capability to restrict the image set of remote memory
+references, coarray allocations, and synchronizations to a subset of
+all the images of the program. This simplifies writing programs that
+involve segregated activities (parts of a climate model, for example)
+that might be more easily be written independently or may have already
+been written as independent programs. Teams also provide a mechanism
+for subdividing the computation for the sake of better performance
+(such as within local SMP domains). Finally, teams provide the
+capability to execute procedures (such as library procedures) that use
+coarrays internally on a subset of the images of a program.
+
+T1: When a block of code is executed on images executing as a team, it
+    should execute on those images as if the program contained no
+    other images. This has the following implications:
+
+    1. Image indices shall be relative to the team, starting at 1 and
+       ending with the number of images in the team.  
+
+    2. Collective activities that would involve all images, such as
+       SYNC ALL, allocation and deallocation of coarrays, collective
+       subroutine execution, and inquiry intrinsics such as THIS_IMAGE
+       and NUM_IMAGES shall be relative to the team.
+
+T2: While an image executes a statement it shall be a member of one
+    and only one team. Access to variables on images outside the
+    current team is not permitted.
+
+T3: It should be possible to split a team into mutually exclusive
+    subsets that are themselves teams. This should be dynamic in order
+    to allow different groupings of images during different stages of
+    execution. It is desirable to have a compact mechanism for an
+    image to specify which team it wishes to belong.
+
+T4: There shall be a construct mechanism for changing the current
+    team, involving the synchronization of all members of the teams
+    at the beginning and end of the construct. The construct shall
+    support separate execution blocks based on team membership. The
+    construct shall make apparent (both to the system and the
+    programmer) where team execution begins and ends.
+
+T5: There shall be a type for variables identifying a team collection
+    (probably an opaque derived type defined in the intrinsic module
+    ISO_FORTRAN_ENV).
+
+T6: There needs to be a mechanism to find the image index relative to
+    the set of an ancestor team. This might best be done by adding an
+    optional argument to IMAGE_INDEX that specifies the ancestor team.
+
+T7: An allocatable coarray that is allocated within a team construct
+    shall be deallocated before execution of the team construct
+    terminates.  An coarray that was allocated in a parent team shall
+    not be deallocated within an child team construct.
+
+T8: The restriction that standard input is attached only to image 1 is
+    unchanged, and the designated image is image 1 of the original set
+    of images present at program startup.
+    
+
+3. Modifications to the requirements
+------------------------------------
+
+We have kept to the requirements except as follows 
+
+T4. We do not provide explicit syntax for separate execution blocks
+based on team membership. This can easily be programmed with a SELECT
+CASE construct specifying the subteam identifier, as is illustrated
+in the example for the function SUBTEAM_ID (7.3.12).
+
+T6. An extension of THIS_IMAGE is the natural way to achieve this aim.
+
+T9. We have added facilities for the support of failed images. This 
+addition needs consideration by WG5. 
+
+T10. We have added a SYNC TEAM statement for efficient synchronization
+of members of a team.  This addition needs consideration by WG5.
+
+
+4. Syntax and Semantics
+--------------------
+
+The derived type TEAM_TYPE is defined in the ISO_FORTRAN_ENV intrinsic
+module. Its components are private. It is an extensible type with no
+type parameters.
+
+A scalar variable of type TEAM_TYPE is a team variable. It shall not
+be a coarray or a subobject of a coarray.
+
+Every image of the program begins execution as a member of the initial
+team. At any point during execution of the program an image shall be a
+member of one and only one team. That team is the current team. The
+result of the NUM_IMAGES() intrinsic function is the number of images
+in the current team. The image index values for images of the current
+team are in the set 1..NUM_IMAGES(). No mechanism is provided to
+access variables on images outside the current team.
+
+A FORM SUBTEAM statement is provided to form a subteam.
+
+The current team to which the execution image belongs is changed by
+execution of a CHANGE TEAM construct.
+
+The intrinsic function SUBTEAM_ID provides the value of the subteam
+identifier in the execution of the FORM SUBTEAM statement that formed
+the current team or an ancestor of the current team.
+
+Team distance is a measure of the distance between two teams, one of
+which is an ancestor of the other. The team distance between a team
+and itself is zero. Except for the initial team, every team has a
+unique parent team. The team distance between a team and its parent is
+one. The team distance between a team T and the parent of team A which
+is an ancestor of T is one more than the team distance between teams T
+and A.
+
+The intrinsic function TEAM_DEPTH provides the team distance between
+the current team and the initial team.
+
+The SYNC TEAM statement provides synchronization of the members of a
+team. The statement shall be executed only on images that are members of
+the specified team, and all such images shall execute the statement.
+
+A new default integer named constant, STAT_FAILED_IMAGE, is defined in
+the ISO_FORTRAN_ENV intrinsic module.  It shall have a nonzero value
+that is different from the value of STAT_STOPPED_IMAGE, STAT_LOCKED,
+STAT_LOCKED_OTHER_IMAGE, or STAT_UNLOCKED. The value STAT_FAILED_IMAGE
+becomes the value of the variable in a STAT= specifier in an image
+control statement, or STAT argument of a collective subroutine call,
+if execution of the statement involves synchronization with, or
+accessing a variable on an image of the current team that has
+failed. A failed image is one for which references or definitions of
+data fail when that data should be accessible, or the image fails to
+respond as part of a collective activity.  A failed image remains
+failed for the remainder of the program execution.  The conditions
+that cause an image to fail are processor dependent, but usually are
+associated with a hardware failure of the processor, memory system, or
+interconnection network. If more than one nonzero status value is
+valid for the execution of a statement, the status variable is defined
+with the value STAT_FAILED_IMAGE if there is a failed image. The
+variable is defined with the value STAT_STOPPED_IMAGE only if no other
+status value is valid.
+
+The intrinsic function FAILED_IMAGES() provides the values of the
+image indices for the images in the current team that have failed.
+
+The intrinsic function THIS_IMAGE() is extended to have an optional
+argument DISTANCE. The DISTANCE argument shall be a scalar integer
+with the value of the team distance between the current team and an
+ancestor of the current team. The result value is the image index of
+the executing image in that ancestor team. The intrinsic function
+THIS_IMAGE(COARRAY [, DIM]) is not extended.
+
+The intrinsic function NUM_IMAGES() is extended to have optional
+arguments DISTANCE and FAILED. The DISTANCE argument shall be a scalar
+integer with the value of the team distance between the current team
+and an ancestor team of the current team. The result value is the
+number of images in that team. If FAILED is absent, the total number
+of images is returned. If FAILED is present with the value true, the
+number of failed images is returned. If FAILED is present with the
+value false, the total number of images that have not failed is
+returned.
+
+Access to the standard input unit is available only on the image 
+that has image index 1 in the initial team. 
+
+
+5. Edits to J3/12-201:
+----------------------
+
+------------------------------------
+[5:7+] Add
+
+3.2
+<<team variable>>
+scalar variable of type TEAM_TYPE (5.2) from the intrinsic module 
+ISO_FORTRAN_ENV.
+
+3.3
+<<team>>
+set of images that access each other's data (5.1).
+
+3.3.1
+<<current team>>
+the team that includes the executing image (5.1). 
+
+3.3.2
+<<parent team>>
+team from which the current team was formed by executing a
+FORM SUBTEAM statement (5.4).
+
+3.3.3
+<<initial team>>
+the current team when the program began execution (5.1). 
+
+3.3.4 
+<<team distance>> 
+the distance between a team and one of its ancestors (5.1).
+
+3.3.5
+<<subteam>>
+a subset of the set of images in a team (5.1). 
+
+3.3.6
+<<subteam identifier>>
+integer value identifying a subteam (5.1).
+
+------------------------------------
+[9] Replace this page by the following
+
+5. Teams of images
+
+5.1 Introduction
+
+A team of images is a set of images that access each other's data and
+synchronize with each other. The current team is the team that
+includes the executing image. All image indices are relative to the
+current team and data on images outside this team are
+inaccessible. Except by executing a SYNC TEAM statement,
+synchronization is possible only with other images of the team.
+Initially, the current team consists of all the images and this is
+known as the initial team. A team is divided into subteams by
+executing a FORM SUBTEAM statement. Each subteam is identified by an
+integer value known as its subteam identifier.  Information about the
+team to which the current image belongs can be determined by the
+processor from values stored in its team variable.
+
+Team distance is a measure of the distance between two teams, one of
+which is an ancestor of the other. The team distance between a team
+and itself is zero. Except for the initial team, every team has a
+unique parent team. The team distance between a team and its parent is
+one. The team distance between a team T and the parent of team A,
+which is an ancestor of T, is one more than the team distance between
+teams T and A.
+
+Within the body of a CHANGE TEAM construct the current team is the
+subteam specified by the CHANGE TEAM statement.
+
+
+5.2 TEAM_TYPE
+
+The derived type TEAM_TYPE is an extensible type with no type
+parameters. Its components are private. A scalar of this type
+describes a team that includes the executing image. TEAM_TYPE is
+defined in the intrinsic module ISO_FORTRAN_ENV.
+
+A scalar variable of type TEAM_TYPE is a team variable. A team
+variable shall not be a coarray or a subcomponent of a coarray.
+
+5.3 CHANGE TEAM construct
+
+The CHANGE TEAM construct changes the current team to which the 
+executing image belongs.
+
+R501 <change-team-construct> <<is>> <change-team-stmt>
+                                 <block>
+                              <end-change-team-stmt>
+R502 <change-team-stmt>      <<is>> [<team-construct-name>:] []
+                              [] CHANGE TEAM (<team-variable> []
+                              [] [,<sync-stat-list>])
+R503 <end-change-team-stmt>  <<is>> END TEAM [<end-team-construct-name>] 
+
+R504 <team-variable>       <<is>> <scalar-variable>
+
+C501 (R501) A branch within a CHANGE TEAM construct shall not have a branch
+            target that is outside the construct.
+
+C502 (R501) If the <change-team-stmt> of a <change-team-construct>
+            specifies a <team-construct-name>, the corresponding
+            <end-change-team-stmt> shall specify the same
+            <team-construct-name>. If the <change-team-stmt> of a
+            <change-team-construct> does not specify a
+            <team-construct-name>, the corresponding
+            <end-change-team-stmt> shall not specify a
+            <team-construct-name>.
+
+C505 (R504) A <team-variable> shall be a scalar of the type
+            TEAM_TYPE defined in the ISO_FORTRAN_ENV intrinsic module.
+
+The value of the <team-variable> shall have been formed by executing
+a FORM SUBTEAM statement.  The team executing the <change-team-stmt>
+shall be the team that formed the team variable value. The current
+team for the statements of the change-team block is the subteam that
+was specified for the executing image by the execution of a FORM
+SUBTEAM statement.
+
+An allocatable coarray that was allocated when execution of a
+<change-team> construct began shall not be deallocated during the
+execution of the construct. An allocatable coarray that is allocated
+when execution of a <change-team> construct completes is deallocated
+if it was not allocated when execution of the construct began.
+
+Both the CHANGE TEAM and END TEAM statements are image control
+statements. When a CHANGE TEAM statement is executed, there is an
+implicit synchronization of all images of the current team. On each
+image, execution of the segment following the statement is delayed
+until all the other images have executed the same statement the same
+number of times. When execution of a change-team block finishes, there
+is an implicit synchronization of all images of the parent team. On
+each image, execution of the segment following the END TEAM statement
+is delayed until all the other images have executed the same block the
+same number of times.
+
+Note:
+  The deallocation of an allocatable coarray that was not allocated at
+  the beginning of a CHANGE TEAM construct, but was allocated at the
+  end of the construct, occurs even for allocatable coarrays with the
+  SAVE attribute.
+
+
+5.4  FORM SUBTEAM statement
+
+R505 <form-subteam-stmt>  <<is>>  FORM SUBTEAM ( <subteam-id>, []
+                              [] <team-variable> [,<sync-stat-list>])
+
+R506 <subteam-id>         <<is>>  <scalar-integer-expr>
+
+The FORM SUBTEAM statement defines <team-variable> for a subteam. The
+value of <subteam_id> specifies the subteam to which the executing image
+belongs. The value of <subteam-id> shall be greater than zero and is the
+same for all images that are members of the same subteam.
+
+The team variable shall not have the value of a team variable for an
+ancestor of the current team.
+
+Note:
+   Executing the statement 
+ 
+      FORM SUBTEAM ( 2-MOD(ME,2), ODD_EVEN )  
+
+   with ME an integer with value THIS_IMAGE() and ODD_EVEN of type
+   TEAM_TYPE, divides the current team into two subteams according to
+   whether the image index is even or odd.
+
+
+5.5 SYNC TEAM statement
+
+R507 <sync-team-stmt> <<is>> SYNC TEAM (<team-variable>, []
+                                       [] [,<sync-stat-list>])
+
+Execution of a SYNC TEAM statement performs a synchronization of the
+images of the team specified by the <team-variable>. Execution on an
+image, M, of the segment following the SYNC TEAM statement is delayed
+until each other image of the specified team has executed a SYNC TEAM
+statement specifying the same team as many times as has image M. The
+segments that executed before the SYNC TEAM statement on an image
+precede the segments that execute after the SYNC TEAM statement on
+another image.
+
+NOTE:
+
+  A SYNC TEAM statement performs a synchronization of images of a
+  particular team whereas a SYNC ALL statement performs a
+  synchronization of all images of the current team.
+
+
+5.6 STAT_FAILED_IMAGE
+
+The value of the default integer scalar constant STAT_FAILED_IMAGE is
+different from the value of STAT_STOPPED_IMAGE, STAT_LOCKED,
+STAT_LOCKED_OTHER_IMAGE, or STAT_UNLOCKED. Its value is assigned to
+the variable specified in a STAT=specifier in an execution of an image
+control statement, or the STAT argument in an invocation of a
+collective procedure, if execution of the statement involves
+synchronization with an image of the current team that has failed or
+accessing a variable on an image of the current team that has failed.
+A failed image is one for which references or definitions of variables
+fail when that variable should be accessible, or the image fails to
+respond as part of a collective activity. A failed image remains
+failed for the remainder of the program execution.  If more than one
+nonzero status value is valid for the execution of a statement, the
+status variable is defined with the value STAT_FAILED_IMAGE if there
+is a failed image. The variable is defined with the value
+STAT_STOPPED_IMAGE only if no other status value is valid. The
+conditions that cause an image to fail are processor dependent.
+
+
+   NOTE 5.1
+   A failed image is usually associated with a hardware failure 
+   of the processor, memory system, or interconnection network.
+   
+
+------------------------------------
+[13:1] Change "New intrinsic" to "Intrinsic".
+
+------------------------------------ 
+[13:3-5] Change "subroutines" to "procedures" twice and add these
+names to the list of intrinsics: SUBTEAM_ID, FAILED_IMAGES,
+TEAM_DEPTH.
+
+------------------------------------
+[13:7+] Add a new paragraph to 7.1 General:
+
+"The intrinsic procedures THIS_IMAGE and NUM_IMAGES described in
+clause 13 of ISO/IEC 1539-1:2010 are extended as described in 7.4."
+
+------------------------------------
+[13:16+] Add
+
+
+"All the collective subroutines have the optional arguments STAT and
+ERRMSG.
+      
+If the STAT argument is present, successful invocation of a collective
+subroutine causes the argument to become defined with the value zero.
+
+If the STAT argument is present in an invocation of a collective
+subroutine and its execution is not successful, the argument becomes
+defined with a nonzero value and the effect is otherwise the same as
+that of executing the SYNC MEMORY statement. If execution involves
+synchronization with an image that has failed, the argument becomes
+defined with the value of STAT_FAILED_IMAGE in the intrinsic module
+ISO FORTRAN_ENV (13.8.2); otherwise, if no image of the current team
+has stopped, the variable becomes defined with a processor-dependent
+positive value that is different from the value of STAT_STOPPED_IMAGE
+or STAT_FAILED_IMAGE in the intrinsic module ISO FORTRAN_ENV
+(13.8.2). If an image had stopped, but no other error condition
+occurred, the variable becomes defined with the value of the constant
+STAT_STOPPED_IMAGE.
+
+If an ERRMSG argument is present in an invocation of a collective
+subroutine and an error condition occurs during its execution, 
+the processor shall assign an explanatory message to the argument. 
+If no such condition occurs, the processor shall not change the value of 
+the argument."
+
+------------------------------------ 
+
+[15-17] For each of the collective subroutines, add at the end of the
+argument list "[,STAT ,ERRMSG]" and add to the argument descriptions
+
+"STAT(optional)  shall be a scalar integer. It is an INTENT(OUT) argument.
+     
+     
+ERRMSG(optional) shall be a scalar of type default character. It is an 
+     INTENT(INOUT) argument." 
+     
+and add this paragraph before the example para:
+
+"The effect of the presence of the optional arguments STAT and ERRMSG
+is described in 7.2."          
+     
+------------------------------------
+[13:17] Change "subroutines" to "procedures".  
+
+------------------------------------
+[17:44+] Add
+
+7.3.11 FAILED_IMAGES ([KIND])
+
+Description. Indices of failed images.
+
+Class. Transformational function.
+
+Argument.
+
+KIND (optional) shall be a scalar integer constant expression. Its
+value shall be the value of a kind type parameter for the type
+INTEGER. The range for integers of this kind shall be at least as
+large as for default integer.
+
+Result Characteristics. Integer. If KIND is present, the kind type
+parameter is that specified by the value of KIND; otherwise, the kind
+type parameter is that of default integer type. The result is an array
+of rank one whose size is equal to the number of failed images.
+
+Result. The elements of the result are the values of the image indices
+of the failed images in the current team, in numerically increasing
+order.
+
+Examples. If image 3 is the only failed image in the current team,
+FAILED_IMAGES() has the value [3]. If there are no failed images in
+the current team, FAILED_IMAGES() is a zero-sized array.
+
+
+7.3.12 SUBTEAM_ID ([DISTANCE])
+
+Description. Subteam identifier.
+
+Class. Transformational function.
+
+Argument. DISTANCE (optional) shall be a scalar nonnegative
+integer.
+
+Result Characteristics. Default integer scalar.
+
+Result Value. If DISTANCE is not present, the result value is the
+subteam identifier of the invoking image in the current team.  If
+DISTANCE is present with a value less than or equal to the team
+distance between the current team and the initial team, the result has
+the value of the subteam identifier that the invoking image had when
+it was a member of the team with a team distance of DISTANCE from the
+current team.  Otherwise, the result has the value 1.
+
+Example. The following code illustrates the use of SUBTEAM_ID to
+control which code is executed.
+
+TYPE(TEAM_TYPE) :: ODD_EVEN
+    :
+ME = THIS_IMAGE()
+FORM SUBTEAM ( 2-MOD(ME,2), ODD_EVEN )
+CHANGE TEAM (ODD_EVEN)
+  SELECT CASE (SUBTEAM_ID())
+  CASE (1)
+     :  ! Code for odd images in parent team
+  CASE (2)
+     :  ! Code for even images in parent team
+  END SELECT
+END TEAM
+
+
+7.3.13 TEAM_DEPTH()
+
+Description. Team depth for the current team.
+
+Class. Transformational function.
+
+Arguments. None.
+
+Results characteristics. Scalar default integer.
+
+Result value. The result of TEAM_DEPTH is an integer with a value
+equal to the team distance between the current team and the initial
+team.
+
+Example.
+
+PROGRAM TD
+   USE ISO_FORTRAN_ENV
+   INTEGER         :: I_TEAM_DEPTH
+   TYPE(TEAM_TYPE) :: SUBTEAM
+
+   FORM SUBTEAMS(1, SUBTEAM)
+   CHANGE TEAM(SUBTEAM)
+     I_TEAM_DEPTH = TEAM_DEPTH()
+   END TEAM
+END
+
+On completion of the CHANGE TEAM construct, I_TEAM_DEPTH has the value
+1.
+
+
+------------------------------------
+[17:44++] At the end of clause 7 add a new subclause:
+
+7.4 Modified intrinsic procedures
+
+7.4.1 NUM_IMAGES
+
+The description of the intrinsic function NUM_IMAGES in ISO/IEC
+1539-1:2010 is changed by adding two optional arguments DISTANCE
+and FAILED and a modified result if either is present.
+
+The DISTANCE argument shall be a nonnegative scalar integer. If
+DISTANCE is not present the result value is the number of images
+in the current team.  
+
+If DISTANCE is present with a value less than or equal to the team
+distance between the current team and the initial team, the team
+specified is the team of which the invoking image was a member with a
+team distance of DISTANCE from the current team; otherwise, the team
+specified is the initial team.
+
+The FAILED argument shall be a scalar LOGICAL argument. Its value
+determines whether the result is the number of failed images or the
+number of nonfailed images. If DISTANCE is present, the result
+applies to the team it specifies, otherwise the result applies to the
+current team.  If FAILED is present with the value true, the result is
+the number of failed images in the applicable team, otherwise the
+result is the total number of nonfailed images in the applicable team.
+
+
+7.4.2 THIS_IMAGE
+
+The description of the intrinsic function THIS_IMAGE( ) in ISO/IEC
+1539-1:2010 is changed by adding an optional argument DISTANCE
+and a modified result if DISTANCE is present.
+
+The DISTANCE argument shall be a scalar integer. It shall be
+nonnegative. If DISTANCE is not present, the result value is the image
+index of the invoking image in the current team.  If DISTANCE is
+present with a value less than or equal to the team distance between
+the current team and the initial team, the result has the value of the
+image index in the team of which the invoking image was last a member
+with a team distance of DISTANCE from the current team; otherwise, the
+result has the value of the image index that the invoking image had in
+the initial team.
+
+
+------------------------------------
+[19:9] Replace "Include clauses as needed" by 
+
+{In paragraph 1 of the Introduction}
+
+After "informally known as Fortran 2008, plus the facilities defined 
+in ISO/IEC TS 29113:2012" add "and ISO/IEC TS 18508:2014".
+
+{After paragraph 3 of the Introduction and after the paragraph added
+by ISO/IEC TS 29113:2012, insert new paragraph}
+
+ISO/IEC TS 18508 provides additional facilities for parallel programming:
+
+o teams provide a capability to restrict the image set of remote memory
+  references, coarray allocations, and synchronizations to a subset of
+  all the images of the program;
+
+o collective subroutines perform computations based on values on all 
+  the images, offering the possibility of efficient execution of 
+  reduction operations;
+  
+o atomic memory operations provide powerful low-level primitives for
+  synchronization of activities among images; 
+  
+o tagged events allow one-sided ordering of execution segments; 
+
+o features for the support of continued execution after one or more
+  images have failed; and
+
+o features to detect which images have failed.
+
+------------------------------------
+[19:9+] Add three new subclauses
+
+"8.2a Edits to clause 1
+
+{In 1.3 Terms and definitions insert new terms}
+
+[Text for the terms in clause 3 of the TS go here, with new subclause
+numbers and corrected references.]
+
+ 8.2b Edits to clause 2
+
+{At the end of  2.3.4 Program execution insert two new paragraphs}
+
+[Text from 5.1 of this TS here, edited for style as needed]
+
+ 8.2c Edits to clause 8
+
+{In 8.1.1 paragraph 1, in the list of constructs}
+
+Following the BLOCK construct entry, insert
+
+    " CHANGE TEAM construct;"
+
+{Following 8.1.4 BLOCK construct}
+
+[Insert 5.3 from this TS with rule and constraint numbers modified and
+references modified.]
+
+{In 8.5.1 Image control statements, paragraph 2} 
+
+Add extra bullet points:
+
+    " o CHANGE TEAM and END TEAM
+
+      o FORM SUBTEAM
+
+      o SYNC TEAM"
+"
+
+{In 8.5.1 Image control statements, paragraph 3}
+
+Before "LOCK" insert "FORM SUBTEAM, "
+
+
+{Following 8.5.2 Segments}
+
+[Insert 5.4 from this TS with rule and constraint numbers and
+references modified.]
+
+{Following 8.5.5 SYNC MEMORY statement}
+
+[Insert 5.5 from this TS with rule and constraint numbers modified and
+references modified.]
+
+
+{In 8.5.7 STAT= and ERRMSG= specifiers in image control statements} 
+
+Replace paragraphs 1-2 by
+
+"The appearance of a STAT= or ERRMSG= specifier in a CHANGE TEAM statement
+is treated as an appearance both there and in the corresponding END TEAM 
+statement. 
+
+If the STAT= specifier appears, successful execution of a CHANGE TEAM,
+END TEAM, FORM SUBTEAM, LOCK, SYNC ALL, SYNC IMAGES, SYNC MEMORY, or 
+UNLOCK statement causes the specified variable to become defined with 
+the value zero.
+
+If the STAT= specifier appears in a CHANGE TEAM,
+END TEAM, FORM SUBTEAM, LOCK, SYNC ALL, SYNC IMAGES, SYNC MEMORY, or 
+UNLOCK statement and its execution is not successful,
+the specified variable becomes defined with a nonzero value and the 
+effect is otherwise the same as that of executing the SYNC MEMORY statement. 
+If there is a failed image in the current team, the variable becomes 
+defined with the constant STAT_FAILED_IMAGE (13.8.2.21b) in the intrinsic 
+module ISO FORTRAN_ENV (13.8.2); otherwise, if no image of the current
+team has stopped, the variable becomes defined with a processor-dependent 
+positive value that is different from the value of STAT_STOPPED_IMAGE or 
+STAT_FAILED_IMAGE in the intrinsic module ISO FORTRAN_ENV (13.8.2); 
+otherwise, the variable becomes defined with the the constant 
+STAT_STOPPED_IMAGE."
+
+Replace paragraphs 4-5 by
+
+"If the STAT= specifier does not appear in a CHANGE TEAM, END TEAM, 
+FORM SUBTEAM, LOCK, SYNC ALL, SYNC IMAGES, SYNC MEMORY, or 
+UNLOCK statement and its execution is not successful, error 
+termination is initiated.
+
+If an ERRMSG= specifier appears in a CHANGE TEAM, END TEAM, FORM SUBTEAM, 
+LOCK, SYNC ALL, SYNC IMAGES, SYNC MEMORY, or UNLOCK statement and its 
+execution is not successful, the processor shall assign an explanatory 
+message to the specified variable. If the execution is successful, 
+the processor shall not change the value of the variable."
+
+
+
+------------------------------------
+[19:29+] Add to the existing edit for Table 13.1:
+
+"FAILED_IMAGES ([KIND])              T  Indices of failed images.
+
+ SUBTEAM_ID ([DISTANCE])             T  Subteam identifier.
+
+ TEAM_DEPTH ( )                      T  Team depth for this image."
+
+
+------------------------------------
+[19:29+] Add an edit for Table 13.1:
+
+{In 13.5 Standard generic intrinsic procedures, Table 13.1}
+
+In the entry for NUM_IMAGES(), change "()" to "([DISTANCE ,FAILED])"
+
+In the entry for THIS_IMAGE(), change "()" to "([DISTANCE])"
+
+
+------------------------------------
+[20:1] In the edit instructions change "7.3.10" to "7.3.13".
+
+------------------------------------
+[20:2+] Add new edits to clause 13
+
+{In 13.7.126 NUM_IMAGES ( )}
+
+In the title, change "( )" to "([DISTANCE ,FAILED])"
+
+Change paragraph 3 Argument to
+
+   "Arguments.
+
+   DISTANCE (optional) shall be a nonnegative scalar integer. It
+   is an INTENT(IN) argument.
+ 
+   FAILED (optional) shall be a scalar LOGICAL argument. Its value
+   determines whether the result is the number of failed images or the
+   number of nonfailed images. It is an INTENT(IN) argument."
+
+Change paragraph 5 Result Value to
+
+   "Result Value.  
+
+   If DISTANCE is not present the result value is the number of
+   images in the current team.
+
+   If DISTANCE is present with a value less than or equal to the team
+   distance between the current team and the initial team, the team
+   specified is the team of which invoking image was a member with a
+   team distance of DISTANCE from the current team; otherwise, the
+   team specified is the initial team.
+
+   If DISTANCE is present, the result applies to the team it
+   specifies, otherwise the result applies to the current team.  If
+   FAILED is present with the value true, the result is the number of
+   failed images in the applicable team, otherwise the result is the
+   total number of nonfailed images in the applicable team.
+
+
+{In 13.7.165 THIS_IMAGE ( ) or THIS_IMAGE (COARRAY [, DIM])}
+
+In the title, change "THIS_IMAGE ( )" to "THIS_IMAGE ([DISTANCE])"
+
+In paragraph 3 Arguments, add new final item
+
+   "DISTANCE (optional) shall be a scalar integer. It shall
+         be nonnegative. It shall not be a coarray."
+
+
+In paragraph 5 Result Value, modify the first case to be
+
+  If DISTANCE is not present the result value is the image index of
+  the invoking image in the current team.  If DISTANCE is present with
+  a value less than or equal to the team distance between the current
+  team and the initial team, the result has the value of the image
+  index in the team of which the invoking image was member with a team
+  distance of DISTANCE from the current team; otherwise, the result
+  has the value of the image index that the invoking image had in the
+  initial team.
+
+
+{In 13.8.2 The ISO_FORTRAN_ENV intrinsic module} 
+
+Move the paragraph and Note of subclause 5.6 of this Technical
+Specification to become subclause 13.8.2.21b of F2008.
+
+Move the two paragraphs of subclause 5.2 of this Technical
+Specification to become subclause 13.8.2.26 of F2008.
+
+
+------------------------------------
+[20:5+] In 8.4 Edits to Annex A, add a new processor dependency:
+
+  "the conditions that cause an image to fail;"
+
+------------------------------------
+[21:3+] In Annex A, add a new subclause
+
+"A.1 Clause 5 notes"
+
+and renumber A.1 to A.2 and insert as the new A.1:
+
+"Example: Compute fluxes over land, sea and ice in different
+         teams based on surface properties.
+         Assumption: Each image deals with areas containing
+                     exactly one of the three surface types.
+
+SUBROUTINE COMPUTE_FLUXES(FLUX_MOM, FLUX_SENS, FLUX_LAT)
+USE,INTRINSIC :: ISO_FORTRAN_ENV
+REAL, INTENT(OUT) :: FLUX_MOM(:,:), FLUX_SENS(:,:), FLUX_LAT(:,:)
+INTEGER, PARAMETER :: LAND=1, SEA=2, ICE=3
+CHARACTER(LEN=10)  :: SURFACE_TYPE
+INTEGER            :: MY_SURFACE_TYPE, N_IMAGE
+TYPE(TEAM_TYPE)    :: SUBTEAM_SURFACE_TYPE
+
+   CALL GET_SURFACE_TYPE(THIS_IMAGE(), SURFACE_TYPE) ! Surface type
+   SELECT CASE (SURFACE_TYPE)                   ! of the executing image
+   CASE ('LAND')
+      MY_SURFACE_TYPE = LAND
+   CASE ('SEA')
+      MY_SURFACE_TYPE = SEA
+   CASE ('ICE')
+      MY_SURFACE_TYPE = ICE
+   CASE DEFAULT
+      ERROR STOP
+   END SELECT
+   FORM SUBTEAM(MY_SURFACE_TYPE, SUBTEAM_SURFACE_TYPE)
+
+   CHANGE TEAM(SUBTEAM_SURFACE_TYPE)
+      SELECT CASE (SUBTEAM_ID( ))
+      CASE (LAND    )   ! Compute fluxes over land surface
+         CALL COMPUTE_FLUXES_LAND(FLUX_MOM, FLUX_SENS, FLUX_LAT)
+      CASE (SEA)    ! Compute fluxes over sea surface
+         CALL COMPUTE_FLUXES_SEA(FLUX_MOM, FLUX_SENS, FLUX_LAT)
+      CASE (ICE)    ! Compute fluxes over ice surface
+         CALL COMPUTE_FLUXES_ICE(FLUX_MOM, FLUX_SENS, FLUX_LAT)
+      CASE DEFAULT
+         ERROR STOP
+      END SELECT
+   END TEAM
+END SUBROUTINE COMPUTE_FLUXES
+"
+
+

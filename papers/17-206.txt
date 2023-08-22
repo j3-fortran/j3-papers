@@ -1,0 +1,126 @@
+To:      J3                                           J3/17-206
+From:    Reinhold Bader, Anton Shterenlikht
+Subject: upper cobounds, UCOBOUND and CHANGE TEAM
+Date: 2017 October 01
+References: N2137, 17-195
+
+Introduction:
+~~~~~~~~~~~~~
+This paper addresses two issues concerning upper cobounds.
+
+Issue 1:
+
+The definition of upper cobounds in the standard appears to be
+distributed across multiple places.
+
+The base definition is in 8.5.6 CODIMENSION attribute. There,
+the last upper cobound is always excluded. This definition is
+sufficient to establish the mapping between coindices and image
+index in the current team (or, more generally with the rules
+from 9.6, in any specified team).
+
+In 16.9.197 UCOBOUND [439:10-11], this is extended by also
+defining the final upper cobound, a run time property, since
+obtaining it requires knowledge of the number of executing images.
+This makes sense because UCOBOUND needs to be able to return
+an array of size corank its argument, but is a bit confusing or
+even incorrect when considering references to cobounds in other
+places in the standard. It appears that everywhere except
+in the definition of UCOBOUND, the first definition is
+targeted. This also has an impact on the NOTE suggested in
+17-195, because its contention that
+
+"A coarray that is established when a CHANGE TEAM statement
+is executed will retain its corank and cobounds inside the
+block construct."
+
+would be wrong if the final upper cobound (which will in general
+change its value going into a CHANGE TEAM block) is included.
+
+Note that 9.6 para 4 constrains the program to use valid image
+indices, implicitly constraining also the coindex in the
+final codimension.
+
+Edits are suggested to make a clearer distinction between the
+two cases.
+
+
+Issue 2:
+
+The behaviour of UCOBOUND inside a CHANGE TEAM construct, when
+applied to a coarray established in an ancestor team, is not
+in line with that of other intrinsics like NUM_IMAGES(), which
+by default refer to the current team. For example, in
+
+integer :: j[*], id
+type(team_type) :: split
+
+id = ...
+form team(id, split) ! images 1 and 2 belong to team 1,
+                     ! images 3 and 4 belong to team 2
+
+change team(split)
+  write(*, *) ucobound(j)
+  if ( this_image() .eq. num_images() ) then
+    if ( any( this_image( j ) .ne. ucobound( j ) ) ) &
+         error stop "Should never get here!"
+  end if
+
+end team
+
+executed with 4 images, the write statement executed by all
+images will print 4, although each team current at the statement
+only has 2 images.
+Also some programmers like to add assertions for checking such
+as the one after the write statement, which would be triggered
+against expectation.
+While one can work around this by by using a coarray association
+(because that is established in the construct only), or by calling
+a subroutine (because a coarray dummy argument is established in
+the team current at invocation only), we prefer to change the
+UCOBOUND semantics to refer to the current team instead of that
+of its argument's establishment. We believe this will make
+UCOBOUND more useful inside CHANGE TEAM constructs.
+Also, if it is desired to add optional TEAM= or TEAM_NUMBER=
+arguments to UCOBOUND in a future standard, this can be
+accomplished without introducing an incompatible change.
+
+
+Edits to N2137:
+~~~~~~~~~~~~~~~
+
+Introduction, para 2, page xx, heading "Changes to features
+ previously described by ISO/IEC TS 18508:2015:" add text at
+ the end of the bullet:
+"The intrinsic function UCOBOUND produces a final upper cobound
+ that is always relative to the current team."
+
+Section 5.4.7 Coarray, page 45, add the following text to NOTE 5.10:
+"A corank n coarray has n lower and n-1 upper cobounds (8.5.6).
+ A value for the upper cobound of the final codimension can be
+ obtained by the program through invoking the UCOBOUND intrinsic;
+ calculating this requires knowledge of the number of executing
+ images in the current team. This final upper cobound is otherwise
+ not included when this document references the term ''cobounds''."
+
+Section 16.9.197 UCOBOUND [438:36] replace
+"Description: Upper cobound(s) of a coarray."
+with
+"Description: Upper cobound(s) of a coarray, including that for the
+ final codimension."
+
+Section 16.9.197 UCOBOUND [439:11] replace
+"team current when COARRAY was established"
+with
+"current team"
+so that the complete sentence reads:
+"The final upper cobound is the final cosubscript in the cosubscript
+ list for the coarray that selects the image whose index is equal to
+ the number of images in the current team."
+
+Final comment:
+~~~~~~~~~~~~~~
+
+The example [439:16-19] implicitly assumes the corrected semantics.
+If the issue 2 part of this paper is rejected, it would need to be
+fixed.

@@ -1,0 +1,839 @@
+
+                                                                J3/03-260
+
+Date:     20 October 2003
+To:       J3 
+From:     Aleksandar Donev
+Subject:  Post Fortran 2003: Genericity in Fortran
+
+This is a proposal for a feature to be provided in some future version of 
+Fortran.
+
+______________________________________ 
+Summary
+______________________________________ 
+I first review the Basic Functionality that this proposal addresses. I give 4 
+problems which could elegantly and efficiently be solved with this proposal, 
+and discuss them in detail in the Motivation. I first digress to describe 
+what is in other programming languages, and give basic terminology in the 
+Background section.
+
+Although I try to describe things from scratch, I will assume some familiarity 
+with macros (with parameters) and/or C++ templates and/or Ada generic 
+packages and/or Eiffel generic classes.
+
+______________________________________ 
+Basic Functionality
+______________________________________
+
+Generic code is one which applies to a variety of specific types and/or type 
+parameters. Fortran has a little bit of genericity in it due to generic 
+*interfaces* and parameterized types. However, what is lacking is the ability 
+to write the *body* of the procedures which enter in the generic interfaces 
+or operate on objects of parameterized type. In most cases this body is 
+independent of the actual type and type parameters of the generic resolution 
+parameters.
+
+This proposal is concerned with additions to Fortran to enable one, some or 
+all of the following basic tasks, *avoiding* needless repetition of code and 
+still providing *maximal* efficiency (such as inlined code):
+
+Task 1) Write a module with a parameterized derived type and associated 
+procedures which work for any kind parameter.
+
+Task 2) Write a generic procedure like the intrinsic MAXVAL purely in Fortran.
+
+Task 3) Write a module which provides generic data-structures such as a 
+generic stack.
+
+Task 4) Write a generic procedure which can sort an array of arbitrary type.
+
+These tasks are ordered in what I consider to be increasing complexity in 
+terms of decisions to make and also incorporating into the standard 
+(complexity of description). I will discuss implementation separately, and 
+believe that all of these can be implemented with minimal effort, but a 
+"quality implementation" might require more effort.
+
+______________________________________ 
+Rationale
+______________________________________ 
+
+I believe the ability to do tasks 1 and 2 need to be in the next revision of 
+Fortran. Almost any user other then the basic beginner will benefit from this 
+and without it the full power of Fortran generics and parameterized types 
+cannot be realized and will not be used widely. Tasks 3 and 4 are more 
+ambitious, and may be less-widely used, but should be considered by the 
+committee carefully.
+
+Most of these can already be done using:
+a) Cut and Paste and endless repetition of code. This is very error prone and 
+wastes programmer's effort and time. Sometimes INCLUDE files are used to 
+avoid some repetition.
+c) Macros, such as CoCo/m4/FWEB etc. and include files. This is not only 
+non-standard, but difficult for the nonexpert, and is also error prone, as 
+discussed later.
+I propose that basic Fortran provide this functionality, to do away with the 
+need to distribute things like Perl scripts or macro languages with Fortran 
+libraries.
+
+______________________________________
+Background
+______________________________________
+
+Genericity means the ability to write code that applies to multiple specific 
+types, i.e. specification *and* executable code that is parameterized by a 
+certain (possibly parameterized) type T and/or an (integer) type parameter K. 
+I will call T the generic type parameter and K the generic kind parameter.
+
+Genericity is closely related to inheritance, however, I want to stress that 
+it is in fact *complementary* to it, and I hope to illustrate this here. The 
+main difference is that generic code, as I consider it here, *cannot* be 
+compiled until the exact type T and kind K are known, whereas code using 
+inheritance and related concepts like polymorphism, is compiled only once and 
+then it works for multiple types using "type descriptors" in the runtime 
+implementation. The key is that polymorphism uses pointers to avoid knowing 
+the exact type of an object. This has a significant run time cost, like 
+dynamic dispatch, memory indirection, aliasing, etc. Genericity on the other 
+hand will enable us to avoid all of this and even enable inlining of the 
+generic code.
+
+The reader familiar with macros can think of generic code as a kind of macro 
+for generating specific code (meaning code for a specific T and K) that is 
+then actually compiled. However, I am not describing or proposing a 
+Fortran-aware macro system in this proposal! The relation between macros and 
+generic code is like that of macro constants (#define's) and Fortran 
+PARAMETERs. The former provide the functionality of Fortran constants, but 
+without the appropriate scoping or type-checking abilities. Basically this 
+whole proposal is about making certain kind of macros statically typed and 
+endowing them with a Fortran scope.
+
+In this sense, the generic code is the macro, or template (C++ terminology). 
+When this macro is used (with specific T and K), the compiler compiles, or 
+instantiates (C++ terminology) the code for specific T and K. The last step, 
+which I will call instantiation, is unavoidable, since T and K must be known 
+before executable object code can be produced. However, whether the generic 
+code itself can be "compiled" is the main source of dilemma which I address 
+here.
+
+There are 3 main kinds of genericity, as found in different languages:
+____________
+A) Unlimited Unconstrained Genericity (UUG):
+____________
+This is basically what is provided by C++ templates, and it means that there 
+is *no* restriction on the type T (the kind parameter K is a uniquely Fortran 
+thing). Templates basically provide macros with basic language awareness, 
+such as syntax awareness (balancing braces and parenthesis, for example) and 
+scope. They do *not* provide any type checking.
+
+To illustrate this, here is a C++ function template for a function which 
+returns the smaller of two values:
+
+template<class T> T minimum(T A, T B)
+{
+  if(A<B)
+     return A;
+  else
+     return B;
+}
+
+What is the problem with this code? Well, it assumes that "if(A<B)" is 
+meaningful. What if an ordering operator "<" does not exist for some specific 
+type T?
+
+____________
+B) Limited Unconstrained Genericity (LUG)
+____________
+This is the kind of genericity provided by Eiffel, and it means that there is 
+*no* restriction on the type T, but there is a restriction of what can appear 
+in the generic code. Namely, in Eiffel, only the following types of 
+statements can appear in a method of a generic class:
+
+x:=y or y:=x
+x=y or x/=y
+f(...,x,...)
+where x and y or the argument to f is declared to also be of type T (i.e. is 
+in the same generic class)
+
+So here it is clear that the generic code is applicable to *any* type T, due 
+to the restrictions imposed. In Eiffel one cannot write something like the 
+C++ template "minimum" above.
+
+____________
+C) Unlimited Constrained Genericity (UCG)
+____________
+This is provided in Ada, and it means that while anything can appear inside a 
+generic Ada package, the type T must satisfy certain properties. For example, 
+for the example coded in C++ above, Ada requires that a comparison operator 
+"<" be available for the type T. The user must provide this operator along 
+with the type T when instantiating the template:
+
+generic
+	type T is private;
+with function "<"(a,b,T)
+	return BOOLEAN is <>;
+function minimum(x,y: T) return T is
+begin
+	if x<y then return x
+	else return y end if
+end minimum
+
+In object-oriented languages, constrained genericity can be provided by 
+requiring that the type T belong to a certain type hierarchy. For example, 
+most proposals on how to implement genericity in Java require that the type T 
+implement a certain interface, and only operations defined in that interface 
+can be used inside the generic class. In one of these proposed syntaxes:
+
+interface Greater<A> {
+   public boolean gt (A that);
+}
+
+class SortedObjects<A implements Greater<A>> {
+ public A minimum (A first, A second) {
+  	if(first.gt(second))
+		return second
+	else
+		return first
+  }
+
+This background illustrates the kind of decisions that need to be made when 
+implementing genericity in a statically typed language. I next tackle several 
+typical Fortran programming tasks that are best done using genericity.
+
+______________________________________ 
+Motivation/Examples
+______________________________________ 
+
+Here I discuss one by one the 4 tasks given in the Basic Functionality. I 
+propose solutions but also raise what problems/questions remain.
+
+____________
+Parameterized Types and their Operations
+____________
+
+Take the following parameterized type which defines a point in 3D space whose 
+position is stored using single or double precision reals, and one type bound 
+procedure which translates the point:
+
+INTEGER, PARAMETER :: r_sp=KIND(1.0E0), r_dp=KIND(1.0D0)
+   ! Single and double precision real kinds
+   
+TYPE :: Euclidian_Point(KIND)
+   INTEGER, KIND :: KIND
+   REAL(KIND) :: position(3)
+CONTAINS
+   GENERIC, PASS(point) :: Translate=>Translate_sp, Translate_dp
+END TYPE Euclidian_Point
+
+and we have:
+
+SUBROUTINE Translate_sp(point, translation)
+   CLASS(Euclidian_Point(r_sp)), INTENT(INOUT) :: point
+   REAL(KIND=r_sp) :: translation(3)
+   
+   point%position = point%position + translation
+END SUBROUTINE   
+
+SUBROUTINE Translate_dp(point, translation)
+   CLASS(Euclidian_Point(r_dp)), INTENT(INOUT) :: point
+   REAL(KIND=r_dp) :: translation(3)
+   
+   point%position = point%position + translation
+END SUBROUTINE 
+
+Notice how the single and double precision versions of Translate are identical 
+save for the kind-type parameter, r_sp in one, r_dp in the other. This is 
+needless repetition of code. Furthermore, if later the compiler is extended 
+to provide quadrupole precision, one needs to go back and add yet another 
+duplicate version of Translate. Clearly this is undesirable. For all the 
+extensibility/reusability we have provided with inheritance we have forced 
+the programmer to duplicate code and also fix the future usage at the design 
+stage.
+
+Instead, one should be able to write something like (this is ficticious 
+syntax):
+
+TYPE :: Euclidian_Point(K)
+   INTEGER, KIND :: K
+   REAL(KIND=K) :: position(3)
+CONTAINS
+   GENERIC, PASS(point) :: Translate
+END TYPE Euclidian_Point
+
+GENERIC SUBROUTINE Translate(point, translation)
+   CLASS(Euclidian_Point(KIND=*)), INTENT(INOUT) :: point
+      ! Works for any KIND (the kind is "assumed")
+   REAL(KIND=point%K) :: translation(3)
+   
+   point%position = point%position + translation
+END SUBROUTINE  
+
+and simply use this:
+
+TYPE(Euclidian_Point(r_sp)) :: point
+
+CALL point.Translate((/1.0_r_sp,1.0_r_sp,1.0_r_sp/))
+
+Full type-safety has been preserved and the simplification and ease is 
+amazing! This is what genericity should look like in Fortran!
+
+How will the compiler do this? There are two options:
+
+1) When the compiler compiles the programming unit containing the procedure 
+Translate, it will compile a separate version for each type of real it 
+supports, and also decorate the procedure names itself. It is exactly what 
+the user has to do manually today by replicating code and changing an sp into 
+a dp.
+
+2) The compiler waits until it compiles the code that uses a 
+Euclidian_Point(r_sp) and then it compiles a specific version of Translate 
+for single precision reals.
+
+In this case strategy 1 clearly seems preferable. The problem is the 
+following: What if there are 3 different kind parameters, and 3 possible 
+values for each. Does the compiler compile all 27 versions of the generic 
+procedure? Furthermore, what if the compiler does not know what the possible 
+values for K are? For example, what if I wanted to provide points in both 2 
+and 3 dimensions using another kind parameter DIM:
+
+TYPE :: Euclidian_Point(K, DIM)
+   INTEGER, KIND :: K, DIM
+   REAL(KIND=K), DIMENSION(DIM) :: position
+CONTAINS
+   GENERIC, PASS(point) :: Translate
+END TYPE Euclidian_Point
+
+The compiler does not know that I will only use points in 2 and 3D (i.e. DIM=2 
+and DIM=3). So how do I tell it that?
+
+The basic gist of this example is that the type T is fixed (in this case to 
+Euclidian_Point), and only the type parameter K is varied. Next we want to 
+get more demanding and ask that the type T also be allowed to change, but we 
+can predict a-priori what (intrinsic) types T we want to use.
+
+____________
+A generic procedure for all supported REALs and COMPLEX
+____________
+
+In the first section I mentioned as an example writing something like the 
+intrinsic MAXVAL in Fortran, without repetition of code. A more realistic 
+example is writing something like the level-I BLAS in pure Fortran. The BLAS 
+works for several different kinds of REALs and also COMPLEX numbers, and in 
+level-I we have things like AXPY:
+y=a*x+b*y
+where x and y are arrays and a and b are scalars. As an illustration assume 
+that we want to code a generic function Add which adds two vectors (rank-1 
+arrays) of different kinds of REAL or COMPLEX numbers. Here is how a possible 
+generic Fortran code to do this might look:
+
+MODULE BLAS_1
+   ! Implements an Add operation on two vectors
+   ! Imagine this being an implementation of Level 1 BLAS
+   ! for all kinds of real/complex supported on a platform
+   IMPLICIT NONE
+   PRIVATE
+   
+   PUBLIC :: Add
+   
+CONTAINS
+
+   GENERIC FUNCTION Add(x,y) RESULT(x_plus_y)
+      TYPE(REAL(*),COMPLEX(*)), DIMENSION(:), INTENT(IN) :: x,y
+         ! x and y can be any kind of REAL or COMPLEX
+         ! But they must both be of the same type/parameter
+      TYPE(TYPE_OF(x)), DIMENSION(SIZE(x)) :: x_plus_y
+         ! Must be the same type/parameter as x
+      x_plus_y=x+y
+   END FUNCTION Add
+   
+END MODULE
+
+which means exactly the same as if one used macros to generate:
+
+MODULE BLAS_1
+   IMPLICIT NONE
+   PRIVATE
+   
+   PUBLIC :: Add
+   INTERFACE Add
+      MODULE PROCEDURE Add_real_sp
+      MODULE PROCEDURE Add_complex_sp
+      ...! All other supported precisions
+   END INTERFACE   
+   
+CONTAINS
+
+   FUNCTION Add_real_sp(x,y) RESULT(x_plus_y)
+      REAL(r_sp), DIMENSION(:), INTENT(IN) :: x,y
+      REAL(r_sp), DIMENSION(SIZE(x)) :: x_plus_y
+         ! Must be the same type/parameter as x
+      x_plus_y=x+y
+   END FUNCTION
+
+   FUNCTION Add_complex_sp(x,y) RESULT(x_plus_y)
+      COMPLEX(r_sp), DIMENSION(:), INTENT(IN) :: x,y
+      COMPLEX(r_sp), DIMENSION(SIZE(x)) :: x_plus_y
+         ! Must be the same type/parameter as x
+      x_plus_y=x+y
+   END FUNCTION
+   
+   ...
+   
+END MODULE
+
+The proposed syntax above is not one that I actually like, but rather an 
+illustration. The point is that we know that the given generic code, in this 
+case the generic procedure Add, is to be used with only a certain 
+*predefined* set of types and type parameters, and therefore everything can 
+be precompiled and type-safety is ensured. I am leaving details about the 
+syntax aside for now. This also fits very well into the Fortran framework. 
+Namely, standard Fortran already provides such generic procedures for the 
+intrinsic types, for example, SUM or MINVAL. But the user cannot extend the 
+system by writing his own generic procedures like SUM or MINVAL easily, or 
+writing SUM for his own (parameterized) derived types, such as, for example, 
+rational numbers (of single, double, quad, etc. precision) or 
+arbitrary-precision floating-point numbers, without using excessive code 
+duplication.
+
+So far I have illustrated that there are two "noncontroversial" cases where 
+genericity is needed, and these are already widely seen used among Fortran 
+programmers (where cut/paste, macros, perl scrips, and other wizzardry is 
+used to generate the body of the procedures above):
+
+1) When only a kind parameter changes and the type is fixed.
+2) When the type also changes but the set of types is known a-priori.
+
+Both 1 and 2 are easy to compile if the set of kind parameters is also fixed, 
+especially if it can be determined by the compiler. Namely, the compiler can 
+just precompile all possible combinations of types/type-parameters.
+
+The above system maintains a clear separation between types, which we can 
+already parameterize with integers, and procedures, which I propose we allow 
+to be parameterized by integers and also work on several different types. I 
+believe it is better to design a system which unifies both and allows one to 
+parameterize a whole "package", i.e. a collection of type definitions, 
+constants and procedures which operate on those types and use those 
+constants. I will later give examples which invent a new GENERIC programming 
+unit which does this.
+
+____________
+Generic Stack
+____________
+
+As I said above, Fortran already has built-in intrinsic procedures which work 
+with, for example, any numeric (REAL, COMPLEX or INTEGER) type, like SUM. I 
+discussed in the previous two examples how we can allow the user to write 
+such procedures him/herself.
+
+But Fortran also has intrinsics which work with *any* type. For example, 
+CSHIFT will shift an array of any type. Can we allow the user to write code 
+which works efficiently for any type (and yet does not use CLASS(*) pointers) 
+and is this useful in real-life applications? I believe the answer is a big 
+YES on both accounts and discuss an example next.
+
+To illustrate how one can provide unconstrained limited genericity which works 
+on any type and yet is completely statically typed and checkable at compile 
+type, I will use a generic stack as an example. This would be a typical kind 
+of thing found in the widely used Standard Template Library in C++. One can 
+already do "generic" stacks in Fortran using polymorphic (CLASS(*) 
+especially) pointers. By using generic code one can avoid always having to 
+drag pointers into this, and implement a generic stack using a simple array, 
+just as if one were writing a stack of integers or reals. The example code 
+below uses no pointers or dynamic dispatch, and is maximally efficient and 
+very easy to write/use.
+
+In this example I introduce a new programming unit, I call it GENERIC, which 
+contains type definitions and procedures parameterized by an arbitrary type 
+any_type, which must be a specific type, i.e., have all its type parameters 
+specified:
+
+module GenericStacks
+
+   generic :: GenericStack(any_type)
+      ! This can be used with *any type*, there are *no* requirements 
+what-so-ever
+      private
+
+      type, public :: generic_stack
+         public
+         integer :: n_elements=0, n_max_elements=100
+         type(any_type), allocatable, dimension(:), private :: storage
+      contains
+         public
+         procedure, pass(stack) :: initialize, pop
+         ...
+      end type
+
+   contains
+
+      subroutine initialize(stack)
+         class(generic_stack), intent(inout) :: stack
+
+         allocate(storage(n_max_elements)) 
+            ! No need for SOURCE or MOLD here
+
+      end subroutine initialize
+
+      function pop(stack) result(top)
+         class(generic_stack), intent(inout) :: stack
+         type(any_type) :: top ! No POINTER needed here
+
+         if(n_elements<=0) return
+
+         top=storage[n_elements]
+         n_elements=n_elements-1
+
+      end function
+
+      ...
+   end generic
+
+end module
+
+Now, the generic GenericStack cannot really be compiled until the type 
+any_type is known. To use a generic stack, one must specifically instantiate 
+the generic with a specific type. This instance can be given a name and 
+notation similar to type selection used to refer to the specific types and 
+procedures it defines:
+
+program RealStacks
+   use GenericStacks
+   
+   generic(GenericStack(real(kind(0.0)))) :: real_stack
+      ! Now actually compile the code
+      ! to get a generic stack of single-precision reals
+   
+   type(real_stack%generic_stack) :: stack
+      ! Declare a stack of reals
+   
+   ! Now use this stack:
+   call stack.initialize()
+   ! Or "call real_stack%initialize(stack)"
+   ...
+   write(*,*) "Top element is:", stack.pop()
+
+end program RealStacks
+
+What exactly can go inside a GENERIC block parameterized by a type T. Well, 
+anything which according to the current standard works no matter what the 
+type T is. For example, if inside the GENERIC we have:
+
+type(T), target :: x
+type(T), pointer :: y
+type(T), dimension(:), target :: z 
+type(c_ptr) :: p
+
+then any of these are OK:
+
+allocate(z(5))
+y=>x
+z(5)=x
+p=C_LOC(x)
+etc.
+
+We may need to add words in certain places of the standard to explicitly allow 
+this (like in allocate statement), but in many cases we do not make any 
+specific requirement on the type of x or y, or only make a requirement about 
+the relative type of x and y (for example, y must be type-compatible with x), 
+and these are clearly satisfied by the examples above.
+
+I also believe we should allow the type T to be used in a SELECT TYPE 
+construct:
+
+SELECT TYPE(T)
+   CASE (INTEGER(sp))
+      WRITE(*,*) "Stack of integers"
+   CASE DEFAULT
+      WRITE(*,*) "Stack of something???"
+END SELECT TYPE         
+
+and/or allow one to call a procedure whose dummy is declared to be of CLASS(*) 
+with an actual whose type is the generic type parameter T. In C++ 
+terminology, this is related to the concept of "specialization". Namely, 
+though most generic code is completely type-independent, there may be small 
+pieces of code where it is necessary to be more specific. An example is 
+writing a set of Fortran-friendly wrappers to, for example, the Mpi_Allgather 
+function in the MPI C Binding. The C prototype here is:
+
+int MPI_Allgather(void* sendbuf, int sendcount, MPI_Datatype sendtype, void* 
+recvbuf, \
+       int recvcount, MPI_Datatype recvtype, MPI_Comm comm)
+
+and we would like to write a Fortran wrapper which avoids the need to pass the 
+type (especially if there is a predefined MPI datatype for the given type--I 
+use SELECT TYPE for this below) and number of elements twice and is more 
+strongly typed, namely, the send and receive buffer must of the same type. 
+Most Fortran programmers would prefer such an interface because it avoids 
+having to deal with C directly:
+
+MODULE MPI_Interface
+   USE ISO_C_INTEROP
+   USE MPI_DATATYPES ! Assume there is a vendor MPI module somewhere
+   PRIVATE
+
+   PUBLIC :: MPI_Gather ! A generic interface for a wrapper around MPI
+   
+   INTERFACE
+      FUNCTION MPI_Allgather_C(sendbuf,sendcount,sendtype, &
+            recvbuf,recvcount,recvtype,comm) &
+            BIND(C,NAME="MPI_Allgather") RESULT(status)
+         TYPE(C_PTR), INTENT(IN), VALUE :: sendbuf,recvbuf
+         INTEGER(C_INT), VALUE :: sendcount, recvcount
+         TYPE(MPI_Datatype), VALUE :: sendtype, recvtype
+         TYPE(MPI_Comm), VALUE :: comm
+         INTEGER(C_INT) :: status
+      END FUNCTION   
+   END INTERFACE
+
+   GENERIC, PUBLIC :: MPI_Gather(any_type)
+      PUBLIC :: MPI_ALLGATHER
+      
+   CONTAINS
+
+      SUBROUTINE 
+MPI_ALLGATHER(sendbuf,recvbuf,data_count,data_type,comm,status)
+         TYPE(any_type), DIMENSION(*), INTENT(IN), TARGET :: sendbuf
+         TYPE(any_type), DIMENSION(*), INTENT(OUT), TARGET :: recvbuf
+         INTEGER(C_INT), INTENT(IN) :: data_count
+         TYPE(MPI_Datatype), INTENT(IN), OPTIONAL :: data_type
+         TYPE(MPI_Comm), INTENT(IN) :: comm
+         INTEGER(C_INT), INTENT(OUT), OPTIONAL :: status
+         
+         INTEGER(C_INT) :: error_status         
+         TYPE(MPI_Datatype) :: mpi_type
+         
+         SELECT TYPE(sendbuf)
+            ! There are some predefined types in MPI
+            ! For these types we don't need data_type
+            TYPE IS(C_INT)
+               mpi_type=MPI_INT
+            TYPE IS(C_FLOAT)
+               mpi_type=MPI_FLOAT
+            ...
+            CLASS DEFAULT
+               ! This is not a predefined type
+               IF(PRESENT(data_type)) THEN @;
+                  mpi_type=data_type
+               ELSE
+                  mpi_type=MPI_PACKED
+               END IF
+         END SELECT TYPE
+         
+         // Now actually call the C subroutine
+         CALL MPI_Allgather_C(sendbuf=C_LOC(sendbuf), sendcount=data_count, &
+            sendtype=mpi_type, recvbuf=C_LOC(recvbuf), recvcount=data_count, &
+            recvtype=mpi_type, comm=comm)
+         
+      END SUBROUTINE
+      
+  END GENERIC MPI_Gather       
+  
+  ! We can now compile specific instances for several common types:
+  GENERIC(MPI_Gather(INTEGER)) :: gather_i_sp
+     ! Integer version
+  GENERIC(MPI_Gather(REAL(KIND(0.0))) :: gather_r_sp
+     ! Single-precision reals
+  GENERIC(MPI_Gather(REAL(KIND(0.0))) :: gather_r_dp
+     ! Double-precision reals        
+  ...
+  
+  ! And finally we can put these in a generic
+  INTERFACE MPI_Gather
+     PROCEDURE :: gather_i_sp%MPI_ALLGATHER, &
+        gather_r_sp%MPI_ALLGATHER, gather_r_dp%MPI_ALLGATHER
+  END INTERFACE
+     
+END MODULE
+
+____________
+Procedures which work on some unknown type
+____________
+
+We now come to the most difficult and controversial case. This is when the 
+type T and the operations appearing inside the generic code are not 
+restricted. The main characteristic of such a case is that the syntax cannot 
+be fully verified, i.e., although the syntax can be parsed, the meaning of 
+the syntax is not clear at the point when the generic code is written. Take 
+the simple example of a sorting routine for objects of an arbitrary type T. 
+Any sorting routine would have to compare two quantities of this type, so 
+inside the generic code there might be something like:
+
+GENERIC QuickSort(T)
+
+   ...
+   TYPE(T), ... :: A, B
+   IF(A<B) THEN
+      ...
+   END IF
+
+END GENERIC QuickSort      
+
+The problematic line here is:
+IF(A<B) THEN
+How do we know that there is an ordering operator "<" defined for type T? What 
+if we had written:
+IF(A.greaterthen.B) THEN
+At the point of "compiling" the template we do not even know that the operator 
+".greaterthen." is a binary operator which returns a logical value, so we 
+cannot at all ascertain that the above statement makes sense. The statement 
+can be checked for syntactic consistency, but not for semantic consistency.
+
+Allowing generic code like the one above makes genericity very much like a 
+macro. One of the biggest pitfalls of macros is that they do not have to be 
+semantically consistent (or even syntactically if the macro is not part of 
+the language, as in the case of Fortran) and thus cannot be checked before 
+actually being used. This is the case of unlimited unconstrained genericity, 
+which is very similar to templates in C++. I personally am uncomfortable with 
+the idea of allowing such uncontrolled macros to be called "legal Fortran 
+code".
+
+Nonetheless, it is clear to me that being able to write a generic QuickSort 
+routine which works on any ordered type is useful. In fact, I have written 
+macros for this in my own sorting module. Is it possible to combine the 
+complete power of macros with full syntax/semantics checking? I think so, but 
+most approaches seem complicated. I see two viable possibilities:
+
+i) Allow things other then types as template arguments, just like in Ada, 
+where one can provide the procedure to be used as an ordering operator as an 
+argument to the generic package:
+
+GENERIC QuickSort(T,Comparison)
+   
+   INTERFACE OPERATOR(<)
+      SUBROUTINE Comparison(A,B) RESULT(A_le_B)
+         TYPE(T), INTENT(IN) :: A, B
+         LOGICAL :: A_le_B
+      END SUBROUTINE
+   END INTERFACE      
+   
+   ...
+   TYPE(T), ... :: A, B
+   IF(A<B) THEN ! Now this makes sense
+      ...
+   END IF
+
+END GENERIC QuickSort      
+
+Additional, constants should be allowed as parameters of a generic code block 
+(for example unity and zero for different types of numbers).
+
+ii) Allow syntax to specify that the generic code simply imports certain 
+operators, constants, or other missing pieces from its host environment when 
+it is instantiated for a specific type. For example:
+
+MODULE Sorting
+
+
+   GENERIC QuickSort(T)
+
+   IMPORTS
+
+      INTERFACE OPERATOR(<)
+         ! Import the operator "<" from the host when instantiated
+         SUBROUTINE Comparison(A,B) RESULT(A_le_B)
+            TYPE(T), INTENT(IN) :: A, B
+            LOGICAL :: A_le_B
+         END SUBROUTINE
+      END INTERFACE      
+
+   CONTAINS
+
+      ...
+      TYPE(T), ... :: A, B
+      IF(A<B) THEN ! Now this makes sense
+         ...
+      END IF
+
+   END GENERIC QuickSort
+
+   ! This uses the default meaning of "<" for integers and reals:
+   GENERIC(QuickSort(INTEGER)) :: qs_int
+   GENERIC(QuickSort(REAL)) :: qs_int
+   ...
+   
+END MODULE Sorting
+
+______________________________________ 
+Estimated Impact and Implementation Complexity
+______________________________________
+
+Depending on which level of genericity we allow: just a generic kind-type 
+parameter, a generic type parameter from a limited set of types, or any type, 
+different levels of change to the language will be needed. In my estimation, 
+the simplest of all is the unconstrained limited genericity case, namely, 
+where T can be any type but there is a limit on what can be done inside the 
+generic code block. For example, in our syntax rules, we say that:
+x=>y
+is legal if the type of x is the same as the type of y. Never is there any 
+restriction on what this type has to be. So there is absolutely nothing to be 
+changed if we allow the type of x and y to be parameterized by some type T. 
+The only thing we need to change is the restriction which says that x and y 
+have to be declared to have some intrinsic or accessible derived type.
+
+In any case, I do not think it is hard to incorporate the simpler forms of 
+genericity in the language. As far as implementation goes, they are all 
+almost trivial to implement---simply use a macro-type expansion mechanism. Of 
+course, a quality implementation may do better. The point of genericity is 
+that real code (i.e. code to be optimized into object code) is obtained only 
+once a specific type is chosen for the type parameter T, and this code is 
+simply plain-old Fortran. Therefore only small modifications to the front-end 
+of compilers are needed in order to parse the generic code blocks and 
+generate the appropriate intermediate representations for the specific 
+type(s) T that are used. Optimizers or back-ends are not affected at all.
+
+______________________________________
+Detailed Specification
+______________________________________
+
+As can be seen above, there are many choices to be made before more detailed 
+specifications can be provided. The main decision is to decide what kinds of 
+genericity we want to provide in Fortran:
+
+1. Allow for an "assumed" kind parameter for dummy arguments in procedures 
+(first example above):
+   TYPE(INTEGER(KIND=*)) :: x
+   TYPE(INTEGER(x%kind)) :: y
+
+2. Allow for the type of a dummy argument to be a set of types, rather then a 
+single type (second example above):
+   TYPE(INTEGER, REAL), INTENT(IN) :: x
+   TYPE(TYPE_OF(x)) :: y
+
+3. Combined 1 and 2 above, i.e. allow for things like:
+   TYPE(INTEGER(*), REAL(*)) :: x
+   TYPE(TYPE_OF(x)) :: y
+   
+4. Allow the type of a variable to be some arbitrary type T, but only allow 
+operations on that variable which are valid for any type T:
+   GENERIC Test(T)
+      TYPE(T) :: x,y
+      x=y
+      ...
+   END GENERIC
+
+5. Allow for unlimited unconstrained genericity, as in C++ templates.
+   
+I would say all five are useful, and would vote for 1-4 to be incorporated 
+into the next revision of Fortran. I hope I have explained above in what 
+kinds of situations different kinds of genericity are needed. Certainly just 
+choice 4 above is not enough. Choice 1 above is IMO a non-brainer and it is 
+high-time we provide this in Fortran. I also think choice 2 is useful and not 
+so controversial or complicated, and choice 3 is a logical combination of 1 
+and 2.
+
+! EOF
+_________________________________
+Aleksandar Donev
+Complex Materials Theory Group (http://cherrypit.princeton.edu/)
+Princeton Materials Institute &
+Program in Applied and Computational Mathematics 
+@ Princeton University
+Address:
+   419 Bowen Hall, 70 Prospect Avenue
+   Princeton University
+   Princeton, NJ 08540-5211
+E-mail: adonev@math.princeton.edu
+WWW: http://atom.princeton.edu/donev
+Phone: (609) 258-2775
+Fax: (609) 258-1177
+__________________________________
+

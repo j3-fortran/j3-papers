@@ -1,0 +1,161 @@
+
+
+Subject: VOLATILE Functions                             J3/03-163
+From: Kurt W. Hirchert                  (Meeting 164) 15 Mar 2003
+
+A recent discussion in comp.lang.fortran convinced my that we have
+a problem in the F2K draft that was not addressed by any of the
+ballots.  I have prepared a brief description of what I perceive
+the problem to be and what I hope is a simple solution.  Because
+it did not appear in the ballots, it is quite possible that it will
+be ruled out of order, but because the problem appears to me to be
+a serious one, I hope it will receive at least some consideration.
+(I can "live with" the committee (or reviewing subgroup) deciding
+that the problem is not as serious I believe or that my proposed
+change is not a suitable solution, but I would hate to see us fail
+to even look at a problem purely on procedural grounds.)
+
+===========
+The Problem
+===========
+
+The problem area is functions with side effects, especially
+functions whose purpose is to deliver side effects.  Fortran has
+always allowed its functions to perform operations that would be
+considered side effects, but it also has given processors the
+license to not execute those functions and thus not deliver
+those side effects.  There is great controversy about how far
+this license extends, but some things appear to be true no
+matter what position one takes on the extent of the license:
+
+*  There is nothing the writer of a function with significant
+   side effects can do to ensure that those side effects are
+   actually produced.
+   
+*  There are actions that can be taken by the writer of code
+   that calls such functions, but the available control is one-
+   sided.  One can clearly write function references in contexts
+   that will raise the possibility that its side effects will
+   not be delivered, but there is no _agreed_upon_ way to avoid
+   all such actions.
+   
+*  Ultimately, it the processor that controls whether a function
+   is executed or not, but portability is achieved only if all
+   existing (and future) processors can be counted on to
+   execute a given function reference.
+
+None of this is new.  The cautious Fortran programmer avoids the
+uncertainty by never coding functions with significant side effects,
+using subroutines instead.  The programmer who wants to write in
+a style using functions with side effects gets no assurances from
+the standard and must depend instead on rules of thumb about what
+processors optimize away; if those rules of thumb prove incorrect,
+a lower level of optimization may have to be selected to avoid the
+problem.
+
+What is new is the introduction of C interoperability.  The rules
+for optimization in C are quite different, so side effects can be
+ensured.  As a result, functions with significant side effects
+are the norm in C.  Our interoperability facility maps these to
+functions in Fortran, with the same license to not execute them
+and thus not deliver the side effects.  In order to ensure those
+side effects, the cautious programmer must write a C wrapper that
+converts the interface from a function interface to a "subroutine"
+with an additional INTENT(OUT) argument, so C optimization rules
+ensure the function is invoked and Fortran optimization rules
+ensure that the subroutine is invoked.  It seems to me that if one
+still needs to routinely write wrappers to safely use our C
+interoperability facility, there is something missing in that
+facility.
+
+===================
+A Possible Solution
+===================
+
+Part of the reason we have had difficulty clarifying the rules for
+function side effects is that there are two competing interests
+with differing needs.  It is in the interests of those who use
+Fortran functions solely to compute mathematical functions for the
+processor to have as much license as possible to optimize away
+unnecessary execution of those functions.  On the other hand,
+those who want to use a programming style involving function with
+significant side effects would prefer a more C-like set of rules,
+so they could depend on function references being executed.  An
+obvious solution is to provide a syntactic distinction between
+functions that can be optimized away and those that can't, so the
+appropriate rules can apply to the appropriate forms.
+
+One possibility would be to distinguish on the basis of the PURE
+attribute.  A processor certainly can optimize pure function
+references more agressively. but not all function without
+significant side effects can be made pure, so that would be a less
+than satisfactory solution.
+
+The alternative then is to create a new function attribute.  That
+leaves the question of whether the new attribute should indicate
+that a function can be optimized away or that it cannot be.  Since
+existing source code has functions that do not have this attribute
+but can be optimized away, the obvious choice is that the new
+attribute will identify functions that cannot be optimized away
+and whose side effects are thus reliable.
+
+In the edits I have chosen the keyword VOLATILE because I see a
+similarity between functions that must be executed and variables
+that must loaded from memory.  Indeed, a function that depends
+on a volatile variable will indeed be a volatile function.
+However, the edits are so constructed that another keyword can
+easily be substituted.  The edits provide only for the
+declaration of volatile functions and the elimination of the
+license to optimize away the execution of such functions; no
+change is made in the rules for optimizing functions without
+the attribute.  Such a change might be appropriate at some time
+in the future, but the object here was to minimize the changes
+so there would be no unintended consequences.
+
+=====
+Edits
+=====
+
+1.  129:11  Change "It" to "Except for the requirement that
+    volatile functions be evaluated in each expression in which
+    they are referenced, it".
+
+2.  114:17  After "is not pure", insert ", <proc-target> may be
+    not volatile even if <proc-pointer-object> is volatile,".
+
+3.  252:19  After "elemental," insert "whether it is volatile,".
+
+4.  254:7+  Insert "(3+1) The procedure is volatile,".
+
+5.  256:4  After "be pure", insert ", and that the interface may
+    specify a procedure that is volatile if the procedure is not
+    defined to be volatile".
+
+6.  267:24  After "pure", insert ", an actual argument that is not
+    volatile may be associated with a volatile dummy argument,".
+
+7.  275:34+  Insert "<<or>> VOLATILE".
+
+8.  275:36+  Insert "C1243+1(R1227)  A <prefix> shall not specify
+    PURE or ELEMENTAL if it specifies VOLATILE."
+
+9.  276:33+  Insert "If the <prefix-spec> VOLATILE appears, the
+    function is volatile, and the function shall be executed as
+    part of the evaluation of any expression in which it is
+    referenced."
+
+10. 280:13+  Insert "The keyword VOLATILE is not used in an ENTRY
+    statement.  Instead, the function defined by an ENTRY
+    statement is volatile if and only if VOLATILE is specified in
+    the FUNCTION statement."
+
+11. I expected to need to add VOLATILE to at least one of the
+    BIND(C) examples, but I found no examples of BIND(C)
+    interfaces to C functions with side effects.  Perhaps there
+    should be one, but if so, I will leave it to the C experts
+    to construct an appropriate one.
+
+                              - end -
+-- 
+Kurt W Hirchert                                  hirchert@atmos.uiuc.edu
+UIUC Department of Atmospheric Sciences                  +1-217-265-0327

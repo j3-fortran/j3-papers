@@ -1,0 +1,98 @@
+                                                      J3/98-197
+
+          Date:        1998/08/12
+          To:          J3
+          From:        Interop
+          Subject:     Interoperability syntax (Part 4):  Aliasing
+          References:  J3/98-132r1, J3/98-139, J3/98-165r1
+
+          All references in the following are to 98-007r2.
+
+          The rules of Fortran 95 allow a processor to infer that the
+          variable A, in the following example, will not be modified
+          by the reference to the subroutine SUB2.
+
+                program p
+                  integer :: a, b
+                  call sub1(a)
+                  a = 3
+                  call sub2
+                  b = a
+                  print *, b
+                end program p
+
+          In other words, the above program could be treated as if it
+          were the following program:
+
+                program p
+                  integer :: a
+                  call sub1(a)
+                  call sub2
+                  print *, 3
+                end program p
+
+          In C, the following similar program cannot be
+
+                main()
+                {
+                  int a, b;
+
+                  sub1(&a);
+                  a = 3;
+                  sub2;
+                  b = a;
+                  printf("%d\n", b);
+                }
+
+          be treated as if it were the following program:
+
+                main()
+                {
+                  int a;
+
+                  sub1(&a);
+                  sub2;
+                  printf("%d\n", 3);
+                }
+
+          Subgroup does not believe C's liberal rules should be
+          permitted to affect Fortran.  In order to prohibit this,
+          only variables that have the TARGET attribute, that have the
+          BIND(C) attribute or that appear as actual arguments in the
+          reference will be permitted to become defined, undefined or
+          redefined by a reference to a procedure that has the BIND(C)
+          attribute.  This will prevent a C function from copying the
+          address of a Fortran variable for later use, unless it has
+          the TARGET attribute or is global.
+
+          The problem is that these rules are awkward to specify
+          within the existing framework.  Currently, the standard
+          doesn't talk about how a procedure reference might cause
+          variables to be affected.  Instead, it talks about how
+          Fortran statements cause variables to become defined or
+          undefined or to be referenced (14.7).  These rules have the
+          effect that a processor can treat a Fortran subprogram that
+          defines a procedure as if it caused arbitrary, valid Fortran
+          statements to be executed, in order to determine which
+          variables might become defined or undefined and which
+          variables might be referenced.
+
+          A reference to a C function does not cause any Fortran
+          statements to be executed (unless the function in turn
+          references a Fortran subprogram), but the definition status
+          of variables may be affected by such a procedure reference.
+          Strictly speaking, there is no way to deal with the issue
+          without a joint C/Fortran standard.  Instead, we will simply
+          expand section 12.5.3, "Definition of procedures by means
+          other than Fortran", to specify which variables might have
+.         their definition affected by a reference to such a procedure.
+
+
+          C_LOC
+          -----
+
+          A function, C_LOC, shall be accessible from the ISO_C_TYPES
+          module.  The function shall have one dummy argument.  The
+          actual argument shall have the TARGET attribute.  The result
+          shall be a scalar of type C_PTR.
+

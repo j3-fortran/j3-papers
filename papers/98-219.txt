@@ -1,0 +1,105 @@
+
+                                                                J3/98-219
+
+Date:    01 November 1998
+To:      J3
+From:    Werner Schulz
+Subject: OOP in F2000: The sub-type vs sub-TYPE Problem
+
+
+In 98-217 I allude to the sub-type versus sub-TYPE problem. Actually in the
+literature this is known as the sub-type versus sub-class problem (or
+sub-typing versus inheritance). It is a major issue in the design of
+object-oriented programming languages. Since a class is known in the Fortran
+2000 draft as TYPE the problem becomes the sub-type vs. sub-TYPE problem.
+For the sake of clarity, however, I will stick with class, type, sub-class
+and sub-type.
+
+This problem is also one of the major reasons why I choose the CLASS
+construct
+instead of using the existing Fortran90 TYPE to implement object-oriented
+programming in Fortran 2000. (And I use REF instead CLASS for polymorphic
+object declarations.) The choice for CLASS is not just a trick to avoid a
+word game
+it reflects an important distinction between type and class. Type refers to
+the public interface of an object while class refers to the actual
+implementation of an object.
+
+The distinction between type and class is needed as soon as inheritance is
+added to a programming language. This problem is also not always clearly
+explained and probably accounts for the many oversights and errors made when
+adding OOP capabilities to a previously procedural language.
+
+What is the sub-type vs sub-class problem? It is quickly demonstarted on a
+simple example using Point2D and Point3D classes similar to those used in
+98-217:
+class :: Point2D
+    self :: me
+    real :: x, y
+    function length( )
+        real :: length
+        length = sqrt( me%x**2 +me%y**2 )
+    end function length
+    function distance( P )
+        like(me), intent(in) :: P
+        real :: distance
+        distance = sqrt(  (x-P%x)**2 +(y-P%y)**2 )
+    end function distance
+end class Point2D
+
+class :: Point3D
+    inherit :: Point2D
+    self :: me
+    real :: z
+    function length( )
+        real :: length
+        length = sqrt( x**2 +y**2 +z**2 )   !x is short for me%x, etc.
+    end function length
+    function distance( P )
+        like(me), intent(in) :: P
+        real :: distance
+        distance = sqrt(  (x-P%x)**2 +(y-P%y)**2 +(z-P%z)**2 )
+    end function distance
+end class Point3D
+
+Point3D is certainly a sub-class of the two-dimensional Point. That follows
+directly from inheritance. But is it also a sub-type? I use the common
+practical definition of sub-type that says that an object x is a sub-type of
+object y if one replace any occurence of y with x without causing an error.
+
+For example in
+    Class(Point2D) :: A, B
+    Class(Point3D) :: C
+    P_Len = A%length()
+one can replace A with R without any difficulties. This case can be
+generalized to cases with arguments none of which is declared with LIKE(me).
+
+But what happens when an argument is declared with LIKE(me):
+    Dist =  A%distance( B ) ?
+Replacing A with C leads to a mismatch since C%distance( .. ) requires a
+Point3D argument, not a Point2D
+argument. We cannot substitute a Point2D with a Point3D at will. Hence a
+Point3D is not a sub-type, only a sub-class of Point2D.
+(I will justify the LIKE(me) syntax and semantics elsewhere but for now
+LIKE(me) requires that the object declared in this way must be of the same
+type as the invoking object.)
+
+It happens very often in practical problems that an object invokes a
+procedure with an argument that has to be of exactly the same type. These
+procedures are also referred to as binary methods. Often one uses operators
+instead: a OP b, for example OP= +, *, <, >, ==, ...
+Binary methods are of great importance but they cause the sub-class to loose
+the sub-type property. This has only been realized in the last decade or so
+and is one of the reason why older OOP languages have some problems,
+typically a run-time error due to type-mismatch.
+
+The current Fortran 2000 draft does not deal at all with the important
+problem of sub-class vs. sub-type. The distinction of type and class is,
+however, very crucial for a viable, consistent, logical incorporation of
+object-oriented programming principles into Fortran.
+
+Note: My version also avoids the unnecessary phrases "type extension" (why
+not inheritance)
+and "type-bound procedure". The latter is a very strange definition since it
+mangles module
+procedure with type-bound procedure.

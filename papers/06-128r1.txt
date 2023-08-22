@@ -1,0 +1,667 @@
+
+                                                              J3/06-128r1
+
+Date:    February 15, 2006
+To:      J3
+From:    Craig Rasmussen
+Subject: Specification, syntax, and edits for interoperability
+         of optional, assumed-shape, allocatable, and pointer
+         dummy arguments
+
+References: WG5 worklist item j3-041 (J3/05-271, J3/05-277, J3/05-281)
+-----------------------------------------------------------------------
+
+Summary:
+--------
+  
+Provide extensions to C Interop that allow for interoperable Fortran
+procedures that have data pointer, allocatable, assumed-shape array, or
+optional dummy arguments.
+
+Note: In addition to the suggestions from meeting 174, an argument
+{{elem_size}} has been added to the FDesc_*_Get functions.
+
+Specification and Syntax: 
+-------------------------
+
+A Fortran procedure interface with the BIND(C) attribute that has
+assumed-shape, allocatable, or data pointer dummy arguments, is
+interoperable with a C function prototype where the corresponding formal
+parameter has type {{FDesc_Assumed_t}}, {{FDesc_Alloc_t}} or
+{{FDesc_Pointer_t}}, respectively. That is to say, a C function calling a
+Fortran procedure with the BIND(C) attribute will pass a descriptor handle
+as the actual argument corresponding to an assumed-shape, allocatable, or
+data pointer dummy argument.  Such an argument must have interoperable type
+and type parameters. The value {{FDESC_NULL}} is provided to represent
+(uninitialized) null descriptor handles. Depending on the details of the
+processor's Fortran descriptors, the procedure may be required to merge
+additional information into the descriptor based on the declaration of the
+dummy argument, or to create a local representation based on the
+information in the descriptor.  If the dummy argument is deallocated,
+allocated, or has its pointer association status changed in the procedure,
+the descriptor shall be modified to reflect the new state of the argument
+on return from the Fortran procedure.
+
+Note to implementors. It is expected that a processor implementation will
+typedef a descriptor handle as a pointer to a descriptor.
+
+A procedure interface that has OPTIONAL dummy arguments can have the
+BIND(C) attribute and be interoperable. The VALUE attribute is not allowed
+for optional dummy arguments in a BIND(C) interface. The interoperable C
+prototype is the same as if the OPTIONAL attribute were not present, the
+only difference is the function reference on the C side. Namely, a C caller
+specifies a missing actual argument in a function reference by passing a
+null data pointer as the argument value if the corresponding dummy argument
+is a data object, or a null procedure pointer as the argument value if the
+corresponding dummy argument is a procedure. If the dummy is an optional
+assumed-shape, allocatable, or pointer dummy argument, the C caller can use
+{{FDESC_NULL}} as an actual argument. A Fortran procedure, as usual, omits
+the actual argument in the procedure reference.
+
+Edits:
+------
+Note:  < and > are used to delimit italic font. << and >> are  used to
+delimit bold font. {{ and }} are used to delimit C code font (Courier). All
+page and line numbers refer to j3/04-007.
+
+______________
+
+[xiii] Introduction, the list of new Fortran 2008 features should 
+include
+
+Interoperability enhancements: Interoperability of optional,
+assumed-shape, allocatable, and pointer dummy arguments.
+
+______________
+
+[73:25] In C530, replace "The ALLOCATABLE, POINTER, or OPTIONAL
+attribute shall not be specified" with "The VALUE and OPTIONAL
+attributes shall not both be specified"
+
+______________
+
+[400:14] Replace "any dummy argument without the VALUE attribute" with
+"any dummy argument that is not pointer, allocatable, or assumed-shape,
+and does not have the VALUE attribute"
+
+[400:17] Delete the trailing "and"
+
+[400:17+] Add additional items
+
+   (5+1) any assumed-shape dummy argument is of interoperable type and
+corresponds to a formal parameter of the prototype that is an
+assumed-shape descriptor handle (15.5.1.1);
+
+   (5+2) any pointer dummy argument is of interoperable type and
+corresponds to a formal parameter of the prototype that is a pointer
+descriptor handle (15.5.1.1);
+
+   (5+3) any allocatable dummy argument is of interoperable type and
+corresponds to a formal parameter of the prototype that is an
+allocatable descriptor handle (15.5.1.1);
+
+[400:20+] Add sentence "Interoperability of procedures and procedure
+interfaces that have assumed-shape, allocatable, or pointer dummy
+arguments, is described in 15.5, and optional dummy arguments are
+discussed in 15.6."
+
+______________
+
+Add section "15.5 Interoperability of Assumed-Shape, Pointer and
+Allocatable Dummy Arguments"
+
+Fortran assumed-shape arrays, array pointers, and allocatable arrays, are
+not interoperable with C arrays.  Companion processors reference
+interoperable Fortran procedures that have assumed-shape, data pointer, or
+allocatable dummy arguments, by using opaque descriptor handles (15.5.1.1).
+For regularity, scalar data pointer and allocatable dummy arguments
+are included and treated as arrays of rank zero. Section 15.5.1 defines a
+header file with types, constants, and function prototypes, used to
+access and modify descriptor fields.
+
+In a function reference in C, the actual argument corresponding to an
+assumed-shape, pointer, or allocatable dummy argument shall be a descriptor
+handle describing an array of the appropriate rank and type.  The
+descriptor handle shall not be {{FDESC_NULL}} unless the dummy argument is
+OPTIONAL (15.6). For allocatable or pointer dummy arguments, the descriptor
+handle reflects changes in the allocation or pointer association status
+upon return from the procedure.
+
+If a Fortran procedure reference causes a procedure defined by means other
+than Fortran to be called, the Fortran processor supplies an appropriate
+descriptor as the actual argument corresponding to an assumed-shape,
+allocatable, or data pointer dummy argument. That procedure shall not
+modify an assumed-shape descriptor, and shall modify a pointer or
+allocatable descriptor only by using the functions described in 15.5.2.3,
+15.5.2.4 and 15.5.2.5.
+
+______________
+
+Note 15.25
+
+A procedure that has an assumed-shape, pointer, or allocatable dummy
+argument may be defined by means other than Fortran, and referenced from
+Fortran programs. The processor constructs the appropriate descriptors for
+the actual arguments.  However, such procedures shall obey the semantics of
+Fortran programs.  For example, assumed-shape array descriptors shall not
+be modified, Fortran restrictions on dummy arguments shall be obeyed, etc.
+
+______________
+
+Note 15.26
+
+For example, a Fortran procedure with the interface
+   
+   SUBROUTINE MY_MATMUL(A,B,C) BIND(C,NAME="MatMul") 
+      ! Perform the matrix operation C=A*B
+      USE, INTRINSIC :: ISO_C_BINDING
+      REAL(C_DOUBLE), DIMENSION(:,:), INTENT(IN)  :: A, B
+      REAL(C_DOUBLE), DIMENSION(:,:), INTENT(OUT) :: C
+      C = MATMUL(A,B)
+   END SUBROUTINE
+   
+may be called from a C program as follows:
+
+{{
+   #include <iso_fortran_desc.h>
+
+   /* The interoperable prototype */
+   void MatMul(FDesc_Assumed_t, FDesc_Assumed_t, FDesc_Assumed_t);
+
+   int err;
+   double A[100][100], B[100][100], C[100][100];
+
+   /* The opaque descriptor handles */
+   FDesc_Assumed_t A_desc, B_desc, C_desc;
+
+   F_extent_t shape[2] = {100,100};
+   F_stride_t stride[2] = {sizeof(double),100*sizeof(double)};
+
+   /* Create the descriptors (error return values are ignored) */
+   err = FDesc_Assumed_Create(&A_desc, sizeof(double), 2);
+   err = FDesc_Assumed_Create(&B_desc, sizeof(double), 2);
+   err = FDesc_Assumed_Create(&C_desc, sizeof(double), 2);
+
+   /* Initialize the descriptors (error return values are ignored) */
+   err = FDesc_Assumed_Set(A_desc, A, shape, stride);
+   err = FDesc_Assumed_Set(B_desc, B, shape, stride);
+   err = FDesc_Assumed_Set(C_desc, C, shape, stride);
+
+   /* Assign initial values to A, B */
+      .
+      .
+      .
+
+   MatMul(A_desc, B_desc, C_desc); /* Perform C=A*B for 100x100 arrays */
+
+   /* Destroy the descriptors (error return values are ignored) */
+   err = FDesc_Assumed_Destroy(&A_desc);
+   err = FDesc_Assumed_Destroy(&B_desc);
+   err = FDesc_Assumed_Destroy(&C_desc);
+}}
+
+______________
+
+15.5.1 Opaque types and values defined in <iso_fortran_desc.h>
+
+The standard specifies structure definitions and interfaces that the
+processor shall provide in the header file, <iso_fortran_desc.h>, written
+in the C programming language.  This file declares C prototypes (and
+defines associated types) for the functions described in 15.5.2.  These
+functions may be used to access and modify Fortran descriptors in C.
+
+
+15.5.1.1 Descriptor handles
+
+Fields or elements of array descriptors are made accessible to C via
+descriptor handles. A scalar C object of type {{FDesc_Assumed_t}} is an
+<<assumed-shape descriptor handle>>; other descriptor handles are
+{{FDesc_Pointer_t}}, a <<pointer descriptor handle>> and {{FDesc_Alloc_t}},
+an <<allocatable descriptor handle>>. Descriptor handles may be used in C
+programs to access or modify fields in descriptors for assumed-shape array,
+data pointer, or allocatable dummy arguments of interoperable Fortran
+procedures.
+
+The header file <iso_fortran_desc.h> also defines a constant {{FDESC_NULL}}
+that is the value of a <<null descriptor handle>>. This constant may be
+assigned to a descriptor handle. {{FDESC_NULL}} is the value assigned to a
+descriptor handle if an error occurs in a descriptor create (15.5.2.1) as
+well as the value that may be used to indicate that an actual argument is
+not present (15.6).
+
+15.5.1.2 Stride and extent types
+
+The header file <iso_fortran_desc.h> defines two new integer types,
+{{F_stride_t}}, used for array stride information, and {{F_extent_t}}, used
+for array shapes and extents.
+
+15.5.2 Function prototypes
+
+Functions described in this section may be used to access and modify fields
+in a Fortran descriptor; accesses to descriptors are made via handles.
+Functions are provided to both create (15.5.2.1) and destroy (15.5.2.2)
+descriptors, though these functions shall not be used if a descriptor
+originates by call from Fortran.  Once a descriptor is created, the rank
+and type of the descriptor shall not be changed.  Before using a descriptor
+as an actual argument in a reference to an interoperable Fortran procedure,
+the descriptor shall be initialized using the appropriate function in
+15.5.2.3.  Storage for the array may be allocated by the Fortran processor
+using the functions in 15.5.2.4, and deallocated by those in
+15.5.2.5. Inquiry functions for descriptors are provided in 15.5.2.6,
+15.5.2.7, 15.5.2.8 and 15.5.2.9.
+
+If the descriptor handle is used as an actual argument in a reference to
+an interoperable Fortran procedure, the corresponding dummy argument
+shall have the same type and rank as the type and rank of the object
+described by the descriptor.
+
+15.5.2.1 Descriptor creation
+
+   <<Prototypes.>>
+
+     {{int FDesc_Assumed_Create
+                (
+                 FDesc_Assumed_t * restrict fdesc,
+                 size_t elem_size,
+                 unsigned int rank
+                );}}
+
+   <<Description.>>  Creates an assumed-shape descriptor. The descriptor
+   shall be destroyed by a subsequent call to {{FDesc_Assumed_Destroy}}.
+
+     {{int FDesc_Pointer_Create
+                (
+                 FDesc_Pointer_t * restrict fdesc,
+                 size_t elem_size,
+                 unsigned int rank
+                );}}
+
+   <<Description.>>  Creates a pointer descriptor and sets the initial
+   pointer association status to disassociated. The descriptor shall be
+   destroyed by a subsequent call to {{FDesc_Pointer_Destroy}}.
+
+     {{int FDesc_Alloc_Create
+                (
+                 FDesc_Alloc_t * restrict fdesc,
+                 size_t elem_size,
+                 unsigned int rank
+                );}}
+
+   <<Description.>>  Creates an allocatable descriptor and sets the
+   initial allocation status to not allocated. The descriptor shall be
+   destroyed by a subsequent call to {{FDesc_Alloc_Destroy}}.
+    
+   <<Arguments.>>
+
+     {{fdesc}}     shall be a pointer to a handle of a descriptor of the
+                   specified type.  Upon return its value is the address of
+                   the created handle.
+
+     {{elem_size}} shall be the size of a scalar of the type of an array
+                   element in bytes.
+
+     {{rank}}      shall be the rank of the object.
+
+   <<Result Value.>>
+
+   The result value is 0 if successful or nonzero if an error occurs.
+
+[Add Note]
+The C type must be interoperable. The C sizeof operator (6.5.3.4)
+can be used to obtain the appropriate value of {{elem_size}}.
+[End Note]
+    
+15.5.2.2 Descriptor destruction
+
+     {{int FDesc_Assumed_Destroy ( FDesc_Assumed_t * restrict fdesc );}}
+
+   <<Description.>>  Destroys an assumed-shape descriptor previously
+   created by a call to FDesc_Assumed_Create.
+
+     {{int FDesc_Pointer_Destroy ( FDesc_Pointer_t * restrict fdesc );}}
+
+   <<Description.>>  Destroys a pointer descriptor previously created by
+   a call to FDesc_Pointer_Create.  
+
+     {{int FDesc_Alloc_Destroy ( FDesc_Alloc_t * restrict fdesc );}}
+
+   <<Description.>>  Destroys an allocatable descriptor previously
+   created by a call to FDesc_Alloc_Create.  
+
+   <<Argument.>>
+
+     {{fdesc}}   shall be the address of a non-null handle to a descriptor
+                 of the specified type. The value of the handle is
+                 {{FDESC_NULL}} on successful execution of the function.
+
+   <<Result Value.>>
+
+   The result value is 0 if successful or nonzero if an error occurs.
+
+_______________________________________________________________________
+
+15.5.2.3 Descriptor Modification
+
+   <<Prototypes.>>
+
+     {{int FDesc_Assumed_Set
+                (
+                 FDesc_Assumed_t fdesc,
+                 void * restrict base_addr,
+                 const F_extent_t shape[restrict],
+                 const F_stride_t stride[restrict]
+                );}}
+
+   <<Description.>>  Sets the fields of an assumed-shape descriptor.
+   The value of {{base_addr}} shall not be {{NULL}}.
+
+     {{int FDesc_Pointer_Set
+                (
+                 FDesc_Pointer_t fdesc,
+                 void * base_addr,
+                 const F_extent_t shape[restrict],
+                 const F_extent_t lbound[restrict],
+                 const F_stride_t stride[restrict]
+                );}}
+
+   <<Description.>>  Sets the fields of a pointer descriptor.  If
+   {{base_addr}} is {{NULL}}, the pointer association status is
+   disassociated and {{shape}}, {{lbound}} and {{stride}} are ignored.
+
+   <<Arguments.>>
+
+     {{fdesc}}      shall be a handle to a descriptor of the specified type.
+
+     {{base_addr}}  shall be a pointer to an object.
+
+     {{shape}}      shall be an array whose element values are the shape of
+                    the object.  Its size shall be at least {{rank}}
+                    elements.  If {{base_addr}} is {{NULL}}, the {{shape}}
+                    array is ignored.  The <i>th element corresponds to the
+                    extent of the <i>th dimension of the corresponding
+                    Fortran object.
+
+     {{lbound}}     shall be an array whose element values are the lower
+                    bounds of the object, in elements.  Its size shall be
+                    at least {{rank}} elements.  If {{base_addr}} is
+                    {{NULL}}, the {{lbound}} array is ignored.
+
+     {{stride}}     shall be an array whose element values are the distance
+                    in bytes between successive elements for each dimension.
+                    Its size shall be at least {{rank}} elements.  If
+                    {{base_addr}} is {{NULL}}, the {{stride}} array is
+                    ignored.
+
+   <<Result Value.>>
+
+   The result value shall be 0 if successful or nonzero if an error
+   occurs.
+
+[Add Note]
+The ordering of corresponding indices is reversed between Fortran and C
+arrays (15.2.5). The {{shape}} argument is in Fortran order.  For example,
+if one wanted to create a descriptor for the C array declared as
+
+   {{double array[10][5];}}
+
+the appropriate {{shape}} would be {{shape={5,10}}}.
+[End Note]
+    
+15.5.2.4 Memory allocation
+
+Functions described below allocate objects as if by the ALLOCATE statement.
+Such an object shall be deallocated by a subsequent call to the
+corresponding function in 15.5.2.5 or by a DEALLOCATE statement.
+
+   <<Prototypes.>>
+
+     {{int FDesc_Assumed_Allocate
+                (
+                 FDesc_Assumed_t fdesc,
+                 const F_extent_t shape[restrict]
+                );}}
+
+   <<Description.>>  Sets the fields of an assumed-shape descriptor and
+   allocates the object. The object shall be deallocated by a subsequent
+   call to FDesc_Assumed_Deallocate.
+
+     {{int FDesc_Pointer_Allocate
+                (
+                 FDesc_Pointer_t fdesc,
+                 const F_extent_t shape[restrict],
+                 const F_extent_t lbound[restrict]
+                );}}
+
+   <<Description.>>  Sets the fields of a pointer descriptor and
+   allocates the object. The object shall be deallocated by a subsequent
+   call to FDesc_Pointer_Deallocate or by a DEALLOCATE statement.
+
+     {{int FDesc_Alloc_Allocate
+                (
+                 FDesc_Alloc_t fdesc,
+                 const F_extent_t shape[restrict],
+                 const F_extent_t lbound[restrict]
+                );}}
+
+   <<Description.>>  Sets the fields of an allocatable descriptor and
+   allocates memory for the array. The object shall be deallocated by a
+   subsequent call to FDesc_Alloc_Deallocate or by a DEALLOCATE statement.
+
+   <<Arguments.>>
+
+     {{fdesc}}   shall be a handle to a descriptor of the specified type.
+
+     {{shape}}      shall be an array whose element values are the shape of
+                    the object.  Its size shall be at least {{rank}}
+                    elements.  The <i>th element corresponds to the extent
+                    of the <i>th dimension of the corresponding Fortran
+                    object.
+
+     {{lbound}}     shall be an array whose element values are the lower
+                    bounds of the object, in elements.  Its size shall be
+                    at least {{rank}} elements.
+
+     {{stride}}     shall be an array whose element values are the distance
+                    in bytes between successive elements for each dimension.
+                    Its size shall be at least {{rank}} elements.
+
+   <<Result Value.>>
+
+   The result value is 0 if successful or nonzero if an error occurs.
+
+15.5.2.5 Memory deallocation
+
+Functions described below deallocate objects as if by the DEALLOCATE
+statement. Such an object shall have been allocated by a previous call to
+the corresponding function in 15.5.2.4 or by an ALLOCATE statement.
+
+   <<Prototypes.>>
+
+     {{int FDesc_Assumed_Deallocate ( FDesc_Assumed_t fdesc );}}
+
+   <<Description.>> Deallocates memory previously allocated by
+   FDesc_Assumed_Allocate.
+
+     {{int FDesc_Pointer_Deallocate ( FDesc_Pointer_t fdesc );}}
+
+   <<Description.>> Deallocates memory previously allocated by
+   FDesc_Pointer_Allocate or by an ALLOCATE statement.
+
+     {{int FDesc_Alloc_Deallocate ( FDesc_Alloc_t fdesc );}}
+
+   <<Description.>> Deallocates memory previously allocated by
+   FDesc_Alloc_Allocate or by an ALLOCATE statement.
+
+   <<Argument.>>
+
+     {{fdesc}}  shall be a handle to a descriptor of the specified type.
+
+   <<Result Value.>>
+
+   The result value is 0 if successful or nonzero if an error occurs.
+
+
+15.5.2.6 Pointer association status
+
+   <<Prototype.>>
+
+     {{_Bool FDesc_Associated ( FDesc_Pointer_t fdesc );}}
+
+   <<Description.>> Returns the association status of a pointer.
+
+   <<Argument.>>
+
+     {{fdesc}}  shall be a handle to a descriptor of the specified type.
+
+   <<Result Value.>>
+
+   The result value is {{true}} if the pointer is associated or {{false}}
+   otherwise.
+
+
+15.5.2.7 Allocation status
+
+   <<Prototype.>>
+
+     {{_Bool FDesc_Allocated ( FDesc_Alloc_t fdesc );}}
+
+   <<Description.>> Returns the allocation status of an allocatable object.
+
+   <<Argument.>>
+
+     {{fdesc}}  shall be a handle to a descriptor of the specified type.
+
+   <<Result Value.>>
+
+   The result value is {{true}} if the array is allocated or {{false}}
+   otherwise.
+
+
+15.5.2.8 Array rank
+
+   <<Prototypes.>>
+
+     {{int FDesc_Assumed_Rank ( FDesc_Assumed_t fdesc );}}
+
+   <<Description.>> Returns the rank of an assumed-shape array.
+
+     {{int FDesc_Pointer_Rank ( FDesc_Pointer_t fdesc );}}
+
+   <<Description.>> Returns the rank of a pointer.
+
+     {{int FDesc_Alloc_Rank ( FDesc_Alloc_t fdesc );}}
+
+   <<Description.>> Returns the rank of an allocatable object.
+
+   <<Argument.>>
+
+     {{fdesc}}  shall be a handle to a descriptor of the specified type.
+
+   <<Result Value.>>
+
+   The result value is the rank of the array or pointer object described
+   by {{fdesc}}.
+
+
+15.5.2.9 Descriptor access functions
+
+   <<Prototypes.>>
+
+     {{int FDesc_Assumed_Get
+                (
+                 FDesc_Assumed_t fdesc,
+                 void ** base_addr,
+                 size_t * elem_size,
+                 F_extent_t shape[restrict],
+                 F_extent_t lbound[restrict],
+                 F_stride_t stride[restrict]
+                );}}
+
+   <<Description.>> Returns address, element size, shape, lower bounds,
+    and stride information for the assumed-shape array described by {{fdesc}}.
+
+     {{int FDesc_Pointer_Get
+                (
+                 FDesc_Pointer_t fdesc,
+                 void ** base_addr,
+                 size_t * elem_size,
+                 F_extent_t shape[restrict],
+                 F_extent_t lbound[restrict],
+                 F_stride_t stride[restrict]
+                );}}
+
+   <<Description.>> Returns address, element size, shape, lower bounds,
+   and stride information for the pointer described by {{fdesc}}.
+
+     {{int FDesc_Alloc_Get
+                (
+                 FDesc_Alloc_t fdesc,
+                 void ** restrict base_addr,
+                 size_t * elem_size,
+                 F_extent_t shape[restrict],
+                 F_extent_t lbound[restrict]
+                );}}
+
+   <<Description.>> Returns address, element size, shape, and lower
+   bounds information for the allocatable object described by {{fdesc}}.
+
+   <<Arguments.>>
+
+     {{fdesc}}      shall be a handle to a descriptor of the specified type.
+
+     {{base_addr}}  shall be a pointer; it contains the address of the object
+                    described by {{fdesc}} on return.
+                    
+     {{elem_size}}  shall be a pointer; it contains the size of a scalar of 
+                    the type of object described by {{fdesc}} on return.               
+
+     {{shape}}      shall be an array; it contains the shape of the object on
+                    return.  Its size shall be at least {{rank}} elements.
+
+     {{lbound}}     shall be an array; it contains the lower bounds of object
+                    on return.  Its size shall be at least {{rank}} elements.
+
+     {{stride}}     shall be an array; it contains the distance in bytes
+                    between successive elements for each dimension on
+                    return.  Its size shall be at least {{rank}} elements.
+
+   <<Result Value.>>
+
+   The result value is 0 if successful or nonzero if an error occurs.
+
+______________
+
+Add section "15.6 Interoperability of Optional Dummy Arguments"
+
+An interoperable Fortran procedure can have OPTIONAL dummy arguments. The
+VALUE attribute shall not be combined with the OPTIONAL attribute. If such
+a procedure is referenced in C and the actual argument corresponding to
+that dummy argument is
+
+   a) a null pointer, and the dummy argument is interoperable; or
+
+   b) a null descriptor handle, and the dummy argument is an
+      assumed-shape array, allocatable variable, or data pointer;
+
+then the dummy argument is not present (12.4.1.6), otherwise, it is
+present.
+
+If a Fortran procedure reference causes a procedure defined by means
+other than Fortran to be called, the Fortran processor will supply {{NULL}}
+for a nonpresent actual argument corresponding to an interoperable dummy
+argument, or {{FDESC_NULL}} for a nonpresent actual argument corresponding
+to an assumed-shape, allocatable, or data pointer dummy argument.
+
+______________
+
+History:
+------------------------------------------------------------------
+Optional:
+  Paper 04-373    meeting 169  Submitted
+                          171  Accepted as complete
+------------------------------------------------------------------
+Pointers, allocatables, and assumed-shape arrays:
+  Paper 04-371r2  meeting 169  Submitted
+        05-159            171  Accepted as complete
+------------------------------------------------------------------
+                          174  Merged two papers and edits added

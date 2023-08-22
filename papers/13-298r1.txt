@@ -1,0 +1,186 @@
+                                                             J3/13-298r1
+To:      J3
+From:    Van Snyder
+Subject: Interp on VOLATILE in specification expressions
+Date:    2013 August 6
+
+----------------------------------------------------------------------
+
+NUMBER: TBD
+TITLE: VOLATILE in specification expressions
+KEYWORD: VOLATILE, specification expression
+DEFECT TYPE: Clarification (or erratum?)
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Is the following subprogram required always to print "T T"?
+
+  subroutine Wobbly ( N )
+    integer, volatile :: N
+    integer :: A ( n, n )
+    integer :: B ( n * n )
+    print *, size(a) == size(b), size(a,1) == size(a,2)
+  end subroutine Wobbly
+
+ANALYSIS
+
+Subclause 5.2.2, paragraph 2, says, in part
+
+  "If a type parameter ... is defined by an expression that is not a
+  constant expression, the ... value is established on entry to a
+  procedure defined by the subprogram, or on execution of the BLOCK
+  statement...."
+
+Subclause 5.3.8.2, paragraph 2, says, in part
+
+  "The bounds, and hence shape, are determined on entry to a procedure
+  defined by the subprogram, or on execution of the BLOCK statement,
+  by evaluating the bounds' expressions."
+
+This could be interpreted to mean that a processor is required to take
+a snapshot of variables that appear in specification expressions when
+the subprogram is invoked or the BLOCK statement is executed, and use
+that same value in all appearances of that variable in all
+specification expressions in that scoping unit.
+
+On the other hand, NOTE 5.25 in subclause 5.3.19 states that a
+"Fortran processor should use the most recent definition of a volatile
+object when a value is required."  This could be interpreted to mean
+that a processor should fetch a value for the variable each time it
+appears within a specification expression.  Further, subclause
+7.1.5.2.4, paragraph 2, permits a processor to apply mathematically
+equivalent transformations, such as replacing N+N by 2*N, which
+changes the number of references.  NOTE 5.25 is a suggestion, not a
+requirement, and certainly not a prohibition.
+
+Therefore, the standard does not specify whether the subprogram is
+always required to print "T T", or the effect is processor dependent.
+
+ANSWER 1
+
+Subclause 5.2.2, paragraph 2, requires that length type parameter values
+that are not defined by a constant expression be established on entry to
+a procedure, or on execution of a BLOCK statement.  Subclause 5.3.8.2,
+paragraph 2, requires that a processor determine the bounds, and hence
+shape, of explicit-shape arrays on entry to a procedure, or when a BLOCK
+statement is executed.  The requirements on the BLOCK statement do not
+allow a processor any latitude to evaluate bounds or length parameters
+little-by-little, in whatever order it chooses to evaluate specification
+expressions within the specification part of the construct.  The
+requirement "on entry to a procedure" is less precise, but, for
+consistency, also ought not to allow this latitude.  That is, a
+processor is required to take a "snapshot" of each volatile variable
+that appears within the specification part, before the specification
+part is elaborated, and use that value throughout elaboration of the
+specification part.
+
+The subprogram is therefore required to print "T T".
+
+Edits are provided to clarify this.
+
+EDITS 1
+
+Within subclause 5.3.19, after paragraph 4 [120:23+], insert a
+paragraph:
+
+  "The value of a volatile variable that appears in a
+  <specification-expr> within the <specification-part> of a procedure
+  shall be established when the procedure is invoked, and that value
+  shall be used throughout evaluation of expressions within that
+  <specification-part>.  The value of a volatile variable that appears
+  in a <specification-expr> within the <specification-part> of a BLOCK
+  construct shall be established when the BLOCK statement is executed,
+  and that value shall be used throughout evaluation of expressions
+  within that <specification-part>.  Once established, the value that is
+  used to evaluate specification expressions is not affected if the
+  value of the variable changes by means not specified by the program."
+
+{Remove any possibility of conflict with subclauses 5.2.2 and
+5.3.8.2.}
+
+Within NOTE 5.25, replace "The Fortran processor" with "When a procedure
+is invoked, a BLOCK statement is executed, or during execution of the
+<execution-part> of a subprogram or BLOCK construct, the Fortran
+processor".
+
+ANSWER 2
+
+Subclause 2.3.5, paragraph 2, states that specification expressions
+within the specification part of a procedure are evaluated in a
+processor dependent order.  Subclause 8.1.4, paragraph 3, states that
+specification expressions within the specification part of a BLOCK
+construct are evaluated in a processor dependent order.  Subclause
+7.1.5.2.4, paragraph 2, allows a processor to evaluate a
+mathematically equivalent numeric expression, such as replacing N+N
+with 2*N, which might affect the number of references to a volatile
+variable.  NOTE 5.25 within subclause 5.3.19 urges (but does not
+requre) a Fortran processor to "use the most recent definition of a
+volatile object."
+
+Therefore, it is processor dependent whether the subprogram will
+always print "T T".
+
+Edits are provided to warn about potentially curious behavior, and to
+mention the processor dependency in Annex A.
+
+EDITS 2
+
+Within subclause 5.2.2, paragraph 2 [88:36-37], replace "the type
+parameter value..., and is not affected":
+
+  "the type parameter value is established by evaluation of the
+   expression after the procedure defined by the subprogram is invoked
+   or after the BLOCK statement is executed, and before the first
+   executable construct of the <execution-part>, if any, is executed. 
+   The value is not affected"
+
+{Remove apparent conflict between 2.3.5p2 and 5.2.2p2.}
+
+Within subclause 5.3.8.2, paragraph 2 [94:20-21], replace the second
+sentence:
+
+  "The bounds, and hence shape, are determined by evaluation of
+   specification expressions within the <specification-part> of the
+   subprogram or BLOCK construct, in processor-dependent order, after
+   the procedure defined by the subprogram is invoked or after the
+   BLOCK statement is executed, and before the first executable
+   construct of the <execution-part>, if any, is executed."
+
+{Remove apparent conflict between 2.3.5p2 and 5.3.8.2p2.}
+
+After Note 5.25 in subclause 5.3.19 [102:24-], insert a note:
+
+  "NOTE 5.25a Subclause 5.3.8.2 specifies that the bounds, and hence
+    shape, of explicit-shape arrays, and length parameters, are
+    determined after a procedure is invoked or a BLOCK statement is
+    executed, and before the first executable construct, if any, is
+    executed.  If a variable with the VOLATILE attribute appears in a
+    specification expression, however, a processor is encouraged to use
+    the most recent definition.  The order of evaluation of
+    specification expressions, and whether mathematically equivalent
+    transformations are performed, are not specified by this standard. 
+    Therefore, it is processor dependent whether its value in that
+    expression is necessarily the same as its value in another
+    specification expression.  If it appears more than once within a
+    single specification expression, it is processor dependent whether
+    its values at those separate appearances are necessarily the same."
+
+In the first list item in subclause A.2 [459:16], insert ", 5.3.8.2"
+after "2.3.5".
+
+In subclause A.2, in subclause order [459:38+], insert a list item:
+
+  "o for purposes of evaluating specification expressions, whether a
+     processor accesses a volatile variable once when a procedure is
+     invoked, or separately for different appearances of that volatile
+     variable;"
+
+In the list item in subclause A.2 concerning subclause 8.1.4 [460:21],
+insert "5.3.8.2," before "8.1.4".
+
+SUBMITTED BY: Van Snyder
+
+HISTORY: m202  13-298r1  Submitted
+
+----------------------------------------------------------------------

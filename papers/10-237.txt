@@ -1,0 +1,172 @@
+                                                            10-237
+To: J3
+From: Nick Maclaren
+Subject: Interop TR:  TYPE(*) and MPI Support
+Date: 2010 October 12
+Reference: 10-165r2, N1766, 10-233, 10-234
+
+
+
+1. 10-233 and 10-234
+--------------------
+
+10-233 proposes passing an assumed-size array as an assumed-shape one as
+an assumed-shape array which has final bounds of (1,1), and requiring
+that the called C function has some non-standard way of telling the
+difference.  Such a specification should be used only in desperation,
+and there are much better approaches in this case.
+
+10-234 proposes to support CHARACTER(LEN=*) dummy arguments by appending
+the lengths as extra arguments at the end of the normal ones.  While
+that is one of the methods that compilers have used, there are more
+structured ways of solving the problem.
+
+This document proposes an alternative way of solving those problems.  I
+am sorry that it is submitted now, but it needed to review 10-233 and
+10-234.
+
+
+2. Background
+-------------
+
+MPI (and quite a lot of other interfaces) need a way of being passed a
+more-or-less arbitrary data object without forcing 'copy-in/copy-out',
+whether because the ASYNCHRONOUS or TARGET attributes are needed or for
+performance.  In 10-165r2, a combination of TYPE(*) and DIMENSION(..)
+does this except for:
+
+    Types that are not in the list of interoperable types [15.3.2].  The
+vast majority of arguments passed to MPI are of such types, because very
+few Fortran programs distort themselves to use only C-interoperable
+types for their data.
+
+    Actual arguments that are themselves assumed-size dummy arguments.
+Regrettably, this is a very common usage, for historical reasons.
+
+    Actual arguments that are character variables with lengths other
+than 1 (including assumed-length ones).
+
+Upon reflection, the first and last points are flaws in the current
+specification of TYPE(*).  It currently does not say anything about
+types being required to be interoperable, and thus the following code
+fragment is unclear:
+
+        CHARACTER(LEN=5) :: a
+        INTEGER :: x
+        CALL Fred (a,x)
+
+        SUBROUTINE Fred (b, y)
+            TYPE(*) :: b, y
+            CALL Joe (b,y)
+
+        SUBROUTINE Fred (c, z) BIND(C)
+            TYPE(*) :: c, z
+
+Note that it is not possible to provide these facilities using different
+atttributes of dummy arguments unless those attributes are used in the
+generic resolution, and neither the difference between assumed-size and
+other arrays nor the length of character variables do [12.4.3.4.5].
+Changing the rules for generic resolution is not within the scope of the
+TR, so has not been considered.
+
+
+3. Proposals
+------------
+
+Following discussion of a BIND(DESC) attribute that would address these
+issues, Bill Long suggested an attribute, which I proposed in a draft of
+this paper.  However, upon further reflection, it is not necessary, and
+all that is needed is to extend the functionality of TYPE(*) and
+DIMENSION(..), especially in combination with BIND(C).  If, however,
+people felt that an extra attribute is needed to add this functionality,
+it would be easy to redraft.
+
+The main changes are:
+
+    DIMENSION(..) relaxes the constraint that assumed-size arrays may
+not be used as actual arguments for assumed-shape dummy arguments, and
+specifies how they are passed to C.  It specifies that the uppoer bound
+of the final dimension is undefined, which makes most use of them in
+Fortran illegal.
+
+    DIMENSION(..) and BIND(C) relaxes the constraint that character
+variables must have length 1, and passes the character length as a
+contiguous first dimension, which is exactly how all compilers will
+store the data and how C programmers will expect it.
+
+    TYPE(*) and BIND(C) relaxes the constraint that intrinsic types must
+be interoperable and derived types must be composed only of them.  This
+is critical for MPI.
+
+I am almost certain that this addresses all of 10-233, 10-234, all of
+MPI's requirements, and those of most other similar interfaces.
+
+
+4. Points Not Addressed
+-----------------------
+
+There is one other requirement for MPI choice buffers, which is that
+many programmers want to be able to pass the data of derived types with
+type-bound procedures to MPI.  I am not proposing to address that, as it
+is conceptually complicated.
+
+There are mixed views on the usefulness of the member type of the
+CFI_desc_t structure.  I am one of those who feels that it should be
+removed, but am not proposing that here.  However, as Aleks Donev
+pointed out in N1766, a fix is needed.
+
+
+5. Edits to 10-165r2
+--------------------
+
+[2:10+] After paragraph 2, append a new paragraph and a new NOTE:
+
+"Notwithstanding 15.3.2 paragraph 1, if a dummy argument of a procedure
+with the BIND attribute has type TYPE(*), all intrinsic types in its
+actual argument shall be considered to be interoperable.
+
+    NOTE 2.?
+    This implies that derived types with components of any intrinsic
+    type are also interoperable with TYPE(*) dummy arguments."
+
+[2:21+] After paragraph 3, append a new paragraph and a new NOTE:
+
+"Notwithstanding 12.5.2.4 paragraph 14, the actual argument of an
+assumed-rank dummy argument of a procedure with the BIND attribute may
+be an assumed-size array; in that case, the upper bound of the final
+dimension of the dummy argument is undefined.
+
+    NOTE 2.?
+    This implies that most actions on such an argument are undefined,
+    including such actions as using the SHAPE intrinsic with no
+    dimension.  There are essentially no uses of such dummy arguments
+    in Fortran code."
+
+[5:33] Replace "or assumed-shape" by ", assumed-shape or assumed-size".
+
+[6:4] After the specification of CFI_dim_t, append two new paragraphs:
+
+"If the actual argument is of type CHARACTER, the member elem_len shall
+contain the length of a variable of length 1 of that type and kind.  The
+first element of member dim shall contain a lower bound of 1 and a
+stride and upper bound equal to elem_len, and all other elements shall
+correspond to a dimension one less than otherwise.
+
+If any actual argument associated with the dummy argument is an
+assumed-size array, the array shall be simply contiguous, the member
+attribute shall be CFI_attribute_unknown_size and the member extent of
+the last dimension of member dim is undefined."
+
+[10:24+] Append to table 5.1:
+
+        "CFI_attribute_unknown_size    assumed-size"
+
+[10:27] Append to the end of the paragraph "CFI_attribute_unknown_size
+specifies an object that is an assumed-size dummy argument".
+
+[[[ I find the combination of CFI_attribute_assumed and
+CFI_attribute_assumed_size confusing, so have used another name. ]]]
+
+[11:0+] Append to table 5.2:
+
+        "CFI_type_non_interoperable    a non-interoperable data type"

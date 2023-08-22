@@ -1,0 +1,193 @@
+
+                                                           J3/00-200
+
+Date:    2000/05/15
+To:      J3
+From:    Matthijs van Waveren
+Subject: Issues 161 and 257
+
+Edits and references are to J3/00-007r1.
+
+Issue 161: [273:29-31]
+Issue 257: [392: 2-18]
+
+1. Analysis
+
+Issue 161 asks for a description of the association of Fortran actual
+arguments with C formal arguments. Issue 257 asks for an illustrative
+example for the interoperation of a Fortran procedure and a C
+function.
+
+This paper proposes to show two examples: one of a Fortran code
+calling a C routine, and one of a C code calling a Fortran
+routine. Since this involves a lot of text, this paper proposes to add
+these examples to Annex C, instead of adding a long note to either
+Chapter 12 or 16. The examples and edits are shown in section 2.
+
+During the writing of the example, it was noted that the current
+example in note 12.39 is incorrect. An edit to fix this is included in
+section 2.
+
+2. Edits
+
+[161:29-31] Delete J3 note
+
+[268:29-30] Change these two lines to:
+
+        INTEGER(C_INT), VALUE :: I, J
+        REAL(C_FLOAT), VALUE :: R
+
+[392:2-18] Delete J3 note
+
+[448:13+] Add
+
+"C.12 Section 16 notes
+
+C.12.1 Examples of Interoperation between Fortran and C Functions
+
+C.12.1.1 Example of Fortran calling C
+
+C Function Interface:
+
+int C_Library_Function(void* sendbuf, int sendcount, My_Own_Datatype
+        sendtype, int *recvcounts)
+
+Fortran Module:
+
+module FTN_C
+        USE ISO_C_BINDING
+        private
+        TYPEALIAS, public ::    MY_OWN_DATATYPE => INTEGER(C_INT)
+        interface block
+                BIND(C, NAME='C_Library_Function') INTEGER (C_INT)  &
+                function C_LIBRARY_FUNCTION                         &
+                (sendbuf, sendcount, sendtype, recvcounts)
+                        use iso_c_binding
+                        implicit none
+                        type (C_PTR), VALUE :: sendbuf
+                        INTEGER (C_INT), VALUE :: sendcount
+                        type (MY_OWN_DATATYPE), VALUE :: sendtype
+                        type (C_PTR), VALUE :: recvcounts
+                end function C_LIBRARY_FUNCTION
+        end interface block
+end module FTN_C
+
+The module FTN_C contains the declaration of the Fortran dummy
+arguments, which correspond to the C formal parameters. The intrinsic
+module ISO_C_BINDING is referenced in the module FTN_C. The NAME
+specifier is used in the BIND(C) attribute in order to handle the
+case-sensitive name change between Fortran and C from
+'C_LIBRARY_FUNCTION' to 'C_Library_Function'. See also note 12.39.
+
+The first C formal parameter is the pointer to void sendbuf, which
+corresponds to the Fortran dummy argument sendbuf, which has the type
+C_PTR and the VALUE attribute.
+
+The second C formal parameter is the int sendcount, which corresponds
+to the Fortran dummy argument sendcount, which has the type
+INTEGER(C_INT) and the VALUE attribute.
+
+The third C formal parameter is sendtype, which has the type
+My_Own_Datatype defined by C's typedef facility. The TYPEALIAS
+statement is specified in Fortran in order to define a
+corresponding type alias name. The C formal parameter sendtype
+corresponds to the Fortran dummy argument sendtype of type
+MY_OWN_DATATYPE.
+
+The fourth C formal parameter is the pointer to int recvcounts, which
+corresponds to the Fortran dummy argument recvcounts, which has the
+type C_PTR and the VALUE attribute.
+
+Fortran Calling Sequence:
+
+        USE ISO_C_BINDING
+        use ftn_c
+        ...
+        REAL (C_FLOAT), TARGET  :: send(100)
+        INTEGER (C_INT)         :: sendcount
+        type (MY_OWN_DATATYPE)  :: sendtype
+        INTEGER (C_INT), TARGET :: recvcounts(100)
+        ...
+        call c_library_function(C_LOC(send), sendcount, sendtype, &
+        C_LOC(recvcounts))
+        ...
+
+The preceding code contains the declaration of the Fortran actual
+arguments associated with the above-listed Fortran dummy arguments.
+
+The first Fortran actual argument is the address of the first element
+of the array send, which has the type REAL(C_FLOAT) and the TARGET
+attribute. This address is returned by the intrinsic function
+C_LOC. This actual argument is associated with the Fortran dummy
+argument sendbuf, which has the type C_PTR and the VALUE attribute.
+
+The second Fortran actual argument is sendcount of type
+INTEGER(C_INT), which is associated with the Fortran dummy argument
+sendcount, which has the type INTEGER(C_INT) and the VALUE attribute.
+
+The third Fortran actual argument is sendtype of type
+MY_OWN_DATATYPE, which is associated with the Fortran dummy argument
+sendtype, which has the type MY_OWN_DATATYPE and the VALUE attribute.
+
+The fourth Fortran actual argument is the address of the first element
+of the array recvcounts, with has the type REAL(C_FLOAT) and the
+TARGET attribute. This address is returned by the intrinsic function
+C_LOC. This actual argument is associated with the Fortran dummy
+argument recvcounts, which has the type C_PTR and the VALUE
+attribute.
+
+C.12.1.2 Example of C calling Fortran
+
+Fortran Code:
+
+        BIND(C) subroutine simulation(alpha, beta, gamma, delta)
+                        USE ISO_C_BINDING
+                        implicit none
+                        INTEGER (C_LONG), VALUE, INTENT(IN)          ::
+alpha
+                        REAL (C_DOUBLE), INTENT(INOUT)               :: beta
+                        INTEGER (C_LONG), INTENT(OUT)                ::
+gamma
+                        REAL (C_DOUBLE), dimension(*), INTENT(IN)    ::
+delta
+                        ...
+                        ...
+        end subroutine simulation
+
+C Function Interface:
+
+void *simulation(long alpha, double *beta, long *gamma, double delta[])
+
+C Calling Sequence:
+
+simulation(alpha, &beta, &gamma, delta);
+
+The above-listed Fortran code specifies a subroutine with the name
+simulation. This subroutine corresponds to the C function with the
+name simulation, which returns a pointer to void.
+
+The Fortran subroutine references the intrinsic module
+ISO_C_BINDING.
+
+The first Fortran dummy argument of the subroutine is alpha, which has
+the type INTEGER(C_LONG) and the attributes VALUE and INTENT(IN). Note
+that the VALUE attribute implies the INTENT(IN) attribute. This dummy
+argument corresponds to the C formal parameter alpha, which is a
+long. The actual C parameter is also a long.
+
+The second Fortran dummy argument of the subroutine is beta, which has
+the type REAL(C_DOUBLE) and the INTENT(INOUT) attribute. This dummy
+argument corresponds to the C formal parameter beta, which is a
+pointer to double. An address is passed as actual parameter in the
+C calling sequence.
+
+The third Fortran dummy argument of the subroutine is gamma, which has
+the type INTEGER(C_LONG) and the INTENT(OUT) attribute. This dummy
+argument corresponds to the C formal parameter gamma, which is a
+pointer to long.  An address is passed as actual parameter in the
+C calling sequence.
+
+The fourth Fortran dummy parameter is the assumed-size array delta,
+which has the type REAL (C_DOUBLE) and the attribute INTENT(IN). This
+dummy argument corresponds to the C formal parameter delta, which is a
+double array. The actual C parameter is also a double array.

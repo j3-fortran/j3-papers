@@ -1,0 +1,96 @@
+                                                            08-245
+To: J3
+From: Michael Ingrassia
+Subject: Public Comment J32031
+Date: 2008 July 08
+----------------------------------------------------------------------
+
+Commenter's Subject was "equivalence of circular types"
+
+The draft Fortran standard allow circular type
+definitions (see Section 4.5.3).  Type
+equivalence for derived types that do not have
+the SEQUENCE property or the BIND attribute is
+trivial, they are equivalent only if they are
+defined by the same derived-type definition.
+For type that have the SEQUENCE property or
+the BIND attribute, type equivalence is
+defined in terms of a hybrid of structural
+equivalence and name equivalence.  This hybrid
+condition is easier to test than pure
+structural equivalence, but harder to test than
+pure name equivalence.  Like other definitions
+of type equivalence based on structural
+equivalence, the definition of the equivalence
+of two circular types is tricky.  The draft
+Fortran standard avoids this problem by not
+defining what it means for two circular types
+to be equivalent.
+
+Consider the program
+
+       MODULE MOD
+         TYPE T1
+           SEQUENCE
+           INTEGER I
+           TYPE(T2), POINTER :: P
+         END TYPE
+         TYPE T2
+           SEQUENCE
+           INTEGER I
+           TYPE(T1), POINTER :: P
+         END TYPE
+       END
+
+       PROGRAM MAIN
+         USE MOD, ONLY: T3 => T1, T4 => T2
+         TYPE T1
+           SEQUENCE
+           INTEGER I
+           TYPE(T2), POINTER :: P
+         END TYPE
+         TYPE T2
+           SEQUENCE
+           INTEGER I
+           TYPE(T1), POINTER :: P
+         END TYPE
+
+         TYPE(T1) :: X
+         TYPE(T3) :: Y
+
+         Y%I = 1
+         NULLIFY(Y%P)
+         X = Y
+       END
+
+The types T1 and T2 defined in the module might or
+might not be equivalent to the types T1 and T2 defined
+in the main program depending on the definition of type
+equivalence for types with circular definitions.
+Because the standard does not provide such a definition,
+implementors have had to supply their own definitions.
+I have found three distinct definitions implemented by
+different compilers.
+
+In the case of the example given above, Sun Fortran
+considers the types T1 and T2 defined in the module to be
+equivalent to the types T1 and T2 defined in the main
+program.  A compiler from another vendor considers them
+to be different and produces the error message
+
+fortcom: Error: testa.f, line 32: An assignment of
+          different structure types is invalid.   [Y]
+         X = Y
+............^
+compilation aborted for testa.f (code 1)
+
+when it tries to compile the code above.
+
+I know two ways to precisely define structural equivalence
+of circular types.  One is to give an algorithm for testing
+type equivalence.  The other is to define type equivalence
+in terms of equivalence classes.  Either approach will be
+considerably long and more complicated than the definition
+of derived-type equivalence given in the draft standard.
+
+----------------------------------------------------------------------

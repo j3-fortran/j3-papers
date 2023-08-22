@@ -1,0 +1,496 @@
+                                                            J3/06-123r1
+
+To: J3/WG5
+From: Malcolm Cohen
+Subject: Intelligent Macros - Specs and Syntax
+Date: 2006/02/14
+Reference: J3-014, J3/05-280, J3/06-123.
+
+1. Introduction
+
+Paper 05-280 proposed the introduction of an intelligent macro facility to
+satisfy the "generic programming" requirement implicit in J3-014.  This paper
+proposes detailed specifications and syntax for that facility.  Rationale is
+not included in this paper - please see J3/05-280.
+
+The macro facility described here is envisaged as an integral part of the
+Fortran processor, not as a separate text-processing tool.  However, it could
+be implemented by a software tool that had sufficient Fortran intelligence.
+
+2. Specifications
+
+2.1 Scoping
+
+Macros shall be treated the same as other local entities with respect to
+scoping, that is, they have scoping-unit scope (not file scope unlike "cpp"
+and friends).
+
+Macros shall be accessible via both use and host association.
+
+Macro names shall be class 1 names.
+
+A macro definition is a construct but not a scoping unit.  The macro dummy
+arguments have the scope of the construct, i.e. they shall be construct
+entities.
+
+2.2 Kinds of macros
+
+Statement-level macros shall be provided.  These are macros whose invocation is
+a whole statement, and which expand to one or more whole statements.
+
+At this point, function-level macros and others (such as list macros) are not
+being proposed.  Although these would have useful functionality, they are
+beyond the scope of the current proposal and can be added later.
+
+2.3 Definition and invocation
+
+A (statement-level) macro definition shall be a specification construct.
+
+Invocation of a statement-level macro shall be a statement.
+
+Macros shall be invocable with keyword arguments.
+
+A macro shall not be expanded unless it has been previously defined or
+accessed by use or host association.
+{A macro invocation therefore cannot be the first statement of a program unit.
+ NB: This does not prohibit recursive macro expansion; but that only works if
+ controlled by macro conditionals (see below).}
+
+2.4 Statement generation
+
+A statement macro generates whole statements.  These may be any kind of
+statement (but see next point) including specification statements and
+executable statements.  {Note: That includes generating macro
+definitions and expansions.}
+
+A macro expansion shall be properly nested with respect to scope; that
+is, it shall not generate a statement which terminates the scope the
+EXPAND statement appears in.  {In particular, this means that it
+cannot generate a program-unit END statement, but may generate
+whole contained subprograms.}
+
+2.5 Macro actual arguments
+
+An actual argument shall be a sequence of one or more tokens excluding
+semi-colon.  Delimiters (excluding "/") shall be matched.  Commas are only
+permitted inside delimiters (again, excluding "/").
+
+Note: This is very permissive.  We could be a lot more restrictive - for
+example, requiring it to follow the syntax of an expression, but since the
+result of the expansion needs to satisfy our syntax rules there seems little
+point in requiring the arguments (before expansion) to satify some set of
+syntax rules.  Having it be this permissive is simple to describe, puts less
+burden on the implementor, and facilitates implementation as a separate tool.
+
+Expanding a macro replaces each dummy argument appearing in the body of the
+definition with (all the tokens of) its corresponding actual argument.  Tokens
+are replaced as a whole, never in part.
+
+2.6 Continuation lines and concatenation
+
+Breaking tokens across continuation lines in macro definitions and macro
+invocations does not affect macro expansion - it is as if they were joined
+together before replacement.
+
+The limit on size for a sequence of lines (initial line + continuation lines)
+applies after expansion, but the individual line limits do not; so it is
+sort-of equivalent to joining the whole sequence together into a single line,
+doing the replacements, then breaking into a sequence of individual lines
+again.  As long as we don't talk about macro expansion as a textual thing, but
+talk about its effect on the tokens, we don't need to describe that (except for
+the overall limit).
+
+Note: The size limit is intended to allow implementation as a separate tool.
+
+It shall be possible to concatenate tokens to form new ones, using a special
+token concatenation "operator".  The result of a token concatenation shall be
+acceptable as a single token.
+
+2.7 Iteration, conditions, and macro variables
+
+A macro shall be able to iterate (i.e. it shall have loops).
+Loop expansion shall be controlled by macro expressions (see below).
+
+Macros shall have "macro variables".  A loop in a macro will iterate a macro
+variable over a range.  A macro variable has the scope of the macro expansion,
+and is only used in macro contexts.  It is another construct entity.  Only
+integer macro variables are allowed.
+
+A macro variable shall be a class 1 name, with the scope of the macro
+definition.  All macro variables shall be explicitly declared.  (Macro dummy
+arguments are like macro variables except for the "integer" part, and appearing
+in the macro's dummy argument list counts as explicit declaration.)  Macro
+variables are replaced by their value during expansion.
+
+Macro dummy arguments may be optional.  Expanding an optional macro dummy
+argument that is not present produces no token.
+
+A macro expression, after expansion, shall be an initialization expression
+except that it may also include a reference to the PRESENT intrinsic whose
+actual argument was a macro dummy argument.
+
+A macro shall be able to conditionally include code depending on a macro
+expression.
+
+Macro control statements (for iteration, conditional processing, etc.) shall
+appear on one or more lines by themselves, i.e. not with any other macro
+control statement nor with any macro body statement.  (The normal rules for
+continuation apply, thus one or more lines.)
+
+Because a macro being expanded as an inline subroutine call will want to
+have variables that are local to the macro expansion, there shall be a new
+kind of construct which allows declarations of variables local to that
+construct.  It should also allow declarations of types and named
+constants.  All of these are construct entities; entities of the same name
+outside the scoping unit are inaccessible by that name.
+
+2.8 Macro expansion
+
+2.8.1 Nested macro definitions
+
+It shall be possible to define new macros within a macro definition.  The new
+macro is defined when its containing macro is expanded, not at macro definition
+time.
+
+2.8.2 Macro redefinition
+
+It shall not be possible to redefine a macro.
+
+2.8.3 Placement of macro invocation
+
+A macro invocation may occur anywhere that its name is accessible.
+{It cannot appear as the first statement of a program-unit.}
+
+However, if it is the consequence of a logical IF, it shall expand to exactly
+one statement.  Obsolescently, the same for a nonblock-DO loop ending
+statement.  (And that statement shall be valid in that context, but that goes
+without saying.)
+
+2.8.4 Expansion Algorithm
+
+(1) Process each macro statement, looping for macro DO statements,
+    conditionally processing those within macro IF statements.
+
+(2) When processing each macro statement;
+    (a) replace macro integer variables with their value (as an integer
+        literal constant in "I0" format),
+    (b) replace macro dummy arguments with their actual value,
+    (c) perform any token concatenation,
+    (d) identify the statement as a
+        - macro control statement; act upon it.
+	- nested macro definition; start defining the new macro.
+	- macro expansion statement; expand the referenced macro.
+	- macro body statement; see below.
+
+A macro body statement is just a sequence of tokens.  It has no meaning or
+effect until after expansion, when it forms a whole Fortran statement, part
+of a statement, or several statements.
+
+It shall be possible to have multiple macro body statements contributing to a
+single expanded statement.  This shall be done in a similar manner to normal
+continuation lines.  However, unlike the situation with normal continuation
+lines, tokens shall not be split across generated continuations (token joining
+should be done with the token concatenation operator, not by generated
+continuations).  For simplicity, continuation generation shall be done with
+the same syntax independent of the source form.
+
+Contiguous whitespace (blanks, continuation-newlines) is either preserved or
+may be replaced by a single blank character; this is processor-dependent.
+
+A Fortran processor should contain the capability of displaying the results of
+macro expansion.  {NB: This is a recommendation, not a requirement.}
+Whether comments in a macro definition are preserved in the expansion is
+processor-dependant.
+
+2.9 OPTIONAL features
+
+We do not recommend pursuing these initially.  None of these are essential
+to the basic facility; they are here recorded for potential future reference.
+
+2.9.1 EXIT and CYCLE for MACRO DO
+
+These could be spelt MACRO EXIT and MACRO CYCLE, though MACRO EXIT has an
+unfortunate flavour to it.  Additionally, macro DOs could have "special"
+construct names (whose scope is that of the macro expansion).
+
+2.9.2 Unique symbol generation
+
+For generating temporary variables, it could be useful for a macro to be able
+to generate guaranteed-to-be-unique symbols.  This would allow a macro to
+create temporary variables of its own which could not conflict with its
+arguments or the invocation context.  This option would require
+character-valued macro variables, see 2.9.2.
+
+2.9.3 Character-valued macro variables
+
+Allow macro variables (other than the macro dummy arguments) to have character
+values.  This is only useful if we have some way of assigning values to them,
+such as unique symbol generation (2.9.1).
+
+2.9.4 Persistant macro variables
+
+Allow macro variables whose scope is the scoping unit containing the EXPAND
+statement.  This is useless with initial values and/or macro assignment.
+
+2.9.6.6.6 Macro COMMON
+
+The macro common statement
+  MACRO COMMON/FRED/ x
+establishes macro variable X which can be used by any macro invocation in
+any scoping unit which declares the MACRO COMMON /FRED/.
+
+2.10 Comments
+
+(1) The objective is for statement-level macros to provide a convenient way to
+
+    (a) use macros to create modules, just as conveniently as in the previously
+        proposed "parameterised module" facility;
+    (b) use macros to create types and procedures; and
+    (c) use macros to create inline sections of code conveniently (like an
+        inline procedure call).
+
+    If there is some aspect of module creation that demands different treatment
+    from the other requirements listed above, we could have a special syntax
+    for module macros.  I do not believe this to be necessary however.
+
+(2) If macros are always distinguishable from other classes of names, they
+    could form their own name class.  Otherwise, they will need to be standard
+    class 1 names. 
+
+    In the proposed syntax below, definition and invocation use special syntax
+    to delineate macro names (i.e. there can be no clash with other names);
+    however, the USE and IMPORT statements would probably not want to use
+    special syntax.
+
+    Having them as standard class 1 names keeps things simpler for us and
+    for users.
+
+(3) One can effectively pass macro names as macro arguments, since expansion
+    of arguments occurs before analysis of each macro body statement.  For
+    example:
+      DEFINE MACRO :: Iterator(count,Operation)
+        DO i=1,count
+          EXPAND Operation(i)
+        END DO
+      END MACRO
+
+(4) Using the macro access to initialization expressions, we can create
+    interfaces and procedures for all kinds of a type, for example:
+DEFINE MACRO :: i_square_procs()
+  MACRO INTEGER i
+  MACRO DO i=1,1000
+    MACRO IF (SELECTED_INT_KIND(i)>=0 .AND.
+              (i==1 .OR. SELECTED_INT_KIND(i)/=SELECTED_INT_KIND(i-1))) THEN
+      FUNCTION i_square_range_%%i(a) RESULT(r)
+        INTEGER(SELECTED_INT_KIND(i)) a,r
+        r = a**2
+      END FUNCTION
+    MACRO END IF
+  MACRO END DO
+END MACRO
+
+3. Syntax
+
+3.1 Overview
+
+The macro concatenation operator shall be "%%".
+{Note: Many other values are plausible, e.g. "#", "&".}
+This concatenation operator shall appear only within a macro definition.
+The result of a concatenation shall be acceptable as a single token.
+Note: the result token might be a different kind of token to one or both of
+the original tokens.
+
+Statement-level macro definitions begin with a DEFINE MACRO statement, and end
+with an END MACRO statement, e.g.
+  DEFINE MACRO :: puts_(string)
+    CALL puts(string//ACHAR(0))
+  END MACRO
+The double colon is required in the DEFINE MACRO statement, in case of vendor
+extensions which begin with the word "DEFINE".  A define-macro statement may
+contain attributes, in particular PRIVATE and PUBLIC.  The END MACRO statement
+may optionally mention its name.
+
+A macro dummy argument may be declared optional with the MACRO OPTIONAL
+statement, for example
+  DEFINE MACRO :: hello(variable,initvalue)
+    MACRO OPTIONAL :: initvalue
+
+The PRESENT intrinsic shall be extended to allow a zero-argument form which
+always returns FALSE.  This form shall be allowable in an initialization
+expression.  For example (continuing the previous example),
+    MACRO IF (PRESENT(initvalue)) THEN
+      REAL :: variable = initvalue
+    MACRO ELSE
+      REAL variable
+    MACRO END IF
+
+Continuation generation (multiple macro body statements to a single generated
+statement) shall be done by appending "&&" to the end of each macro body
+statement whose output should be continued.  Since generated continuations
+never join tokens together, we do not need to allow "&&" at the beginning of
+the statement.  This syntax (&&) is the same whether the source is fixed form
+or free form.
+
+Macro invocation (for statement-level macros) shall use the EXPAND statement,
+e.g.
+  EXPAND puts_("Hello World"//ACHAR(10))
+
+Macro loops shall begin with a MACRO DO statement and end with a MACRO END DO
+statement.  For example,
+  MACRO DO i=1,rank
+    ...
+  MACRO END DO
+The iteration variable shall be an explicitly declared macro variable.
+
+A macro conditional shall begin with a MACRO IF statement and end with a MACRO
+END IF statement.  For example,
+  MACRO IF (SELECTED_REAL_KIND(30)>=0) THEN
+    REAL(SELECTED_REAL_KIND(30)) QPV
+  MACRO END IF
+Macro versions of ELSE IF and ELSE may also be used.
+
+Macro variable declarations take the form of a MACRO type declaration
+statement.  The type shall be INTEGER, and a double colon shall follow the
+<type-spec>.  For example,
+  MACRO INTEGER :: i
+A kind may be specified.
+
+A new executable construct, the BLOCK construct, allows declarations of
+construct entities whose scope is the scope of the BLOCK construct.
+  BLOCK
+    <specification-part>
+    <execution-part>
+  END BLOCK
+
+3.2 BNF
+
+<macro-definition> <<is>> <define-macro-stmt>
+                          [ <macro-declaration-stmt> ]...
+                          [ <macro-body-construct> ]...
+                          <end-macro-stmt>
+
+<define-macro-stmt> <<is>> DEFINE MACRO [ , <macro-attribute-list> ] ::
+                           <macro-name> [ ( <macro-dummy-arg-name-list> ) ]
+
+<macro-attribute> <<is>> <access-spec>
+
+<macro-declaration-stmt> <<is>> MACRO INTEGER :: <macro-variable-name-list>
+                         <<or>> MACRO OPTIONAL :: <macro-dummy-arg-name-list>
+
+<macro-body-construct> <<is>> <macro-definition>
+                       <<or>> <macro-invocation-stmt>
+                       <<or>> <macro-body-stmt>
+                       <<or>> <macro-do-construct>
+                       <<or>> <macro-if-construct>
+
+<macro-do-construct> <<is>> <macro-do-stmt>
+                            <macro-body-construct>...
+                            <macro-end-do-stmt>
+
+<macro-do-stmt> <<is>> MACRO DO <macro-variable-name> = <macro-expr> ,
+                       <macro-expr> [ , <macro-expr> ]
+
+<macro-end-do-stmt> <<is>> MACRO END DO
+
+<macro-if-construct> <<is>> <macro-if-then-stmt>
+                            <macro-body-construct>...
+                            [ <macro-else-if-stmt>
+                              <macro-body-construct>... ]...
+                            [ <macro-else-stmt> <macro-body-construct>... ]
+                            <macro-end-if-stmt>
+
+<macro-if-then-stmt> <<is>> MACRO IF ( <macro-expr> ) THEN
+
+<macro-else-if-stmt> <<is>> MACRO ELSE IF ( <macro-expr> ) THEN
+
+<macro-else-stmt> <<is>> MACRO ELSE
+
+<macro-end-if-stmt> <<is>> MACRO END IF
+
+<macro-body-stmt> <<is>> <result-token> [ <result-token>... ] [ && ]
+
+<result-token> <<is>> <token> [ %% <token> ]...
+
+Constraint: The concatenated textual <token>s in a <result-token> shall have
+            the form of a lexical token.
+
+<token> is any lexical token including labels, keywords, and semi-colon.
+
+Constraint: A macro expansion shall not terminate the scope in which the EXPAND
+            statement appears.
+{NB: This is not standardese - needs rewording!}
+
+Constraint: && shall not appear in the last <macro-body-stmt> of a macro
+            definition.
+
+Constraint: When a macro is expanded, the last <macro-body-stmt> shall not end
+            with &&.
+
+<end-macro-stmt> <<is>> END MACRO [ <macro-name> ]
+
+Constraint: The <macro-name> in the END MACRO statement shall be the same as
+            the <macro-name> in the DEFINE MACRO statement.
+
+<macro-invocation-stmt> <<is>> EXPAND <macro-name>
+                               [ ( <macro-actual-arg-list> ) ]
+
+<macro-actual-arg> <<is>> [ <macro-dummy-name> = ] <macro-actual-arg-value>
+
+Constraint: <macro-dummy-name> shall be the name of a macro dummy argument of
+            the macro being expanded.
+Constraint: The <macro-dummy-name>= shall not be omitted unless it has been
+            omitted from each preceding <macro-actual-arg> in the
+            <macro-invocation>.
+
+<macro-actual-arg-value> <<is>> <basic-token-sequence>
+
+<basic-token-sequence> <<is>> <basic-token>
+                       <<or>> [ <basic-token-sequence>]
+                              <nested-token-sequence>
+                              [ <basic-token-sequence> ]
+                       <<or>> <basic-token> <basic-token-sequence>
+
+<basic-token> is any lexical token except comma, parentheses, array constructor
+delimiters, and semi-colon.
+
+<nested-token-sequence> <<is>> ( <arg-token>... ) 
+                        <<or>> (/ <arg-token>... /)
+                        <<or>> <left-square-bracket> <arg-token>...
+                               <right-square-bracket>
+
+<arg-token> <<is>> <basic-token>
+            <<or>> ,
+
+<macro-expr> <<is>> <init-expr>
+
+<block-construct> <<is>> BLOCK
+                           <specification-part>
+                           <execution-part>
+                         END BLOCK
+
+4. Example
+
+Here is an example repeated (with slight modification) from 05-280.
+It performs some process on each element of an array of any rank.
+
+  DEFINE MACRO loop_over(array,rank,traceinfo)
+    MACRO INTEGER :: i
+      BLOCK
+    MACRO DO i=1,rank
+        INTEGER loop_over_temp_%%i
+    MACRO END DO
+    MACRO DO i=1,rank
+        DO loop_over_temp_%%i=1,size(array,i)
+    MACRO END DO
+          CALL impure_scalar_procedure(array(loop_over_temp_%%1 &&
+    MACRO DO i=2,rank
+                                            ,loop_over_temp%i &&
+    MACRO END DO
+                                             ),traceinfo)
+    MACRO DO i=1,rank
+        END DO
+    MACRO END DO
+      END BLOCK
+  END MACRO
+
+===END===

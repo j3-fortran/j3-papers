@@ -1,0 +1,291 @@
+To: J3                                                     J3/19-256r1
+From: Bill Long
+Subject: US-23 Part 2, Standardizing use of BOZ constants 
+Date: 2019-October-17
+Reference: 19-132, 19-212r1
+
+Discussion:
+-----------
+
+Several common extensions for the usage of BOZ constants violate the
+constraint 
+
+C7109 (R764) A boz-literal-constant shall appear only as a
+             data-stmt-constant in a DATA statement, or where
+             explicitly allowed in 16.9 as an actual argument of an
+             intrinsic procedure.
+
+Several of the requests that led to the proposal US-23 were actually
+cases where usage of these sorts of extensions lead to nonportable
+code. 
+
+These extensions include a BOZ constant as the expr in an intrinsic
+assignment where the variable is of type INTEGER or REAL.  If Table
+10.8 Intrinsic assignment type conformance in 10.2.1.2 Intrinsic
+assignment statement is expanded to permit BOZ constants for "Type of
+expr" in the integer and real rows, then the rules in Table 10.9
+Numeric conversion and the assignment statement specify the expected
+interpretation since BOZ constants are already allowed as the expr
+argument to both the INT and REAL intrinsics.
+
+In addition to assignment (and the corresponding initializations of
+named constants), the proposal is to allow array constructors that
+include a type specification, and the appearance of BOZ constants as
+I/O list items in a WRITE statement.
+
+
+Requirements (from 19-212r1):
+-----------------------------
+
+Allow the following usage of BOZ constants beyond what is allowed in
+C7109, as follows:
+
+A: BOZ as an initialization in the definition of an integer named
+   constant.
+
+B: BOZ as an initialization in the definition of a real named
+   constant.
+
+C: BOZ as the expr of an intrinsic assignment to an variable of type
+   INTEGER.
+
+D: BOZ as the expr of an intrinsic assignment to an variable of type
+   REAL.
+
+E: BOZ constants that each have the same number of bits as ac-values
+   with a type-spec of INTEGER.
+
+F: BOZ constants that each have the same number of bits as ac-values
+   with a type-spec of REAL. Each ac-value must have a bit sequence
+   that is a valid representation for a value of the specified KIND of
+   REAL.
+
+G: BOZ constant as an output-item in a WRITE statement corresponding to
+   a B, O, or Z format edit descriptor.
+
+
+
+Specifications and syntax:
+--------------------------
+
+A: The effect of the statement
+
+   integer,parameter :: n = Z"10101010"
+
+   should be the same as the statement
+
+   integer,parameter :: n = int(z"10101010",kind=kind(0))
+
+   and the syntax and semantics restrictions that prohibit the first
+   statement should be removed.
+
+B: The effect of the statement
+
+   real,parameter :: x = Z"40000000"
+
+   should be the same as the statement
+
+   real,parameter :: x = real(z"40000000",kind=kind(0.0))
+
+   and the syntax and semantics restrictions that prohibit the first
+   statement should be removed.
+
+C: The effect of the assignment statement
+
+   integer :: n
+   ...
+   n = Z"10101010"
+
+   should be the same as the statement
+
+   n = int(z"10101010",kind=kind(n))
+
+   and the syntax and semantics restrictions that prohibit the first
+   assignment statement should be removed.
+
+D: The effect of the assignment statement
+
+   use,intrinsic :: iso_fortran_env, only: real32
+   real(real32) :: x
+   ...
+   x = Z"40000000"
+
+   should be the same as the statement
+
+   x = real(z"40000000",kind=kind(x))
+
+   and the syntax and semantics restrictions that prohibit the first
+   assignment statement should be removed.
+
+
+E: The effect of the array constructor in the statement
+
+   integer(int32) :: n(4)
+   ...
+   n = [integer(int32) :: Z"00000001", Z"00000011", Z"000000111", &
+                          Z"00001111"]
+
+   should be the same as the array constructor in the statement
+
+   n = [ int(Z"00000001",kind(n)), int(Z"00000011", kind(n)), &
+         int(Z"00000111",kind(n)), int(Z"00001111", kind(n)) ]
+
+   and the syntax and semantics restrictions that prohibit the array
+   constructor in the first assignment statement should be removed.
+
+F: The effect of the array constructor in the statement
+
+   use,intrinsic :: iso_fortran_env, only: real32
+   real(real32) :: x(4)
+   ...
+   x = [real(real32) ::  Z"40000000", Z"40400000", Z"40800000" &
+                         Z"40A00000"]
+
+   should be the same as the array constructor in the statement
+
+   x = [ real(Z"40000000",kind(x)), real(Z"40400000", kind(x)), &
+         real(Z"40800000",kind(x)), real(Z"40A00000", kind(x)) ]
+
+   and the syntax and semantics restrictions that prohibit the array
+   constructor in the first assignment statement should be removed.
+
+   BOZ constants used as <ac-values> for array elements of type REAL
+   each have the same number of bits as ac-values with a type-spec of
+   REAL. Each ac-value must have a bit sequence that is a valid
+   representation for a value of the specified KIND of REAL.
+
+G: BOZ constant is allowed as an output-item in a WRITE statement
+   corresponding to a B, O, or Z format edit descriptor.
+
+   The following WRITE statements are allowed 
+
+     write (*,"(Z8.8)")   Z"abcdef01"
+     write (*,"(O12.12)") Z"abcdef01"
+     write (*,"(B32.32)") Z"abcdef01"
+
+     write (*,"(Z8.8)")   O"7654321"
+     write (*,"(O12.12)") O"7654321"
+     write (*,"(B32.32)") O"7654321"
+
+     write (*,"(Z8.8)")   B"01010101"
+     write (*,"(O12.12)") B"01010101"
+     write (*,"(B32.32)") B"01010101"
+
+   and produce the following output:
+
+   ABCDEF01
+   025363367401
+   10101011110011011110111100000001
+   001F58D1
+   000007654321
+   00000000000111110101100011010001
+   00000055
+   000000000125
+   00000000000000000000000001010101
+
+   Current restrictions that cause the code to be non-conforming are
+   to be removed. 
+
+   If the bit sequence in the <boz-literal-constant> has a length that
+   is less than one, three, or four times the field width specified by
+   the corresponding B, O, or Z format edit descriptor, the
+   <boz-literal-constant> is treated as if it were extended to a
+   length equal to one, three, or four times the width of the B, O, or
+   Z edit descriptor by padding on the left with zero bits.
+
+   If the bit sequence in the <boz-literal-constant> has a length that
+   is more than one, three, or four times the field width specified by
+   the corresponding B, O, or Z format edit descriptor, the
+   <boz-literal-constant> is treated as if it were truncated from the
+   left to a length equal to one, three, or four times the width of
+   the B, O, or Z edit descriptor.
+
+
+
+Edits:
+------
+
+[xiii] Introduction, add a new feature:
+
+"Binary, octal, and hexadecimal literal constants may be used in more
+contexts than were previously allowed. The minimum required supported
+bitsize of a binary, octal, or hexadecimal literal constant is
+increased."
+
+[88:23] In 7.7 Binary, octal, and hexadecimal literal constants, in
+para 2, in the last sentence, change "at least <z> - 1" to "at least
+<z>".
+
+[88:26] In 7.7 Binary, octal, and hexadecimal literal constants, in
+constraint C7109 at the end of the subclause, following "in a DATA
+statement," insert
+
+" as the <initialization> for a named constant of type INTEGER or
+REAL, the <expr> in an intrinsic assignment defining a variable of
+type INTEGER or REAL, as an <ac-value> in an array constructor with a
+<type-spec> specifying a type of INTEGER or REAL, as an
+<output-list-item> in an output statement corresponding to a edit
+descriptor of B, O, or Z,"
+
+[89:5] In 7.8 Construction of array values, at the end of the second
+constraint (C7111), change "Table 10.8." to "Table 10.8, or be a
+<boz-literal-constant>."
+
+[89:10+] In 7.8 Construction of array values, after the 5th constraint
+(C1114) add two new constraint:
+
+"C1114+ If an <ac-value> is a <boz-literal-constant> then <type-spec
+::> shall appear and specify type INTEGER or REAL.
+
+C1114++ If an <ac-spec> is a <boz-literal-constant> and the specified
+type is REAL, each <ac-value> that is a <boz-literal-constant> shall
+have a bit sequence that is a valid representation for the specified
+KIND value of REAL."
+
+[160:12] In 10.2.1.2 Intrinsic assignment statement, at the end of
+list item (4) in para 1, append
+
+" or, if the variable is type INTEGER or REAL, <expr> may be a
+<boz-literal-constant>, "
+
+[162:4] in 10.2.1.3 Interpretation of intrinsic assignments, para 8,
+at the end of the paragraph, add a sentence:
+
+"For an intrinsic assignment statement where the variable is of type
+INTEGER of REAL, the <expr> can be a <boz-literal-constant>, in which
+case the value of <expr> is converted to the type and kind type
+parameter of the variable according to the rules of Table 10.9."
+
+[261:38] In 13.7.2 Numeric editing, 13.7.2.1 General rules, first
+paragraph, after the first sentence ending "complex data.", insert a
+new sentence:
+
+"The B, O, and Z edit descriptors can also be used to specify output
+of <boz-literal-constants>."
+
+[262:21+] In 13.7.2 Numeric editing, 13.7.2.1 General rules, add two
+new list items at the end of the itemized list in para 1:
+
+"(8) On output of a <boz-lietral-constant with B, O, or Z editing, if
+ the bit sequence in the <boz-literal-constant> has a length that is
+ less than one, three, or four times the field width specified by the
+ corresponding B, O, or Z format edit descriptor, the
+ <boz-literal-constant> is treated as if it were extended to a length
+ equal to one, three, or four times the width of the B, O, or Z edit
+ descriptor by padding on the left with zero bits.
+
+ (9) On output of a <boz-literal-constant> wtih B, O, or Z editing, if
+ the bit sequence in the <boz-literal-constant> has a length that is
+ more than one, three, or four times the field width specified by the
+ corresponding B, O, or Z format edit descriptor, the
+ <boz-literal-constant> is treated as if it were truncated from the
+ left to a length equal to one, three, or four times the width of the
+ B, O, or Z edit descriptor."
+
+
+
+
+
+
+
+

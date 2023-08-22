@@ -1,0 +1,340 @@
+To:        J3                                      11-193r1
+From:      John Reid
+Subject:   Coarray collectives
+Date: 2011 June 28
+Reference: J3/176, WG5/N1835
+
+Discussion:
+-----------
+
+
+General:
+--------
+
+To accommodate the improvements proposed later for specific
+collective subroutines, the general definition and description of
+collective subroutines needs to be changed as follows:
+
+1) In 4.1.1, replace "assigns the value of the result to all of them"
+to "assigns the value of the result on one or all of them.  [Purpose:
+This allows for the new RESULT_TEAM argument that specifies which
+image gets the result.]
+
+2) Remove the final sentence of 4.1.1: "There is an implicit team
+synchronization at the beginning and end of the execution of a
+collective subroutine." [Purpose: Allow for better performance,
+particularly in the case of only one image getting the result.]
+
+3) Because a collective subroutine is no longer an image control
+statement (segment boundary), there is no implicit SYNC MEMORY, and
+we need to place an additional restriction on TEAM variables: "A
+variable that appears as the TEAM argument in a collective subroutine
+shall not be otherwise defined or become undefined in the same segment
+except as the TEAM argument to another collective subroutine."
+[Purpose: This ensures that the team data structure will not be
+corrupted during execution of a collective subroutine by means other
+than another collective subroutine. Collective subroutines themselves
+will check an internal lock to ensure non-colliding use of the team
+data structure.]
+
+Specific routines:
+------------------
+
+The currently proposed collection of 10 collective subroutines in
+11-176 (CO_ALL, CO_ANY, CO_COUNT, CO_FINDLOC, CO_MAXLOC, CO_MAXVAL,
+CO_MINLOC, CO_MINVAL, CO_PRODUCT, and CO_SUM) simply mirror the
+reduction routines in Fortran 2008. Many of these are of little
+significance in actual usage for cross-image reductions.  After
+examining the frequency of MPI reduction operations in a collection of
+benchmark codes, this set is proposed as a replacement:
+
+CO_BCAST  - a collective broadcast
+CO_MAX    - maximum value
+CO_MIN    - minimum value
+CO_REDUCE - reduction by a user-specified function
+CO_SUM    - SUM reduction
+
+The SUM and BCAST operations were the most common, followed by
+MAX/MIN. The CO_REDUCE routine is included as a general replacement
+for all other reduction operations.
+
+The currently proposed collective subroutines lack some features that
+would improve its usability and improve performance. The new versions
+have these enhancements:
+
+1) The RESULT variable is optional. If it is not present, the result
+of the computation is assigned to the SOURCE argument.  [Rationale:
+The current specification requires declaring a second variable to be
+used for the RESULT, which is often unnecessary.]
+
+2) SOURCE, and RESULT if present, are allowed to be
+non-coarrays. [Rationale: This significantly expands the potential
+usability of the routine, particularly in the context of integrating
+coarrays into existing codes. Internally, the routine could have a
+coarray of a derived type with a component that is a pointer to the
+supplied SOURCE or RESULT argument, and perform the computation using
+that structure. As an optimization, for the case of scalar argument,
+the routine could have an internal coarray into which the source is
+copied at entry and from which the result is copied at completion.]
+
+3) Add a new optional argument, RESULT_IMAGE. If this is present, the
+result is assigned only on the identified image, and not broadcast to
+all the images. On all other images, the result variable becomes
+undefined.  [Rationale: This is a reasonably common usage, and
+eliminating the broadcast improves performance.]
+
+
+
+Edits to J3/11-176:
+--------------------
+
+
+[1:16] In the definition of collective subroutine replace "on all" by
+"on one or all".
+
+[9:4-7] Replace the text of 4.1.1 Collective subroutine by:
+
+"A collective subroutine is one that is invoked on a team of images to
+perform a calculation on those images and which assigns the value of
+the result on one or all of them. If it is invoked by one image of a
+team, it shall be invoked by the same statement on all images of the
+team."
+
+[9:9-15] Replace the text of 4.1.2 Arguments to collective subroutines
+by
+
+"Each actual argument of type IMAGE_TEAM to a collective subroutine
+shall have
+a value constructed by an invocation of FORM_TEAM for the team on that
+image. Each actual argument to a collective subroutine shall have
+the same bounds, cobounds, and type parameters as the corresponding
+actual argument on any other image of the team. It shall not be
+otherwise defined or become undefined in the
+same segment except as an actual argument to another collective
+subroutine.
+
+On any two images of the team, the ultimate arguments for each dummy
+argument corresponding to a coarray actual argument shall be
+corresponding coarrays as described in 2.4.7 of ISO/IEC 1539-1:2010."
+
+[9:19+ - 10:1-] In Table 4.1, replace the first 10 entries (CO_ALL
+though CO_SUM) by these entries:
+
+"CO_BCAST  (SOURCE, SOURCE_IMAGE   C   Broadcast of a value to
+            [, TEAM])                  all images of a team.
+
+
+ CO_MAX    (SOURCE [, RESULT,      C   Maximum value of elements
+            TEAM, RESULT_IMAGE])       on a team of images.
+
+ CO_MIN    (SOURCE [, RESULT,      C   Minimum value of elements
+            TEAM, RESULT_IMAGE])       on a team of images.
+
+ CO_REDUCE (SOURCE, OPERATION      C   General reduction of elements
+            [, RESULT, TEAM,           on a team of images.
+            RESULT_IMAGE])
+
+ CO_SUM    (SOURCE [, RESULT,      C   Sum elements on a team
+            TEAM, RESULT_IMAGE])       of images."
+
+
+[10:2 - 14:31] Replace 4.3.1 through 4.3.10 by these five subclauses:
+
+"4.3.1 CO_BCAST (SOURCE, SOURCE_IMAGE [, TEAM])
+
+Description. Broadcast of a value to all images of a team.
+
+Class. Collective subroutine.
+
+Arguments.
+
+SOURCE shall be a coarray. It is an INTENT(INOUT) argument. SOURCE
+becomes defined on all images of the team with the value of SOURCE on
+image SOURCE_IMAGE.
+
+SOURCE_IMAGE shall be type integer. It is an INTENT(IN) argument. Its
+value shall be the image index of one of the images in the team.
+
+TEAM (optional) shall be a scalar of type IMAGE_TEAM. It is an
+INTENT(IN) argument that specifies the team for which the broadcast is
+performed. If TEAM is not present, the team consists of all images.
+
+
+Example. If SOURCE is the array [1, 5, 3] on image one, after
+execution of CALL CO_BCAST(SOURCE,1) the value of SOURCE on all images
+is [1, 5, 3].
+
+
+4.3.2 CO_MAX (SOURCE [, RESULT, TEAM, RESULT_IMAGE])
+
+Description. Maximum value of elements on a team of images.
+
+Class. Collective subroutine.
+
+Arguments.
+
+SOURCE shall be of type integer, real, or character. It is an
+INTENT(INOUT) argument. If it is a
+scalar, the computation result is equal to the maximum value of SOURCE
+on all images of the team. If it is an array, the value of the
+computation result is equal to the maximum value of all the
+corresponding elements of SOURCE on the images of the team. If RESULT
+is not present, value of the computation result is assigned to
+SOURCE. If REULT is present, SOURCE is not modified.
+
+RESULT (optional) shall be of the same type, type parameters, and
+shape as SOURCE. It is an INTENT(OUT) argument. If RESULT is present,
+the value of the computation result is assigned to RESULT.
+
+TEAM (optional) shall be a scalar of type IMAGE_TEAM(4.4.2). It is an
+INTENT(IN) argument that specifies the team for which CO_MAX is
+performed. If TEAM is not present, the team consists of all images.
+
+RESULT_IMAGE (optional) shall be type integer. It is an INTENT(IN)
+argument. Its value shall be the image number of one of the images in
+the team. If RESULT_IMAGE is present and RESULT is present, the result
+of the computation is assigned to RESULT on image RESULT_IMAGE and
+RESULT on all other images becomes undefined. If RESULT_IMAGE is
+present and RESULT is not present, the result of the computation is
+assigned to SOURCE on image RESULT_IMAGE and SOURCE on all other
+images becomes undefined.
+
+Example. If the number of images is two and SOURCE is the array [1, 5,
+3] on one image and [4, 1, 6] on the other image, the value of RESULT
+after executing the statement CALL CO_MAX(SOURCE, RESULT) is [4,5,6].
+
+
+4.3.3 CO_MIN (SOURCE [, RESULT, TEAM, RESULT_IMAGE])
+
+Description. Minimum value of elements on a team of images.
+
+Class. Collective subroutine.
+
+Arguments.
+
+SOURCE shall be of type integer, real, or character. It is an
+INTENT(INOUT) argument. If it is a
+scalar, the computation result is equal to the minimum value of SOURCE
+on all images of the team. If it is an array, the value of the
+computation result is equal to the minimum value of all the
+corresponding elements of SOURCE on the images of the team. If RESULT
+is not present, value of the computation result is assigned to
+SOURCE. If REULT is present, SOURCE is not modified.
+
+RESULT (optional) shall be of the same type, type parameters, and
+shape as SOURCE. It is an INTENT(OUT) argument. If RESULT is present,
+the value of the computation result is assigned to RESULT.
+
+TEAM (optional) shall be a scalar of type IMAGE_TEAM(4.4.2). It is an
+INTENT(IN) argument that specifies the team for which CO_MIN is
+performed. If TEAM is not present, the team consists of all images.
+
+RESULT_IMAGE (optional) shall be type integer. It is an INTENT(IN)
+argument. Its value shall be the image number of one of the images in
+the team. If RESULT_IMAGE is present and RESULT is present, the result
+of the computation is assigned to RESULT on image RESULT_IMAGE and
+RESULT on all other images becomes undefined. If RESULT_IMAGE is
+present and RESULT is not present, the result of the computation is
+assigned to SOURCE on image RESULT_IMAGE and SOURCE on all other
+images becomes undefined.
+
+Example. If the number of images is two and SOURCE is the array [1, 5,
+3] on one image and [4, 1, 6] on the other image, the value of RESULT
+after executing the statement CALL CO_MIN(SOURCE, RESULT) is [1,1,3].
+
+
+4.3.4 CO_REDUCE (SOURCE, OPERATION [, RESULT, TEAM, RESULT_IMAGE])
+
+Description. General reduction of elements on a team of images.
+
+Class. Collective subroutine.
+
+Arguments.
+
+SOURCE is an INTENT(INOUT) argument. 
+If it is a scalar, the computation result is the value that would
+be obtained by applying the function specified by the OPERATION argument
+to the results of applying the collective subroutine on a 
+processor-dependent team that is part of the given team and another team 
+that is the rest of the given team. If it is an array, the computation 
+result is equal to a processor-dependent and image-dependent application 
+of the collective subroutine on all the corresponding elements
+of SOURCE on the images of the team. If RESULT is not present, the value
+of the computation result is assigned to SOURCE. If RESULT is present,
+SOURCE is not modified.
+
+OPERATION shall be a pure function that defines the binary,
+commutative operation to be performed. The function shall
+have two arguments of the same type, type parameters, and rank as
+SOURCE. If they are arrays, they shall be of assumed shape. The result
+shall have the same type and type parameters as SOURCE and the same
+shape as the first argument. If the arguments are arrays, the result
+of applying the function to corresponding sections of two arrays shall
+be the same as the corresponding section of the result of applying the
+function to the wholes of the two arrays. 
+
+RESULT (optional) shall be of the same type, type parameters, and
+shape as SOURCE. It is an INTENT(OUT) argument. If RESULT is present,
+the value of the computation result is assigned to RESULT.
+
+TEAM (optional) shall be a scalar of type IMAGE_TEAM(4.4.2). It is an
+INTENT(IN) argument that specifies the team for which CO_SUM is
+performed. If TEAM is not present, the team consists of all images.
+
+RESULT_IMAGE (optional) shall be type integer. It is an INTENT(IN)
+argument. Its value shall be the image number of one of the images in
+the team. If RESULT_IMAGE is present and RESULT is present, the result
+of the computation is assigned to RESULT on image RESULT_IMAGE and
+RESULT on all other images becomes undefined. If RESULT_IMAGE is
+present and RESULT is not present, the result of the computation is
+assigned to SOURCE on image RESULT_IMAGE and SOURCE on all other
+images becomes undefined.
+
+Example. If the number of images is two and SOURCE is the array [1, 5,
+3] on one image and [4, 1, 6] on the other image, and MyADD is a
+function that returns the sum of its two integer arguments, the value
+of RESULT after executing the statement CALL CO_REDUCE(SOURCE, MyADD,
+RESULT) is [5,6,9].
+
+
+4.3.5 CO_SUM (SOURCE [, RESULT, TEAM, RESULT_IMAGE])
+
+Description. Sum elements on a team of images.
+
+Class. Collective subroutine.
+
+Arguments.
+
+SOURCE shall be of numeric type. It is an INTENT(INOUT) argument.
+If it is a scalar, the computation result
+is equal to a processor-dependent and image-dependent approximation to
+the sum of the value of SOURCE on all images of the team. If it is an
+array, the value of the computation result is equal to a
+processor-dependent and image-dependent approximation to the sum of
+all the corresponding elements of SOURCE on the images of the team. If
+RESULT is not present, value of the computation the result is assigned to
+SOURCE. If RESULT is present, SOURCE is not modified.
+
+RESULT (optional) shall be of the same type, type parameters, and
+shape as SOURCE. It is an INTENT(OUT) argument. If RESULT is present,
+the value of the computation result is assigned to RESULT.
+
+TEAM (optional) shall be a scalar of type IMAGE_TEAM(4.4.2). It is an
+INTENT(IN) argument that specifies the team for which CO_SUM is
+performed. If TEAM is not present, the team consists of all images.
+
+RESULT_IMAGE (optional) shall be type integer. It is an INTENT(IN)
+argument. Its value shall be the image number of one of the images in
+the team. If RESULT_IMAGE is present and RESULT is present, the result
+of the computation is assigned to RESULT on image RESULT_IMAGE and
+RESULT on all other images becomes undefined. If RESULT_IMAGE is
+present and RESULT is not present, the result of the computation is
+assigned to SOURCE on image RESULT_IMAGE and SOURCE on all other
+images becomes undefined.
+
+Example. If the number of images is two and SOURCE is the array [1, 5,
+3] on one image and [4, 1, 6] on the other image, the value of RESULT
+after executing the statement CALL CO_SUM(SOURCE, RESULT) is [5,6,9]."
+
+
+

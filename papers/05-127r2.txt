@@ -1,0 +1,111 @@
+
+                                                     J3/05-127r2
+
+Date:    10 February 2005
+To:      J3
+From:    Michael Ingrassia
+Subject: Implicit interfaces and conflicting references
+
+NUMBER: F03/0044
+
+TITLE: Implicit interfaces and conflicting references
+
+KEYWORDS: implicit interface, procedure pointer, dummy procedure,
+          procedure reference
+
+DEFECT TYPE:
+
+STATUS: J3 consideration in progress
+
+QUESTION:
+Is the following program legal?
+
+_________________________
+module test_mod
+
+contains
+
+subroutine reference(proc,choice)
+    ! Proc has implicit interface
+    external :: proc ! Or
+        ! procedure(), pointer :: proc
+    logical :: choice
+    if(choice) then
+       call proc(1.0) ! Call with real argument
+    else
+       call proc(1) ! Call with integer argument
+    end if
+end subroutine
+
+subroutine proc_real(x)
+   real :: x
+end subroutine
+
+subroutine proc_integer(i)  ! respelled from original submission
+                            ! without loss of generality
+   integer :: i
+end subroutine
+
+end module
+ 
+program test
+   use test_mod
+   call reference(proc_real,.true.)
+   call reference(proc_integer,.false.)
+end program
+_________________________
+   
+12.3.2.5 says: "The type...of dummy arguments of a procedure referenced from a scoping unit 
+where the interface of  the procedure is implicit shall be such that the actual arguments 
+are consistent with the characteristics of the dummy arguments."
+We define a procedure reference in 2.5.6 as the "appearance of  procedure designator,
+... in a context requiring execution at that point."
+
+Are both calls to proc above references, at compile time?
+If both calls to proc are references than they both need to be consistent with the interface of the
+actual argument associated with the dummy procedure. This is not possible and the program would be
+illegal. However, if only the call executed counts as a reference, than the program is legal.
+
+The same question applies to both dummy procedures and procedure pointers with implicit interfaces.
+
+ANSWER:
+
+Technically, the question is ill-formed in asking whether the calls are references "at compile time".  
+The standard does not have a notion of compile-time.
+
+The calls to proc are indeed references according to the
+definition in 2.5.6.  This is a purely syntactic notion since a call-stmt is an example of
+"a context requiring execution at that point" and proc is the procedure designator in
+	call proc(1.0)  
+and
+	call proc(1)
+
+
+12.3.2.5 specifies a requirement, violations of which are not required to be detected at compile-time
+(12.3.2.5 is not a constraint).  Every line of the program when it is actually executed by a standard-conforming
+processor uses only forms and relationships defined by the standard [2:9-10], and the
+program has an interpretation according to the standard.   This program was intended to be
+standard conforming.
+
+However, the current language of 12.3.2.5 is confusing.
+The requirement on the type of dummy arguments must be laid on the procedure actually invoked
+and not on the procedure named in the procedure reference.  A procedure with only an implicit
+interface has no nominal dummy arguments on which a requirement can be levied!  (Ask yourself:
+what are the names of the dummy argument(s) of proc ?)  Put another way, in
+	call proc(1.0)
+proc is a "procedure reference" but proc_real is actually the procedure referenced.
+An edit is supplied to make this clearer.
+
+EDITS:
+
+In [266:8-9] change "of a procedure referenced from a scoping unit where
+the interface of the procedure is implicit"  
+
+to
+		"of a procedure invoked in a scoping unit
+from a procedure reference with implicit interface"
+
+
+SUBMITTED BY: Aleksandar Donev
+
+HISTORY: J3/05-127   m171 Submitted

@@ -1,0 +1,1440 @@
+
+                                                        01-006b
+
+Date:     19 May 2001
+To:       J3
+From:     Stan Whitlock
+Subject:  Completed Fortran 95 Interpretations
+
+
+These are the F95 interpretations from 01-006a that have been
+processed and included in corrigendum 1.  It is equivalent to
+ISO/IEC JTC1/SC22/WG5-1422 of 8 November 2000.
+
+======================================================================
+Part 0: Summary Status of these Completed Fortran 95 Interpretations
+======================================================================
+
+Status S:                              Defect Type T:
+       P == J3 consideration in progress           C == Clarification
+       M    Passed by J3 meeting                   E    Erratum
+       B    Passed by J3 letter ballot             I    Interpretation
+       W    Passed by WG5 ballot
+       C    Included in corrigendum
+
+   S T number     title
+   - - ------     -----
+
+   C I 000001     Visibility of a data object with statement scope
+                    statement
+   C I 000003     Ability to overload the character operator //
+   C I 000005     Value returned by SELECTED_REAL_KIND
+   C E 000069     What is a numeric character?
+   C E 000070     Asymmetry between constant specification and
+                    initialization expressions
+   C E 000072     Resolving generic procedure references
+                    in PURE procedures
+   C E 000076     INTENT(IN) dummy arguments and implied DO loops
+   C E 000077     INTENT(IN) dummy arguments and NULLIFY
+   C E 000079     Pointer Assignment and Allocatable Arrays
+   C E 000080     Host association and the EXTERNAL attribute
+   C E 000082     Usage of BOZ literal constants
+   C E 000083     Scope of array-constructor implied-DO variable
+   C E 000084     Events that cause variables to be defined
+   C I F90/000100 ASSOCIATED intrinsic and zero-sized objects
+   C I F90/000179 DO variable with POINTER attribute
+   C I F90/000185 What is the allocation status of an array after an
+                    allocation failure?
+   C I F90/000194 Statements between SELECT CASE and CASE
+
+======================================================================
+Part 1: Completed Fortran 95 Interpretations
+======================================================================
+
+NUMBER: 000001
+TITLE: Visibility of a data object with statement scope
+KEYWORDS: visibility, data object, statement scope, scope
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+Part 1:
+
+Consider the following program:
+
+      MODULE mod
+      INTEGER, PARAMETER :: jmin(1:10) = (/ (i, i = 1, 10) /)
+      END MODULE
+
+      PROGRAM main
+      USE mod
+      INTEGER :: i
+
+      DO i = 1, 10
+        PRINT *, 'jmin(i) = ', jmin(i)
+      END DO
+
+      END PROGRAM
+
+Some Fortran compilers consider the implied-DO variable I used in the
+module to be visible to program units using the module and some
+Fortran compilers do not consider the I to be visible to using
+program units.
+
+Is an entity with statement scope in the specification part of a
+module visible to a program unit using the module and accessing the
+public data of the module as exemplified by the above example?
+
+Part 2:
+
+Consider the adaptation of the example program from Part 1:
+
+       MODULE mod
+       INTEGER, PARAMETER :: jmin(1:10) = (/ (i, i = 1, 10) /)
+       CONTAINS
+
+       SUBROUTINE one
+         i = 99          ! Is this a local or module variable?
+                         ! Compilers that export I probably say module
+       END SUBROUTINE
+
+       SUBROUTINE two
+         PRINT *, i
+       END SUBROUTINE
+
+       END MODULE
+
+The module specification part uses the variable I as an implied-DO
+variable of an array constructor.  Module procedure ONE sets a
+variable named I to a value.
+
+Given:
+
+  * An implicitly declared data object in the module specification
+    part where the variable has statement scope, and
+
+  * An implicitly declared variable in a module procedure where the
+    variable has the same name as the variable described in the first
+    bullet of this list
+
+is the variable in the module procedure a module variable (known to
+the entire module and thus available outside the module) or is the
+variable local to the module procedure?
+
+ANSWER:
+
+The implied-DO variable is not visible to the using program.
+14.1.3 Statement Entities states, in part, that
+
+     The name of a variable that appears as the DO variable of an
+     implied-DO in a DATA statement or an array constructor has a
+     scope of the implied-DO list.  It has the type and type
+     parameter that it would have if it were the name of a variable
+     in the scoping unit that includes the DATA statement or array
+     constructor and this type must be integer.
+
+The words "would have if it were" were intended to convey the idea
+that the existence of an array constructor or data implied-DO
+variable does not actually cause an associated variable in the
+scoping unit to come into existence.
+
+Also, the following text appears in the same section (281:12-14):
+
+     If the name of a global or local entity accessible in the
+     scoping unit of a statement is the same as the name of a
+     statement entity in that statement, the name is interpreted
+     within the scope of the statement entity as that of the
+     statement entity.
+
+The word "If" here implies that there need not be any such global or
+local entity with the same name as that of the statement entity.
+
+The first edit makes this clear. The second edit makes the same point
+for FORALL statements and constructs.
+
+EDITS:
+
+Page 280, Clause 14.1.3, at the end of the first paragragh (280:44)
+add:
+
+   The appearance of a name as the DO variable of an implied-DO in a
+   DATA statement or an array constructor is not an implicit
+   declaration of a variable whose scope is the scoping unit that
+   contains the statement.
+
+Page 281, Clause 14.1.3, at the end of the second paragraph [281:4]
+add:
+
+   The appearance of a name as an index-name in a FORALL statement or
+   FORALL construct is not an implicit declaration of a variable whose
+   scope is the scoping unit that contains the statement or construct.
+
+SUBMITTED BY: Larry Rolison
+
+HISTORY:  97-237  m143  submitted
+          00-158  m153  passed unanimously
+          00-254  m154  passed J3 letter ballot #2
+          00-Aug  Oulu  passed by WG5 {N1403}
+          00-Oct  wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000003
+TITLE:  Ability to overload the character operator //
+KEYWORDS: overload, intrinsic, //
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+On page 89 of the Fortran 95 standard, the Note at the bottom of
+Table 7.1 states in part:
+
+  For the intrinsic operators REQUIRING {emphasis not in standard}
+  operands of type character, the kind type parameters of the
+  operands shall be the same.
+
+Since there is only one intrinsic operator (//) that REQUIRES its
+operands to be of type character, one may conclude that the operands
+of the // operator MUST be of type character and MUST have the same
+kind type parameters.
+
+The last sentence of the first full paragraph on page 90 restates the
+above rule for intrinsic uses of // as follows:
+
+  For the character intrinsic operator //, the kind type parameters
+  shall be the same.
+
+Contrast this with the last sentence of the last paragraph of this
+section:
+
+  A {character relational intrinsic operation} is a relational
+  intrinsic operation where the operands are of type character and
+  have the same kind type parameter value.
+
+From the wording of this last sentence, one may conclude that if the
+kind type parameters are the same, then the relational operation is
+intrinsic but if the kind type parameters are NOT the same, then the
+relational operation is NOT intrinsic and must be defined via a
+user-provided function.  Thus, it is possible for the character
+operands of a relational operator to have differing kind type
+parameter values.
+
+Now compare this to the following sentence from 7.1.4.2:
+
+  For an expression <x1> // <x2> where <x1> and <x2> are of type
+  character, the character length parameter is the sum of the lengths
+  of the operands and the kind type parameter is the kind type
+  parameter of <x1>, which shall be the same as the kind type
+  parameter of <x2>.
+
+Note that there is no text or title to indicate that the description
+is only for intrinsic operators.  There appears to be no way to
+overload the // symbol at all since the wording does not restrict the
+rule to the intrinsic interpretation of the operator (it appears in
+fact from the wording that once the operands are of type character,
+there can be no other interpretation other than intrinsic).
+
+This is surely not what was intended.  The wording should be redone
+to more closely resemble that for the character relational operators
+such that if the operands of // do not have the same kind type
+parameters, an overload is allowed (and the operator is not
+interpreted as being intrinsic).
+
+(See also 7.2.2 Character intrinsic operation.)
+
+ANSWER:
+
+Intrinsic concatenation is defined only for character operands with
+the same kind type parameter value. This is stated clearly (9 8-9):
+'For the character intrinsic operator //, the kind type parameters
+shall be the same'.
+
+There is a need for a similar restriction at this point for relational
+intrinsic operators with character operands. The words at the end of
+the next paragraph (90: 12) actually suggest that there are relational
+intrinsic operations for character operands of different kind type
+parameter values that are not character relational intrinsic
+operations.
+
+The word 'requiring' in the last sentence in the note in Table 7.1
+should be changed since all the intrinsic operators with character
+operands require their operands to have the same kind type parameter
+value.
+
+EDITS:
+
+Page 89, Table 7.1, penultimate line (89:38). Change 'requiring' to
+'with'.
+
+Page 90, line 9. Add 'For the relational intrinsic operators with
+character operands, the kind type parameters shall be the same'.
+
+Page 90, line 12. Delete 'and have the same kind type parameter
+value'.
+
+SUBMITTED BY:  Larry Rolison
+
+HISTORY:  97-239  m143  submitted
+          00-159  m153  passed unanimously
+          00-254  m154  passed J3 letter ballot #2
+          00-Aug  Oulu  passed by WG5 {N1403}
+          00-Oct  wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000005
+TITLE: Value returned by SELECTED_REAL_KIND
+KEYWORDS: SELECTED_REAL_KIND
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+The SELECTED_REAL_KIND intrinsic function does not appear to cover
+one specific case for real data types.  Consider the following
+precisions and ranges for a particular model:
+
+    KIND TYPE    PRECISION       RANGE
+       4            6             37
+       8           15            307
+      16           31            291
+
+A test case for a system with this model is:
+
+     PRINT *, 'selrealkind(31,291) = ', SELECTED_REAL_KIND(P=31,R=291)
+     PRINT *, 'selrealkind(31,292) = ', SELECTED_REAL_KIND(P=31,R=292)
+     PRINT *, 'selrealkind(32,291) = ', SELECTED_REAL_KIND(P=32,R=291)
+     PRINT *, 'selrealkind(32,292) = ', SELECTED_REAL_KIND(P=32,R=292)
+     END
+
+The Result Value section of the description of SELECTED_REAL_KIND
+clearly describes the result value when the values of P and R are
+within the ranges specified for the given implementation of the real
+data type model.  It further describes the values to be returned by
+SELECTED_REAL_KIND when a value of P or R is not within the range of
+model numbers specified by the implementation. From the text in the
+Result Value section, the following may be determined:
+
+* The reference to SELECTED_REAL_KIND(P=31,R=291) (first PRINT line)
+  should return the (kind type parameter) value 16.
+
+* The third and fourth SELECTED_REAL_KIND references should return -1
+  since the PRECISION argument is outside the set of allowed
+  precision values.
+
+However, the value returned by the second reference to
+SELECTED_REAL_KIND is unknown since it does not appear to be covered
+by the wording of the Result Value paragraph of section 13.14.95.
+
+1. What should the processor return for the value of the
+   SELECTED_REAL_KIND intrinsic function when it does not have a
+   single data type that satisfies both the P and R values?
+
+2. In particular, given the precision and range values shown above,
+   what should the processor return for the last three invocations of
+   the SELECTED_REAL_KIND intrinsic function?
+
+ANSWER:
+
+The intention is that the value -1 be returned if the range can be
+supported but the precision cannot,  the value -2 be returned if the
+precision can be supported but the range cannot, and the value -3 be
+returned if neither the precision nor the range can be supported.
+Provision needs to be made for the case where each can be supported,
+but not in combination. With the edit below, the returned values for
+the four invocations will be 16, -4, -1, -1.
+
+In addition, using the model above, these test cases:
+
+     PRINT *, 'selrealkind(32) = ',    SELECTED_REAL_KIND(P=32)
+     PRINT *, 'selrealkind(r=308) = ', SELECTED_REAL_KIND(R=308)
+
+the returned values for the two invocations will be -1, -2.
+
+EDITS:
+
+Page 266, Clause 13.14.95, line 8 (266: 23). After <Result value.>,
+add  'If P or R is absent, the result value is as would have been
+obtained with the argument present with the value 0.'
+
+Page 266, Clause 13.14.95, lines 11-14 (266: 26-29). Replace 'the
+result is -1 ... is supported.' by 'the result is -1 if the processor
+does not support a real data type with a precision greater than or
+equal to P but does support a real data type with an exponent range
+greater than or equal to R, -2 if the processor does not support a
+real data type with an exponent range greater than or equal to R but
+does support a real data type with a precision greater than or equal
+to P, -3 if the processor supports no real data type with either of
+these properties, and -4 if the processor supports real data types
+for each separately but not together.'
+
+SUBMITTED BY:  Larry Rolison / Joanne Brixius
+
+HISTORY:  97-241  m143  submitted
+          00-161  m153  passed unanimously as amended
+          00-254  m153  passed by J3 letter ballot as amended
+          00-Aug  Oulu  passed by WG5 as amended in N1399 {N1403}
+          00-Oct  wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000069
+TITLE: What is a numeric character?
+KEYWORDS:  list-directed input
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+Section 10.8.1 of
+the Fortran 95 standard states
+
+   If the next effective item is of type default
+   character and ...
+
+      (4)  The leading characters are not
+           numeric followed by an asterisk, ...
+
+The standard does not define what a numeric character is.
+
+QUESTION:
+
+What is a numeric character?
+
+ANSWER:
+
+A numeric character is a <digit>.
+
+REFERENCES:  ISO/IEC 1539-1:1997(E), Section 10.8.1
+
+EDITS:
+
+Section 10.8.1, list item (4), [176:17], replace the text
+
+      (4) The leading characters are not numeric followed by an
+          asterisk
+
+with
+
+      (4) The leading characters are not <digit>s followed by an
+          asterisk
+
+SUBMITTED BY:  Robert Corbett
+
+HISTORY:  99-191  m150  Submitted by Robert Corbett
+          99-214  m150  J3 draft response, approved uc
+          00-209  m153  passed by J3 letter ballot #1
+          00-Aug  Oulu  passed by WG5 {N1403}
+          00-Oct  wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000070
+TITLE: Asymmetry between constant specification and initialization
+       expressions
+KEYWORDS:  Initialization expressions; specification expressions
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+Consider the following programs.
+
+      PROGRAM P1
+        REAL :: B = 4.0*ATAN(1.0)
+        PRINT *, B
+      END PROGRAM P1
+
+      PROGRAM P2
+        INTEGER :: A(INT(4*ATAN(1.0))) = 17
+        PRINT *, A
+      END PROGRAM P2
+
+According to 7.1.6.1 program unit P1 is not standard-conforming
+because of the reference to the intrinsic function ATAN which is not
+permitted in an initialization expression.
+
+According to 7.1.6.2 program unit P2 is standard-conforming; the
+reference to the intrinsic function ATAN is allowed by item (8) in
+the definition of a restricted expression.  Expressions in the array
+bounds of an initialized entity are only required to be constant
+specification expressions, not initialization expressions.
+
+Was it the committee's intent to permit ATAN to appear in the array
+bounds of an initialized entity but not in the initialization value?
+
+ANSWER:
+
+No, this was not the intent.  These expressions should have been
+described as initialization expressions instead of as constant
+expressions.
+
+This error also occurs for the definitions of an automatic entity,
+common block definitions and component definitions.
+
+The edits below change all of these to require initialization
+expressions instead of constant expressions.
+
+EDIT:
+
+[39:15-16] Change "a constant specification expression (7.1.6.2)"
+           to "an initialization expression (7.1.6.1)".
+
+[39:23-24] Change "a constant specification expression (7.1.6.2)"
+           to "an initialization expression (7.1.6.1)".
+
+[40:30] Change "a constant" to "an initialization".
+{Fix note.}
+
+[48:47-48] Change "may be a nonconstant expression provided the
+                   specification expression"
+           to "shall be an initialization expression unless it".
+
+[49:1-3] Delete "If a ... nonconstant expression."
+
+[49:4-5] Change "such a nonconstant expression"
+         to "a <specification-expr> that is not an initialization
+             expression".
+{Fix definition of "automatic object".}
+
+[49:9] Change "a nonconstant expression"
+       to "an expression that is not an initialization expression".
+{Fix evaluation time for character length.}
+
+[51:33] Change "a constant specification" to "an initialization".
+{Fix statement function character lengths.}
+
+[54:29-30] Change "nonconstant expressions" to "expressions that are
+           not initialization expressions".
+
+[54:33] Change "nonconstant specification" to "not initialization".
+{Fix automatic array definition.}
+
+[54:34] Change "nonconstant specification" to "not initialization".
+{Fix evaluation time for explicit-shape array bounds.}
+
+[54:36-37] Replace sentence with "The bounds of such an array are
+           unaffected by the redefinition or undefinition of any variable
+           during execution of the procedure.".
+
+[56:32] Change "nonconstant specification" to "not initialization".
+{Fix evaluation time for assumed-size array bounds.}
+
+[56:33-34] Replace sentence with "The bounds of such an array are
+           unaffected by the redefinition or undefinition of any variable
+           during execution of the procedure.".
+
+[69:3-4] Change "a constant specification expression (7.1.6.2)"
+         to "an initialization expression (7.1.6.1)".
+{Fix common block array-specs.}
+
+[192:26] Change "a constant" to "an initialization".
+{Fix characteristics of function results.}
+
+SUBMITTED BY:  Henry Zongaro
+
+HISTORY:  99-178   m150  submitted
+          99-216r1 m150  approved uc
+          00-133   m152  additional edit, approved uc
+          00-208   m153  Passed by J3 letter ballot #1
+          00-Aug   Oulu  passed by WG5 as amended {N1403}
+          00-Oct   wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000072
+TITLE: Resolving generic procedure references
+KEYWORDS: generic, ELEMENTAL
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+Consider
+  INTERFACE generic
+    ELEMENTAL SUBROUTINE sub_e(a)
+      REAL,INTENT(INOUT) :: a
+    END
+    SUBROUTINE sub_3(a)
+      REAL,INTENT(INOUT) :: a(:,:,:)
+    END
+  END INTERFACE
+
+This is legal (it obeys the restrictions in 14.1.2.3).
+
+This allows the ambiguous reference
+  REAL x(10,20,30)
+  CALL generic(x)
+
+However, the existing text in 14.1.2.4.1 does not explain which
+procedure is called, because the reference is consistent with two
+procedures.  Note 14.6 indicates that the intent is to call the
+nonelemental procedure in this case.
+
+Is note 14.6 correct as to the intent of the standard?
+
+ANSWER:
+
+Yes, note 14.6 is correct; an edit is supplied to the resolution
+rules to implement this.
+
+EDIT:
+
+[278:41] After "with" insert "a non-elemental reference to".
+
+SUBMITTED BY:  Malcolm Cohen
+
+HISTORY:  99-218  m150  submitted, approved uc
+          00-209  m153  passed by J3 letter ballot #1
+          00-Aug  Oulu  passed by WG5 {N1403}
+          00-Oct  wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000076
+TITLE: INTENT(IN) dummy arguments and implied DO loops
+KEYWORDS: INTENT(IN), implied DO
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+The Fortran 95 standard [53:13-17] says
+"Constraint: A dummy argument with the INTENT(IN) attribute ... shall
+             not appear as
+             ...
+             (3) A DO variable or implied-DO variable,
+             ..."
+
+The apparent intent is to prevent any modification of the dummy
+argument; however, use in data-implied-do and
+array-constructor-implied-do would not modify the dummy argument.
+
+Is the constraint intentionally stronger than necessary?
+
+ANSWER:
+
+The constraint is only intended to apply to implied-DO variables in
+I/O lists. The following edit makes this clearer.
+
+EDIT:
+
+[53:17] Change "A DO variable or implied-DO variable"
+        to "A <do-variable> in a <do-stmt> or <io-implied-do>".
+
+SUBMITTED BY:  Malcolm Cohen
+
+HISTORY:  99-199   m150  submitted
+          99-199r1 m150  approved uc
+          00-209   m153  passed by J3 letter ballot #1
+          00-Aug   Oulu  passed by WG5 {N1403}
+          00-Oct   wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000077
+TITLE:  INTENT(IN) dummy arguments and NULLIFY
+KEYWORDS: INTENT(IN), NULLIFY
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+The Fortran 95 standard [53:13-17] says
+"Constraint: A dummy argument with the INTENT(IN) attribute, or a
+             subobject of such a dummy argument, shall not appear as
+             ...
+             (2) The <pointer-object> of a <pointer-assignment-stmt>,
+             ..."
+
+Consider:
+
+  TYPE t
+    REAL,POINTER :: value
+  END TYPE
+  ...
+  SUBROUTINE s(x)
+    TYPE(t),INTENT(IN) :: x
+    IF (.FALSE.) x%value => NULL()                   ! (1)
+    IF (.FALSE.) NULLIFY(x%value)                    ! (2)
+
+According to the constraint above, line (1) is illegal. However,
+there is no corresponding constraint for the NULLIFY statement,
+implying that line (2) is legal.
+
+Should subobjects of INTENT(IN) dummies also be constrained against
+appearing as the pointer-object> of a NULLIFY statement?
+
+ANSWER:
+
+Yes, there should be a constraint disallowing INTENT(IN) dummy
+arguments in a NULLIFY statement.  The edit below corrects this
+omission.
+
+EDIT:
+
+[53:16] Replace constraint (2) with "A <pointer-object> in a
+          <pointer-assignment-stmt> or <nullify-stmt>, "
+
+SUBMITTED BY:  Malcolm Cohen
+
+HISTORY:  99-200   m150  submitted
+          99-200r1 m150  approved uc
+          00-209   m153  passed by J3 letter ballot #1
+          00-Aug   Oulu  passed by WG5 as amended {N1403}
+          00-Oct   wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000079
+TITLE: Pointer Assignment and Allocatable Arrays
+KEYWORDS: Pointer assignment, allocatable
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+Consider
+        PROGRAM p
+        REAL,ALLOCATABLE,TARGET :: x(:)
+        POINTER p(:)
+        p => x
+        ALLOCATE(x(10))
+        PRINT *,SIZE(p)
+        END
+
+This appears to be a legal program - there seems to be no prohibition
+against pointer assignment to an unallocated allocatable array and
+allocating the array does not seem to alter the association status of
+any pointer associated with an allocatable array.
+
+Should there be a prohibition against pointer assignment to an
+unallocated allocatable array?
+
+ANSWER:
+
+Yes; an edit is supplied to correct this oversight.
+
+EDIT:
+
+In clause 7.5.2, at the end of the paragraph that begins "The <target>
+shall" [111:8+], insert:
+   "If the <target> is an allocatable array, it shall be currently
+    allocated."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY:  99-223  m150  submitted, approved 6-4
+          00-209  m153  passed by J3 letter ballot #1
+          00-Aug  Oulu  passed by WG5 {N1403}
+          00-Oct  wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000080
+TITLE: Host association and the EXTERNAL attribute
+KEYWORDS: Host association, EXTERNAL
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+Use of a (non-intrinsic) name as a procedure in a procedure reference
+implicitly confers the EXTERNAL attribute on the name.  Does this
+happen when the name is host-associated?
+
+For example, f90 interp 143 established that
+
+  MODULE m1
+    REAL x
+  CONTAINS
+    SUBROUTINE s
+      PRINT *,x(1)
+    END SUBROUTINE
+  END
+
+was invalid - 11.3.2 now says that a "procedure with implicit
+interface and public accessibility shall explicitly be given the
+EXTERNAL attribute in the scoping unit of the module".
+
+However, this text says nothing about private entities, so
+considering:
+
+  MODULE m2
+    REAL,PRIVATE :: x
+  CONTAINS
+    SUBROUTINE s
+      PRINT *,x(1)
+    END SUBROUTINE
+  END
+
+This example does not violate 11.3.2 because X is PRIVATE.
+Is this example conforming?
+
+Further, considering:
+
+  PROGRAM m3
+    REAL x
+  CONTAINS
+    SUBROUTINE s
+      PRINT *,x(1)
+    END SUBROUTINE
+  END
+
+This example is not of a module and so 11.3.2 does not apply.
+Is this example conforming?
+
+Further, considering
+
+  PROGRAM m4
+    EXTERNAL x
+  CONTAINS
+    SUBROUTINE s
+      PRINT *,x(1)
+    END SUBROUTINE
+  END
+
+Does the invocation as a function in an internal procedure cause X to
+be implicitly typed, or is this not conforming?
+
+ANSWER:
+
+No, use of a host-associated name never confers attributes on the
+host entity. Examples M2, M3, and M4 are therefore invalid. Edits are
+supplied.
+
+EDIT:
+
+[188:28] Delete "and public accessibility".
+
+[188:31] Delete "with public accessibility".
+
+[283:16+] Add new paragraph after the note
+"An external or dummy procedure with an implicit interface that is
+ accessed via host association shall explicitly be given the EXTERNAL
+ attribute in the host scoping unit or be used as a procedure in that
+ scoping unit; if it is invoked as a function in the inner scoping unit,
+ its type and type parameters shall be explicitly declared in a type
+ declaration statement in the host scoping unit or it shall be used as
+ a procedure in the host scoping unit. An intrinsic procedure that is
+ accessed via host association shall explicitly be given the INTRINSIC
+ attribute in the host scoping unit or be used as an intrinsic procedure
+ in that scoping unit."
+
+SUBMITTED BY:  Malcolm Cohen
+
+HISTORY:  99-230   m151  submitted
+          99-230r1 m151  approved uc
+          00-209   m153  passed by J3 letter ballot #1
+          00-Aug   Oulu  passed by WG5 {N1403}
+          00-Oct   wg5   amended as requested in corrigendum #1 ballot
+                         {N1420}
+          00-Oct   wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000082
+TITLE: Usage of BOZ literal constants
+KEYWORDS: BOZ constant
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+Consider:
+  INTEGER X(10)
+  DATA X(B"001")/42/
+  END
+
+This is apparently conforming, since the constraint at [32:15] says
+  "A <boz-literal-constant> may appear only in a DATA statement."
+But this rules out
+  X(B"001") = 42
+
+Is this an error?
+
+ANSWER:
+
+Yes, BOZ literal constants should be restricted to being a
+<data-stmt-constant>.
+
+EDITS:
+
+[32:15] Replace text of constraint with
+  "A <boz-literal-constant> may appear only as a <data-stmt-constant>
+   in a DATA statement."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY:  99-275   m151  submitted
+          99-275r1 m151  approved uc
+          00-209   m153  passed by J3 letter ballot #1
+          00-Aug   Oulu  passed by WG5 {N1403}
+          00-Oct   wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000083
+TITLE:  Scope of array-constructor implied-DO variable
+KEYWORDS: Scope, implied DO, array constructor
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+14.1.3 states that the scope of an implied-DO variable in an array
+constructor is "the implied-DO list".  There is no such syntax term:
+what is meant?
+
+In particular, in the array constructor
+
+  (/ (I,I=1,I) /)
+
+are all three I's references to the implied-DO variable, or is one of
+them a reference to a variable I in the enclosing scoping unit?
+
+ANSWER:
+
+All occurences of I within the implied-DO are references to the
+implied-DO variable, none of them can reference a variable in the
+enclosing scoping unit.
+
+The term "implied-DO list" is confusing in this context; "implied-DO"
+was intended.  An edit is supplied for clarification.
+
+DISCUSSION:
+
+The term "implied-DO list" is used in several places where the
+context is that of the values produced by the implied-DO.  This is an
+inappropriate term to use for specifying scope.
+
+Also, the second and third occurrences of "I" in the example shown are
+part of the syntax item <ac-implied-do-control>.  It would be
+unreasonable to read "implied-DO list" as meaning (for array
+constructors) "<ac-value-list> and the <ac-do-variable> in
+<ac-implied-do-control> but not the <scalar-int-expr>s in
+<ac-implied-do-control>."
+
+Note that the problem does not arise for <data-implied-do> because
+variables other than implied-DO variables are not permitted in the
+limit expressions.
+
+With this interpretation the example array constructor supplied is not
+valid Fortran, as it is not permissible to reference the value of an
+<ac-implied-do> variable in one of its limit expressions.
+
+EDITS:
+
+[280:41] Replace "implied-DO list" with "implied-DO".
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY:  00-124   m152  Submitted
+          00-124r1 m152  approved uc
+          00-209   m153  passed by J3 letter ballot #1
+          00-Aug   Oulu  passed by WG5 {N1403}
+          00-Oct   wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: 000084
+TITLE: Events that cause variables to be defined
+KEYWORDS: Definition status, INTENT(OUT)
+DEFECT TYPE: Erratum
+STATUS: Included in corrigendum/complete
+
+QUESTION:
+
+Item (6) of 14.7.5 says
+   "A reference to a procedure causes the entire dummy argument to
+   become defined if the entire corresponding actual argument is
+   defined with a value that is not a statement label.  A reference
+   to a procedure causes a subobject of a dummy argument to become
+   defined if the corresponding subobject of the corresponding
+   actual argument is defined."
+
+For an INTENT(OUT) dummy this appears to conflict with 14.7.6 item
+(13)(b)
+  "When a procedure is invoked ...
+   (b) A dummy argument with INTENT(OUT) is undefined except for any
+       nonpointer direct components of the argument for which default
+       initialization is specified."
+
+So in
+
+    X = 3
+    CALL S(X)
+    ...
+    SUBROUTINE S(A)
+    INTENT(OUT) A
+    ...
+
+Is A defined (with the value 3) in accordance with 14.7.5, or
+undefined in accordance with 14.7.6?
+
+Similarly, for subobjects of INTENT(OUT) dummies, does 14.7.5 take
+precedence or 14.7.6?
+
+ANSWER:
+
+A is undefined in accordance with 14.7.6.  An edit is supplied to
+remove the conflict.  Similarly, 14.7.6 takes precedence for
+subobjects.
+
+EDITS:
+
+[289:9] Before "entire"
+        insert "dummy argument does not have INTENT(OUT) and the".
+[289:12] Before "corresponding"
+         insert "dummy argument does not have INTENT(OUT) and the".
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY:  00-141  m152  submitted, approved uc
+          00-209  m153  passed by J3 letter ballot #1
+          00-Aug  Oulu  passed by WG5 {N1403}
+          00-Oct  wg5   edits contained in corrigendum #1 {N1421}
+
+----------------------------------------------------------------------
+
+NUMBER: F90/000100
+TITLE: ASSOCIATED intrinsic and zero-sized objects
+KEYWORDS: ASSOCIATED intrinsic, zero-sized objects, target, pointer
+DEFECT TYPE: Interpretation
+STATUS: Complete
+
+QUESTION: What is the behavior of the ASSOCIATED intrinsic function for
+zero-sized arguments?
+
+Question 1: Can the single argument form of the ASSOCIATED intrinsic return
+true
+as its result if the argument's target is zero sized?
+
+Question 2: Can the two-argument form of the ASSOCIATED intrinsic return
+true
+when both arguments are zero sized?
+
+The following need answers only if the answer to question 2 is yes.
+
+Question 2a: If the arguments to ASSOCIATED are zero sized but of rank
+greater
+than one, must the extents of each dimension be the same for ASSOCIATED to
+return true?  For example, what is printed by the following program?
+
+       PROGRAM HUH
+         REAL, DIMENSION(:,:), POINTER :: P1, P2
+         REAL, DIMENSION(10, 10), TARGET :: A
+         P1 => A(10:9:1, :)
+         P2 => A(:, 10:9:1)
+         PRINT *, ASSOCIATED (P1, P2)
+       END
+
+Question 2b: In the following example, rank, shape, type, kind type
+parameters,
+and extent of dimensions of the zero-sized arguments to ASSOCIATED match,
+but
+the second argument is not the same as the right hand side of the previous
+pointer assignment statement.  What is the output of this program?  (Does a
+notion of "base address" come to play for zero-sized objects as it does for
+nonzero-sized objects?)
+
+       PROGRAM HMMM
+       REAL, DIMENSION(:,:),    POINTER :: P1
+       REAL, DIMENSION(10, 10), TARGET :: A
+       P1 => A(:, 2:1:1)
+       PRINT *, ASSOCIATED (P1, A(:, 3:2:1))
+       END
+
+ANSWERS:
+
+Answer 1: The one-argument form of ASSOCIATED returns a result of true if
+the
+pointer actual argument is currently associated with a target, even if the
+target is zero sized.
+
+Answer 2: No; if either argument is zero sized the result is false.  The
+edits in defect item 000027 clarify the intent.
+
+Answer 2a: The result is false because P1 and P2 each are zero sized.
+
+Answer 2b: The result is false because the arrays are of zero size.
+
+Discussion: The reasons for having the ASSOCIATED function return false for
+zero-sized arrays is based on an analogy with sharing storage and how
+assignment
+works.
+
+In normal English we understand the concept of "totally associated" and
+"partially associated".  If two things are totally associated then doing
+something to one of them does the exact same thing to the other.  If two
+things
+are partially associated then doing something to one of them does something
+to
+the other.  Section 14.6.3.3 hints at this by discussing "totally
+associated" in
+terms of "the same storage sequence".
+
+After executing assignment statements like
+
+   I = values
+   J = different_values
+
+we would call I and J associated if it were no longer true that I is
+equal to values.
+
+Zero-sized arrays are the end case where doing "something" to them is
+equivalent
+to doing nothing to them.  And in the example above we would still have I is
+equal to values after the assignment if both I and J were zero-sized but
+would
+otherwise appear to be associated.
+
+We could also conclude that after the pair of assignment statements above
+executed we would have I is equal to different_values if I and J were zero
+sized, since the comparison operators return true for zero-sized objects.
+However, on balance it seems better to view the comparison with the initial
+conditions, not the potential changed conditions.
+
+As a practical matter, sensible use of the ASSOCIATED function with
+zero-sized
+arrays will usually require user special casing of the results.
+
+EDITS: None.
+
+SUBMITTED BY: Jon Steidel - X3J3/92-240
+
+HISTORY: ui 114 (jw note)
+         92-240   m123 Submitted
+         93-035   m124 response, adopted by unanimous consent
+         93-111   m125 ballot, return to subgroup based on Hirchert, Maine
+                    comments. Also see Ellis comment for 000108
+         93-138r  m125 revised response adopted 11-8.
+         93-255r1 m127 ballot passed 21-3
+         94-160   m129 WG5 ballot, failed
+         94-253r3 m130 revised response, approved u.c.
+         94-306   m131 X3J3 ballot, approved 15-4
+         95-044   m132 WG5 ballot, approved, with Reid edit
+         95-306r1 m135 withdrew edits as defect item 27 supplies better
+edits,
+                       approved u.c.
+         96-      m136 X3J3 ballot, approved 15-1
+         00-Aug   Oulu  passed by WG5 {N1403}
+         00-Oct   wg5   no edits for corrigendum #1 => processing complete
+
+----------------------------------------------------------------------
+
+NUMBER: F90/000179
+TITLE: DO variable with POINTER attribute
+KEYWORDS: DO variable, POINTER attribute
+DEFECT TYPE: Interpretation
+STATUS: Complete
+
+QUESTION: The first constraint following rule R822 states:
+
+ "Constraint:  The <do-variable> must be a named scalar variable of type
+               integer, default real, or double precision real."
+
+The definition of loop initiation (8.1.4.4.1) states:
+
+  "(2) The DO variable becomes defined with the value of the initial
+       parameter <m>1."
+
+The definition of the execution cycle of a DO loop (8.1.4.4.2) states:
+
+  "(3) ... The DO variable, if any, is incremented by the value of the
+       incrementation parameter <m>3."
+
+Consider the following program:
+
+      INTEGER, POINTER  :: PTR
+      INTEGER, TARGET   :: LCV
+
+      PTR => LCV
+
+      DO PTR = 1, 3
+        PRINT *, LCV
+      END DO
+
+      END
+
+Note that the DO variable has the POINTER attribute.  The POINTER
+attribute does not seem to be prohibited for the DO variable, but
+when the DO variable has the POINTER attribute, it is unclear as to
+whether the DO variable is the pointer or the target of the pointer.
+That is, it is unclear as to whether the pointer or the target is to
+be "defined" (8.1.4.4.1) or incremented (8.1.4.4.2).
+
+Also consider the following modification of the above program:
+
+      INTEGER, POINTER  :: PTR
+      INTEGER, TARGET   :: LCV1, LCV2
+
+      LCV1 = 1
+      LCV2 = 4
+
+      PTR => LCV1
+
+      DO PTR = 1, 3
+        IF (...) PTR => LCV2    ! An alternate EXIT form?
+      END DO
+
+      END
+
+The standard does not seem to address what happens when the DO
+variable is switched to a different variable while the loop is
+active.
+
+Is it the intent of the standard to permit a DO variable with the
+POINTER attribute?
+
+ANSWER:
+
+Yes, a DO variable may have the POINTER attribute.
+
+DISCUSSION:
+
+There are a number of contexts in the language where the target of a
+pointer is referenced or defined when it is the pointer name that
+appears. Two of these are cited in items (2) and (3) in the Question.
+In (2), the target of the pointer variable is defined with the value
+of the DO loop initial value parameter. In (3), the target of the
+pointer variable is incremented. Other examples of these kinds of
+contexts are:
+
+ * Section 6.3.1, which describes the ALLOCATE statement:
+   "If the STAT= specifier is present, successful execution of the ALLOCATE
+    statement causes the <stat-variable> to become defined with a value of
+    zero."
+
+ * Section 9.4.1.5, which describes the semantics of the I/O error branch:
+   "(2) If the input/output statement also contains an IOSTAT= specifier,
+        the variable specified becomes defined with a processor-dependent
+        positive integer value,"
+
+In contexts such as these, the variable involved may have the POINTER
+attribute and it is the intent of the standard that it is the target
+of the pointer that is being defined, incremented, etc.
+
+With respect to the modified example in the Question, the standard
+does address what happens when the DO variable appears on the left
+hand side of a pointer assignment. In the modified example in the
+Question, the statement
+
+  IF (...) PRT => LCV2   ! An alternate EXIT form?
+
+is prohibited. Section 14.7.6 states:
+
+  "(18) Execution of a pointer assignment statement that associates a
+pointer
+        with a target that is defined causes the pointer to become defined."
+
+but section 8.1.4.4.2 states:
+
+  "Except for the incrementation of the DO variable that occurs [when the DO
+   variable is incremented by the value of the incrementation parameter],
+   the DO variable must neither be redefined nor become undefined while the
+   DO construct is active."
+
+Thus, since the pointer assignment statement causes the DO variable
+to become (re)defined, it is prohibited.
+
+Similarly, if the modified example had contained within the DO
+construct an assignment statement such as:
+
+     PRT = 10
+
+such an assignment statement would also be prohibited because
+defining the target of a pointer also defines the pointer as stated
+in section 14.6.2.2:
+
+   "The definition status of a pointer is that of its target."
+
+EDITS: None.
+
+SUBMITTED BY: Larry Rolison
+
+HISTORY: 94-226r1 m130 submitted, approved 10-1
+         94-306   m131 X3J3 ballot approved 19-0
+         95-044   m132 WG5 ballot, failed see Cohen's comments
+         95-246   m134 revised edits, approved u.c.
+         95-256   m135 X3J3 ballot, failed 10-6
+         95-304r1 m135 revised response, delete edits, approved u.c.
+         96-      m136 X3J3 ballot, approved 15-1
+         00-Aug   Oulu  passed by WG5 {N1403}
+         00-Oct   wg5   no edits for corrigendum #1 => processing complete
+
+----------------------------------------------------------------------
+
+NUMBER: F90/000185
+TITLE: What is the allocation status of an array after an allocation
+       failure?
+KEYWORDS: ALLOCATE, POINTER, DEALLOCATE, status
+DEFECT TYPE: Interpretation
+STATUS: Complete
+
+QUESTION:
+
+It does not appear that the standard defines the allocation status of
+an array if an ALLOCATE statement fails and returns a nonzero STAT=
+value?
+
+Given a program segment such as:
+
+        REAL, ALLOCATABLE, DIMENSION(:) :: A,B,C
+        ALLOCATE(A(10), B(10), C(10), STAT = ISTAT)
+
+Question 1: If "ISTAT" comes back non-zero, is it legal to deallocate
+            the arrays and try to reallocate them with smaller sizes?
+
+Question 2: If instead of allocatable arrays, the variables had been
+            pointers, is it legal to NULLIFY them?
+
+Question 3: Are the answers to questions 1 and 2 different if a
+            single array is allocated rather than a list?
+
+Question 4: If a DEALLOCATE fails for a list, what is the allocation
+            status of the arrays?
+
+Question 5: Is it acceptable to use the ALLOCATED and/or ASSOCIATED
+            functions to attempt to recover from a failure?
+Question 6: 6.3.1.1 might be read to mean that successful allocation
+            makes the arrays "currently allocated" and otherwise
+            leaves them "not currently allocated".  But that's not an
+            obvious reading of the text. In some ways I/O is similar
+            to allocate (they both process a list of things and have
+            a STAT= clause).  If an input statement fails then
+            everything in the list becomes undefined.  Does that
+            apply by analogy to ALLOCATE?
+
+ANSWER 1: Yes.  Note that one or more of the arrays is expected to
+          have an allocation status of "currently not allocated", due
+          to the error which occurred. See the Discussion below.
+
+          Note that this example only used allocatable arrays.  If a
+          pointer appears in a DEALLOCATE statement, its pointer
+          association status must be defined (section 6.3.3.2).  See
+          the Discussion below.
+
+ANSWER 2: Yes.  See section 14.6.2.3.
+
+ANSWER 3: No, the answers are the same.  See Answer 6 below.
+
+ANSWER 4: When a DEALLOCATE with a "STAT=" specifier fails, those
+          arrays that were successfully deallocated will have an
+          allocation status of deallocated. Those arrays not
+          successfully deallocated retain their previous allocation
+          status.
+
+ANSWER 5: For ALLOCATED, yes.  For ASSOCIATED, it depends on the
+          pointer association status of the pointer at the time the
+          ASSOCIATED intrinsic iscalled. The ALLOCATED intrinsic may
+          be called with any allocatable array whose allocation
+          status is either currently allocated or currently not
+          allocated. The ASSOCIATED intrinsic must not be called with
+          a pointer whose pointer association status is undefined
+          (section 6.3.3.2).  See the Discussion below.
+
+ANSWER 6: No.  The standard does not require a processor to allocate
+          the variables specified in an ALLOCATE statement as a
+          group; therefore, a processor may successfully allocate
+          some of the arrays specified in an ALLOCATE statement even
+          when that ALLOCATE statement assigned a positive value
+          to the variable specified in the STAT= specifier.
+
+DISCUSSION:
+Only when the allocation status of an array is undefined is it
+illegal to specify the array in a DEALLOCATE statement. The only way
+for an allocatable array to have a status of undefined is described
+in section 14.8, item (3). If an array specified in a DEALLOCATE
+statement has an allocation status of not currently allocated when
+the DEALLOCATE statement is executed, an error condition occurs as
+described in section 6.3.3.1. The behavior of the DEALLOCATE
+statement in the presence of an error condition is described in
+section 6.3.3.
+
+Immediately after the execution of an ALLOCATE statement, all
+allocatable arrays specified in that ALLOCATE statement will have a
+defined allocation status. The arrays that were successfully
+allocated will have an allocation status of allocated, while any
+arrays not successfully allocated will retain their previous
+allocation status.
+
+When a pointer is specified in an ALLOCATE statement which fails
+(assigns a positive value to ISTAT in this example), then the pointer
+association status of that pointer will not be changed if the
+allocation failed for that particular pointer. If that pointer
+previously had a pointer association status of undefined, it will
+still have a pointer association status of undefined immediately
+after the ALLOCATE statement is executed; therefore, it would be
+illegal to specify that pointer in a DEALLOCATE statement (section
+6.3.3.2) or in a call to the ASSOCIATED intrinsic (section 13.13.13),
+unless the allocation status of the pointer was first changed to be
+defined (either associated or disassociated).
+
+EDITS: None.
+
+SUBMITTED BY:  Dick Hendrickson
+
+HISTORY: 94-296   m131 submitted
+         95-039   m132 draft response, approved u.c.
+         95-101   m133 X3J3 ballot approved, 12-6
+         95-310r1 m135 revised response to be consistent with F95,
+                       approved u.c.
+         96-      m136 X3J3 ballot approved, 15-1
+         00-Aug   Oulu  passed by WG5 {N1403}
+         00-Oct   wg5   no edits for corrigendum #1 => processing
+                        complete
+
+----------------------------------------------------------------------
+
+NUMBER: F90/000194
+TITLE: Statements between SELECT CASE and CASE
+KEYWORDS: FORMAT statement, DATA statement, SELECT CASE statement,
+          CASE statement, INCLUDE line, statement order
+DEFECT TYPE: Interpretation
+STATUS: Complete
+
+QUESTION:
+
+1. Figure 2.1 (page 11) shows that FORMAT and DATA statements may be
+intermixed with executable constructs but it is not clear at what
+points within an executable construct these statements may appear.
+In particular, may FORMAT and DATA statements appear between the
+SELECT CASE statement and the first CASE statement of a CASE
+construct?
+
+2. May an INCLUDE line appear between the SELECT CASE statement and
+the first CASE statement of a CASE construct?
+
+ANSWER:
+
+1.  No.  In general, FORMAT and DATA statements may appear in the IF,
+CASE and DO executable constructs because these constructs contain
+blocks and a block is defined in section 8.1 (on page 95) to consist
+of <execution-part-construct>s, which in turn are defined as being
+made up of FORMAT and DATA statements, among others.  However, the
+syntax rules for the CASE construct do not provide for any blocks or
+any other statements to appear between the SELECT CASE statement and
+the first CASE statement of a CASE construct.
+
+The sentence in 8.1 [95:12] that defines a block in prose introduces
+the general concept of a block, and does not precisely define the BNF
+term. The BNF syntax rules give the precise definition.
+
+2.  Yes.  An INCLUDE line may appear between a SELECT CASE statement
+and the first CASE statement of a CASE construct because an INCLUDE
+line is a line, not a statement.
+
+EDITS: None.
+
+SUBMITTED BY:  Larry Rolison
+
+HISTORY: 94-383r1 m131 submitted with proposed response, approved 13-3
+         95-034r1 m132 X3J3 ballot approved 19-1, with edits
+         95-116   m133 (N1112) correct typo in answer 2.
+         95-305r1 m135 changed to match F95 approved edits, approved
+                       u.c.
+         96-      m136 X3J3 ballot approved 16-0
+         00-Aug   Oulu  passed by WG5 {N1403}
+         00-Oct   wg5   no edits for corrigendum #1 => processing
+                        complete
+
+----------------------------------------------------------------------

@@ -1,0 +1,113 @@
+To: J3                                                     J3/18-271
+From: Malcolm Cohen
+Subject: Response to 18-241
+Date: 2018-October-16
+
+
+1. Introduction
+
+This paper is a response to 18-241 from /DATA subgroup.
+
+
+2. General response
+
+We sympathise with the TARGET case, however the case is much weaker for
+ASYNCHRONOUS, and weaker still for POINTER, VOLATILE, and CONTIGUOUS.
+
+Although the existing Fortran standard would seem to be suboptimal in
+some of these cases, there is not a clear way forward.
+
+/DATA encourages DIN to continue to study the issue and to make
+further suggestions at the WG5 level.
+
+
+3. Specific technical responses
+
+3.1 TARGET
+
+We agree that when TARGET is used not to associate a local pointer with a
+dummy argument but to associate an external pointer, that it would be
+advantageous to have some mechanism to ensure that the actual argument
+also has the TARGET attribute, to prevent the external pointer from
+becoming undefined on return from the procedure.
+
+(*Note: by "external pointer" we mean any pointer which continues to exist
+ on return from the procedure, e.g. a pointer in a module, or a pointer in
+ a data structure whose base object continues to exist on return.)
+
+As 18-241 notes, this requires that the PERSISTENT nature be transitive;
+that is, it needs to require that the actual argument not only have the
+TARGET attribute but also, if it is itself a dummy argument, to have the
+PERSISTENT characteristic.  We note that this is highly undesirable for
+some of the other attributes for which PERSISTENT is suggested.
+
+Furthermore there are other mechanisms that can be used with the existing
+language that help to ensure the external pointer will not become
+undefined on return.  For example, instead of having a dummy that is
+    TYPE(content_t), TARGET, CONTIGUOUS :: dummy(:)
+use a special derived type
+    TYPE persistent_content_t
+        TYPE(content_t), POINTER, CONTIGUOUS :: p(:)
+    END TYPE
+    TYPE(persistent_content_t),INTENT(INOUT) :: dummy
+
+Then at the top of the call tree,
+    TYPE(persistent_content_t) actual
+    actual = persistent_content_t(my_contents)
+passing "actual" down the tree.
+
+It is admittedly still possible for a perverse user to deliberately
+subvert such a scheme, but it is no longer possible to accidentally
+omit the TARGET attribute on intervening call sites, because that is
+implicit in the derived type.
+
+3.2 ASYNCHRONOUS
+
+In the case of ASYNCHRONOUS, this attribute is designed specifically for
+temporal-limited asynchronous access.  As such, PERSISTENT must mean that
+the called routine initiates some asynchronous access but does not wait
+for its completion.  It would be completely unacceptable for that to have
+to persist up the call tree beyond the routine that does wait for the
+completion.
+
+That is, if PERSISTENT were allowed with ASYNCHRONOUS, either it would be
+inconsistent with the TARGET behaviour, or it would be undesirable in the
+first place as a "cure worse than the disease".
+
+3.3 CONTIGUOUS
+
+It is noted that contiguity is a runtime-testable condition, and that it
+is therefore in general not desirable that it be statically required to be
+persistent in the caller at all, let alone all the way up the call tree.
+
+Furthermore it would seem to be inappropriate for a routine that intends
+itself to act on contiguous data to make the decision that its caller
+should have only contiguous data.  It is the caller's decision whether to
+use the routine; they may use the intrinsic inquiry function to check that
+the data is contiguous before calling the routine (perhaps calling a
+different routine that is tailored for handling discontiguous data), or
+they may decide to accept the copy-in/out as being better than any
+available alternative.
+
+An analysis tool that reports passing not-simply-contiguous actual args
+to a CONTIGUOUS dummy, or a compiler option that produces such warnings,
+would appear to be a superior solution to a heavy-handed PERSISTENCY.
+
+3.4 VOLATILE
+
+Like ASYNCHRONOUS, this attribute is designed to be limited in scope, in
+that one can even access non-VOLATILE entities that are use-associated
+"volatilely" in a scope be adding the VOLATILE attribute locally.
+
+This does not seem to be a good match for persistency, whose only effect
+would be to reduce performance across the whole call tree whether needed
+or not.
+
+3.5 Syntax
+
+We did not like the suggested syntax.
+But without agreement on the technical requirements, the syntax can wait.
+
+===END===
+
+

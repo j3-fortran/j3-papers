@@ -1,0 +1,520 @@
+
+                                                                  J3/98-217
+
+
+Subject: Comments on OOP in Fortran 2000
+Author:  Werner Schulz
+Date:    25 October 1998
+
+I have criticized the current plans for object-oriented programming in
+Fortran
+2000 at various occasions, last in an email to comp-fortran-90 on 10 Aug
+1998.
+Unfortunately, hardly any of my criticisms are reflected in the recent F2000
+draft (98-007r3).  Several serious problems are still present and must be
+resolved before the current drafting process by J3 comes to its end.
+
+I will mix criticism of the draft with alternative proposals and remarks.  I
+want to emphasize that my proposals allow for better compile-time checks
+while
+removing all run-time errors that mar the current F2000 draft (and other OO
+languages).  But first a
+
+SUMMARY:
+--------
+
+I present constructive solutions to various and serious shortcomings of the
+current F2000 draft in the area of object-oriented programming:
+
+-The proposed syntax is simpler, more concise and consistent, the rules and
+constraints are easier to understand and more consistent than the F2000
+draft.
+
+-Certain problems (some future) are avoided by using CLASS instead of TYPE
+(the sub-type vs. sub-TYPE problem) while REF replaces the current CLASS for
+polymorphic objects.
+
+-A SELF construct is introduced that avoids the PASS_OBJ attribute and
+non-pointer polymorphic objects.
+
+-ABSTRACT and FROZEN classes are defined in a consistent manner. A potential
+source for run-time errors is avoided. The inconsistent use of NULL() in
+deferring type-bound procedures is eliminated.
+
+-Polymorphic objects are clearly defined and simple rules are established
+including arrays of such objects and potential sources for run-time errors
+are
+avoided.
+
+-A special but important and completely safe version of covariance is added.
+
+-A proposal for a more regular syntax of procedure declaration  is given.
+
+-Some related issues are touched.
+
+(END OF SUMMARY)
+
+This paper consists of these main sections:
+
+  a) The Object View: some simple thoughts on a basic syntax
+  b) Inheritance:     mostly abstract classes and new syntax for procedures
+  c) Polymorphism:    Do's and Dont's for polymorphic objects
+  d) Related Issues:  some important leftovers
+
+The Object View:
+----------------
+
+While the TYPE construct has been a useful one it addresses only part of the
+needs. Classes in OOP offer a better approach. A class consists of variables
+(the 'state') and procedures (the 'behaviour'); objects are instances of
+classes. A simple example follows:
+
+   class :: Point
+       self :: me
+       real :: x, y
+       function get_x()
+           get_x = me%x
+       end function get_x
+       function length()
+           length = sqrt( me%x**2 +me%y**2 )
+       end function length
+       subroutine move( d )
+           class(Point), intent(in) :: d
+           me%x = me%x +d%x
+           me%y = me%y +d%y
+       end subroutine move
+   end class Point
+
+   Usage:
+
+   class(Point) :: A = Point(x=1.0,y=1.0)  ! A is an instance of class Point
+   class(Point) :: B = Point(x=2.0,y=1.0)
+   write(*,*) A%length()                   ! even better would be A%length
+   call A%move( B )
+
+This example is self-explanatory. A couple of points are worth noting
+though:
+
+The code is very concise and easy to read; it can hardly be shorter in
+Fortran.
+
+The SELF declaration provides a useful and necessary means to refer to the
+whole object and is very natural; 'me' is not a class component.  A SELF
+construct is found in many OO languages (Ada95 a rather unconvincing
+exception), usually as a reserved word. This is not possible in Fortran,
+hence
+the above version.  SELF is independent of inheritance and polymorphism; a
+point completely missed in the F2000 draft.
+
+Unlike the F2000 draft variables and procedures are treated on the same
+footing.  They are physically and syntactically enclosed in the class scope;
+the dummy argument list of class procedures corresponds exactly to the
+actual
+argument list since there is no need for a PASS_OBJ attribute.
+Compare the above example with a version written in the current draft
+syntax:
+
+MODULE POINT_MODULE
+
+    TYPE, EXTENSIBLE :: POINT
+       REAL :: x, y
+    CONTAINS
+       PROCEDURE, PASS_OBJ :: LENGTH => LEN_2D
+       ! etc.
+    END TYPE POINT
+
+    PRIVATE :: LEN_2D
+
+    FUNCTION LEN_2D( P )
+        CLASS(POINT) :: P
+        LEN_2D = SQRT( P%x**2 +P%y**2 )
+    END FUNCTION LEN_2D
+
+END MODULE POINT_MODULE
+
+Here, LEN_2D is a private module procedure bound to POINT via => (how many
+users will forget to make LEN_2D private?). This all smells very strongly of
+a
+Fortran-to-C translation rather than good Fortran design.  The F2000 draft
+is
+rather lengthy, complicated, opaque (is PROCEDURE :: LENGTH a function or a
+subroutine?) and convoluted with unnecessary flexibility. The line
+containing
+PROCEDURE mangles a type-bound procedure with a module procedure and rename
+it with a strong hint of procedure pointers all in one line when only a
+simple
+class procedure is needed.
+
+A class is a compilation unit and, as should have become clear by now,
+combines
+certain characteristics of MODULE and TYPE. Hence the class syntax also
+offers
+all of the benefits of the two. Classes can be declared inside MODULEs with
+the
+usual rules of access etc.
+
+Classes can have attributes similar to those of the other Fortran types,
+e.g.
+POINTER, PUBLIC, PRIVATE, TARGET, DIMENSION, SAVE, INTENT(...).  Two
+additional
+attributes will be added later.
+
+I prefer the word CLASS over TYPE for two reasons:
+a) class is the widely accepted and copied notion in the dominant OO
+languages
+and in the literature on the subject. Why deviate from it? It just leads to
+unnecessary confusion among users.
+
+b) The term type has become widely used to describe the public interface of
+classes. It is easy to demonstrate that with A a class and B a sub-class of
+A
+and AT and BT the respective types, then BT is not necessarily a sub-type of
+AT.  The F2000 draft completely ignores this important subtlety. (Try and
+replace class with TYPE in the above sentence.)
+
+A slight change to one class procedure to introduce a new construct:
+
+       subroutine move( d )
+           like(me), intent(in) :: d
+           me%x = me%x +d%x
+           me%y = me%y +d%y
+       end subroutine move
+
+The construct LIKE(me) refers to the class of the invoking object.  This
+construct is the only uncontroversial and safe form of covariance and solves
+the important special case of so-called 'binary methods'.
+
+Inheritance:
+------------
+
+A child class 'inherits' the variables and procedures of the parent class
+and
+modifies it in some way or adds new ones or both:
+
+   class :: Point3D
+       self    :: me
+
+       inherit :: Point    ! analogous to use A_Module
+           redefine :: length, move
+       end inherit Point
+
+       real    :: z        ! new variable
+
+       function length()
+           length = sqrt( x**2 +y**2 +z**2 )   ! me can be omitted
+       end function length
+       subroutine move( d )
+           like(me), intent(in) :: d
+           me%x = me%x +d%x
+           me%y = me%y +d%y
+           me%z = me%z +d%z
+       end subroutine move
+   end class Point
+
+   Usage:
+   class(Point3D) :: E = Point3D(x=1.0,y=1.0,z=0.0)
+   class(Point3D) :: F = Point3D(x=1.0,y=2.0,z=0.0)
+   class(Point)   :: A = Point3D(x=1.0,y=1.0)
+
+   write(*,*) E%length(), F%length(), A%length()
+   call E%move( F )
+   !call E%move( A ) ! ILLEGAL
+
+The self-referential constructs change their meaning when inherited. In
+GET_X
+of Point me is a Point, while in Point3D's inherited GET_X me refers to a
+3-dimensional point.
+
+Remark: This sounds like some form of polymorphism and compiler writers can
+exploit this fact but this should not be used to mangle different concepts
+in
+the language itself. The statement just states the rules needed for
+type-checking
+of expressions at compile-time. The F2000 draft confuses this simple issue.
+
+F2000 talks of 'type extension' and uses two attributes, 'extensible' and
+'extends'. Why extension instead of inheritance? My proposed form is also
+easier to adapt to multiple inheritance (a la Eiffel, the only language that
+does this right and it's not that complicated), should the need arise later.
+A
+base class is simply a class without an INHERIT declaration.
+
+The rules for modifying inherited procedures are that the interface has to
+be
+the same, i.e. non-variant. Covariance is a difficult topic and should be
+avoided until a later stage when on-going research has solved the issue.
+However, the like(me) construct is a completely safe form of covariance.
+
+Abstract and frozen classes:
+
+It is sometimes useful to declare an abstract class, i.e. a class that
+cannot
+have an instance. It is left to a child class to turn everything concrete.
+The
+F2000 draft has some serious problems to implement this. I suggest to do the
+following:
+
+       class, abstract :: airplane
+            ! some variable declarations
+            subroutine, abstract :: open_landing_gear( )
+                ! argument declarations but no body
+            end subroutine open_landing_gear
+       end class airplane
+
+Rules: An class is abstract if it has the abstract attribute (and no better
+way
+of doing so); a class must be abstract if any of its procedures, inherited
+or not,
+is abstract. An abstract class procedure must declare its interface.  The
+above
+example is easy since it has no argument list.  A concrete procedure cannot
+be
+redefined into an abstract one during inheritance since this would clash
+with
+polymorphism. This is not properly solved in the F2000 draft (a constraint
+is
+missing in R439).
+
+There is no need for strange constructs like NULL(PROCEDURE_NAME) as in R439
+of
+98-007R3 (see also internal note in section 4.5.1.5 of the draft).
+
+Frozen (final? but not NON_OVERRIDABLE) classes are classes that cannot be
+inherited; abstract and frozen are mutually exclusive.  The intrinsic
+Fortran
+types can be considered frozen classes. (This would tie everything quite
+neatly
+together except for the need to write class(class_name) in declarations.)
+
+My proposal so far is easy and simple. However it requires a new piece of
+syntax which in my view has been long overdue (see 98-143). I have taken new
+courage to propose this since the draft has opened the door towards such a
+syntax addition (see the chapter on IEEE exception handling with USE,
+INTRINSIC
+:: module_name and the syntax in R437 (PROCEDURE, proc_attribute ::
+proc_name).
+It is hard to understand why this syntax should not be applied uniformly and
+generally to all relevant Fortran constructs, for example:
+
+    MODULE B
+       USE, PRIVATE :: A
+       USE, PUBLIC  :: A, ONLY: A_VAR, A_PROC
+    END MODULE B
+
+with rather obvious semantics.
+
+The most pressing need for this syntax is in procedures declarations (see
+98-143).  Slightly updated examples are:
+
+    FUNCTION,   OPERATOR(+),     PUBLIC :: ADD_A_TO_B
+    SUBROUTINE, ASSIGNMENT(=),   PUBLIC :: ASSIGN_F_TO_E
+    SUBROUTINE, GENERIC(DELETE), PUBLIC :: delete_mytype
+    SUBROUTINE, GENERIC(DELETE), PUBLIC :: delete_histype
+
+Actually one can do away with FUNCTION/SUBROUTINE in the first two lines.
+The
+PUBLIC attribute only applies to the OPERATOR/ASSIGNMENT/GENERIC part while
+the
+specific name is always PRIVATE. (This is a very reasonable interpretation,
+why
+declare an operator etc. at all if this wouldn't be the case. And it
+simplifies
+three INTERFACE variations.)
+
+Remark: A special rule for classes should disallow attribute statements; if
+not
+the awkward CONTAINS statement must be added to the class syntax.
+
+Polymorphism:
+-------------
+
+Polymorphism is in some ways the opposite to inheritance in the following
+sense: Inheritance usually implies specialization by adding or modifying the
+behaviour of the parent class. Polymorphism turns this around and allows to
+refer to objects of the same subtree, i.e. it addresses the commonality of
+these objects. This immediately suggests certain constraints, viz. only the
+common aspects can be used, typically only those defined in the class at the
+root of the subtree.
+
+Polymorphic objects, as opposed to monomorphic objects, can only be added
+safely and consistently to the language as some kind of pointer though the
+details of the compiler implementation is of no interest here.  I propose:
+
+     ref(base_class) :: a_poly_object_name
+
+The potential attribute POINTER is totally superfluous so I leave it out.
+Polymorphic objects are only possible in this form. Unlike the F2000 draft
+there aren't any non-pointer polymorphic objects here which are only needed
+in
+the F2000 draft since it refuses to use a 'self' construct for whatever
+reasons
+and in spite of the fact that non-pointer polymorphic objects can lead to
+run-time errors.  I suspect such run-time errors to be quite frustrating to
+most Fortran users. This problem is avoided here.
+
+So what is allowed with polymorphic objects?
+
+One can only use those variables and procedures (incl. abstract ones) that
+are
+defined in the base class and are accessible EXCEPT those procedures that
+have
+an argument declared with 'LIKE(self_name)' (See earlier remark!).
+
+Only pointer-assignment is allowed since one cannot assure the correctness
+of
+the ordinary assignment at run-time:
+
+   ref(Point)     :: A
+   ref(Point3D)   :: B
+   class(Point)   :: P
+   class(Point3D) :: Q
+
+   A => P  ! ok
+   A => Q  ! ok
+   B => Q  ! ok
+   A => B  ! ok
+
+   B => P  ! illegal, wrong base type
+   B => A  ! illegal, wrong base type
+   A =  P  ! illegal
+   A =  B  ! illegal
+
+   write(*,*) A%length()  ! ok if A is associated
+   call A%move( P )       ! illegal since move has a like(me) argument
+
+All these rules can be checked at compile-time, hence run-time errors based
+on
+type mismatches cannot occur. This should allow for better optimization of
+the
+Fortran code.
+
+ref(Abstract_Class) is allowed since the target itself must ultimately be a
+monomorphic object (named or unnamed) or NULL.
+
+Remark: These rules seem very restrictive but that is a direct consequence
+of
+the nature of polymorphic objects. Other OO languages like Java seem to be
+less
+restrictive but one shouldn't forget that in Java all instances of
+user-defined
+classes are polymorphic from the outset and Java's assignment(=) corresponds
+to
+Fortran's pointer assignment (=>). There is no equivalent to Fortran's
+monomorphic classes (except for the primitive ones like integer, float).
+
+There is no language-defined casting of objects from a subclass to a
+ancestral
+class (i.e.  no conversion of Point3D objects to Point objects).  Languages
+with such constructs are potentially very dangerous and are difficult to
+debug
+(see C++). If any such facility is needed users should define them.
+
+How should one interpret this: ref(Point), dimension(10) :: X ?
+
+X is an array of ref(Point), each element can contain a Point or a Point3D
+or
+..., in other words X is a heterogenous array. This is unlike the F2000
+draft
+with its homogeneous version which again has potential run-time errors due
+to
+type errors (or has that part been dropped by now?).  Arrays of polymorphic
+objects just cannot be made as efficient as arrays of monomorphic objects.
+
+Remark: The section on Arrays (2.4.5) may need some clarification in the
+light
+of polymorphism. What exactly does it means to talk of the same type?  Is it
+the compile-time type or the run-time type? Etc. etc. What is a sub-type
+(and
+what a sub-TYPE)? Again the decision by J3 to opt for TYPE-extension instead
+of
+class and inheritance is very dubious.
+
+In addition I would like to see a form of allocation that allows to point a
+polymorphic object to an unnamed monomorphic object as is done in Java's new
+construct:
+
+     ref(Point) :: some_point
+     some_point => ALLOCATE( Point3D(x=0.0,y=0.0,z=0.0) )
+
+(This code example is awkward here since Fortran's ALLOCATE is not a
+function.)
+
+Related Issues:
+---------------
+
+1. USE statement inside Classes
+This is a problematic area that would need some discussion and where I
+personally haven't made up my mind.  The main problem for me is whether such
+a
+statement would be inherited or not.
+
+2. A new access attribute
+READONLY is the most appropriate default access attribute for class
+variables.
+READONLY would remove the need for the typical get procedures so ubiquitous
+in
+C++ and other OO languages. The set procedures are essential. The emphasis
+is
+here on default and now, any later addition of READONLY is already
+diminishing
+its usefulness since it could not be made the default. (See B Meyer's
+Object-oriented Software Construction, 1997, for more and better arguments.)
+
+3. Templates or generic classes
+This issue has come up several times in discussion on the Fortran mail/news
+groups. Just saying there is not enough time is just not good enough.  This
+is
+not J3's blame but one can only wonder what could have been done by skipping
+the interval arithmetic item instead.
+
+It is also a bit disingenuous since the Fortran committees found time to add
+KIND and NONKIND parameters to derived types and a non-executable SELECT
+CASE
+construct to deal with KIND parameters.  Both constructs would be completely
+unnecessary if truly generic procedures were available (just an attempt):
+
+   subroutine swap( a, b )
+       type, generic :: T
+       T :: a, b, temp
+       temp = a ; a    = b ; b    = temp
+   end subroutine swap
+
+The constructs in the draft are just fiddling around with the symptoms and
+would be better left out.
+
+Remark: One should consider seriously to replace the DIMENSION attribute
+with a
+generic class ARRAY as the most important form of a container (others are
+queues, stacks, trees, lists, dictionaries, ...).  Very little needs
+changing
+since Fortran's arrays capabilities are already much better than virtually
+all
+competitors. It is just a shift of emphasis and towards a more regular
+syntax.
+
+And POINTER, too, could become a generic class instead of being an
+attribute.
+This would allow things like this:
+
+   pointer( ARRAY(REAL,rank=2 )     :: a  ! pointer to a 2-dim array
+   array( POINTER(REAL), (/0:4/) )  :: b  ! array of pointers to real
+numbers
+
+This is certainly more elegant than the current solution in Fortran 90.
+
+3. Super It seems that the draft's equivalent of SUPER is better and more
+flexible than that of the common SUPER construct in other OO languages. I
+would
+only like to warn against too much freedom here. It is, for example, a bad
+idea
+to allow to target components of an object from the outside in any way.
+
+4. Miscellanea
+
+There are a number of other issues that should be addressed ASAP.  Multiple
+inheritance, object persistence and I/O, CORBA, a Fortran STL, support for
+code
+documentation, contract-by-design (assertions), general exception handling
+(not
+just IEEE), better memory handling support (garbage collection), ...
+But we better leave some work for the standard after F2000.

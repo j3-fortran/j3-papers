@@ -1,0 +1,238 @@
+To: J3                                                     J3/19-174
+From: Van Snyder
+Subject: Rank-agnostic array element and section denotation
+Date: 2019-July-05
+References: 18-247 19-110r1 19-150 19-170 19-173
+
+Background
+==========
+
+19-150 was a successor to 19-110r1, which proposed rank-agnostic syntax
+to declare arrays and reference their elements or sections.  It did not
+address rank-agnostic array declaration; that is the subject of 19-173.
+
+19-150 unnecessarily restricted the functionality proposed in 19-110r1,
+and extended the syntax proposed in 19-110r1 in an unnecessary direction.
+
+19-150 claims that new syntax is necessary to avoid a syntax ambiguity.
+
+19-110r1 proposed to allow an array A of rank k to have a single
+subscript B of rank n with shape [ k, e1, e2, ..., en ].  Then
+RANK(A(B)) = RANK(B) - 1, and SHAPE(A(B)) = [ e1, e2, ..., en ]. 
+This is clearly useful, as illustrated in 19-110r1.
+
+19-150 proposes that RANK(B) == 1 only, i.e., RANK(B) > 1 is prohibited.
+
+In A(B), if RANK(A) == 1 and SIZE(B) == 1 then A(B) is currently
+interpreted as a vector-subscripted array reference, in which
+RANK(A(B)) = 1, not zero, and SHAPE(A(B)) == [1].
+
+So as not to conflict with the existing specification for a vector
+subscripts, if RANK(A) == 1, RANK(B) == 1, and A(B) is a rank-agnostic
+subscript, the result of A(B) would necessarily be defined to be one
+instead of zero.
+
+In A(B), the case with RANK(A) == 1, RANK(B) == 1, and SIZE(B) == 1 is
+a degenerate case of the proposal in 19-110r1, wherein it was proposed
+that RANK(A(B)) == RANK(B) - 1.  I.e., in the case RANK(B) = 1, A(B) is
+a scalar, not an array of shape [1].
+
+Although potentially confusing, the irregularity of defining
+RANK(A(B)) == 1 rather than zero if with RANK(A) == 1, RANK(B) == 1, and
+SIZE(B) == 1, is preferable to requiring A@(B), as proposed in 19-150 to
+indicate that in this special case the result is a scalar.
+
+Requiring A@(B) for RANK(A) > 1 or RANK(B) > 1 is undesirable because
+the syntax is different from a function reference.  If, later in the
+lifetime of a program, it becomes necessary to replace the array A with
+an abstraction realized by procedures, changes to the syntax of
+reference would be necessary, unless it is allowed to reference a
+function  (and updater -- see 19-170) using A@(B), wherein "@" has no
+effect. 
+
+Instead, A@(B) should be optional.  In the case when RANK(A) == 1,
+RANK(B) == 1, SIZE(B) == 1, and SIZE(B) is a constant expression, it
+indicates the result is to be a scalar.  That is,
+
+  RANK(A(B)) == RANK(B)-1 if RANK(B) > 1
+  RANK(A(B)) == 1 if RANK(A) == 1 and RANK(B) == 1
+
+  RANK(A@(B)) == RANK(B)-1 if RANK(B) > 1
+  RANK(A@(B)) == 0 if RANK(B) == 1, SIZE(B) == 1, and SIZE(B) is a
+                 constant expression
+  RANK(A@(B)) == 1 if RANK(B) == 1, and SIZE(B) > 1 or SIZE(B) is not a
+                 constant expression
+
+19-150 proposed to allow more than one rank-agnostic subscript, e.g.
+
+  A @( V1, ::2, V2 )
+
+in which V1 and V2 are rank-one subscripts whose extents are constant,
+such that SIZE(V1)+SIZE(V2)+1 == RANK(A).  If RANK(A) == 3 and the
+shapes of V1 and V2 are both [1], without the additional syntax, the
+rank and shape of the result is ambiguous.  If A( V1, ::2, V2 ) is
+interpreted to have vector subscripts, the result is a rank-3 array,
+with shape [1, n, 1] where n = ( SIZE(A, SIZE(V1,1)+1 ) + 1 ) / 2.
+
+If A( V1, ::2, V2 ) is interpreted to have rank-agnostic subscripts, the
+result would be considered to be a rank-one array whose shape is [n].
+
+The ambiguity could again be resolved using A@( V1, ::2, V2 ) to
+indicate a rank-one result.
+
+Th syntax A @( V1, ::2, V2 ) is, however, not necessary, as it is
+equivalent to allowing A(V) where RANK(V) > 1, and
+
+  V = reshape( [ ( V1, i, V2 , i = 1, size(A,size(V1,1)+1), 2 ) ], &
+             & [ rank(A), ( size(A,size(V1,1)+1) + 1 )/2 ] )
+
+There is no problem to allow
+
+  A ( V1, V2, ..., Vm ) or A @( V1, V2, ..., Vm )
+
+wherein RANK(V1) == RANK(V2) == ... == RANK(Vm) > 1, provided
+SUM(SIZE(V[i],1),i=1:m) == RANK(A), and all other dimensions of V1, V2,
+..., Vm are the same, viz., the remaining part of their shapes is
+[ e1, e2, ..., en ].  This is difficult to explain and again,
+unnecessary, as it can be expressed as A(V), where V is composed of V1,
+V2, ..., Vm.  The result is a rank n-1 entity having shape
+[ e1, e2, ..., en ].
+
+Assume A is a rank-5 array,
+
+       [ 1 2 3 ]          [ 2 3 4 ]
+  V1 = [       ] and V2 = [ 6 1 2 ] .
+       [ 4 5 6 ]          [ 1 7 5 ]
+
+Then A(V1,V2) has shape [3] (because the second extents of V1 and V2
+are [3]).  Its elements consist of
+
+  [ A(1,4,2,6,1), A(2,5,3,1,7), A(3,6,4,2,5) ]
+  
+but it's a variable, not an expression.  This is, however, the same as
+A(V) where
+
+V = reshape( [ ( V1(:,i), V2(:,i), i = 1, 3 ) ], [ 5,3 ] ), or
+
+      [ 1 2 3 ]
+      [ 4 5 6 ]
+  V = [ 2 3 4 ] .
+      [ 6 1 2 ]
+      [ 1 7 5 ]
+
+Therefore, allowing A ( V1, V2, ..., Vm ) or A @( V1, V2, ..., Vm ) is
+not necessary.
+
+Assume A is a rank-5 array with third extent 1:3, and
+
+       [ 1 2 3 ]          [ 2 3 4 ]
+  V1 = [       ] and V3 = [       ]
+       [ 4 5 6 ]          [ 1 7 5 ]
+
+then A(V1,::2,V3) has shape [2,3] and its elements consist of
+
+  [ A(1,4,1,2,1), A(2,5,1,4,7), A(3,6,1,4,5 ]
+  [ A(1,4,3,2,1), A(2,5,3,4,7), A(3,6,3,4,5 ]
+
+Alternatively, its shape might be defined to be [3,2], with elements
+
+  [ A(1,4,1,2,1), A(1,4,3,2,1) ]
+  [ A(2,5,1,4,7), A(2,5,3,4,7) ]
+  [ A(3,6,1,4,5), A(3,6,3,4,5) ]
+
+Some care would be necessary in the description, including to define the
+array-element order, because this is not the same as "spreading" "::2"
+to an array
+
+       [ 1 1 1 ]
+  V2 = [       ]
+       [ 3 3 3 ]
+
+and making the reference equivalent to A(V1,V2,V3), which would require
+A to be a rank-6 array.  This problem is, again, unnecessary.
+
+Defining A(V1,::2,V3) in terms of a single rank-agnostic subscript V
+would require V to have shape [5,3,2] or [5,2,3], i.e.,
+
+ V = reshape( [ ( ( V1(:,i), j, V2(:,i) , i = 1, 3 ), j = 1, 3, 2 ) ], &
+            & [ 5, 3, 2 ] )
+
+or
+
+ V = reshape( [ ( ( V1(:,i), j, V2(:,i) , j = 1, 3, 2 ), i = 1, 3 ) ], &
+            & [ 5, 2, 3 ] )
+
+If A(V) were allowed with RANK(V)>1, allowing A(V1,::2,V3) is not
+necessary, and there would be no question whether the result has shape
+[2,3] or [3,2], as the shape would be given by the dimensions of V,
+after than the first one.  This eliminates the question of array-element
+order in A(V1,::2,V3) if RANK(V1) = RANK(V2) > 1.
+
+The formulation based upon a single array could be in an example, or
+Annex C.
+
+Proposals
+=========
+
+Allow A(B), wherein SHAPE(B) = [ K, e1, e2, ... en] and K is a constant
+expression equal to the rank of A, to specify an array of rank
+max(1,n).  If n > 0, SHAPE(A(B)) = [e1, e2, ... en].  If n == 0,
+SHAPE(A(B)) == [1].  Each extent-K section in the first dimension of B
+is used as a set of subscripts for A.  E.g., from 18-247:
+
+  Suppose we have arrays A with dimensions (10,10,10) and B with
+  dimensions (3,2).  If we assume
+
+                                             [ 3 6 ]
+  B = reshape( [3, 4, 5, 6, 7, 8], [3,2] ) = [ 4 7 ]
+                                             [ 5 8 ]
+
+  then A(B) is a rank-1 extent-2 array that can appear in a variable-
+  definition context (except as an actual argument associated with a dummy
+  argument having INTENT(OUT) or INTENT(INOUT)); it specifies the same
+  array as [ A(3,4,5), A(6,7,8) ], which cannot appear in a
+  variable-definition context.  This is different from
+  A(B(1,:),B(2,:),B(3,:)), which can appear in a variable-definition
+  context, but is an object with shape [2,2,2], not [2].  The former is an
+  arbitrary collection of elements of A, while the latter is a
+  rectangular section of A.
+
+If RANK(B) == 1, the specification that SHAPE(A(B)) == [1] avoids a rank
+ambiguity compared to vector subscripts.  According to R920, a section
+subscript is a vector subscript.  According to C927, a vector subscript
+shall be an integer expression of rank one.  According to 9.5.3.3.1,
+A(B) is an array section. According to 9.4.2p2 and 9,5,3,3,1p2, the rank
+of a <part-ref> is the number of ... vector subscripts in the list. 
+Therefore, if A(B) in which RANK(B) == 1 and SHAPE(B) == 1 is considered
+to be a rank-agnostic subscript expression, it cannot have rank zero,
+i.e., it must be an array.
+
+Allow A@(B), wherein SHAPE(B) = [ K, e1, e2, ... en] and K is a constant
+expression equal to the rank of A, to specify an array of rank n. 
+I.e., If n = 0, A@(B) specifies a scalar.  Each extent-K section in the
+first dimension of B is used as a set of subscripts for A.
+
+Do not bother with allowing and trying to explain the array-element
+order in denotations of the form
+
+  A ( V1, ::2, V2 )
+  A @( V1, ::2, V2 )
+
+wherein V1 or V2 can be arrays, because these can be posed as
+expressions of the form A(B).
+
+Allow a function to be referenced with "@" before its argument list, in
+which "@" has no effect.
+
+If updaters are provided, e.g., as described in 19-170, allow an updater
+to be reference with "@" before its argument list, in which "@" has no
+effect.
+
+All of the prohibitions related to vector subscripts apply to the
+present proposal. If vector subscripts are described as having two
+variants -- one as presently described in 1539-1, and the other as
+described here, the tedium of finding every occurrence of "vector
+subscript" and replacing it with "vector subscript or <something else>"
+would be avoided.
+
+

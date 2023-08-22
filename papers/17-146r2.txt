@@ -1,0 +1,125 @@
+                                                        J3/17-146r2
+To: J3
+From: Jon Steidel
+Subject: Redefinition of active team variables
+Date: 2017 June 27
+
+Discussion:
+
+The current draft standard clearly permits the redefinition of an active
+team variable:
+
+  11.1.5.2 Execution of a CHANGE TEAM construct page 188, p1, lines 7-9
+  "If team-value is a variable, the current team is not changed by a
+   redefinition of that variable during execution of the CHANGE TEAM
+   construct."
+
+There are several problems with permitting redefinition of an active team
+variable:
+
+  1) It is prohibited to use a redefined active team variable in a CHANGE
+     TEAM construct outside the construct where it was redefined.
+  2) Using a redefined active team variable in an inquiry function is
+     undefined behavior.
+  3) The definition of parent team is "current team at time of execution
+     of the FORM TEAM statement that created the team".  Redefining an
+     active team variable means the same team variable can define a team
+     and any number of ancestor teams.
+  4) Allowing redefinition of an active team variable requires runtime
+     bookkeeping and managing temporary copies of team variables upon
+     entry to and exit from a CHANGE TEAM construct.
+
+Section 11.1.5.2 p1 second sentence states:
+
+  "When the CHANGE TEAM statement is executed, the current team shall be
+   the team that was current when those team variables were defined."
+
+This prohibits modification of an active team variable inside the
+CHANGE TEAM construct, exiting the construct, and then re-entering the
+construct with the modified TEAM variable.
+
+  USE,INTRINSIC :: ISO_FORTRAN_ENV
+  TYPE(TEAM_TYPE) team_var
+  ...
+  FORM TEAM (num, team_var)
+  ...
+  DO i = 1, n
+    CHANGE TEAM (team_var)       ! Legal only on first iteration of loop
+      ...
+      FORM TEAM (TEAM_NUMBER(), team_var)  ! Removes inactive images;
+                                           ! permitted but of little use
+      ...
+    END TEAM
+  END DO
+
+During each iteration of the loop other than the first iteration, the team
+that was current when team_var was defined is not the team that executes
+the CHANGE TEAM statement. If it is desired to re-form the team to say,
+remove failed images from the team, the team must be re-formed outside the
+CHANGE TEAM construct.
+
+If the above example were made to be legal for iterations 2...n of the
+loop, in each of those iterations, by definition of parent team, upon
+entering the CHANGE TEAM construct, the parent team is no longer an
+active team for those iterations (the parent team is the team that was
+the current team at the time of the execution of the FORM TEAM statement).
+
+Redefinition of active team variables also leads to undefined behavior.
+Consider the following program fragment, executed on 16 images.
+
+  USE,INTRINSIC :: ISO_FORTRAN_ENV
+  TYPE(TEAM_TYPE)  :: odd_even
+  ...
+  FORM TEAM (2-MOD(THIS_IMAGE(),2), odd_even) ! 2 teams, 8 images each
+  CHANGE TEAM (odd_even)
+    IF ((THIS_IMAGE()==1) .AND. (TEAM_NUMBER() == 1))
+      PRINT *, NUM_IMAGES(odd_even)    ! prints 8
+    ...
+    FORM TEAM (2-MOD(THIS_IMAGE(),2), odd_even) ! form teams of 4 images
+    IF ((THIS_IMAGE()==1) .AND. (TEAM_NUMBER()==1))
+      PRINT *, NUM_IMAGES (odd_even)  ! prints 8 or 4?
+    ...
+    CHANGE TEAM (odd_even)
+      IF ((THIS_IMAGE()==1) .AND. (TEAM_NUMBER()==1))
+        PRINT *, NUM_IMAGES (odd_even) ! prints 4?
+    END TEAM
+  END TEAM
+
+The output of the second and third print statements in the above program
+fragment are not defined by the draft standard.
+
+This program fragment also demonstrates the need for an implementation to
+create copies of the team variable when a CHANGE TEAM statement is
+executed.  The TEAM_TYPE is defined to be an extensible derived type,
+which means there could be non-trivial execution time overhead introduced
+to manage copies of team variables.
+
+Proposed solution:
+
+Prohibit redefinition of active team variables (technical change from
+the TS).
+
+Edits:
+
+[xx:3-] At end of the final bullet of paragraph 2 that begins Changes
+to features previously described by ISO/IEC TS 18508:2015:
+
+  Add: "A team variable that appears in a CHANGE TEAM statement can no
+        longer be defined or become undefined during execution of the
+        CHANGE TEAM construct."
+
+{Document change to the TS}
+
+[188:8-9] 11.1.5.2 Execution of a CHANGE TEAM construct p1
+ Change "the current team is not changed by a redefinition of that
+         variable during execution of the CHANGE TEAM construct"
+ to     "the variable shall not be defined or become undefined during
+         execution of the CHANGE TEAM construct"
+This makes lines 7-9 read:
+  "The current team for the statements of the CHANGE TEAM <block> is the
+   team identified by the <team-value>.  If <team-value> is a variable,
+   the variable shall not be defined or become undefined during execution
+   of the CHANGE TEAM construct."
+{Disallow modifying active team variables}
+
+===END===

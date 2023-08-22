@@ -1,0 +1,97 @@
+To:       J3                                                      07-302
+From:     Jim Xia
+Subject:  Interpretation: SIZE= specifier and UDDTIO
+
+Date: 2007 October 15
+
+NUMBER:   F03/
+TITLE:    SIZE= specifier and UDDTIO
+KEYWORDS: SIZE=, UDDTIO
+DEFECT TYPE: Error
+STATUS:   Erratum
+
+DISCUSSION
+
+9.5.1.14 [191:21-26] says that when SIZE= specifier is used in a
+formatted input statement with explicit format specifications, the
+variable specified in the SIZE= specifier is determined by the data edit
+descriptors during the input statement.  These rules, however, did not
+take into account of the following situation where a parent READ
+statement with a DT edit descriptor invokes a user-defined DTIO formatted
+read subroutine that reads input data using list-directed or namelist
+READ statement.
+
+Consider the following example,
+
+
+module example
+    type A
+        integer x(10)
+
+        contains
+
+        procedure :: readArray
+        generic :: read(formatted) => readArray
+    end type
+
+    contains
+
+    subroutine readArray (dtv, unit, iotype, v_list, iostat, iomsg)
+        class(A), intent(inout) :: dtv
+        integer, intent(in) :: unit
+        character(*), intent(in) :: iotype
+        integer, intent(in) :: v_list(:)
+        integer, intent(out) :: iostat
+        character(*), intent(inout) :: iomsg
+
+        read (unit, fmt=*, iostat=iostat, iomsg=iomsg) dtv%x
+    end subroutine
+end module
+
+use example
+    type(A) x
+    integer countChar
+
+    open (1, file='example.input', form='formatted')
+
+    read (1, fmt='(DT)', advance='no', size=countChar) x
+end
+
+
+Note that there is no data edit descriptor in the UDDTIO subroutine,
+readArray, to count the total number of characters transferred during
+the child read.
+
+
+QUESTION:
+
+    (a) Is this example intended to be standard conforming?
+
+    (b) If the answer to (a) is yes, then assume the file example.input
+        contains the following text:
+.1.2.3.4.5.6.7.8.9.10
+
+        where each . represents a space. Then what value would the
+        example assign to the variable countChar after the READ
+        statement?
+
+ANSWER:
+
+    (a) No, this example is not standard conforming.
+
+    (b) Not applicable.  SIZE= specifier is not allowed in the example
+        presented here.  Edits are provided to correct this oversight.
+
+EDITS:
+
+    [188:8+] Append to the end of the paragraph
+
+    "A SIZE= specifier shall not appear in a parent input statement if
+     the user-defined derived-type input procedure to be invoked contains
+     either a list-directed or a namelist input statement on the same
+     input unit."
+
+
+SUBMITTED BY: Jim Xia
+
+HISTORY: m182 Submitted

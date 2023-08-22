@@ -1,0 +1,355 @@
+
+                                                            J3/98-139
+
+Date: 30 March, 1998
+To: J3
+From: /interop
+Subj: Interop tutorial on syntax direction
+
+
+Based on requirements in 97-132rl and priorities on those requirements
+(start with low hanging fruit), /interop has made some decisions on
+directions for some of the requirements. This paper is intended to serve as
+a tutorial on what those decisions are and the rationale for those
+decisions.
+
+
+Method for describing pre-defined C data types
+
+Support for interfacing with the C data types int, short, long, long long,
+signed char, unsigned int, unsigned short, unsigned long, unsigned long
+long, float double, long double, complex, double complex, long double
+complex, and char shall be provided through a module (ISO_C_TYPES) which
+provides parameters to be used as kind type parameters in declaring Fortran
+variables of type corresponding to these C types. This is the method
+described in the inter-operability TR.
+
+
+A number of commentors on the TR indicated a preference to not have to use
+kind type parameters when declaring variables with type corresponding to
+these C types. A mapping of types, such as in < == > to default real, etc.
+was suggested as an easier way. This approach is not feasible as the C
+standard does not, for example, require an int and a float to occupy the
+same size storage unit.
+
+
+The ISO_C_TYPES module will contain definitions for the named constants
+
+C_INT_KIND, C_SHORT, C_LONG_KIND, C_LONG_LONG_KIND, C_SIGNED_CHAR_KIND,
+C_UNSIGNED_INT_KIND, C_UNSIGNED_LONG_LONG_KIND, C_FLOAT_KIND,
+C_DOUBLE_KIND, C_LONG_DOUBLE_KIND, C_COMPLEX_KIND, C_DOUBLE KIND,
+C_LONG_DOUBLE_KIND, C_COMPLEX_KIND, C_DOUBLE_COMPLEX_KIND,
+C_LONG_DOUBLE_COMPLEX_KIND, and C_CHAR_KIND.
+
+Some of these names are somewhat lengthy; users are free to define a module
+of their own which renames these parameters to a name of their choice.
+
+
+Fortran does not mandate support for unsigned integers or signed character
+data types. The parameters to declare data of these kinds is part of the
+ISO_C_TYPES module for the purpose of declaring Fortran data type kinds
+which can pass or access variables of the C types. It is up to the
+programmer that Fortran operations on these types do "the right thing"
+regarding the "(un)"signedness" of these C types.
+
+
+Method for writing interface bodies for C routines
+
+Currently interfacing with C from Fortran often requires the use of wrapper
+routines written in C that manipulate arguments to match C calling
+conventions and to access the bind time names of procedures written in C. A
+set of attributes is introduced which, when applied to procedure names
+and/or variables, allow the Fortran user to directly access procedures
+written in C. These attributes are C, VALUE, REFERENCE, ALIAS, AND VARYING.
+
+
+The C attribute
+
+A subprogram name may be given the C attribute. A call to a subprogram with
+the C attribute causes the implementation to follow C default argument
+passing rules (scalar variables by value, etc.), to use the C
+implementation's calling conventions, and to mangle the name of the called
+routine as the C implementation would. Calling conventions and name
+mangling are outside the scope of the C standard.
+
+
+The VALUE and REFERENCE attributes
+
+The VALUE and REFERENCE attributes are used for dummy arguments to indicate
+if the dummy argument is a pass by reference or by value argument. For
+Fortran calling C,
+
+the C attribute for the called routine casues the actual arguments to be
+passed according to C default conventions. These conventions are those
+specified by the C standard (scalars are passed by value, for example), as
+well as any implementation specific conventions. These attributes allow
+those defaults to be overridden. For C calling Fortran, these attributes
+indicate the manner in which C has passed the arguments.
+
+
+Many existing implementations provide intrinsic functions which may be used
+in actual argument lists that indicate argument passing by calue or by
+reference (%VAL(), %LOC() for example), were discussed by /interop
+dismissed for this purpose as the intrinsic approach is useful for Fortran
+calling C, but not C calling Fortran.
+
+
+The ALIAS attribute
+
+C provides for mixed case names, and allows for naming conventions
+different than Fortran. C names are case sensitive and may begin with a
+leading underscore, or may contain characters other than those permitted in
+Fortran. In order to link to any C function, a method to specify a bind
+time name is needed. This is also true to access C data (externs) or to
+export global data which can be accessed by C (see EXTERN attribute below).
+The C attribute not along sufficient for calling C procedures because of
+the mixed case and special characters used in C names. The ALIAS attribute
+provides the ability to link to these names.
+
+
+Procedure names may be given the ALIAS attribute, as many entities with the
+C_EXTERN attribute (below). Specifying ALIAS gives the entity (a) bind time
+name(s) by which it is known external to the subprogram it is declared in.
+It is necessary to allow an alias name to be mangled according to the C
+implementation name decoration rules for portability.
+
+
+It is also necessary to provide the capability to specify an exact literal
+string to become the (a) bind time name(s) as some systems support more
+than one C implementation, and the name mangling schemes may be different
+than the C mangling algorithm supported in the Fortran implementation.
+
+
+The string specified as the mangleable name is the actual name of a C
+procedure or extern as a C programmer would write it. This name is
+automatically decorated (mangled) by the implementation to match the
+decoration the C implementation would perform on a function or extern name.
+For example
+
+
+FUNCTION CFUNC (A, B)
+
+INTEGER,C,ALIAS(MANGLEABLE="_first_name", "second","Third")::CFUNC
+
+
+The VARYING attribute
+
+The VARYING attritbute permits Fortran to call C functions when the C
+function argument list contains ellipsis (stdargs). By specifying VARYING
+for a called procedure, the implementation automatically "does the right
+thing" to set up the varying argument part of the call as needed by the C
+implementation. A procedure with the VARYING attribute allows a user to
+call a routine with any number of arguments (more or fewer than declared in
+an interface) without the processor flagging the argument count mismatch.
+
+
+Fortran requires a set number of dummy arguments; there is no method to
+specify a variable number of arguments. Fortran optional arguments are not
+analogous to C stdargs. A Fortran optional argument which is not present in
+a call requires the implementation to have a mechanism which allows the
+caller to inquire about the presence of an optional argument.
+
+
+C stdargs simply allow the user to pass an arbitrary number of arguments.
+If a C function calls a Fortran procedure with a varying number of
+arguments, the Fortran procdure must have the VARYING attribute. It is the
+responsibility of the caller to provide the mechanism for the called
+Fortran to determine the number of arguments actually passed. An example of
+such a mechanism is used in the C printf functions; the first argument is a
+string containing the format descriptors for how the remaining arguments
+are to be printed. The number of arguments is determined by the number of
+descriptors passed.
+
+
+The present function is not defined for use in a procedure with the VARYING
+attribute.
+
+
+Method to access and export global data
+
+The C_EXTERN attribute indicates a variable, a module data object, or a
+common block name is to be globally accessible. A module name may not be
+given the C_EXTERN attribute.
+
+
+The C_EXTERN attribute may be used in conjunction with the ALIAS attribute
+to access or export global data with any name(s) (special characters, mixed
+case). The alias name(s), one of which may be mangled, become(s) the bind
+time name(s) of the object.
+
+
+Variables with the C_EXTERN attribute may be used in conjunction with the
+ALIAS attribute may be initialized.
+
+
+Note that it is current common practice for Fortran programmers to use
+common blocks as a means to share global data with C routines. For this
+reason, common block names are included in the entities which may be given
+the C_EXTERN attribute. Common blocks with multiple variables are often
+mapped to C structs.
+
+
+Example:
+
+
+MODULE MOD
+INTEGER A, B
+
+C_EXTERN A, B
+
+ALIAS(MANGLEABLE="blivit',"the_b_thing")B
+
+
+! A is globally accessible through the name A@$)_, B is globally accessible
+through the
+
+! names the_b_thing and blivit@S_, assuming the same mangling algorithm
+described
+
+! in the ALIAS attribute example above.
+
+
+REAL,DIMENSION(100,100) :: R, S, T
+
+COMMON /BLOCK/ R, S, T
+
+COMMON/GHIA/ X, Y, Z
+
+C_EXTERN /BLOCK/
+
+ALIAS("block") /BLOCK/
+
+
+! BLOCK is globally accessible through the name block. GHIA is globally
+accessible
+
+! the name GHIA (unmangled as it does not have the C_EXTERN attribute).
+
+
+Ability to call C functions with void* arguments
+
+It is not at all uncommon for C functions to have an argument which is a
+pointer to void, meaning that the argument passed to it can be a pointer to
+any type. This is the case with functions in MPI. The Fortran programmer
+may write a procedure which has an argument that the programmer does not
+care what the type is (for example, a copy routine). Currently, the only
+way the Fortran programmer can do this is to not provide an interface.
+Doing so means no argument checking is done for that routine, pointer and
+assumed shape arrays may not be used, and other undesired restrictions may
+occur.
+
+
+The other option is to write routines which are essentially clones of each
+other, differing only in the type of the argument the programmer does not
+care about. Two approaches are being discussed in /interopt; no decision
+has yet been made. The two approaches and the pros and cons of each are
+discussed here.
+
+
+The intrinsic approach
+
+Many implementations provide an intrinsic function which returns the
+address of its argument. The intrinsic function is often some variation of
+LOC(var). Such an intrinsic could be defined with a result type that is
+weakly typed, similar to the NULL () intrinsic, in that the result is
+assignment compatible with more than one type. The presence of thte LOC
+intrinsic should not be checked against the corresponding dummy argument to
+the LOC intrinsic should not be checked against the corresponding dummy
+argument in the interface of the called routine. For example CALL FRED (A,
+B, LOC (C), D) means that the third argument's type is not to be checked
+against the type of the third argument of FRED if an interface is known.
+(Or, if you will, and address (result of LOC) is assignment compatible with
+any type.) An example of a call to a copy routine may be
+
+
+INTERFACE
+
+SUBROUTINE GENERIC_COPY(SOURCE, COUNT, SIZE, TARGET)
+
+INTEGER COUNT, SIZE ! Number of elements to copy, size of an element
+
+DIMENSION SOURCE(SIZE), TARGET(SIZE)
+
+END ROUTINE
+
+END INTERFACE
+
+REAL, DIMENSION(100) :: ARRAY1, ARRAY2
+
+INTEGER, DIMENSION(50) ::IARRAY1, IARRAY2
+
+CALL GENERIC_COPY (LOC(ARRAY1), 100, 1, LOC(ARRAY2))
+
+CALL GENERIC_COPY (LOC(IARRAY1), 50, 1, LOC(ARRAY2))
+
+
+The first call copies the real array ARRAY1 to the real array ARRAY2. The
+second call copies the integer array IARRAY1 to the integer array IARRAY2.
+No error is detected for associating IARRAY1 with the implicity real typed
+SOURCE, similarly no error is issued for associating the integer arry
+IARRAY2 with the implicitly real typed SOURCE, similarly no error is issued
+for associating the integer IARRAY2 with the implicitly real typed TARGET.
+
+
+Alternately, the result type of LOC could be strongly typed as a C_PTR,
+where C_PTR is a defined type with private components in the ISO_C_TYPES
+module described above. The subgroup has not discussed in detail how
+Fortran may deal with C pointers to structs, which are likely needed to
+manipulate linked lists. It is possible (a) C)_PTR type(s) will be needed
+for this also. The LOC function could be useful for this as well. One
+drawback to the LOC function as a stand alone solution to the "typeless"
+argument problem is that it is not useful for describing a dummy argument
+which may have any type in an interface. (The notion of (a) C_PTR type(s)
+may be a better solution for this problem as well.) Another drawback is the
+need for the programmer to specify LOC at each call to a routine that has
+"typeless" arguments.
+
+
+The attribute approach
+
+The alternate approach is the introduction of a VOID attribute. If a dummy
+argument in an interface is given the VOID attribute, the type of an actual
+argument being associated with the dummy argument would not be checked at a
+call site. An actual argument associated with a dummy argument with the
+VOID attribute could be of any type. For example
+
+
+MODULE M
+
+SUBROUTINE GENERIC_COPY (SOURCE, COUNT, SIZE, TARGET)
+
+INTEGER COUNT, SIZE
+
+VOID SOURCE (SIZE), TARGET (SIZE)
+
+
+END SUBROUTINE
+
+END MODULE
+
+
+USE M
+
+REAL A(100), B(100)
+
+COMPLEX CX1(100), CX2(50)
+
+CALL GENERIC_COPY (A, 100, 1, B)
+
+CALL GENERIC_COPY (CX1, 50, 2, CX2)
+
+
+Here the first call copies the real array A to the real array B. The second
+call copies the first 50 elements of the complex array CX1 to the complex
+array CX2. No errors are issued despite calling the routine with different
+types for the first and last arguments.
+
+Advantages of the attribute approach are that the attribute is applied once
+to the dummy argument (not actual arguments in the argument list at call
+sites) and the attribute is easier on edits that would be a void type. A
+disadvantage is that it is not clear how a VOID attribute could be useful
+in other requirements of /interop.
+
+
+
+

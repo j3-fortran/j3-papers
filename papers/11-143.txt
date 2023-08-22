@@ -1,0 +1,195 @@
+                                                            11-143
+To: J3
+From: Nick Maclaren
+Subject: Interop TR: more on assumed type
+Date: 2011 February 01
+Reference: N1838, 11-124
+
+
+
+I am not happy with 11-124, not at all - it's seriously erroneous, as it
+stands.  It also confuses the main body of the Fortran standard, without
+providing a comparable benefit.
+
+
+1. Problems
+-----------
+
+Firstly, if only an address is passed, there is no way to discover the
+element length.  Inter alia, this means that array subscription and
+subsectioning is not possible, and we must also forbid:
+
+        subroutine sub(x)
+            type(*), dimension(*) :: x
+            interface
+                subroutine sub_c(x) bind(c)
+                    type(*) :: x
+                end subroutine
+            end interface
+            call sub_c(x(5))
+        end subroutine
+
+and:
+
+        subroutine sub(x)
+            type(*), dimension(*) :: x
+            interface
+                subroutine sub_c(x) bind(c)
+                    use, intrinsic :: iso_c_binding
+                    c_ptr :: x
+                end subroutine
+            end interface
+            call sub_c(c_loc(x(5))
+        end subroutine
+
+and:
+
+        subroutine sub(x)
+            type(*), dimension(*), target :: x
+            type(*), pointer :: y
+            interface
+                subroutine sub_c(x) bind(c)
+                    type(*), pointer :: x
+                end subroutine
+            end interface
+            y => x(5)
+            call sub_c(y)
+        end subroutine
+
+In a descriptor, the only sensible thing is to set it to is zero.
+
+
+Secondly, C code has no difficulty in constructing arbitrarily perverse
+descriptors, and such programming is SOP in C, so C programmers need to
+be told what not to do.  Currently there is no such wording.
+
+
+2. Possible Solutions
+---------------------
+
+There are three possible approaches that I can think of:
+
+    1) To attempt to restrict the use of assumed-type objects enough
+to exclude any form of subscription, direct or indirect for objects
+that may have an unknown type.
+
+    2) To provide wording that says that such constructions will fail
+(horribly) if the dynamic type is CFI_type_unspecified.
+
+    3) To treat assumed-type dummy arguments just like any other
+polymorphic dummy arguments.
+
+(1) will assuredly confuse Fortran users, because it becomes legal to
+write declarations like TYPE(*), DIMENSION(N,M,*), but there is no
+point in doing so.
+
+I do not think that this is a sensible way to proceed, but I have put a
+task list for in the following section, in case anyone wants to complete
+the task.
+
+(2) is truly disgusting, and would involve some extremely nasty edits to
+N1838 2.1.  I hope that nobody thinks that it is a good idea.
+
+(3) is almost trivial, and needs very few changes to N1838.  All
+procedures with an assumed-type argument are required to have an
+explicit interface (3.2), so that the rules for when descriptors were
+used would simply add assumed-type.
+
+There is one restriction that it would imply, but there is an easy
+bypass, which needs no changes to existing code in either Fortran or C.
+
+
+3. Corrections to 11-124
+------------------------
+
+If the approach in 11-124 is taken, the following corrections need
+making:
+
+    "In a C descriptor for a polymorphic object, the attribute member
+shall ..." =>
+    "In a C descriptor for a polymorphic object, the type member
+shall ..."
+
+It should also specify that the elem_len member is zero if the type
+member is CFI_type_unspecified.
+
+Subobjects of such arrays must also be forbidden as arguments to actual
+arguments to non-intrinsic procedures, as arguments to C_LOC and as
+pointer targets.  Is there anything else?
+
+It must also forbid C from calling a Fortran procedure with an argument
+of the sort Fortran is forbidden from constructing.
+
+
+4. Preferred Solution
+---------------------
+
+This is compatible with the wording of either 11-122 or 11-123 (TR2).
+
+Edits to N1838:
+
+[9:4] Add "assumed-type," before "assumed-rank".
+
+[9:13] Add "assumed-type," before "assumed-rank".
+
+[9:38] Replace "An identifier is also provided to indicate that the type
+of the object is unknown." by "If the object has a non-interoperable
+type, the member has a processor-dependent negative value."
+
+[12:7-8] Replace "The values for CFI type struct and CFI type
+unspecified shall be distinct and distinct" by "The value for CFI type
+struct shall be distinct".
+
+[13:0+] Remove "CFI type unspecified" from table 5.2.
+
+[13:0+] Add a new NOTE:
+
+    "NOTE
+    In an assumed-type argument, the type and elem_len members are
+    inherited from the explicit type actual argument that originated
+    the chain of assumed-type arguments, exactly as for the dynamic
+    type of other polymorphic dummy arguments."
+
+[17:5] Add "assumed-type," before "assumed-rank".
+
+[17:7-8] Remove item (d).    [ See the next section. ]
+
+[17:11] Add "assumed-type," before "assumed-rank".
+
+
+4.1 Restriction
+---------------
+
+It prevents Fortran code like the following:
+
+        subroutine sub(x)
+            type(*), dimension(*) :: x
+            interface
+                subroutine sub_c(x) bind(c)
+                    type(*), dimension(*) :: x
+                end subroutine
+            end interface
+            call sub_c(c)
+        end subroutine
+
+from calling C code written like:
+
+        void sub_c (void * x) {
+            ...
+        }
+
+Currently, sub_c is not interoperable, according to N1838 15.3.7,
+para. 2(5), nor according to the C standard, though it will almost
+always work.
+
+In any case, there is an easy bypass.  All that is needed is a simple
+wrapper function.  All of the occurences of sub_c in subroutine sub
+should be changed to sub_wrapper, and an extra C function written, like:
+
+        void sub_wrapper (CFI_desc_t * desc) {
+            sub_c(desc->base);
+        }
+
+As all uses of TYPE(*) will necessarily be new Fortran, and any existing
+C function is unchanged, this means that no changes to existing code are
+needed.  Furthermore, writing such wrappers is trivial.

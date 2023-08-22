@@ -1,0 +1,143 @@
+                                                        J3/99-197r1
+
+Date:    06 August 1999
+To:      J3
+From:    Malcolm Cohen
+Subject: Interface Scoping Problem
+
+This paper is basically a revision of ISO/IEC JTC1/SC22/WG5/N1365.
+
+1. The problem in F90/F95
+
+   MODULE M
+     TYPE T
+       PRIVATE
+       ...
+     END TYPE
+   CONTAINS
+     SUBROUTINE SUB(X,F)
+       TYPE(T) X(10)
+       INTERFACE
+         TYPE(T) FUNCTION F()           ! Oops
+           DIMENSION F(10)
+         END
+       END INTERFACE
+       X = F()
+     END SUBROUTINE
+   END
+
+   i.e. A module procedure inside the module that defines an "opaque" type
+   cannot have a dummy procedure that has an argument of that type (assuming
+   that an explicit interface is required for the dummy function).
+
+2. The problem in F200x
+
+   ... obstructs the use of certain O.O. constructs.
+
+   MODULE M
+     TYPE T
+       PROCEDURE(xyz),PASS_OBJ,POINTER :: p     ! (Alpha)
+     CONTAINS
+       PROCEDURE,PASS_OBJ :: x => mpx
+       PROCEDURE(xyz),PASS_OBJ :: y => NULL()   ! (Beta)
+     END TYPE
+     ...
+     INTERFACE PROCEDURE()
+       SUBROUTINE xyz(obj)
+         CLASS(T) obj                ! Oops
+       END SUBROUTINE
+     END INTERFACE
+     ...
+   CONTAINS
+     SUBROUTINE mpx(obj)
+       CLASS(T) obj                  ! ok
+       ...
+     END SUBROUTINE
+   END
+
+   The problem is that the "PROCEDURE(xyz)" requires the abstract interface to
+   be defined in the same module, but the interface cannot access the type T
+   which it needs to declare the dummy arguments.
+
+   This applies to any procedure pointer (or deferred type-bound procedure)
+   that has a dummy argument of the type, not only to PASS_OBJ procedures.
+
+   "Beta" can be simulated by the user - by providing a stub procedure instead
+   of a NULL() - but "Alpha" cannot be done in that way.
+
+3. The Proposal: Specification
+
+   There should be a means of accessing host entities from an interface body.
+   Only explicitly named entities are to be accessed, from the enclosing
+   scoping unit.
+
+   In particular, the IMPLICIT mapping is not accessed.  If there are no
+   IMPLICIT statements in the interface body then the implicit mappings in
+   use will continue to be the normal Fortran default mappings.
+
+4. Syntax Possibilities
+
+4.1 Option 1: The IMPORT statement.
+
+   Syntax: IMPORT [::] <import-name-list>
+
+           Constraint: <import-name> shall be a derived-type name or a named
+                       constant.
+
+   e.g.  IMPORT mytype,yourtype
+
+   Thus to fix up the example in section 2 above, the user would put "IMPORT T"
+   immediately before the line containing "Oops".
+
+   Details:
+
+   The named entities must be entities defined in or accessible in the
+   enclosing scope.  No further declaration of such entities is permissible.
+   Entities defined in the enclosing scope must have been declared prior to
+   the interface body.  Note that importing anything other than a TYPE or
+   PARAMETER has some small useful functionality so this is allowed.
+
+   The IMPORT statement would only be allowed in interface bodies and would
+   appear after any USE statements and before any IMPLICIT statement.
+
+   It is not considered to be useful to be able to rename entities in this
+   limited context, so a simple <name-list> is thought to be adequate.
+
+4.2 Option 2: Extend the USE statement.
+
+   Syntax: USE *, ONLY: [<only-list>]
+
+   e.g.  USE *,ONLY:mytype,yourtype
+
+   Thus to fix up the example in section 2 above, the user would put
+   "USE *,ONLY:T" immediately before the line containing "Oops".
+
+   Details:
+
+   As per the IMPORT statement, but for consistency we would allow renaming.
+
+4.3 Option 3: Allow some recursive USE statements.
+
+   Syntax: Allow an interface body in a module to contain a USE statement for
+           that module.
+
+   Thus to fix up the example in section 2 above, the user would put
+   "USE M,ONLY:T" immediately before the line containing "Oops".
+
+   Details:
+
+   To prevent the possibility of recursive definitions the ONLY clause must
+   be present.
+
+   Otherwise the details are the same as in option 2.
+
+5. Syntax
+
+   After discussion a straw vote to choose between these options resulted in
+      Prefer option (i):  10
+      Prefer option (ii):  0
+      Prefer option (iii): 0
+      Undecided:           1
+
+   Therefore this paper proposes the syntax of the IMPORT statement as
+   described in option (i) above.

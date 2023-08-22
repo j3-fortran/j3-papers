@@ -1,0 +1,117 @@
+To: J3                                                     J3/22-101r1
+From: Steve Lionel
+Subject: C_SIZEOF and null pointers F18/026 revisited
+Date: 2022-March-02
+
+Reference: 18-007r1, 20-151, 21-134r2
+
+Consider the following program:
+
+program p
+ use iso_c_binding
+ implicit none
+ integer(c_int), pointer :: int_s
+ integer(c_int), pointer :: int_a(:)
+ print *, c_sizeof (c_null_ptr) ! (A)
+ print *, c_sizeof (null ())    ! (B)
+ print *, c_sizeof (null (int_s)) ! (C)
+ print *, c_sizeof (null (int_a)) ! (D)
+end
+
+By the current text in 18-007r1, (A) is valid because its argument
+is "an interoperable data entity that is not an assumed-size array or an 
+assumed-rank array that is associated with an assumed-size array"
+(18.2.3.7p3). (B),(C) and (D) are not valid because the arguments have the
+POINTER attribute and are thus not interoperable (18.3.4p1).
+
+Interp F18/026, passed by J3 at m224, made (C) valid because the
+prohibition on pointers was removed and the argument does have 
+interoperable type and type parameters. Even though the pointer is
+disassociated, C_SIZEOF returns the size of an object of that type.
+
+(D) is now problematic because C_SIZEOF needs to know the number of
+elements in its argument, and what it is given is a disassociated pointer
+for which that is undefined.
+
+(B) is similarly undefined. When supplied as an actual argument, NULL() 
+takes on the "characteristics of the corresponding dummy argument" 
+(16.9.144 Table 16.5), but the dummy argument of C_SIZEOF has no specific 
+characteristics.
+
+21-134r2 discussed the POINTER issue, but did not consider the case of
+a disassociated pointer nor the NULL() intrinsic as an argument to 
+C_SIZEOF.
+
+----------------------------------------------------------------------
+
+NUMBER: F18/026
+TITLE: C_SIZEOF argument
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the example
+    SUBROUTINE test(b)
+      USE iso_c_binding
+      REAL(c_double) b(:),a(SIZE(b))
+      PRINT *,c_sizeof(a)               ! A
+      PRINT *,c_sizeof(b)               ! B
+      PRINT *,c_sizeof(a(::2))          ! C
+      PRINT *,c_sizeof(a+1)             ! D
+      PRINT *,c_sizeof(1.0_c_double)    ! E
+    END SUBROUTINE
+
+18.2.3.7 C_SIZEOF (X) states
+    "X shall be an interoperable data entity..."
+
+According to that, the reference to C_SIZEOF marked A is valid, as A
+is interoperable (an explicit-shape array of interoperable type and
+type parameters). And the reference marked B is invalid, as only
+explicit-shape arrays and assumed-size arrays are interoperable, thus
+assumed-shape arrays are definitely not.
+
+For the references at C and D, the standard seems to be silent on the
+matter of whether they are interoperable. It is clear for named
+variables, but although subobject designators can denote variables,
+they are not names, and expressions are not variables at all. Being
+silent implies non-conformance as no interpretation is established.
+
+The reference at E also appears to be non-conforming, as the standard
+specifies no criteria for interoperability of expressions.
+
+However, the description of the result of C_SIZEOF only makes use of
+the interoperability of the type and type parameters.
+
+Are these references intended to be conforming?
+If not, should the standard be clarified to say that X shall be an
+interoperable named variable?
+
+ANSWER:
+
+Yes, these references were all intended to be conforming.
+An edit is supplied to correct this mistake, with an addition to
+require that any pointer or allocatable argument be associated or
+allocated.
+
+EDIT to 18-007r1:
+
+[473:27] 18.2.3.7 C_SIZEOF (X), p3 Argument,
+  Replace the paragraph with:
+
+   "Argument. X shall be of interoperable type and type parameters,
+    and shall not be an assumed-size array, an assumed-rank array
+    that is associated with an assumed-size array, an unallocated 
+    allocatable variable, or a pointer that is not associated."
+{Loosen the requirements.}
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 21-134   m224  Submitted
+         21-134r1 m224  Revised
+         21-134r2 m224  Revised again
+         22-101r1 m226  Disallow unassociated/unallocated argument
+
+----------------------------------------------------------------------
+
+

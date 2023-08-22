@@ -1,0 +1,105 @@
+To: J3                                                     J3/17-200r1
+From: Salvatore Filippone & Damian Rouson & Bill Long
+Subject: Constraint C824
+Date: 2018-February-13
+
+
+0. History 
+---------- 
+
+This paper is an update of, and replacement for, J3/17-200.
+
+ 
+1. Discussion
+-------------
+
+In the Parallel Sparse Basic Linear Algebra Subroutines (PSBLAS) library,
+communication buffers would ideally be coarray components inside derived
+types that have other components for storing the data prior to packing the
+data into the buffer. Storing the buffer in the same derived type as the
+data that will be packed into the buffer clarifies the data dependencies,
+making it less likely that a programmer will rely on critical sections to
+manage buffer accesses.  A Fortran 2018 implementation of PSBLAS would
+have data structures of the following form:
+
+  type vector
+    real, allocatable :: component(:),component_buffer(:)[:]
+  end type
+
+  type(vector) :: bundle, field
+
+This fixes the number of such data objects in the program (two in the above
+case: bundle and field).  Fixing the number of data objects at compile time
+is undesirable in the context of a library  designed to be installed and
+used  in multiple applications, and because it prevents those same objects
+from being reused as components of other higher-level objects in a
+sufficiently flexible way.
+
+However, C824 in N2146, 8.5.6 CODIMENSION attribute (page 99) states,
+
+    "An entity whose type has a coarray ultimate component shall be a
+     nonpointer nonallocatable scalar, shall not be a coarray, and
+     shall not be a function result."
+
+
+which precludes the more flexible data structures required in PSBLAS:
+
+  type(vector), allocatable :: bundle(:) 
+  allocate(bundle(100))
+
+
+2. Additional Discussion
+------------------------
+
+Coarray components are already required to be allocatable:
+
+C747 (R737) If a <coarray-spec> appears, it shall be a
+            <deferred-coshape-spec-list> and the component shall have
+            the ALLOCATABLE attribute.
+
+The example TYPE in part 1 conforms to this requirement.
+
+Additional limitations are needed to make the desired change work. In
+particular, automatic deallocations of the coarray component are not
+desirable. Those could occur if the object goes out of scope (local
+variable at the end of a procedure, for example), or in an assignment
+where the variable is the parent object.  Hence, some restrictions
+should be considered::
+
+a) The parent object (bundle(:) in the example above) should have the
+   SAVE attribute. {Prevent out-of-scope issue.}
+
+b) An allocatable whole array of a type that has a coarray component
+   shall not appear as the variable in an assignment
+   statement. {Prevent automatic reallocation.}
+
+c) An actual argument of a type that has a coarray component shall not
+   be associated with a dummy argument with the INTENT(OUT)
+   attribute. {Prevent automatic deallocation.}
+
+d) A discontiguous actual array argument of a type with a coarray
+   component shall not be associated with a contiguous dummy
+   argument. {Prevent copy-in/copy-out.}
+
+In an array like bundle(:) each element has a separate
+coarray. Collective actions, such as allocation, on the corresponding
+coarrays of the involved images have to include the set of coarrays
+for the same element of bundle on each image of the current
+team. Similarly, the shape of bundle(:) should be the same on each
+image so that each element's coarray has a corresponding coarray on
+the other images of the current team.  If the parent array is
+polymorphic, it should have the same dynamic type on all the images.
+
+
+3. Edits
+
+In C824 of 8.5.6 CODIMENSION attribute, change "shall be a nonpointer,
+nonallocatable scalar" to "shall not be a pointer".
+
+{The effect of this change is that the parent can be an array as well
+as a scalar, and it can be allocatable.}
+
+Additional edits would be required to implement the limitations
+discussed in part 2 above.
+
+

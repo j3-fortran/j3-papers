@@ -1,0 +1,150 @@
+
+
+Subject: US Item 2.1                                    J3/03-139
+From: Kurt W. Hirchert                  (Meeting 164) 10 Mar 2003
+
+=======
+Problem
+=======
+
+A more abstract description of this problem can be found in
+J3/02-295r3.  What follows is an example of the problem:
+
+We begin with two types related by inheritance,
+         TYPE,EXTENSIBLE :: fruit; ... ; END TYPE fruit
+         TYPE,EXTENDS(fruit) :: pear; ... ; END TYPE pear
+a procedure that operates on an argument of the parent type,
+         INTERFACE
+           SUBROUTINE fruit_sub(arg)
+             TYPE(fruit) :: arg
+           END SUBROUTINE fruit_sub
+         END INTERFACE
+and an object of the extension type
+         TYPE(pear),TARGET :: a_pear
+on which we wish to operate with the procedure.
+
+Now we can't pass this object directly
+         CALL fruit_sub(a_pear)                  ! NOT legal
+because of the type mismatch, but one can pass the appropriate
+component of this object
+         CALL fruit_sub(a_pear%fruit)            ! legal
+
+If we have access to the object through a polymorphic object
+of the extension type,
+         CLASS(pear),POINTER :: poly_pear
+         poly_pear => a_pear
+the situation is similar.  We can't pass the object directly,
+         CALL fruit_sub(poly_pear)               ! NOT legal
+but we can pass the appropriate component.
+         CALL fruit_sub(poly_pear%fruit)         ! legal
+
+However, if our access to the object is through a polymorphic
+object of the parent type,
+         CLASS(fruit),POINTER :: poly_fruit
+         poly_fruit => a_pear
+we cannot pass the appropriate component
+         CALL fruit_sub(poly_fruit%fruit)        ! NOT legal
+because this is not a valid component name for object of that
+declared type, but one _can_ pass the object directly
+         CALL fruit_sub(poly_fruit)              ! legal
+because, unless I've missed a requirement somewhere, 12.4.1.2
+requires only agreement of the declared type, this association
+is apparently legal.  (If there _is_ a requirement that I've
+missed, then there is no way to legally handle this case.)
+
+In my opinion, starting points this similar should not have results
+this dissimilar.
+
+=================
+Proposed Solution
+=================
+
+The main thrust of the solution is to allow the appropriate
+component to be selected in the latter case, just as it is in the
+earlier cases.
+
+I believe that the lack of a prohibition against associating a
+nonpolymorphic dummy argument with a polymorphic actual argument
+of the same type is an unintended oversight, so I propose to add
+that prohibition.
+
+In preparing the rest of the proposal, I discovered the example
+in C.9.6.  It reflects the polymorphic argument association rules
+originally adopted, but there rules have not been in effect since
+the adoption of the SELECT TYPE construct.  I propose edits to
+repair it consistent with the rest of my proposal.  If this
+proposal is rejected, alternative edits should be prepared to
+either delete C.9.6 or correct it consistent with the current
+rules.
+
+=====
+Edits
+=====
+
+1.  55:3+  Insert new paragraph
+     "Similarly, a polymorphic object has a scalar, nonpointer,
+     nonallocatable <<reflexive parent component>> with the type
+     and type parameters of the object itself.  The name of this
+     component is the type name.  If the dynamic type of the object
+     is the same as its declared type, the reflexive parent
+     component denotes the entire object; otherwise, it denotes the
+     parent component in the dynamic type that denotes an object
+     of the declared type."
+{* This is the meat of the proposed change.  Suggestions to improve
+the wording are always welcom. *}
+
+2. 73:35 After "with", insert "nonpolymorphic".
+{* This closes the hole for pointer assignment as well as argument
+association. *}
+
+3. 266:42-267:2  Delete final sentence of paragraph.
+{* It covers a case which should never occur. *}
+
+4. 469:12-20
+<<<<<
+! To be valid, the declared type of the argument must be the same
+! type as or extended from the declared type of the dummy argument.
+CALL SUB2 ( T2 ) ! Valid
+CALL SUB2 ( T3 ) ! Valid
+CALL SUB3 ( T2 ) ! Invalid
+CALL SUB3 ( T3 ) ! Valid
+ >>>>>
+    469:25-33
+<<<<<
+! Polymorphic actual arguments cannot be associated with fixed
+! type dummy arguments.  These workarounds can be used to identify
+! components of the appropriate type.
+CALL TUB2 ( P2%POINT ) ! Valid
+CALL TUB2 ( P3%POINT ) ! Valid
+SELECT TYPE ( P2 )             ! Valid if the dynamic type of the
+  CLASS IS ( COLOR_POINT )      ! argument is the same as or extended
+   CALL TUB3 ( P2%COLOR_POINT ) ! from the declared type of the dummy
+  CLASS DEFAULT
+   ! No valid workaround if not
+END SELECT
+CALL TUB3 ( P3%COLOR_POINT ) ! Valid
+ >>>>>
+{* This is the part that would need corrected differently if the
+rest of this proposal is not accepted. *}
+    469:35-43
+<<<<<
+! To be valid, the declared type of the argument must be the same
+! type as or extended from the declared type of the dummy argument.
+CALL SUB2 ( P2 ) ! Valid
+CALL SUB2 ( P3 ) ! Valid
+CALL SUB3 ( P2 ) ! Invalid, but workaround may be possible:
+SELECT TYPE ( P2 )        ! Valid if the dynamic type of the
+  CLASS IS ( COLOR_POINT ) ! argument is the same as or extended
+   CALL SUB3 ( P2 )        ! from the declared type of the dummy
+  CLASS DEFAULT
+   ! No valid workaround if not
+END SELECT
+CALL SUB3 ( P3 ) ! Valid
+ >>>>>
+
+                               - end -
+
+
+-- 
+Kurt W Hirchert                                  hirchert@atmos.uiuc.edu
+UIUC Department of Atmospheric Sciences                  +1-217-265-0327 

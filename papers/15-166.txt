@@ -1,0 +1,419 @@
+To:        J3                                                J3/15-166
+Subject:   Intrinsic assignment to a polymorphic array element is hard
+From:      Van Snyder
+Reference: 15-007r1, 15-161, 15-162
+Date: 2015 June 07
+
+1. Introduction
+===============
+
+Subclause 7.2.1.2p1(1) says "if the variable is polymorphic it shall be
+allocatable and not a coarray."
+
+This makes it impossible to assign to an element or section of a
+polymorphic array without a SELECT TYPE construct.  Indeed, two nested
+SELECT TYPE constructs are needed if the <expression> is also
+polymorphic, which it will almost certainly be if the assignment occurs
+in a type-bound procedure and both the variable and expression are
+dummy arguments:
+
+    if ( .not. SAME_TYPE_AS ( v, e ) ) error stop "Wrong Types"
+    SELECT TYPE ( v )
+    TYPE IS ( <whatever> )
+      SELECT TYPE ( e )
+      TYPE IS ( <same whatever> )
+        v(i) = e
+      END SELECT
+    END SELECT
+
+This makes it impossible for a procedure bound to a base type to make
+assignments to the passed-object dummy argument, or any polymorphic
+components of it.
+
+One solution is not to require a polymorphic variable in an intrinsic
+assignment to be allocatable.  It ought to be enough to require that if
+it is not allocatable, the variable and expr shall have the same dynamic
+type.  This is equivalent in compile-time-checkable safety to the
+existing situation concerning deferred length type parameters and array
+shape conformance.
+
+For polymorphic assignment, as it stands now, processors have to check
+the dynamic type anyway, either to allocate the variable with that type,
+or at least to determine whether the dynamic types are the same if they
+want to bypass re-allocating the variable in that case.  Therefore,
+checking the dynamic types, and raising an error condition if they're
+different, isn't any more difficult that what's required now.  If one is
+not certain that the dynamic types are the same, the possibility of a
+run-time error can be avoided simply by making the variable allocatable.
+Alternatively, one can use the SAME_TYPE_AS intrinsic function and
+respond to differing dynamic types by whatever mechanism desired, rather
+than the built-in runtime checking simply crashing the program.
+
+2. Proposal
+===========
+
+Allow intrinsic assignment to a polymorphic variable that is not
+allocatable, provided the dynamic types and length type parameter values
+of the variable and expression are the same.
+
+A conscientious program author should either verify that the dynamic
+types are necessarily identical, as they clearly are in, for example
+
+  allocate ( x(2*size(y)), mold=y )
+  x(1:size(y)) = y
+
+or check explicitly using the SAME_TYPE_AS intrinsic function -- or
+accept the possibility of a run-time error.  One can always regain
+run-time safety by making the variable allocatable.
+
+The reduction in compile-time checking is no more severe than the
+already-absent possibility of compile-time checking of the values of
+length type parameters, or shape conformance.
+
+Without this change, or one of the alternatives below, development of
+container classes is needlessly difficult.
+
+3. Edits
+========
+
+[xviii Introduction p2, in "Data usage and computation"] Insert an item
+
+"A nonallocatable variable in an intrinsic assignment statement may be
+polymorphic."
+
+[157:11 7.2.1.2p1(1)] Replace the list item:
+
+" (1) if the variable is polymorphic and not allocatable, the dynamic
+      types shall conform as specified in Table 7.8,
+  (x) if the variable is polymorphic and allocatable, it shall not be
+      a coarray,"
+
+Then move these two items to [157:16+ 7.2.1.2p1(4+)]
+
+[157:22 7.2.1.2p1(8)] Replace "variable is of" with "dynamic type of the
+variable is a" and insert a comma after "derived type".
+
+[158:5+ 7.2.1.2p3+] Insert a note:
+
+"NOTE 7.34a
+   If it is not possible to verify that the dynamic types of the
+   variable and expression are necessarily the same, one should make the
+   variable allocatable (which is not possible if it is an array element
+   or section), use a SELECT TYPE construct, verify that the types are
+   the same using the SAME_TYPE_AS intrinsic function, or accept the
+   possibility that an error might occur during program execution.
+
+   If it is not possible to verify that the values of deferred type
+   parameters of the variable are necessarily the same as corresponding
+   ones of the expression, one should check this explicitly, make the
+   variable allocatable, or accept the possibility that an error might
+   occur during program execution.
+
+   If it is not possible to verify that the values of nondeferred type
+   parameters of the variable are necessarily the same as corresponding
+   ones of the expression, one should check this explicitly, make all
+   length parameters of the variable deferred and make the variable
+   allocatable, or accept the possibility that an error might occur
+   during program execution."
+
+4. Alternative Proposal #1
+==========================
+
+Example: to double the space of an unlimited polymorphic array, one
+might wish to do
+
+  allocate ( t(2*size(s)), mold=s)
+  t(1:size(s)) = s
+
+but, although the dynamic types of T and S are clearly the same, that's
+prohibited because a section of an array is not allocatable.  Similarly,
+one cannot do
+
+  allocate ( t(2*size(s)), source=[s,s] )
+
+if S is unlimited polymorphic, and in any case one might not wish to do
+this if S is large.
+
+To allow this clearly type-safe assignment to be done, augment SOURCE=
+with a <section-subscript-list> that specifies the part of the allocated
+object to be filled from the source.  This doesn't allow assignment in
+an intrinsic assignment statement to a polymorphic nonallocatable
+variable, which would be allowed by the primary proposal.
+
+5. Alternative Edits #1
+=======================
+
+[xviii Introduction p2, in "Data usage and computation"] Insert an item
+
+"The SOURCE= specifier in an ALLOCATE statmement may specify a section
+of an <allocate-object> to which a value is assigned."
+
+[130:9 R627] Replace the SOURCE= alternative of <alloc-opt> with
+
+     "<<or>> SOURCE [ ( <section-subscript-list> ) ] = <source-expr>
+
+[131:3-4 C639] Replace C639:
+
+"C639  (R626) If SOURCE= appears, each <allocate-object> shall be type
+       compatible (4.3.2.3) with <source-expr>.  If <section-subscript-
+       list> does not appear, <source-expr> shall be a scalar or have
+       the same rank as each <allocate-object>.  If <section-subscript-
+       list> appears, <source-expr> shall be a scalar or its rank shall
+       be equal to the number of <section-subscript>s that are either
+       <subscript-triplet> or <vector-subscript>."
+
+{The revised C639 does not require <source-expr> to have the same rank
+as each <allocate-object>.  Rather, it requires it to have the same rank
+as the sections of <allocate-object>s specified by <section-subscript-
+list>.}
+
+"C639a (R627) If SOURCE= appears and <section-subscript-list> appears,
+       the rank of every <allocate-object> shall be equal to the number
+       of <section-subscript>s."
+
+[132:22 6.7.1.2p7] After "appears" insert "and <section-subscript-list>
+does not appear".  After "allocation" insert ". If SOURCE= appears and
+<section-subscript-list> appears, <source-expr> shall be conformable
+with the specified element or section of every <allocation>."
+
+[132:27-29 6.7.1.2p7] Replace "if <allocate-object>... value provided."
+with "if <source-expr> is a scalar the value of every element of each
+<allocate-object> becomes the value of <source-expr>; if
+<section-subscript-list> does not appear the value of each
+<allocate-object> becomes the value of <source-expr>; if
+<section-subscript-list> appears the value of the elements of each
+<allocate-object> specified by <section-subscript-list> becomes the
+value of <source-expr>."
+
+6. Alternative Proposal #2
+==========================
+
+Add a statement that contains an assignment statement, in which
+
+o it is not necessary that the variable be allocatable if it is
+  polymorphic,
+o whether the dynamic types and length type parameter values are the
+  same, and whether shapes are conformant, is checked,
+o optional STAT= and ERRMSG= specifiers are allowed, and
+o an error condition occurs if the variable is not allocatable and
+  either the dynamic types are different, the shapes of the variable
+  and expression do not conform, or corresponding length type
+  parameters have different values, or the variable is allocatable and
+  the values of any corresponding nondeferred length type parameters
+  differ.
+
+7. Alternative Edits #2
+=======================
+
+[xviii Introduction p2, in "Data usage and computation"] Insert an item
+
+"An ASSIGN statement allows checked assignment to a non-allocatable
+polymorphic variable; it also checks whether length type parameters and
+extents of the variable and expression conform."
+
+[31:29+ R214] Insert an alternative
+
+"           <<or>> <assign-stmt>"
+
+[157:6- 7.2.1.1p1-]
+
+R732a <assign-stmt> <<is>> ASSIGN ( \smudge
+        \smudge <assignment-stmt> [, <assign-stat-list> ] )
+
+R732b <assign-stat> <<is>> STAT= <stat-variable>
+                    <<or>> ERRMSG= <errmsg-variable>
+
+{<sync-stat-list> could perhaps be used instead of <assign-stat-list>.}
+
+C714a (R732a) The <assignment-stmt> shall be an intrinsic assignment
+      statement.
+
+C714b (R723a) No specifier shall appear more than once in
+      <assign-stat-list>."
+
+[157:11 7.2.1.2p1(1)] Replace "if" with "if the assignment statement is
+not within an ASSIGN statement and".
+
+[157:14 7.2.1.2p1(3)] Replace "is neither" with "if the assignment
+statement is not within an ASSIGN statement the variable shall neither
+be".
+
+[157:21 7.2.1.2p1(7)] Delete ", and".
+
+[157:23 7.2.1.2p1(8)] Delete ", is not a coarray,"
+
+[157:24 7.2.1.2p1(8)] Replace the full stop with ", and".
+
+[157:24+ 7.2.1.2p1(8+)] Insert a list item
+
+"(9) if the <assignment-stmt> is not within an ASSIGN statement, the
+     variable is of derived type, and the value of a deferred length
+     type parameter is different from the value of the corresponding
+     parameter of the expression, the variable shall not be a coarray."
+
+{This requirement does not apply to deferred the length parameter of a
+coindexed character variable.  This is different from the requirement of
+15-007r1.  This is the subject of the interp in 15-161.}
+
+[157:25 7.2.1.2p2] After "If" insert "the <assignment-stmt> is not
+within an ASSIGN statement and".
+
+[161:1- 7.2.1.3+] Insert a subclause:
+
+<<7.2.1.3a ASSIGN statement>>
+
+"An ASSIGN statement encloses an intrinsic <assignment-stmt> and can
+detect and report errors.  Forms of the intrinsic <assignment-stmt> are
+allowed that are prohibited if it does not appear within an ASSIGN
+statement.
+
+If the variable in the <assignment-stmt> is not allocatable, the shapes
+of the variable and expression shall conform; otherwise an error
+condition occurs, and if STAT= appears, the specified variable is
+assigned the value of the named constant SHAPES_NOT_CONFORMANT.
+
+If the variable in the <assignment-stmt> is allocatable but not
+allocated and the expression is a scalar, an error condition occurs, and
+if STAT= appears, the specified variable is assigned the value of the
+named constant SHAPES_NOT_CONFORMANT.
+
+If the variable in the <assignment-stmt> is not allocatable, or is
+allocatable and not polymorphic, then
+
+(1) if its dynamic type is numeric or logical, the types and type
+    parameter values of the variable and expression shall conform as
+    specified in Table 7.8;
+
+(2) otherwise if its dynamic type is character type, the dynamic types
+    and kind type parameter values of the variable and expression shall
+    conform as specified in items (5) and (6) in subclause 7.2.1.2;
+
+(3) otherwise if its dynamic type is a derived type, the variable and
+    expression shall have the same dynamic type and corresponding kind
+    type parameters shall have the same values;
+
+(4) otherwise, an error condition occurs, and if STAT= appears the
+    specified variable is assigned the value of the named constant
+    TYPES_DIFFERENT.
+
+If the dynamic type of the variable is not character, the value of any
+nondeferred length type parameter of the variable shall be the same as
+the value of the corresponding length type parameter of the expression;
+otherwise an error condition occurs, and if STAT= appears the specified
+variable is assigned the value of the named constant LENGTH_TYPE_PARAM-
+ETER_VALUES_UNEQUAL.
+
+If any of the preceding three errors occurs, the variable in the
+<assignment-stmt> is not changed.
+
+The named constants LENGTH_TYPE_PARAMETER_VALUES_UNEQUAL, SHAPES_NOT_-
+CONFORMANT, and TYPES_DIFFERENT are defined in the ISO_FORTRAN_ENV
+intrinsic module.  If more than one nonzero value could be assigned to
+the specified variable, which one is assigned is processor dependent.
+
+If the variable is allocatable, allocated, and polymorphic but its
+dynamic type is different from the dynamic type of the expression the
+variable is deallocated.  If the variable is allocatable and allocated
+but its shape does not conform with the shape of the expression, or the
+value of any of its deferred length type parameters is different from
+the value of the corresponding parameter of the expression, the variable
+is deallocated.
+
+If the variable is allocatable, and is or becomes deallocated, it is
+allocated as specified in subclause 7.2.1.3.
+
+If the variable is allocatable and is deallocated or allocated, and an
+error occurs during deallocation or allocation, the values of the
+variables in the STAT= or ERRMSG= specifiers are set as if a DEALLOCATE
+statement (6.7.3) or ALLOCATE statement (6.7.1) had been executed.
+
+If no error occurs and STAT= appears, the specified variable is assigned
+the value zero.  If an error condition occurs and ERRMSG= appears, an
+explanatory message shall be assigned to the specified variable, as if
+by intrinsic assignment.  If ERRMSG= appears and an error condition does
+not occur, the specified variable shall not be changed.
+"
+
+[165:18+ R745 Insert an alternative
+
+"           <<or>> <assign-stmt>"
+
+[166:8 7.2.3.1p2] Replace "variable being defined" with "variable in the
+<assignment-stmt>".
+
+[166:8 7.2.3.1p2] Append a sentence: If a <where-assignment-stmt> is
+<assign-stmt>, variables specified in STAT= and ERRMSG= specifiers shall
+be arrays of the same shape as the <mask-expr>."
+
+[168:9+ R753] Insert an alternative
+
+"\obs{      <<or>> <assign-stmt>}"
+
+[168:33 7.2.4.2.4p2] Before "causes" insert "\obs{or <assign-stmt>}".
+
+[168:33 7.2.4.2.4p2] After <variable> insert "and variables within the
+designators of variables within STAT= and ERRMSG= specifiers"
+
+[168:35 7.2.4.2.4p2] Append a sentence: "If a <forall-assignment-stmt>
+is an <assign-stmt> and an error condition occurs, assignments to
+variables in STAT= and ERRMSG= specifiers may occur in any order."
+
+[190:9+ 8.5.1p2] Insert a list item
+
+"  o ASSIGN statement if the variable in the <assignment-stmt> is an
+     allocatable coarray, a polymorphic coindexed object, or a coindexed
+     object with al allocatable ultimate component;"
+
+{"Polymorphic coindexed object" rather than "Allocatable polymorphic
+coindexed object is specified because the coindexed object's dynamic
+type might have an allocatable component."}
+
+[414:9- 13.8.3.15+] Insert a subclause
+
+"13.8.3.15a LENGTH_TYPE_PARAMETER_VALUES_UNEQUAL
+
+"The value of the default integer scalar constant LENGTH_TYPE_PARAM-
+ETER_VALUES_UNEQUAL is assigned to the variable in a STAT= specifier in
+an ASSIGN statement if the variable in the <assignment-stmt> is
+allocatable, is not of type character, and any nondeferred length type
+parameter value of the variable in the <assign-stmt> is different from
+the value of the corresponding length type parameter of the expression,
+or if the variable is not allocatable and the value of any length type
+parameter value of the variable in the <assign-stmt> is different from
+the value of the corresponding length type parameter of the expression.
+The value of LENGTH_TYPE_PARAMETER_VALUES_UNEQUAL shall not be the same
+as a value that might be assigned to the variable in a STAT= specifier
+in an ALLOCATE or DEALLOCATE statement."
+
+[415:14+ 13.8.3.21+] Insert a subclause
+
+"13.8.3.21a SHAPES_NOT_CONFORMANT
+
+"The value of the default integer scalar constant SHAPES_NOT_CONFORMANT
+is assigned to the variable in a STAT= specifier in an ASSIGN statement
+if the variable in the <assign-stmt> is not allocatable and the shapes
+of the variable and expression in the <assign-stmt> do not conform, or
+if the variable is allocatable but not allocated and the expression is a
+scalar.  The value of SHAPES_NOT_CONFORMANT shall not be the same as
+LENGTH_TYPE_PARAMETER_VALUES_UNEQUAL, TYPES_DIFFERENT, or a value that
+might be assigned to the variable in a STAT= specifier in an ALLOCATE or
+DEALLOCATE statement."
+
+
+[415:28+ 13.8.3.25+] Insert a subclause
+
+"13.8.3.26 TYPES_DIFFERENT
+
+"The value of the default integer scalar constant TYPES_DIFFERENT is
+assigned to the variable in a STAT= specifier in an ASSIGN statement if
+the variable in the <assign-stmt> is not allocatable and the dynamic
+types of the variable and expression in the <assign-stmt> do not
+conform.  The value of TYPES_DIFFERENT shall not be the same as
+LENGTH_TYPE_PARAMETER_VALUES_UNEQUAL or a value that might be assigned
+to the variable in a STAT= specifier in an ALLOCATE or DEALLOCATE
+statement." "
+
+[502:29+ A.2] Insert a list item:
+
+"  o  the value assigned to the specified variable in a STAT= specifier
+      in an ASSIGN statement if more than one error occurs (7.2.1.3a)."

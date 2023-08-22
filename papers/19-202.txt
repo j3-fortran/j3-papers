@@ -1,0 +1,169 @@
+To: J3                                                     J3/19-202
+From: Tom Clune
+Subject: BOUNDS and RANK specifiers for DIMENSION attribute
+Date: 2019-August-05
+References:  19-152r1
+
+1. Introduction
+
+
+Paper 19-152r1 introduces BOUNDS and RANK attributes that expand the
+ability to declare arrays in a rank-agnostic context.  This
+paper proposes formal requirements, specifications and syntax for
+these features.
+
+
+2. Use cases
+
+A simple motivating use case is to provide a swap macro that could
+work with a pair of variables of any rank that have the same shape.
+An FPP macro to do this for two real arrays of the same shape
+could look something like:
+
+#define SWAP(A,B) \
+    ASSOCIATE(x=>A,y=>B); \ ! Establish associations to avoid naming issues
+        BLOCK; \
+            REAL, BOUNDS(shape(x)) :: temp; \
+            temp = x; \
+            x = y; \
+            y = temp; \
+        END BLOCK; \
+    END ASSOCIATE
+
+
+
+BOUNDS(upper) is an attribute that indicates a explicit-shape array whose
+shape is upper and whose lower bounds are 1 in each dimension.
+
+BOUNDS(lower:upper) is an attribute that indicates a fixed shape array
+with the specified lower and upper bounds.
+
+BOUNDS(lower:) is an attribute that indicates an assumed shape dummy
+array whose lower bounds are given by lower.
+
+Upper and lower must be scalars or rank-1 integer arrays with constant
+size.  If both are specified and are arrays, they must have the same
+size.  If unspecified, the lower bounds of the variable are 1 for all
+dimensions.  If the size is 0, then the declaration is for a scalar
+variable.
+
+
+E.g.,
+
+SUBROUTINE DO_IT(X, Y)
+   REAL, INTENT(IN) :: X(3:,4:)
+   
+   REAL, BOUNDS(SHAPE(X)) :: Z1
+   REAL, BOUNDS(0*SHAPE(X):SHAPE(X)+1) :: Z2 ! Z1 with a halo of width 1
+
+END SUBROUTINE DO_IT
+
+Here, LBOUND(z1) returns [1,1], and LBOUND(z2) returns [0,0].
+
+
+
+While the BOUNDS attribute above supports explicit-shape arrays,
+another feature is needed for deferred shape cases.  For example, we
+may desire to allocate (on assignment) an entity with unknown rank:
+
+#define SWAP_USING_RANK(A,B) \
+    ASSOCIATE(x=>A,y=>B); \ ! Establish associations to avoid naming issues
+        BLOCK; \
+            REAL, ALLOCATABLE, RANK(RANK(x)) :: temp; \
+            temp = x; \
+            x = y; \
+            y = temp; \
+        END BLOCK; \
+    END ASSOCIATE
+
+
+The RANK(n) attribute is used to declare a variable of rank n.  The 
+variable is of deferred shape unless n is zero, in which case it is a
+scalar.
+
+RANK(n) can also be used to declare a deferred-shape dummy array.
+
+
+Example 1:
+
+The following two declarations are equivalent:
+REAL, ALLOCATABLE, RANK(3) :: Y
+REAL, ALLOCATABLE :: Y(:,:,:)
+
+Example 2:
+
+
+The following declares an assumed shape dummy array of rank 4.
+
+REAL :: x(:,:,:,:)
+REAL, BOUNDS(LBOUND(x):) :: y
+
+
+Example 3:
+
+The RANK attribute will often be used in conjunction with the RANK
+intrinsic:
+
+REAL, ALLOCATABLE :: X(:,:)
+REAL, ALLOCATABLE, RANK(RANK(X)) :: Y ! has rank 2
+REAL, ALLOCATABLE, RANK(RANK(X)+1) :: Z ! has rank  3
+
+Note: RANK(0) provides a consistent syntax for declaring scalars:
+
+REAL :: X
+REAL, RANK(X) :: Y ! is a scalar
+
+
+
+
+3. Proposed formal requirements
+
+- Enable declaration of variables in a rank-agnostic context.
+
+- A new specifier BOUNDS is introduced into the standard to enable
+  declaration of rank N explicit-shape variables in terms of 1D arrays
+  that specify shape or bounds.  It may also be used to declare
+  assumed-shape arrays by omitting the upper bounds.
+
+- A new specifier RANK is introduced into the standard to enable
+  declaration of deferred-shape variables for an arbitrary integer
+  rank.  Specifying RANK(0) will declare a scalar.
+
+4. Proposed formal specifications
+
+- For a 1D integer array UPPER, BOUNDS(UPPER) is a specifier that
+  indicates an explicit-shape variable of rank SIZE(UPPER) and whose
+  shape is UPPER and whose lower bounds are 1 in each dimension.
+
+- For a 1D integer array LOWER, BOUNDS(LOWER:) is a specifier that
+  indicates a dummy-argument variable is assumed-shape of rank
+  SIZE(LOWER) and whose lower bounds are LOWER.
+
+- For 1D integer arrays LOWER and UPPER, BOUNDS(LOWER:UPPER) is a
+  specifier that indicates an explicit-shape array of rank SIZE(upper)
+  and whose lower bounds are LOWER and whose upper bounds are UPPER
+  whose upper bounds are UPPER.  Additionally, one of LOWER or UPPER
+  may be a scalar in which case it is broadcast to the shape of the
+  other.
+
+- For a scalar integer N, RANK(N) is a specifier that indicates a
+  varibale of rank N.  The variable is deferred shape array unless N
+  is zero, in which case it is a scalar.  The variable shall have the
+  ALLOCATABLE or POINTER attribute
+
+- For the BOUNDS(LOWER:UPPER) case, SIZE(UPPER) must be the same as
+  SIZE(LOWER).
+
+- If LOWER or UPPER are arrays, then they must be constant size
+  greater than 0.
+- N cannot be negative in RANK(N)
+- At most only one of BOUNDS, RANK, and DIMENSION specifiers can be
+  used in a given variable declaration.
+
+5. Proposed syntax
+
+===END===
+
+
+
+

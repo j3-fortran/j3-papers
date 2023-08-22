@@ -1,0 +1,198 @@
+To: J3                                                     J3/19-182
+From:    John Reid
+Subject: Interpretation request for failed images example
+Date: 2019-July-17
+Reference: 18-007r1
+
+NUMBER: F18/nnnn
+TITLE: C.6.8 
+KEYWORDS: failed images
+DEFECT TYPE: Interpretation
+STATUS: J3 consideration in progress
+
+QUESTION 1:
+In the example in C.6.8, the assignments
+   me[k] = failures(i)
+   id[k] = 1
+are made by image 1 and the assignments
+   me = THIS_IMAGE ()
+   id = MERGE (1, 2, me<=images_used)
+are made by image k in unordered segments. Was this intended?
+
+ANSWER 1:
+No. An image control statement is needed to correct this. We use
+SYNC TEAM in order to make the subsequent reference to the intrinsic
+function FAILED_IMAGES reliable (see J3/19-176). 
+
+EDIT 1 to 18-007r1:
+[544:15+] In C.6.8 Example involving failed images, after the statement
+    id = MERGE (1, 2, me<=images_used)
+add the statement
+    SYNC TEAM ( GET_TEAM(CURRENT_TEAM), STAT = status ) 
+
+QUESTION 2:
+In the example in C.6.8, the assignment
+   me[k] = failures(i)
+is made by image 1 and me[k] is referenced on other images in the 
+FORM TEAM statement in unordered segments. Was this intended?
+
+ANSWER 2:
+No. An edit is needed to correct this.
+
+EDIT 2 to 18-007r1:
+[544:38-] In C.6.8 Example involving failed images, before the FORM TEAM 
+statement add the statement
+    SYNC ALL (STAT = status) 
+
+QUESTION 3:
+Suppose the program in C.6.8 is executed by 11 images, so 1
+is intended to be a spare. If image 9 in the initial team fails
+immediately before it executes the first FORM TEAM statement, then
+image 10 in the initial team, which executes FORM TEAM with a
+team-number == 1 and NEW_INDEX == 10 (== me), will have specified a
+NEW_INDEX= value greater than the number of images in the new team. 
+Should there be a test for this in the code? 
+
+ANSWER 3:
+This is quite a low-probability event, so exiting with the error
+condition seems appropriate.  An edit is provided.
+ 
+EDIT 3 to 18-007r1:
+[544:38+] In C.6.8 Example involving failed images, after the FORM TEAM 
+statement add the statement
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT setup
+	
+QUESTION 4:
+If a replacement image has failed, its image index will be the value 
+of an element of the array failures, a replacement for it will be 
+found, and the replacement will be placed in team 1. Was this 
+intended?
+
+ANSWER 4:
+No. An edit is needed to correct this.
+ 
+EDIT 4 to 18-007r1:
+[544:24+] In C.6.8 Example involving failed images, after the 
+statement
+    DO i = 1, SIZE (failures)
+ add the statements
+    IF (failures(i) > images_used) exit ! Note that the values returned
+                              ! by FAILED_IMAGES increase monotonically. 	
+	
+QUESTION 5:
+The value of images_used increases each time the setup loop is executed. 
+However, the array failures will contain theimage indices of all the 
+failed images and allocate all of them fresh replacements. Was this 
+intended?  
+
+ANSWER 5:
+No. It was intended to allocate replacements only for the newly failed
+images. Edits are provided to achieve this. We have taken the 
+opportunity to declare the integer k.
+ 
+EDITS 5 to 18-007r1. In C.6.8 Example involving failed images
+
+[544:2-3] Replace the 
+statements
+    INTEGER, ALLOCATABLE :: failures (:)
+	INTEGER :: images_used, i, images_spare, status
+ by the statements
+    INTEGER, ALLOCATABLE :: failures (:), old_failures (:), map (:)
+    INTEGER :: images_used, failed, i, j, k, images_spare, status
+	
+[544:12+] After the statement
+    read_checkpoint = THIS_IMAGE () > images_used
+ add the statement
+    ALLOCATE (old_failures(0), map(images_used+1:NUM_IMAGES())
+	
+[544:24-] Before the statement
+    DO i = 1, SIZE (failures)
+add the statement
+    j = 1
+	
+[544:24+] After the statement added by EDIT 4 add the statements
+       failed = failures(i)
+       IF (j <= SIZE (old_failures)) THEN
+          IF (failed == old_failures(j) ) THEN
+             j = j+1
+             CYCLE		
+          END IF
+       END IF	
+       IF( failed > NUM_IMAGES()-images_spare ) failed = map(failed)
+			
+[544:29-31] Change the statements 
+          me [k] = failures(i)
+		  id [k] = 1
+	   END DO	 
+to
+          me [k] = failed
+		  id [k] = 1	 
+          map(k) = failed	
+	   END DO	 
+       old_failures = failures
+	
+............................		 
+		 
+These edits make the whole code before the statement
+   simulation : CHANGE TEAM (simulation_team, STAT=status)
+  become
+PROGRAM possibly_recoverable_simulation
+  USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY: TEAM_TYPE, STAT_FAILED_IMAGE
+  IMPLICIT NONE
+  INTEGER, ALLOCATABLE :: failures (:), old_failures(:), map(:)
+  INTEGER :: images_used, failed, i, j, k, images_spare, status
+  INTEGER :: id [*], me [*]
+  TYPE (TEAM_TYPE) :: simulation_team
+  LOGICAL :: read_checkpoint, done [*]
+
+  ! Keep 1% spare images if we have a lot, just 1 if 10-199 images, 
+  !                                                      0 if <10.
+  images_spare = MAX(INT(0.01*NUM_IMAGES()), 0, MIN(NUM_IMAGES()-10,1))
+  images_used = NUM_IMAGES () - images_spare
+  read_checkpoint = THIS_IMAGE () > images_used
+  ALLOCATE (old_failures(0), map(images_used+1:NUM_IMAGES())
+
+  setup : DO
+    me = THIS_IMAGE ()
+    id = MERGE (1, 2, me<=images_used)
+    SYNC TEAM ( GET_TEAM(CURRENT_TEAM), STAT = status ) 
+    !
+    ! Set up spare images as replacement for failed ones.
+    !
+    IF (IMAGE_STATUS (1) == STAT_FAILED_IMAGE) &
+        ERROR STOP "cannot recover"
+    IF (me == 1) THEN
+       failures = FAILED_IMAGES ()
+       k = images_used
+       j = 1
+       DO i = 1, SIZE (failures)
+          IF (failures(i) > images_used) EXIT ! Note that the values 
+                    ! returned by FAILED_IMAGES increase monotonically.
+	      failed = failures(i)
+          IF (j <= SIZE (old_failures)) THEN
+             IF (failed == old_failures(j) ) THEN
+                j = j+1
+                CYCLE
+             END IF
+          END IF
+          IF( failed > NUM_IMAGES()-images_spare ) failed = map(failed)
+          DO k = k+1, NUM_IMAGES ()
+            IF (IMAGE_STATUS (k) == 0) EXIT
+          END DO
+          IF (k > NUM_IMAGES ()) ERROR STOP "cannot recover"
+          me [k] = failed
+          id [k] = 1
+          map(k) = failed	
+	   END DO
+       old_failures = failures
+       images_used = k
+    END IF
+    SYNC ALL (STAT = status)
+    !
+    ! Set up a simulation team of constant size.
+    ! Team 2 is the set of spares, so does not participate in the 
+	!                                                  simulation.
+    !
+    FORM TEAM (id, simulation_team, NEW_INDEX=me, STAT=status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT setup		 
+		 

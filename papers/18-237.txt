@@ -1,0 +1,163 @@
+To: J3                                                     J3/18-237
+From: Dan Nagle
+Subject: Asynchronous Procedure Execution
+Date: 2018-August-06
+
+
+
+I Introduction
+
+Asynchronous execution in Fortran now is limited to single asynchronous
+i/o transfers statements, or to procedures whose operation has
+an MPI isend()/wait() pattern.  Affecter sequences of data require
+the asynchronous attribute.
+
+Since modern operating systems handle diverse multiprocessing loads
+well, and modern processors have multiple cores, it is desirable
+to have an all-Fortran means of asynchronous procedure execution.
+
+This paper attempts to motivate a minimalist approach.
+
+
+
+II Use-cases
+
+These are some of the syndromes I believe would be addressed
+by this proposal.
+
+
+1. lengthy or dependent i/o transfer sequences
+Within an image, asynchronous input/output is limited to that available
+via a single transfer statement.  Reading or writing a real file
+may well be much more involved.  For example, a portion of a file
+might need to be read to learn a buffer size, which must be allocated
+before reading the rest.  Software engineering concerns may bespeak
+a one-task, one-procedure approach.  Executing several at a time may
+be more efficient, even when no extra cores are available.
+
+
+2. lengthy or dependent communication sequences
+Within an image, asynchronous communications is limited to an MPI
+isend()/wait() pattern.  A logical communication sequence may well
+be much more involved.  For example, one communication may specify
+a buffer size that must be allocated prior to communicating the buffer.
+Software engineering concerns may bespeak a one-task, one-procedure
+approach.  Executing several at a time may be more efficient, even when
+no extra cores are available.
+
+
+3. diverse initialization or completion sequences
+Within an image, initialization may require fetching resources, such as
+fetching a file via a URL, or locating neighboring grid points, or
+other initial housekeeping.  During program completion, several resources
+may need to be stored or restored on the network.  Software engineering
+concerns may bespeak a one-task, one-procedure approach.  When these
+tasks are independent, they may be executed in parallel.  A means to do
+so should be provided, even when no extra cores are available.
+
+
+4. variable number of processors per node
+More computers these days have numbers of cores per node that can vary
+across the network.  A way to take advantage of this would be useful
+whenever independent work is present.
+
+
+5. limited instruction sets
+Some processors are appearing with a few cores with specialized
+instruction sets, for example, limited to integer-only operations aimed
+towards encryption applications.  For a limited range of applications,
+these may be very efficient.  Work that may be done with a limited
+instruction set may well be independent of other work in the program.
+If a compiler targeting the limited instruction set is available,
+a way to take advantage of this would be useful.
+
+
+6. different instruction sets
+More computers have numbers of GPUs (or other off-CPU processors)
+per node that vary across the network.  Work that may be done
+with a different instruction set may well be independent of other work
+in the program.  If a compiler targeting the GPU (or other off-CPU
+processor) is available, a way to take advantage of this would be useful.
+
+
+Themes of use-cases
+
+One theme is to allow a program to take advantage
+of independent hardware instruction streams, whenever independent work
+is present and it is efficient to do so.
+
+One theme is to efficiently execute independent tasks that
+may be expected to spend a high proportion of their time in system calls,
+even when no extra cores are present.
+
+One theme is to take advantage of one-code-per-task
+software engineering techniques.
+
+
+
+III What I have in mind
+
+An asynchronous subroutine reference is a call statement
+with a completion tag.  The completion tag contains either
+an event variable or a notify variable.
+
+Alternative A
+
+CALL foo [ ( ... ) ] [, NV=<notify-variable>]
+and/or
+CALL foo [ ( ... ) ] [, EV=<event-variable>]
+
+or possibly
+
+Alternative B
+
+CALL [, NV=<notify-variable>] foo [ ( ... ) ]
+and/or
+CALL [, EV=<event-variable>] foo [ ( ... ) ]
+
+(I prefer Alternative A, but not too strongly.)
+
+The program may rely on completion of the reference after
+the event wait statement or notify wait statement
+with the corresponding variable.
+
+I believe asynchronous execution should apply to subroutines only,
+and not to functions, because a function must produce a value
+which will be needed immediately and not some time in the future.
+Also, execution caused by defined assignment is never asynchronous,
+for the same reason.  Execution caused by defined i/o is
+never asynchronous.
+
+
+
+IV (Rough) Requirements
+
+1. A subroutine may be executed asynchronously via a CALL statement.
+Asynchronous execution is requested by presence of a completion tag,
+indicating either an event variable or a notify variable will indicate
+completion of the reference.  No other form of reference
+causes asynchronous execution.
+
+2. Neither the subroutine nor its interface requires a special mark.
+There is no implication that a procedure to be executed asynchronously
+must be executed asynchronously, nor that it can be executed on any
+particular processor (that is, that the GPU code can run on the x86,
+for example, is not asserted nor implied).
+
+3. Completion is signaled via an event-variable (where inter-image
+communication is desired) or via a notify-variable (more efficient when
+inter-image communication is not required).  An ordinary
+event wait statement or notify wait statement synchronizes
+the caller with the completion of the asynchronously-executed subroutine.
+
+4. Data that might be affected by the asynchronously-executing
+subroutine must be given the asynchronous attribute in those scopes
+where such affects might occur.
+
+5. There is no requirement that the asynchronously executable procedure
+actually was executed in a separate thread, nor any other arrangement.
+The requirement is that its execution has completed when completion
+(event or notify) is posted.
+
+
+

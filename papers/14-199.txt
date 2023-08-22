@@ -1,0 +1,161 @@
+                                                            J3/14-199
+To: J3
+From: Nick Maclaren
+Subject: The Progress Issue (Coarrays)
+Date: 2014 June 21
+References: N1754, N2007, 14-158
+
+
+Several proposals have assumed or are assuming a particular progress
+model without requiring it in normative code, and without its
+implications being properly analysed and discussed in J3, let alone WG5.
+I want to ensure that we do not sleepwalk into accepting a specification
+that is less generally or reliably implementable than we realise.  This
+paper attempts to summarise the issue, but N1754 describes the technical
+details (which have not changed since 2008).
+
+
+Introduction
+------------
+
+The question of progress (in the MPI sense) is very similar to that of
+data consistency, and equally nasty.  This could be regarded as arising
+in the half-century-old debate over whether an algorithm need terminate
+in bounded time, in finite time, with probability one, or only often
+enough to be useful, to name just four common assertions.
+
+But this is not just a theoretical problem.  All HPC experts are
+familiar with the phenomena of spurious deadlock, livelock and the
+closely-related one of failure to make progress.  The questions are (a)
+what the Fortran standard should require and (b) what constraints that
+places on implementations.
+
+I am not going to repeat all of the evidence here - see N1754 for that,
+and note that the ONLY change since then is that (apparently) Cray added
+some atomic operations to their SHMEM man page later that year (2008).
+My point is that ANY assumption of progress needs a proper proposal,
+with an analysis of the implications.
+
+In particular, we should NOT add a requirement that Fortran coarrays can
+be implemented only on systems with shared-memory threading without (a)
+taking the decision explicitly and (b) being aware of what that implies.
+
+
+Current Situation (Fortran 2008)
+--------------------------------
+
+While no progress model has been proposed, some of us have tried to
+ensure that the facilities are implementable within the MPI progress
+model (which has two decades of experience showing that it is both
+implementable and usable).  In particular, we have held to the line that
+no progress is required except at image control statements and the only
+ordering is that imposed by segment ordering.
+
+This has consequences like an image control statement on image A may
+block until all the images to which it has previously written data have
+reached a subsequent image control statement.
+
+We specified explicitly that progress between image control statements
+(i.e. for atomic variables) is processor-dependent, which makes them
+useless for synchronisation in portable programs.  This was a holding
+position.
+
+With this model, a daemon thread is NOT needed for correct execution and
+eventual termination, though the efficiency might be dire.
+
+However, if one permits C code called from one image to wait until an
+action is taken by C code called from another, then it is trivial to
+produce examples where deadlock is inevitable without the use of a
+daemon thread.  Such code is currently allowed in Fortran 2008, by
+being legal in C99 and not forbidden by Fortran.
+
+
+New Assumption
+--------------
+
+It is not clear whether TS18508 atomics and events are implementable
+using the MPI progress model (with only image control statements
+involved), even excluding the use of C.
+
+By that, I mean that they can be implemented in such a way that no
+conforming program will deadlock or livelock.  I have spent quite a few
+hours both trying to convince myself that they are implementable and
+that I could produce a counterexample, and have failed in both.
+
+The example in 14-158 states that it will eventually complete.  At the
+very least, that would require a change to the implicit implementation
+requirements of Fortran 2008, in that atomic subroutines would now also
+be required to participate in making progress.  In turn, that would mean
+that they would need to include an event loop, and not merely send a
+message or simple request.
+
+I do not think that we should allow that level of mission creep without
+a proper WG5 discussion.
+
+
+Implementation Options
+----------------------
+
+This is obviously not a complete list, but is the ones that I think are
+most plausible today (i.e. in 2014).
+
+A) Use the MPI progress engine in all participating actions (at least
+image control statements and perhaps atomics).  This has the following
+disadvantages, as I say above:
+
+    1) I am not sure that this will work for all conforming programs.
+
+    2) It will NOT work if we allow companion processor code on
+different images to have order dependencies.
+
+    3) Its efficiency is likely to be dire for a great many apparently
+reasonable (and, theoretically, entirely parallelisable) codes.
+
+B) Use a daemon thread for all remote coarray accesses, but not local
+ones.  This is not going to work, in general, because accessing the same
+object in unsynchronised threads is undefined behaviour, and there are
+no one-sided fences in at least POSIX and Intel architecture (or, I
+believe, POWER, SPARC and ARM).
+
+C) Rely on special hardware or operating system support.  This might be
+acceptable for the specialist HPC vendors, but is certainly not for the
+others.  I believe that the only existing implementations of the current
+atomic facilities do this.
+
+D) Use a daemon thread (or process) for ALL coarray accesses (even local
+ones).  This has none of the above disadvantages, but does have the
+following ones:
+
+    1) It requires multiple threads (or processes) per 'node' and, at
+least until recently, that was not supported on all HPC systems.
+
+    2) EVERY coarray access involves either an inter-thread handshake or
+a message to the daemon process, and thus it is slow.
+
+    3) It really DOES mean all accesses (including initialisation,
+termination and access via an associated non-coarray variable), because
+of the problem mentioned under (B).
+
+    4) Separating the two forms of access could be a significant burden
+on compiler vendors; that might be particularly problematic if a
+separate process were needed.
+
+E) Use an interrupt for all remote accesses.  This is mentioned for
+completeness, because it was a traditional method.  However, it is very
+much a mainframe-era approach (though I believe it is still used on some
+embedded systems) and is not supported for user code by POSIX or any of
+the other modern operating systems I have looked at, though it is
+supported for kernel code at least under Linux.
+
+F) Use a daemon thread for just atomic accesses (even local ones), or
+possibly those plus events and locks.  This (in general) has the
+disadvantages of both (A) and (D), though it would enable the example in
+14-158 (and similar code using EVENT_QUERY) to make progress.
+
+
+Summary
+-------
+
+This paper is proposing nothing, but it attempting to explain why we
+should not allow ANY assumptions of progress to creep into the
+specification without proper consideration of the consequences.

@@ -1,0 +1,38 @@
+To: 	X3J3
+From:	/interop
+Subject:	BINDNAME revisited
+
+There are numerous unresolved issues regarding BINDNAME, issues 150, 151, 152, 155, and 156 (at least). This suggests that the existing text may be defective :> Also, it seems to suggest that perhaps SubGroup hasn't provided enough problem context. So before tinkering with the text,  a mini-tutorial may be in order.
+
+In a "well behaved" environment, the Fortran and C processors will be mutually aware (or at least the C will be clearly defined and fixed, and the Fortran will be aware) of various  "linkage" issues, notably calling and naming conventions. The BIND, NAME= facility will, in such circumstances, provide a relatively portable way to write mixed language applications. The processor extension to other languages is pretty clear and well within the purview of implementers to provide.
+
+In a less "well behaved" environment, it may be necessary for the Fortran programmer to "override" the processor's choice. There are platforms (e.g. a PC with multiple compilers) where the calling convention is "stable" but the naming of objects is subject to different mangling algorithms. Subgroup considers this case sufficiently common to warrant an "escape hatch" to permit a Fortran programmer to either call such processor specific objects or to be called via such. The BINDNAME= is intended to be this escape hatch.
+
+Some processors already provide such functionality (e.g. Digital Visual Fortran, with it's 'attribute alias' construct).  Let's consider examples:
+
+We wish to invoke some C service from Fortran:
+	
+This is from 99-118r1
+!like an interface body
+
+BIND(C, NAME='C_funC') INTEGER(C_INT) FUNCTION C_FUNC() 
+           	USE ISO_C_BINDING
+         	END FUNCTION C_FUNC !was subroutine in 118.
+
+ The C standard permits functions to have names that are not permitted as names by this standard, and draws distinctions between names that are not permitted by this standard.  For example, a name may begin with an underscore according to the C standard, and names that differ only in terms of capitalization, etc. Note that in this situation, the system name mangling is performed.
+
+Now if it is necessary, on some platform, to provide a version of "saxpy" which is callable by different processor names (say, saxpy, _saxpy, _saxpy_, and Saxpy)
+
+	Subroutine saxpy() BINDNAME  (saxpy='_saxpy','_saxpy_','Saxpy')
+Note that name mangling is not performed. The provided strings are "sent directly to the linker".
+
+Committee discussion resulted in a pair of straw votes, should a bindname facility exist? (8-1-2). Also should BINDNAME be permitted in interface bodies (like BIND,NAME) (9-0-2) (note that in this case, a single mapping is permitted). 
+
+Discussion also highlighted some other issues, some of which were:
+1) The bindname facility is non-portable, while many found that distasteful at first, upon reflection, it is sufficiently useful (being provided one way or another on many existing processors) that it was deemed worth putting in anyway.
+2) BINDNAME (escaping to the linker name) is useful to non-C linkage, which potentially makes Fortran implementations more useful. (e.g. assists calling Fortran from Perl, lisp, SISAL, etc.)
+3) There is an asymmetry, in that it is generally the case that an implementation of procedure can be defined by a linker to have many names (ala ENTRY points), however, linkers cannot in general take a single reference and map it to multiple procedure implementations (modern systems use "dlopen" style processing to accomplish such things). Thus, when used "in an interface body" only one "aliasname" may be specified. 
+4) While many of the issues are "obvious" upon reflection, they were not obvious to the committee from reading the draft. Subgroup was advised to come up with material suitable for notes which will provide context for the reader.
+
+J3  99-210 2/2r1
+

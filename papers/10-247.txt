@@ -1,0 +1,89 @@
+                                                            J3/10-247
+To: J3
+From: Stan Whitlock
+Subject: F03/0105 SIZE= specifier and UDDTIO
+Date: 2010 October 13
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0105
+TITLE: SIZE= specifier and UDDTIO
+KEYWORDS: SIZE=, UDDTIO
+DEFECT TYPE: Interpretation
+STATUS: J3 consideration in progress
+
+DISCUSSION:
+
+9.5.1.14 [191:21-26] says that when SIZE= specifier is used in a
+formatted input statement with explicit format specifications, the
+variable specified in the SIZE= specifier is determined by the data
+edit descriptors during the input statement.  These rules, however,
+did not take into account the following situation where a parent READ
+statement with a DT edit descriptor invokes a user-defined DTIO
+formatted read subroutine that reads input data using list-directed or
+namelist READ statement.
+
+Consider the following example:
+
+module example
+    type A
+        integer x(10)
+
+        contains
+
+        procedure :: readArray
+        generic :: read(formatted) => readArray
+    end type
+
+    contains
+
+    subroutine readArray (dtv, unit, iotype, v_list, iostat, iomsg)
+        class(A), intent(inout) :: dtv
+        integer, intent(in) :: unit
+        character(*), intent(in) :: iotype
+        integer, intent(in) :: v_list(:)
+        integer, intent(out) :: iostat
+        character(*), intent(inout) :: iomsg
+
+        read (unit, fmt=*, iostat=iostat, iomsg=iomsg) dtv%x
+    end subroutine
+end module
+
+program test
+use example
+    type(A) :: v
+    integer countChar
+
+    open (1, file='example.input', form='formatted')
+
+    read (1, fmt='(DT)', advance='no', size=countChar) v
+end program test
+
+
+Note that there is no data edit descriptor in the UDDTIO subroutine,
+readArray, to count the total number of characters transferred during
+the child read.
+
+
+QUESTION:
+
+Is this example intended to be standard conforming?
+
+ANSWER:
+
+Yes, the example is standard-conforming.  The definition of SIZE= in
+[10-007 216:31] section 9.6.2.15 does not restrict SIZE= if a child
+I/O is present.  The description of how SIZE= works in [219:25]
+section 9.6.4.1p22 item (9) clearly indicates that SIZE= shoudl be
+set even if child I/O occurs (items (5) and (6)).
+
+EDITS:
+
+None
+
+SUBMITTED BY: Jim Xia
+
+HISTORY: 07-302    m182  F03/0105 submitted
+         07-302r1  m182  Passed by J3 meeting
+         08-133r2  m183  Failed J3 letter ballot #15 08-101
+         10-xxx    m193  Draft answer for F2008

@@ -1,0 +1,149 @@
+**************************************************
+                                       J3/03-113r3
+
+Date:     03 April 2003 (J3 meeting 164)
+To:       J3
+From:     Aleksandar Donev
+Subject:  Reinstating Deferred Bindings via Abstract Types
+Reference: Based on J3/02-296r3, also see J3/02-271r1
+**************************************************
+______________________________________
+Summary
+______________________________________
+
+See J3/03-113r1 for details.
+We propose to:
+1. Add the DEFERRED attribute for a specific binding.
+2. Require the ABSTRACT attribute for a type with a deferred binding.
+3. Allow (<interface-name>) to specify the deferred binding interface.
+4. Ensure that no object has an abstract dynamic type.
+______________________________________
+Edits to J3-007R3 + J3/03-166
+______________________________________
+
+[42:3+] Add:
+or ABSTRACT
+
+[42:9+] Add:
+C417a (R423) If the type definition contains or inherits (4.5.6.1) a
+             deferred binding (4.5.4), ABSTRACT shall appear.
+C417b (R423) If ABSTRACT appears, the type shall be extensible.
+
+[52:12-13] Delete.
+{Reworded version appears below at [53:22+]}
+
+[52:14] Replace PROCEDURE with:
+PROCEDURE [(<interface-name>)]
+
+[52:16+] Add constraint:
+C446a (R444) If =><binding> appears, <interface-name> shall not appear.
+
+[52:17-18] Replace "If...appeared" by:
+If neither =><binding> nor <interface-name> appears, it is as though =>
+<binding> had appeared
+
+[53:11+] Add:
+or DEFERRED
+
+[53:18+] Add:
+C454a (R444) NON_OVERRIDABLE and DEFERRED shall not both appear in the
+same <binding-attr-list>.
+C454b (R444) DEFERRED shall appear if and only if <interface-name> appears.
+
+[53:22+] Add:
+C456a (R444) An overriding binding shall have the DEFERRED attribute
+only if the binding it overrides is deferred.
+C456b (R444) A binding shall not override (4.5.6.2) an inherited
+binding (4.5.6.1) that has the NON_OVERRIDABLE attribute.
+{This is a constraint version of [58:11]}
+
+[53:30] Add to end of paragraph:
+A binding that specifies the DEFERRED attribute is a <<deferred
+binding>>. A deferred binding shall appear only in an abstract type
+definition.
+
+[53:31] Add to the end of the sentence:
+or the interface specified by <interface-name>
+
+[56:11+] Add:
+An <<abstract type>> is a type that has the ABSTRACT attribute.
+
+Add NOTE 4.52a:
+A deferred binding (4.5.4) defers the implementation of a type-bound
+procedure to extensions of the type; it may appear only in an abstract
+type. The dynamic type of an object may not be abstract; therefore, a
+deferred binding cannot be invoked. An extension of an abstract type
+need not be abstract if it has no deferred bindings. A short example of
+an abstract type is:
+TYPE, ABSTRACT :: FILE_HANDLE
+CONTAINS
+   PROCEDURE(OPEN_FILE), DEFERRED, PASS(HANDLE) :: OPEN
+   ...
+END TYPE
+
+An extended example can be found in section C1.3a.
+
+[58:11] Delete
+{This should be a constraint}
+
+[59:9+] Add:
+C453a (R451) The <derived-type-spec> shall not specify an abstract type
+(4.5.3).
+
+[67:24+] Add:
+C503a (R503) The <type-spec> shall not specify an abstract type (4.5.3).
+{This prohibits TYPE(abstract-type), but not CLASS(abstract-type).}
+
+[103:3+] Add constraint:
+C611a (R612) In a <data-ref>, if the rightmost <part-name> is of
+abstract type, <data-ref> shall be polymorphic.
+
+[415:6+] Add glossary entry:
+<<abstract  type>> (4.5.7): A type that has the ABSTRACT attribute.
+A nonpolymorphic object shall not be declared to be of abstract type.
+A polymorphic object shall not be constructed or allocated to have
+a dynamic abstract type.
+
+[418:6+] Add glossary entry:
+<<deferred binding>> (4.5.4): A binding with the DEFERRED attribute
+(4.5.4). A deferred binding shall appear only in an abstract type
+definition (4.5.3).
+
+[433:37+] Add new section with example:
+
+C1.3a Abstract Types. 
+
+The following defines an object that can be displayed in an X window:
+
+	TYPE, ABSTRACT :: DRAWABLE_OBJECT
+	   REAL, DIMENSION(3) :: RGB_COLOR=(/1.0,1.0,1.0/) ! White
+	   REAL, DIMENSION(2) :: POSITION=(/0.0,0.0/) ! Centroid
+	CONTAINS
+   PROCEDURE(RENDER_X), PASS(OBJECT) :: RENDER
+	END TYPE DRAWABLE_OBJECT  
+
+	ABSTRACT INTERFACE
+	   SUBROUTINE RENDER_X(OBJECT, WINDOW)
+	      CLASS(DRAWABLE_OBJECT), INTENT(IN) :: OBJECT
+	      CLASS(X_WINDOW), INTENT(INOUT) :: WINDOW
+	   END SUBROUTINE RENDER_X
+	END INTERFACE      
+
+We can declare a nonabstract type by extending the abstract type:
+
+	TYPE, EXTENDS(DRAWABLE_OBJECT) :: DRAWABLE_TRIANGLE ! Not ABSTRACT
+	   REAL, DIMENSION(2,3) :: VERTICES ! In relation to centeroid
+	CONTAINS
+	   PROCEDURE, PASS(TRIANGLE) :: RENDER=>RENDER_TRIANGLE_X ! Not shown here
+	END TYPE DRAWABLE_TRIANGLE
+
+The actual drawing procedure will draw a triangle in WINDOW with
+vertices at x coordinates TRIANGLE%POSITION(1)+TRIANGLE%VERTICES(1,:)
+and y coordinates TRIANGLE%POSITION(2)+TRIANGLE%VERTICES(2,:):
+   
+	SUBROUTINE RENDER_TRIANGLE_X(TRIANGLE, WINDOW)
+	   CLASS(DRAWABLE_TRIANGLE), INTENT(IN) :: TRIANGLE
+	   CLASS(X_WINDOW), INTENT(INOUT) :: WINDOW
+	   ...
+	END SUBROUTINE RENDER_TRIANGLE_X
+

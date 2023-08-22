@@ -1,0 +1,343 @@
+
+                                                         J3/03-278r1
+
+To:  J3
+From: Bill Long
+Date: November 13, 2003
+Subject: Post 2003 proposal for TYPELESS data type.
+
+Amended on 13-nov-2003: The proposal described in this paper was
+approved for continued consideration as a feature in the next
+standard.
+
+               A TYPELESS data type in Fortran 
+
+
+Introduction 
+------------
+
+Fortran currently lacks support for variables that represent a sequence
+of bits independent of the interpretations imposed by the traditional
+numeric, logical, and character data types. Various features have been
+added to Fortran to facilitate handling sequences of bits by overloading
+the INTEGER data type. This has lead to limitations in the usefulness of
+these features as well as awkward wording in the Fortran standard text.
+Adding a new type, named TYPELESS, would simplify and enhance the use of
+Fortran for certain types of non-numeric problems, as well as allowing
+for more clarity in the text of the standard. A TYPELESS type also
+provides a way to standardize some common Fortran language extensions,
+and provide a rational method for dealing with BOZ constants.
+
+A new intrinsic data type, TYPELESS, is added to Fortran. The following
+section describes the declaration and kind characteristics, constants,
+type conversion, and intrinsic assignment. Subsequent sections describe
+intrinsic operations and functions, input and output, and actual and
+dummy argument characteristics for typeless objects.
+
+
+Declarations, constants, assignment 
+-----------------------------------
+
+TYPELESS is a non-numeric kind type and a numeric sequence type. Support
+for two KINDs of TYPELESS data is required, corresponding to bit
+sequences with the lengths of one and two numeric storage units
+respectively.
+
+BOZ constants are TYPELESS constants. BOZ constants must not specify
+more bits that can be represented in the assignment target. If fewer
+bits are specified, the constant is padded with zero bits on the left.
+The syntax for BOZ constants is extended to allow a trailing _kind
+specifier.
+
+Assignments between TYPELESS objects and integer, real, or complex
+objects of the same size involve transfers of bits without data
+conversions. Assignment of a smaller TYPELESS object to an object of
+type typeless, real, integer, or complex is allowed and results in the
+result being padded with zero bits on the left. The same rules apply to
+data initializations in declaration statements, DATA statements, and
+default component initializations.
+
+The type conversion intrinsics, CHAR, REAL, INT, CMPLX, and DBLE, are
+extended to allow TYPELESS arguments. The result values are of the
+indicated type and kind, but with the same bit pattern as the TYPELESS
+argument, padded on the left with zero bits if necessary.
+
+A new intrinsic, TYPELESS(), is added with an argument of type
+typeless, char, real, integer, or complex, and an optional KIND
+argument. The result is a typeless value with the same bit pattern as
+the argument, padded on the left with zero bits if necesary.
+
+A new intrinsic, SELECTED_TYPELESS_KIND() is added. The argument
+specifies a number of bits; the result is a default integer equal to the
+KIND value of the smallest typeless KIND that can hold that number of
+bits. The default typeless KIND is returned by
+SELECTED_TYPELESS_KIND(bit_size(0)).  If no typeless kind exists with
+the specified number of bits, the value -1 is returned.
+
+
+Intrinsic operations 
+--------------------
+
+The .and., .or., .xor., and .not. operators are defined for TYPELESS
+operands. The computations are bitwise operations. The result of the
+expression evaluation is typeless.  If the operands are of unequal
+size, the smaller is padded on the left with zero bits before the
+operation is performed.
+
+The .eq., .ne., .lt., .le., .gt., .ge., ==, /=, <, <=, >, and >=
+operators are defined for TYPELESS operands.  If the operands are of
+unequal KIND, the smaller is padded on the left with zero bits before
+the operation is performed. Operands A and B are equal if their
+corresponding bits are the smae, and are unequal otherwise. If A and B
+are unequal, and the leftmost unequal corresponding bit of A is 1 and
+of B is 0, then A > B, otherwise A < B.  Note that the behavior of
+typeless comparisons is functionally the same as comparisons between
+unsigned integers.
+
+Several new intrinsic functions are defined for typeless arguments. The
+POPCNT() intrinsic returns a default integer result equal to the number
+of 1 bits in the argument. The POPPAR() intrinsic returns a default
+integer result equal to 1 if the number of bits set in the argument is
+odd, and 0 if the number of bits set in the argument is even. Note that
+the result of POPPAR is equal to the low order bit of the result of
+POPCNT() with the same argument.  The LEADZ() intrinsic returns a
+default integer result equal to the number of leading zero bits in the
+argument. The TRAILZ() intrinsic returns a default integer result equal
+to the number of trailing zero bits in the argument.
+
+In addition, new intrinsics are defined for typeless arguments to
+implement optimized shift operations, mask generation, and mask merge
+operations. These functions facilitate the use of typeless data to
+represent packed bit fields.
+
+Intrinsic arithmetic operations are not defined for TYPELESS objects. To
+use a TYPELESS object as an operand of a numeric intrinsic operator, it
+must first be cast to an appropriate type with a type conversion
+intrinsic function.
+
+
+Formatted Input and Output 
+--------------------------
+
+The format specifiers for typeless objects are I, B, O, and Z. For
+output, if the .d part of the Bw.d, Ow.d, or Zw.d specifier is
+omitted, the value assumed for d is >= 1 and large enough to represent
+the bits in the io list item excluding leading 0 bits.  For the I
+format specifier, the object value is interpreted as an unsigned base
+10 integer.  For list directed output, the format used is Zw.d where d
+is (the number of bits in the io list item + 3)/4 and w = d+1. For
+list directed input, base 10 unsigned integers, and BOZ constants are
+valid for typeless io list items. The number of bits required to
+represent the input value must be less than or equal to the size of
+the corresponding io list item. If it is less, the io list item is
+padded with zero bits on the left.
+
+Note: If a typeless object is the actual argument corresponding to an
+unsigned int dummy argument of a C funtion, or the unsigned int result
+of a C function is assigned to a typeless variable, the I format can
+be used to output the correct form of the C value.
+
+
+Procedure actual and dummy arguments and pointers
+-------------------------------------------------
+
+Two objects with different types have "compatible kind parameters" if
+they are both numeric sequence types and occupy the same number of
+numeric storage units. The processor may extend the concept of
+compatible kind parameters to objects that are not numeric sequence
+types.
+
+TYPELESS objects can be targets of pointers with compatible kind
+parameters and TYPELESS pointers can point to targets with compatible
+kind parameters.
+
+TYPELESS dummy arguments of non-intrinsic procedures are compatible with
+actual arguments having compatible kind parameters.
+
+Note: This feature can significantly simplify the interfaces for
+procedures that move data in memory, but do not perform any operations
+on the data. Classic examples include dusty-deck codes containing MOVE
+or COPY routines, as well as some MPI library routines written in C with
+dummy arguments of type void.
+
+Section 13.3 of the standard, describing Bit Models, is modified to apply
+to TYPELESS quantities, rather than integers. The bit manipulation
+intrinsic procedures are defined in terms of TYPELESS data. The BIT_SIZE
+intrinsic is extended to allow TYPELESS arguments.  TYPELESS objects
+interoperate with same size C objects, including C unsigned integer
+objects.
+
+
+Modification of language intrinsics:
+------------------------------------
+
+Inquiry and type conversion functions need to be extended or introduced
+to accommodate a new typeless type.  In addition, the bit manipulation
+intrinsics should be defined in terms of typeless arguments.
+
+Inquiry functions:
+
+
+BIT_SIZE(G)  : Result: integer, same size as G 
+               G     : typeless or integer
+
+KIND(A)      : Result: integer 
+               A     : any intrinsic type. In the case of typeless 
+                       constant, the kind for the smallest typeless 
+                       type that can contain the constant is returned.
+
+SELECTED_TYPELESS_KIND(SIZE) : Result: default scalar integer 
+                               SIZE  : scalar integer
+
+SIZE is number of bits. The returned KIND value is for the smallest
+typeless kind that can contain SIZE bits. If no kind is provided for the
+requested SIZE the result is -1.
+
+Note: The default kind is SELECTED_TYPELESS_KIND(bit_size(0))
+
+
+Type conversion functions:
+--------------------------
+
+
+CHAR(G,KIND)      : Result: character
+                    G     : integer or typeless
+                    KIND  : integer initialization expression
+
+CMPLX(X, Y, KIND) : Result: complex 
+                    X     : real, complex, integer, or typeless 
+                    Y     : real, integer, or typeless 
+                    KIND  : integer initialization expression
+
+INT(A,KIND)      : Result: integer 
+                   A     : integer, real, complex, or typeless 
+                   KIND  : integer initialization expression
+
+REAL(A,KIND)     : Result: real 
+                   A     : integer, real, complex, or typeless 
+                   KIND  : integer initialization expression
+
+TYPELESS(A,KIND) : Result: typeless 
+                   A     : integer, real, complex, or typeless 
+                   KIND  : integer initialization expression
+
+
+Bit manipulation functions:
+
+
+BTEST(G,POS) :  Result: default logical 
+                G     : typeless or integer 
+                POS   : integer
+
+For the bit operation functions iand, ieor, and ior, the two arguments
+must have compatible kind parameters. The type of the result is
+determined by the following chart.  Results labeled X are disallowed
+argument combinations.
+
+                   Type of actual argument H 
+                         
+                              T    I     R 
+                             -------------
+                        T  |  T    I     R 
+Type of actual             | 
+                        I  |  I    I     X
+argument G                 |
+                        R  |  R    X     X
+   
+
+
+
+IAND(G,H)    :  Result: (see chart) 
+                G     : (see chart) 
+                H     : (see chart)
+
+IEOR(G,H)    : Result: (see chart) 
+               G     : (see chart) 
+               H     : (see chart)
+
+IOR(G,H)     : Result: (see chart) 
+               G     : (see chart) 
+               H     : (see chart)
+
+IBCLR(G,POS) :  Result: same as type of G 
+                G     : typeless or integer 
+                POS   : integer
+
+IBITS(G,POS,LEN) : Result: same as type of G 
+                   G     : typeless or integer 
+                   POS   : integer 
+                   LEN   : integer
+
+IBSET(G,POS)     : Result: same as the type of G 
+                   G     : typeless or integer 
+                   POS   : integer
+
+
+ISHFT(G,SHIFT)       : Result: same as the type of G 
+                       G     : typeless or integer 
+                       SHIFT : integer
+
+ISHFTC(G,SHIFT,SIZE) : Result: same as the type of G 
+                       G     : typeless or integer 
+                       SHIFT : integer 
+                       SIZE  : integer
+
+
+MVBITS(FROM, FROMPOS, LEN, TO, TOPOS) : FROM    : typeless or integer
+                                        FROMPOS : integer 
+                                        LEN     : integer 
+                                        TO      : same as type of FROM 
+                                        TOPOS   : integer
+
+NOT(G)    : Result: same as the type of G 
+            G     : typeless or integer
+
+
+
+New Intrinsic Functions
+-----------------------
+
+POPCNT(G)   : Result: integer, in range [0..bit_size(G)] 
+              G     : typeless or integer
+
+POPPAR(G)   : Result: integer, 0 or 1 
+              G     : typeless or integer
+
+LEADZ(G)    : Result: integer, in range [0..bit_size(G)] 
+              G     : typeless or integer
+              
+TRAILZ(G)   : Result: integer, in range [0..bit_size(G)]
+              G     : typeless or integer
+
+SHIFTL(G,SHIFT) : Result: typeless 
+                  G     : typeless or integer 
+                  SHIFT : integer, >= 0
+
+SHIFTR(G,SHIFT) : Result: typeless 
+                  G     : typeless or integer 
+                  SHIFT : integer, >= 0
+
+DSHIFTL(G,H,SHIFT) : Result: typeless 
+                     G     : typeless or integer 
+                     H     : same type and kind as G 
+                     SHIFT : integer, >= 0
+
+DSHIFTR(G,H,SHIFT) : Result: typeless 
+                     G     : typeless or integer 
+                     H     : same type and kind as G 
+                     SHIFT : integer, >= 0
+
+MASKL(NBITS)    : Result: typeless 
+                  NBITS : integer, in range [0..bit_size(NBITS)]
+
+MASKR(NBITS)    : Result: typeless 
+                  NBITS : integer, in range [0..bit_size(NBITS)]
+
+MERGE_BITS(G,H,MASK) : Result: typeless 
+                       G     : typeless 
+                       H     : typeless, same kind as G 
+                       MASK  : typeless, same kind as G 
+                       
+Result bits are the bits from G if the corresponding bits in MASK are 1
+and the bits from H if the corresponding bits in MASK are 0.  Equivalent
+to (G .and. MASK) .or. (H .and. (.not. MASK))

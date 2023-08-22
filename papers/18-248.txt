@@ -1,0 +1,97 @@
+To: J3                                                     J3/18-248
+From:    Van Snyder
+Subject: Supporting rank variability
+Date: 2018-September-13
+References: 18-245, 18-247
+
+Introduction
+============
+
+It is occasionally necessary to compute element position from subscripts
+and bounds, or to compute subscripts from element position and bounds.
+
+Here's an example.
+
+A geophysical quantity might be represented in one, two, or three
+physical dimensions.  It might or might not depend upon frequency.  It
+might or might not have more than one component (e.g. magnetic field). 
+If it is necessary to interpolate from that representation to another,
+for example a line of sight, interpolation coefficients are required. 
+Interpolation is a matrix-vector product.  The interpolation
+coefficients are best represented by a sparse matrix.  Off-the-shelf
+sparse-matrix software has only a single column index for each element,
+not a tuple of up to five subscripts.  In order to compute one element
+of the matrix-vector product, an iterator (see 18-245) is used to
+traverse a row of the interpolation matrix.  Each element it produces
+consists of the value, the row index, and the column index.  To compute
+the product, the column index of the matrix element needs to be
+converted to subscripts of the geophysical state.
+
+Proposal
+========
+
+Provide two intrinsic functions.
+
+One, tentatively named ELEMENT_POSITION here, has SUBSCRIPTS and UBOUNDS
+arguments, and an optional LBOUND argument (values assumed all 1 if it
+is absent).  The result value is the scalar element position of an array
+element at position SUBSCRIPT in an array having shape
+( [ LBOUNDS : ] UBOUNDS ) (see 18-247).
+
+The other, tentatively named SUBSCRIPTS here, has ELEMENT_POSITION and
+UBOUNDS arguments, and an optional LBOUND argument (values assumed all 1
+if it is absent).  The result value is a vector of subscripts that can
+be used to access the element of an array having shape
+( [ LBOUNDS : ] UBOUNDS ) (see 18-247) at the specified element
+position.
+
+These are relatively trivial calculations but they are more expensive
+than the element multiplication.  If implemented by users as module
+procedures, it is unlikely processors will inline them (and users might
+need several attempts to get the calculations done correctly).  If they
+are provided by the processor, which already knows how to do at least
+the ELEMENT_POSITION calculation, as intrinsic functions, one might hope
+that at least some processors will inline them.
+
+Caveat
+======
+
+One might believe that the problem can be solved by representing the
+geophysical quantity as a one-dimensional (or at least contiguous)
+object, use pointer rank remapping to access it as a geophysical
+quantity, and use the one-dimensional representation for interpolation. 
+But it is sometimes necessary to interpolate only in a subset of
+discontiguous dimensions.  For example, a quantity that depends upon
+frequency and two geophysical dimensions might be represented as a
+three-dimensional array ( frequency, vertical position, horizontal
+position ).  In some cases, it is necessary to interpolate in
+all three dimensions, in which case rank remapping might be usable.  In
+other cases, it is only necessary to interpolate in geophysical
+position, the same way for every frequency.  The column indices of the
+elements of the interpolation coefficient matrix in the second case
+would depend only upon geophysical coordinates.
+
+One might be tempted to suggest that the column indices in the elements
+of the interpolation coefficient matrix ought to depend upon all three
+dimensions of the geophysical quantity.  In many cases, however, there
+are several geophysical quantities, all having the same geophysical
+locations, some depending upon frequency and others not depending upon
+frequency.  For geophysical interpolation alone, the same interpolation
+coefficients can be used for all quantities.  A "solution" that requires
+another matrix of elements all having the same values and row indices,
+but different column indices, is not helpful.
+
+One might also be tempted to recommend that "all ya gotta do is" permute
+the order of dimensions.  In a legacy code of hundreds of thousands or
+millions of lines, this is not a helpful suggestion.  And it doesn't
+always solve the problem, as for some calculations one order allows to
+consider a contiguous (i.e., leading) subset of dimensions, while for
+other calculations using the same object, a different subset of
+dimensions -- discontiguous ones -- are used.
+
+And, of course, there is the possibility that the geophysical object is
+represented by an assumed-shape dummy argument that is not contiguous,
+even in its leading dimensions.  Working with it as if it were
+contiguous would require copy-in or VALUE argument association.
+
+

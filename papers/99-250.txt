@@ -1,0 +1,164 @@
+
+                                                            J3/99-250
+
+Date:       4 November 1999
+To:         J3
+From:       William B. Clodius
+Subject:    Reallocation
+
+
+1. Introduction
+
+    One common request for Fortran standardization is the ability to
+"reallocate" an array: i.e., the ability to dynamically change the extent of
+an array, while retaining, in one form or the other, the values and
+definition status of various elements of the array. This capability can be
+implemented in standard Fortran 95, but requires several lines of code
+specialized for each data type and rank of array, for what can be
+implemented
+as a single standard defined statement or procedure.
+
+    From the users point of view there are three gains from the availability
+of a REALLOCATE statement: a decrease in the number of lines of code, with a
+corresponding decrease in errors and increase in programmer's efficiency; a
+standard notation for a common operation, with a corresponding increase in
+program legibility; and the use of a standard notation for a common
+operation
+should facilitate compiler optimizations for this idiom.
+
+    In order to decide whether this capability should be standardized the
+committee needs to consider how this capability would be used, how often it
+would be used, how to maximize its safety, and how it would be implemented
+
+2. Reallocation use
+
+    Reallocation is in many ways an array based language substitute for
+strongly typed linked lists. They are almost invariably used in contexts
+where the final data size is initially unknown, but the type of data is
+known, i.e., in reading a stream of data stored in a data file. Reallocation
+allows the user to increase the size of the array as needed. The majority,
+perhaps the vast majority, of uses are satisfied by allocation in one
+dimension. However, a few uses would benefit from being able to change
+multiple dimensions at once, in essence a subroutine version of the
+intrinsic
+function RESHAPE where the SOURCE argument to RESHAPE becomes an INTENT IN
+OUT argument that, subsequent to the execution of the subroutine, is defined
+similar to the result of RESHAPE.
+
+    Some uses of reallocation require that the common elements of the array
+before and after reallocation map to one another have a special mapping,
+i.e., either by array index or by subscript order value. While these two
+mappings are identical if only the upper bound of the final index changes,
+they are not identical in other cases. The vast majority of applications
+that
+could benefit from changing other array bounds on reallocation require that
+a
+mapping by array indices. Some such applications, however, can benefit by
+mapping according to subscript order value.
+
+Still in Fortran the natural dimension for one dimensional reallocation is
+also the final dimension, and for the majority of uses a one dimensional
+reallocation is the primary need so it is possible to provide this
+capability in a useful form without making the distinction between the two
+mappings if reallocation is confined to the upper bound of the final
+dimension.
+
+>From the demand for this capability I suspect that it would receive wider
+use
+than many of the intrinsic procedures added in Fortran 95.
+
+3. Implementation issues
+
+    Discussions of reallocation often focus on the issue of efficiency. From
+an implementor's point of view there are two classes of operations that are
+associated with this type of operation:
+
+    1. Acquiring more memory from the system either to hold the array if it
+has grown larger, or to hold temporaries during copying operations
+
+    2.  Copying the array elements from the old array definition to the new
+array definition.
+
+Provided the reallocation maintains subscript order mapping both costs can
+be
+minimized by initially over allocating, either by the processor or the user.
+However, it is difficult for the processor to efficiently over allocate if
+reallocation is to maintain index mapping, if index mapping is required
+minimizing these costs therefore requires that the user explicitly over
+allocate.
+
+>From a user's point of view there are at least two issues with reallocation
+implementation:
+
+    1. Not accidentally choosing a difficult to optimize data structure
+access, when an easy to optimize form is available. The greatest efficiency
+is obtained when copying is minimized, i.e., when reallocation retains
+subscript order values. As most users appear to want to reallocate only in
+one dimension, but retain array index mapping, this implies doing the
+reallocations so that only the bounds of the rightmost dimension will
+change.
+
+    2. Provide a hint (i.e., optional keyword) to the processor that over
+allocation may be useful, or that over allocated memory might be freed for
+use elsewhere.
+
+4. Safety issues
+
+    There is one major safety issue with regard to reallocation. The
+interaction of Fortran's pointers with reallocation is invalid a large
+variety of special cases, i.e., pointers to array sections, to arrays
+without
+the allocatable attribute, to dummy arguments, etc, and is difficult to
+define in other cases, what is the effect of reallocating a pointer to a
+named allocatable array. As a result I suggest that reallocation be
+forbidden
+for pointers and that pointer association become undefined if a pointer's
+target is reallocated. This is much less of a constraint for Fortran 200x,
+with its increased flexibility for allocatable arrays, then it would be
+earlier standards.
+
+    A minor safety issue is the effect of reallocation on array lower
+bounds.
+ I believe it is extremely rare for a user to want to change the lower bound
+on reallocation. However in other related contexts, i.e., allocation, the
+default is to set the lower bound to one. If this semantics is allowed in
+reallocation, reallocating arrays with lower bounds other than one may have
+surprising results.
+
+5. Summary
+
+   Many of the issues that have prevented adoption of reallocation in the
+past can be avoided, at the cost of reduced flexibility, by allowing
+reallocation to affect only the extent of the final dimension of an array
+and
+not allowing reallocation of pointers. The issues could also be addressed,
+at
+a cost in syntactic and implementation complexity, with corresponding
+language flexibility, by employing appropriate optional keywords. Additional
+optional keywords may also be useful as hints to the compiler.
+
+    If this proposal is accepted for consideration by J3 the following
+issues
+should be addressed:
+
+    1. Should the language provide reallocation?
+
+    2. Should reallocation be confined to the rightmost dimension or should
+a
+more flexible reallocation capability be provided?
+
+    3. If a more flexible reallocation capability be provided should it:
+        A. Map elements by index, or by array sequence order, or should the
+mapping be user selectable through an (optional?) keyword?
+        B. Provide an alternative simpler syntax for changing the extent of
+the rightmost dimension?
+        C. Allow changing the lower bounds of the array?
+
+    4. Should a keyword be provided for the ALLOCATE statement to indicate
+that the array may be subsequently reallocated so that over allocation may
+be
+useful, or for the REALLOCATE statement to indicate that no more
+reallocations
+ may be expected so that over allocated memory may be freed?
+
+    5. Should reallocation of pointers be considered?

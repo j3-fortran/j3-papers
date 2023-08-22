@@ -1,0 +1,100 @@
+To: J3                                                     09-193
+From: Aleksandar Donev
+Subject: LOCKs and segment ordering
+Date: 2009 April 20
+
+Discussion:
+
+All of the synchronization primitives, including CRITICAL (see
+[174:23-24]), include a description of how they affect segment
+ordering. This seems to be missing for the LOCK and UNLOCK
+statement. This omission has led some external readers
+of our draft to believe that the
+segment ordering semantics of locks is contained in the implicit
+SYNC MEMORY statement implied by [193:17]: "All of the other image
+control statements include the effect of executing a SYNC MEMORY
+statement." Others have suggested that LOCKs are a case of user-defined
+segment ordering. I believe both of these are the wrong approach, as
+explained under "Justification" below, and propose to add appropriate
+words concerning segment ordering to the LOCK/UNLOCK clause, and
+eliminate the implied SYNC MEMORY statement.
+
+The semantics of CRITICAL blocks is made to conform to the common
+model that there is a global shadow lock variable associated with the
+construct that was LOCKED on entry and UNLOCKED on exit. I believe
+the words already there for CRITICAL are appropriate, and all that
+is needed is to remove the implied SYNC MEMORY.
+
+There is then the question of whether 8.5.5p2 should be repeated
+somewhere for LOCKs and CRITICAL. I essentially repeat below the same
+edit as proposed by Van Snyder in 09-186, proposing to move/repeat
+8.5.5p2 into the clause about segment ordering and making it general
+for all standard-specified segment ordering. I am also in agreement
+with Van that this makes the implied SYNC MEMORY not needed (in
+fact, I believe it is harmful for similar reasons as explained in
+"Justification" below), but do not propose that here to keep this
+paper focused on LOCKs.
+
+Justification:
+
+The implicit SYNC MEMORY in LOCK/UNLOCK will have efficiency
+penalties and has the wrong semantics of a two-way code motion
+barrier (see Note 8.38). Some readers and implementors may assume
+that every LOCK/UNLOCK statement must include a full memory fence,
+which may increase implementation cost on some architectures. This is
+particularly true for unsuccessful LOCK statements, but it is also
+true for successful ones. Namely, locks only cause one-way segment
+ordering. The segment before an UNLOCK statement precedes the segment
+that follows the next successful LOCK statement. This one-way ordering
+allows for code motion in one direction. The implicit SYNC MEMORY,
+on the other hand, would block code motion in both directions. If we
+give a guarantee of an implied SYNC MEMORY now, we cannot go back in
+a future revision because some users may start relying on it (for
+example, in conjuction with atomic intrinsics). We therefore ought
+to remove the implicit SYNC MEMORY now.
+
+It is also wrong to make locks a case of user-defined ordering. The
+latter is meant for processor-dependent ordering, which LOCKs should
+not be---they should be portable and standardized.
+
+Edits:
+=====================
+
+-------------------------------------------------------
+[193:17-19] In 8.5.5, SYNC MEMORY statement, replace para 5 by
+"All the other image control statements cause some form of
+cooperation with other images for the purpose of ordering execution
+between images. All except CRITICAL, END CRITICAL, LOCK, and UNLOCK
+include the effect of executing a SYNC MEMORY statement."
+
+[Note: Perhaps we also need an edit to remove a LOCK statement that
+does not acquire a lock from the list of image control statements?]
+
+-------------------------------------------------------
+[195:4+] Add a new paragraph p4+:
+"During the execution of the program, the value of a lock variable
+changes through a sequence of locked and unlocked states due to the
+execution of LOCK and UNLOCK statements on all of the images. If
+image M executes an UNLOCK statement that causes a lock variable to
+become unlocked, and image T is the next to execute a LOCK statement
+that causes that variable to become locked, then the segments that
+executed on image M before the UNLOCK statement precede the segments
+that execute on image T after the LOCK statement."
+
+[190:7+
+8.5.2p1+]-------------------------------------------------------
+Add a new paragraph:
+
+If a variable X on image P is defined, referenced, becomes undefined,
+or has its allocation status, pointer association status, array bounds,
+dynamic type, or type parameters changed or inquired about by execution
+of a statement in a segment T,
+and a variable Y on image Q is defined, referenced, becomes undefined,
+or has its allocation status, pointer association status, array bounds,
+dynamic type, or type parameters changed or inquired about by execution
+of a statement in a segment M that follows T segment , then the action
+regarding X on image P precedes the action regarding Y on image Q.
+
+-------------------------------------------------------
+
+

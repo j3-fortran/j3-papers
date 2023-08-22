@@ -1,0 +1,367 @@
+To: J3                                                     J3/19-247r1
+From: Van Snyder
+Subject: Formal requirements for conditional form
+Date: 2019-October-17
+Reference: 18-274
+
+1. History
+==========
+
+There was a straw vote concerning 18-274, in which requirements for
+selection of subexpressions, or actual arguments, were described:
+
+Continue to develop conditional expressions?
+Yes: 13, No: 0, Undecided: 1
+
+The requirements proposed in 18-274 were
+
+(1) Conditional expressions: based on one or more conditions, a
+    sub-expression is selected for evaluation and the other sub-expressions
+    are not evaluated.  This encompasses the functionality of "conditional
+    and" and "conditional not" operations.
+
+    The expression form should be nestable.
+
+(2) Conditional arguments: using similar syntax, selecting an actual
+    argument from two or more data objects.  This should allow for an
+    object not to be selected in the case of passing to an optional
+    dummy argument.  Any subscripts etc. in an unselected data object
+    designator must not be evaluated.
+
+There was no formal vote on the requirements.
+
+There was a remark that the conditional argument form could be nested,
+but describing it might be complicated.
+
+The proposed requirements address the "combinatorial explosion" problem
+that arises if several such decisions are required within one
+statement.  The number of blocks within an IF construct that resolves
+the combination of selections is an exponential function of the number
+of choices.
+
+2. Formal requirements
+======================
+
+Select one entity, called a "selection" in three circumstances:
+
+(1) Conditional expressions: based on one or more conditions, select one
+    sub-expression for evaluation. No part of a selection that is not
+    selected shall be evaluated.
+
+    The expression form shall be nestable.
+
+(2) Conditional arguments: based on one or more conditions, select an
+    actual argument from two or more variables or expressions.  It shall
+    be possible not to select a selection in the case corresponding to
+    an optional dummy argument, in which case the argument is considered
+    not to be present.  If the selection is a variable, that variable,
+    not its value, is the argument.  No part of a selection that is not
+    selected shall be evaluated.
+
+    The conditional argument form shall be nestable.
+
+(3) Conditional variables: based on one or more conditions, select a
+    variable from two or more variables, to correspond to a specifier,
+    such as STAT=, in a statement, or a variable in an input list.  No
+    part of a selection that is not selected shall be evaluated.
+
+    The conditional variable form shall be nestable.
+
+3. Remarks
+==========
+
+It is conceivable that a selection could be feasible as the <variable>
+in an assignment statement.  Because there can be only one <variable> in
+an assignment statement, the utility (as compared to an IF construct)
+does not appear to outweigh the complication. Further, resolving whether
+the statement is an assignment statement or the beginning of an IF
+construct might be delayed, depending upon the chosen syntax, thereby
+complicating processors.
+
+It is conceivable that a selection could be feasible as the
+<data-pointer> in a pointer assignment statement.  Because there can be
+only one <data-pointer> in a pointer assignment statement, the utility
+(as compared to an IF construct) does not appear to outweigh the
+complication. Further, resolving whether the statement is a pointer
+assignment statement or the beginning of an IF construct is delayed,
+depending upon the chosen syntax, thereby complicating processors.
+
+It is conceivable that a selection could be feasible as a <do-variable>
+in a DO construct.  Because there can be only one <do-variable> in a DO
+construct, the utility (as compared to using an auxiliary variable or
+pointer) does not appear to outweigh the complication.
+
+It is conceivable that a selection could be feasible as a <do-variable>
+in an <io-implied-do>.  Even thought there might be more than one
+<io-implied-do> in an input/output statement, the utility is
+sufficiently rare that it is unlikely that it would outweigh the
+complication.
+
+It is unlikely that a selection could be feasible as the
+<data-i-do-variable> in a <data-implied-do>.
+
+The descriptions concerning variables corresponding to specifiers such as
+STAT= use "appear," not "present."  Therefore, it is not feasible to use
+a conditional form that does not select a data object to indicate that a
+variable does not appear.
+
+4. Use case for sub-expression selection (quoted from 18-274)
+=============================================================
+
+People have wanted to write things like
+  IF (I<N .AND. A(I)==0) ...
+for decades.  So far, we have fobbed them off and they have to write
+  IF (I<N) THEN
+    IF (A(I)) ...
+  END IF
+
+which is not just verbose but less convenient when wishing to test a series
+of conditions.
+
+Similarly, writing
+  IF (PRESENT(D)) THEN
+    CALL SUB(A,B,C,D)
+  ELSE IF (X<1) THEN
+    CALL SUB(A,B,C,EPSILON(X))
+  ELSE
+    CALL SUB(A,B,C,SPACING(X))
+  END IF
+
+is verbose but usable when only one argument is conditional, but rapidly
+degenerates when there are several arguments requiring similar handling.
+
+5. Use case for argument presence selection (paraphrased from real code)
+========================================================================
+
+  type :: ForwardModelConfig_t
+    ! ...
+    logical :: Want_Temperature_Derivs
+    logical :: Want_Line_Center_Derivs
+    logical :: Want_Line_Width_Derivs
+    logical :: Want_Line_Width_Temp_Sensitivity_Derivs
+    !...
+  end type ForwardModelConfig_t
+
+  type ( ForwardModelConfig_t ) :: Info
+
+  real :: Beta
+  real :: Line_Center_Deriv
+  real :: Line_Width_Deriv
+  real :: Line_Width_Temp_Sensitivity_Deriv
+
+  interface
+    subroutine Get_Beta ( Beta, Temp_Deriv, Line_Center_Deriv, &
+                        & Line_Width_Deriv, &
+                        & Line_Width_Temp_Sensitivity_Deriv )
+      real, intent(out) :: Beta
+      real, intent(out), optional :: Temp_Deriv
+      real, intent(out), optional :: Line_Center_Deriv
+      real, intent(out), optional :: Line_Width_Deriv
+      real, intent(out), optional :: Line_Width_Temp_Sensitivity_Deriv
+    end subroutine Get_Beta
+  end interface
+
+  if ( .not. info%Want_Temperature_Derivs .and. &
+     & .not. info%Want_Line_Center_Derivs .and. &
+     & .not. info%Want_Line_Width_Derivs .and. &
+     & .not. info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta )
+  else if ( info%Want_Temperature_Derivs .and. &
+     & .not. info%Want_Line_Center_Derivs .and. &
+     & .not. info%Want_Line_Width_Derivs .and. &
+     & .not. info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Temp_Deriv=Temp_Deriv )
+  else if ( .not. info%Want_Temperature_Derivs .and. &
+     & info%Want_Line_Center_Derivs .and. &
+     & .not. info%Want_Line_Width_Derivs .and. &
+     & .not. info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Line_Center_Deriv=Line_Center_Deriv )
+  else if ( info%Want_Temperature_Derivs .and. &
+     & info%Want_Line_Center_Derivs .and. &
+     & .not. info%Want_Line_Width_Derivs .and. &
+     & .not. info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Temp_Deriv=Temp_Deriv, &
+                  & Line_Center_Deriv=Line_Center_Deriv )
+  else if ( .not. info%Want_Temperature_Derivs .and. &
+     & .not. info%Want_Line_Center_Derivs .and. &
+     & info%Want_Line_Width_Derivs .and. &
+     & .not. info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Line_Width_Deriv=Line_Width_Deriv )
+  else if ( info%Want_Temperature_Derivs .and. &
+     & .not. info%Want_Line_Center_Derivs .and. &
+     & info%Want_Line_Width_Derivs .and. &
+     & .not. info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Temp_Deriv=Temp_Deriv, &
+                  & Line_Width_Deriv=Line_Width_Deriv )
+  else if ( .not.info%Want_Temperature_Derivs .and. &
+     & info%Want_Line_Center_Derivs .and. &
+     & info%Want_Line_Width_Derivs .and. &
+     & .not. info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Line_Center_Deriv=Line_Center_Deriv, &
+                  & Line_Width_Deriv=Line_Width_Deriv )
+  else if ( info%Want_Temperature_Derivs .and. &
+     & info%Want_Line_Center_Derivs .and. &
+     & info%Want_Line_Width_Derivs .and. &
+     & .not. info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Temp_Deriv=Temp_Deriv, &
+                  & Line_Center_Deriv=Line_Center_Deriv, &
+                  & Line_Width_Deriv=Line_Width_Deriv )
+  if ( .not. info%Want_Temperature_Derivs .and. &
+     & .not. info%Want_Line_Center_Derivs .and. &
+     & .not. info%Want_Line_Width_Derivs .and. &
+     & info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta )
+  else if ( info%Want_Temperature_Derivs .and. &
+     & .not. info%Want_Line_Center_Derivs .and. &
+     & .not. info%Want_Line_Width_Derivs .and. &
+     & .not. info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Temp_Deriv=Temp_Deriv, &
+                  & Line_Width_Temp_Sensitivity_Deriv= &
+                    & Line_Width_Temp_Sensitivity_Deriv )
+  else if ( .not. info%Want_Temperature_Derivs .and. &
+     & info%Want_Line_Center_Derivs .and. &
+     & .not. info%Want_Line_Width_Derivs .and. &
+     & info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Line_Center_Deriv=Line_Center_Deriv, &
+                  & Line_Width_Temp_Sensitivity_Deriv= &
+                    & Line_Width_Temp_Sensitivity_Deriv )
+  else if ( info%Want_Temperature_Derivs .and. &
+     & info%Want_Line_Center_Derivs .and. &
+     & .not. info%Want_Line_Width_Derivs .and. &
+     & info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Temp_Deriv=Temp_Deriv, &
+                  & Line_Center_Deriv=Line_Center_Deriv, &
+                  & Line_Width_Temp_Sensitivity_Deriv= &
+                    & Line_Width_Temp_Sensitivity_Deriv )
+  else if ( .not. info%Want_Temperature_Derivs .and. &
+     & .not. info%Want_Line_Center_Derivs .and. &
+     & info%Want_Line_Width_Derivs .and. &
+     & info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Line_Width_Deriv=Line_Width_Deriv, &
+                  & Line_Width_Temp_Sensitivity_Deriv= &
+                    & Line_Width_Temp_Sensitivity_Deriv )
+  else if ( info%Want_Temperature_Derivs .and. &
+     & .not. info%Want_Line_Center_Derivs .and. &
+     & info%Want_Line_Width_Derivs .and. &
+     & info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Temp_Deriv=Temp_Deriv, &
+                  & Line_Width_Deriv=Line_Width_Deriv, &
+                  & Line_Width_Temp_Sensitivity_Deriv= &
+                    & Line_Width_Temp_Sensitivity_Deriv )
+  else if ( .not.info%Want_Temperature_Derivs .and. &
+     & info%Want_Line_Center_Derivs .and. &
+     & info%Want_Line_Width_Derivs .and. &
+     & info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Line_Center_Deriv=Line_Center_Deriv, &
+                  & Line_Width_Deriv=Line_Width_Deriv, &
+                  & Line_Width_Temp_Sensitivity_Deriv= &
+                    & Line_Width_Temp_Sensitivity_Deriv )
+  else if ( info%Want_Temperature_Derivs .and. &
+     & info%Want_Line_Center_Derivs .and. &
+     & info%Want_Line_Width_Derivs .and. &
+     & info%Want_Line_Width_Temp_Sensitivity_Derivs ) then
+    call get_beta ( beta, Temp_Deriv=Temp_Deriv, &
+                  & Line_Center_Deriv=Line_Center_Deriv, &
+                  & Line_Width_Deriv=Line_Width_Deriv, &
+                  & Line_Width_Temp_Sensitivity_Deriv= &
+                    & Line_Width_Temp_Sensitivity_Deriv )
+  end if
+
+This would be more concisely represented, and more easily checked for
+correctness, using
+
+  call get_beta ( beta, Temp_Deriv= &
+      & if ( info%Want_Temperature_Derivs ) then &
+         & ( Temp_Deriv ) endif, &
+    & Line_Center_Deriv= &
+       & if ( info%Want_Line_Center_Derivs ) then &
+          & ( Line_Center_Deriv ) endif, &
+    & Line_Width_Deriv= &
+       & if ( info%Want_Line_Width_Derivs ) then &
+          & ( Line_Width_Deriv ) endif, &
+    & Line_Width_Temp_Sensitivity_Deriv= &
+       & if ( info%Want_Line_Width_Temp_Sensitivity_Derivs ) then &
+          & ( Line_Width_Temp_Sensitivity_Deriv ) endif )
+
+6. Use case for variable selection for statement specifiers
+===========================================================
+
+Do you really need the excruciating detail similar to use case #4 above
+for dealing with the specifiers from an INQUIRE statement?  It would only
+have 2**19 blocks.
+
+  subroutine Inquire_The_File ( FileName, Asynchronous, Blank, &
+    ! ...
+                              & Sign, Status )
+
+    character(*), intent(in) :: FileName
+    character, intent(out), optional :: Asynchronous
+    character, intent(out), optional :: Blank
+    ! ...
+    character, intent(out), optional :: Sign
+    character, intent(out), optional :: Status
+
+    character :: My_Asynchronous
+    character :: My_Blank
+    ! ...
+    character :: My_Sign
+    character :: My_Status
+
+    inquire ( file=FileName, &
+      & asynchronous = if ( present(asynchronous ) then ( asynchronous ) &
+        & else ( my_asynchronous ) endif, &
+      & blank = if ( present(blank ) then ( blank ) &
+        & else ( my_blank ) endif, &
+      !...
+      & sign = if ( present(sign ) then ( sign ) &
+        & else ( my_sign ) endif, &
+      & status = if ( present(status ) then ( status ) &
+        & else ( my_status ) endif )
+
+    print '(3a)', 'Regarding file ', trim(fileName), ':'
+    if ( .not. present ( asynchronous ) ) &
+      & print '(2a)', 'ASYNCHRONOUS = ', trim(my_asynchronous)
+    if ( .not. present ( blank ) ) &
+      & print '(2a)', 'BLANK = ', trim(my_blank)
+    ! ...
+    if ( .not. present ( sign ) ) &
+      & print '(2a)', 'SIGN = ', trim(my_sign)
+    if ( .not. present ( status ) ) &
+      & print '(2a)', 'STATUS = ', trim(my_status)
+
+(Yes, this example is contrived, but it doesn't mean that more realistic
+ones don't exist. Maybe a WRITE statement with variable selection in the
+output list would be more convincing.)
+
+  subroutine Write_Bounds ( Temperature, H2O, ClO, HCl, HBr, SO2, )
+    real, intent(in), optional :: Temperature(2) ! Lower, upper
+    real, intent(in), optional :: H2O(2) ! Lower, upper
+    real, intent(in), optional :: ClO(2) ! Lower, upper
+    real, intent(in), optional :: HCl(2) ! Lower, upper
+    real, intent(in), optional :: HBr(2) ! Lower, upper
+    real, intent(in), optional :: SO2(2) ! Lower, upper
+
+    real, parameter :: Default_Temperature(2) = [ 50.0, 300.0 ]
+    real, parameter :: Default_H2O(2) = [ 1.0e-4, 2.0e-3 ]
+    real, parameter :: Default_ClO(2) = [ 2.5e-7, 1.2e-6 ]
+    real, parameter :: Default_HCl(2) = [ 1.4e-6, 4.1e-6 ]
+    real, parameter :: Default_HBr(2) = [ 6.6e-9, 1.3e-8 ]
+    real, parameter :: Default_SO2(2) = [ 5.8e-7, 2.2e-6 ]
+
+    print '(a'), 'Bounds used for retrieval:'
+    print 10, 'Temperature', if ( present(temperature) ) then &
+                                & ( temperature ) else &
+                                & ( default_temperature ) endif, &
+              'Water vapor', if ( present(h2o) ) then &
+                                & ( h2o ) else ( default_h2o ) endif, &
+              'Chlorine monoxide', if ( present(clo) ) then &
+                                & ( clo ) else ( default_h2o ) endif, &
+              'Hydrochloric acid', if ( present(hcl) ) then &
+                                & ( hcl ) else ( default_hcl ) endif, &
+              'Hydrobromic acid', if ( present(hbr) ) then &
+                                & ( hbr ) else ( default_hbr ) endif, &
+              'Sulfur dioxide', if ( present(so2) ) then &
+                                & ( so2 ) else ( default_so2 ) endif
+10  format (a,2(" [",1pg15.7,","g15.7,"]")
+
+

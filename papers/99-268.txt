@@ -1,0 +1,212 @@
+
+                                                                      J3/99-268
+
+Date:       30 Nov 1999
+To:         J3
+From:       Dan Nagle
+Subject:    Edits regards BOZ Constants as Named Constants
+References: Working Draft
+
+
+In the code below, the integer variables given values by BOZ constants are,
+in fact, constants.  They belong within the routines where they are used.
+However, because 1) PURE and ELEMENTAL procedures can't have local SAVE
+variables (even if they're not redefined), and 2) BOZ constants can't appear
+in PARAMETER statements, a non-natural placement of data definition is
+required.  Note that these constants have values which are not obvious as
+decimal expression.
+
+Solution 1.  (preferred) Allow BOZ constants to provide a value in integer
+parameter statements and constant integer declarations.
+
+Solution 2.  Allow SAVE variables within PURE and ELEMENTAL procedures,
+provided they don't become redefined (i.e., are actually constants).
+
+Solution 3.  Require the DATA statements to appear only within an enclosing
+MODULE (or containing procedure).  This results in a non-intuitive placement
+of the DATA statements which may result in obscure data locations.
+
+   integer, parameter :: int_k = kind( 0)
+
+   integer( kind= int_k), save :: int_lead_p16; data int_lead_p16/
+z'ffff0000'/
+   integer( kind= int_k), save :: int_lead_p8; data int_lead_p8/
+z'ff00ff00'/
+   integer( kind= int_k), save :: int_lead_p4; data int_lead_p4/
+z'f0f0f0f0'/
+   integer( kind= int_k), save :: int_lead_p2; data int_lead_p2/
+z'cccccccc'/
+   integer( kind= int_k), save :: int_lead_p1; data int_lead_p1/
+z'aaaaaaaa'/
+
+   integer( kind= int_k), save :: int_last_p16; data int_last_p16/
+z'0000ffff'/
+   integer( kind= int_k), save :: int_last_p8; data int_last_p8/
+z'00ff00ff'/
+   integer( kind= int_k), save :: int_last_p4; data int_last_p4/
+z'0f0f0f0f'/
+   integer( kind= int_k), save :: int_last_p2; data int_last_p2/
+z'33333333'/
+   integer( kind= int_k), save :: int_last_p1; data int_last_p1/
+z'55555555'/
+
+! **********************************************************************
+
+!  leadz( b)
+
+elemental integer( kind= int_k) function int_leadz( b)
+
+integer( kind= int_k), intent( in) :: b
+
+!  scratch data
+
+   integer( kind= int_k) :: test, at_least
+
+!  int_leadz()
+
+continue                                         ! leadz()
+
+   test = b
+
+   if( test == 0_int_k )then                     ! catch end case
+      int_leadz = bit_size( b)
+      return                                     ! leadz()
+   endif
+
+   if( iand( int_lead_p16, test) == 0_int_k )then
+      at_least = 16                              ! top half all zero
+   else
+      at_least = 0
+      test = iand( int_lead_p16, test)
+   endif
+
+   if( iand( int_lead_p8, test) == 0_int_k )then
+      at_least = at_least + 8                    ! top quarter all zero
+   else
+      test = iand( int_lead_p8, test)
+   endif
+
+   if( iand( int_lead_p4, test) == 0_int_k )then
+      at_least = at_least + 4                    ! top eighth all zero
+   else
+      test = iand( int_lead_p4, test)
+   endif
+
+   if( iand( int_lead_p2, test) == 0_int_k )then
+      at_least = at_least + 2                    ! top sixteenth all zero
+   else
+      test = iand( int_lead_p2, test)
+   endif
+
+   if( iand( int_lead_p1, test) == 0_int_k )then
+      at_least = at_least + 1                    ! top bit (thirtysecond)
+zero
+   endif
+
+   int_leadz = at_least
+
+return                                           ! leadz()
+
+!  int_leadz()
+
+end function int_leadz
+
+! **********************************************************************
+
+!  lastz( b)
+
+elemental integer( kind= int_k) function int_lastz( b)
+
+integer( kind= int_k), intent( in) :: b
+
+!  scratch data and masks
+
+   integer( kind= int_k) :: test, at_least
+
+!  int_lastz()
+
+continue                                         ! lastz()
+
+   test = b                                      ! operate on integer
+
+   if( test == 0_int_k )then                     ! catch end case now
+      int_lastz = bit_size( b)
+      return
+   endif
+
+   if( iand( int_last_p16, test) == 0_int_k )then
+      at_least = 16                              ! bottom half all zero
+   else
+      at_least = 0
+      test = iand( int_last_p16, test)
+   endif
+
+   if( iand( int_last_p8, test) == 0_int_k )then
+      at_least = at_least + 8                    ! bottom quarter all zero
+   else
+      test = iand( int_last_p8, test)
+   endif
+
+   if( iand( int_last_p4, test) == 0_int_k )then
+      at_least = at_least + 4                    ! bottom eighth all zero
+   else
+      test = iand( int_last_p4, test)
+   endif
+
+   if( iand( int_last_p2, test) == 0_int_k )then
+      at_least = at_least + 2                    ! bottom sixteenth all zero
+   else
+      test = iand( int_last_p2, test)
+   endif
+
+   if( iand( int_last_p1, test) == 0_int_k )then
+      at_least = at_least + 1                    ! bottom bit zero
+   endif
+
+   int_lastz = at_least
+
+return                                           ! lastz()
+
+!  int_lastz()
+
+end function int_lastz
+
+EDITS:
+
+34:40
+
+replace "...only in a DATA statement." with
+"only as the <scalar-constant> in a DATA statement,
+the <initialization-expr> in a PARAMETER statement or a
+type declaration with a PARAMETER attribute."
+
+35:14+
+
+add "A <boz-literal-constant> is treated as if the constant were an
+<int-literal-constant> with a <kind-param> that specifies the representation
+method
+with the largest decimal exponent range supported by the processor."
+
+70:17+
+
+R506 add "or = <boz-literal-constant>"
+
+71:19+
+
+add "Constraint: a <boz-literal-constant> is allowed only if
+the <type-spec> has the INTEGER keyword."
+
+72:13
+
+replace "...is = <initialization-expr>," with
+"... is = <initialization-expr>  or = <boz-literal-constant>,"
+
+87:29+
+
+R531
+
+add "or <named-constant> = <boz-literal-constant>"
+
+"Constraint: a <boz-literal-constant> is allowed onlly if
+the named constant is of type integer."
+

@@ -1,0 +1,88 @@
+
+                                                             J3/97-197
+
+Date:    97 July 18
+To:      J3
+From:    Malcolm Cohen
+Subject: Derived-Type Assignment Fix
+
+-------------------------------------------------------------------------
+
+NUMBER: 0000nn
+TITLE: Association of a pointer actual argument with a dummy argument
+KEYWORDS: derived type, assignment
+DEFECT TYPE: Erratum
+STATUS: For consideration
+
+QUESTION: According to Fortran 90, intrinsic assignment of derived type
+entities does not invoke defined assignment for components of these
+entities, even if it exists.  Should this situation have been corrected
+in Fortran 95 to avoid breaking encapsulation of derived types?
+
+That is, in the example program below, is the final assignment statement
+intended to invoke the user-defined assignment routine for the "name"
+components of "a" and "b", or should it do pointer assignment on the
+(PRIVATE) "value" components of the "name" components?
+
+MODULE lib_varying_string
+  TYPE varying_string
+    PRIVATE
+    CHARACTER,POINTER :: value(:)
+  END TYPE
+  INTERFACE ASSIGNMENT(=)
+    MODULE PROCEDURE assign_vs_to_vs
+  END INTERFACE
+CONTAINS
+  SUBROUTINE assign_vs_to_vs(var,expr)
+    TYPE(varying_string),INTENT(OUT) :: var
+    TYPE(varying_string),INTENT(IN) :: expr
+    ALLOCATE(var%value(SIZE(expr%value,1)))
+    var%value = expr%value
+  END SUBROUTINE
+END
+PROGRAM programme
+  USE lib_varying_string
+  TYPE mytype
+    TYPE(varying_string) name
+  END TYPE
+  TYPE(varying_string) x,y
+  TYPE(mytype) a,b
+  x = y                    ! invokes "assign_vs_to_vs(x,(y))".
+  a%name = b%name          ! invokes "assign_vs_to_vs(a%name,(b%name))"
+  a = b                    ! in F90, pointer assigns the "value" components
+END
+
+ANSWER:
+Yes, Fortran 95 should have corrected this mistake in Fortran 90.
+The final assignment above should invoke "assign_vs_to_vs(a%name,(b%name))".
+
+REFERENCES: ISO/IEC 1539:1997 (E) sections 7.5.1.2 and 7.5.1.5.
+
+EDITS:
+1. Add a new item to the numbered list at the end of section 1.5.1 [3:32+]
+   "(3) Intrinsic assignment for derived types now invokes defined
+        assignment on nonpointer components for which the intrinsic
+        assignment has been overridden by an interface block with an
+        ASSIGNMENT(=) specifier."
+
+2. Replace "and intrinsic assignment for nonpointer components." in section
+   7.5.1.5 [109:37] with
+   ", defined assignment for nonpointer components of derived type for which
+    there is an accessible interface block with an ASSIGNMENT(=) specifier
+    for objects of that type, and intrinsic assignment for other nonpointer
+    components."
+
+3. In note 7.44, change "using the derived-type" [110:4-5] to
+   "using defined assignment if there is an accessible interface block with
+    an ASSIGNMENT(=) specifier overriding the intrinsic assignment for objects
+    of that type, and using the derived-type intrinsic assignment statement
+    otherwise."
+
+SUBMITTED BY: Malcolm Cohen (97-197)
+
+HISTORY:
+-------------------------------------------------------------------------
+
+...........................Malcolm Cohen, NAG Ltd., Oxford, U.K.
+                           (malcolm@nag.co.uk)
+

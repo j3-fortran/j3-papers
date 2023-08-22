@@ -1,0 +1,51 @@
+To: J3                                                     J3/22-101
+From: Steve Lionel
+Subject: C_SIZEOF and null pointers F18/026 revisited
+Date: 2021-December-12
+
+Reference: 18-007r1, 20-151, 21-134r2
+
+Consider the following program:
+
+program p
+ use iso_c_binding
+ implicit none
+ integer(c_int), pointer :: int_s
+ integer(c_int), pointer :: int_a(:)
+ print *, c_sizeof (c_null_ptr) ! (A)
+ print *, c_sizeof (null ())    ! (B)
+ print *, c_sizeof (null (int_s)) ! (C)
+ print *, c_sizeof (null (int_a)) ! (D)
+end
+
+By the current text in 18-007r1, (A) is valid because its argument
+is "an interoperable data entity that is not an assumed-size array or an 
+assumed-rank array that is associated with an assumed-size array"
+(18.2.3.7p3). (B),(C) and (D) are not valid because the arguments have the
+POINTER attribute and are thus not interoperable (18.3.4p1).
+
+Interp F18/026, passed by J3 at m224, made (C) valid because the
+prohibition on pointers was removed and the argument does have 
+interoperable type and type parameters. Even though the pointer is
+disassociated, C_SIZEOF returns the size of an object of that type.
+
+(D) is now problematic because C_SIZEOF needs to know the number of
+elements in its argument, and what it is given is a disassociated pointer
+for which that is undefined.
+
+(B) is similarly undefined. When supplied as an actual argument, NULL() 
+takes on the "characteristics of the corresponding dummy argument" 
+(16.9.144 Table 16.5), but the dummy argument of C_SIZEOF has no specific 
+characteristics.
+
+21-134r2 discussed the POINTER issue, but did not consider the case of
+a disassociated pointer nor the NULL() intrinsic as an argument to 
+C_SIZEOF.
+
+Proposal
+--------
+Add to 18.2.3.7p3: "It shall not be an unallocated allocatable variable or
+a pointer that is not associated." (see LBOUND, for example). This will 
+make cases (B), (C) and (D) all invalid, while preserving the usefulness 
+of C_SIZEOF for associated/allocated Fortran POINTER/ALLOCATABLE data 
+objects.

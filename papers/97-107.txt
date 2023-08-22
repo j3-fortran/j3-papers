@@ -1,0 +1,271 @@
+
+                                         ISO/IEC JTC1/SC22/WG5/N1235
+                                                         X3J3/97-107
+
+Date:       03-Dec-1996
+To:         X3J3/WG5
+From:       Michael Hennecke
+Subject:    Interoperability with C and Binding to POSIX.1
+  					     ISO/IEC JTC1/SC22/WG5/N1235
+References: ISO/IEC 9945-1:1990 (IEEE Std 1003.1-1990)
+            WG5/N1178 (X3J3/96-069), WG5/N1229 (X3J3/96-153), WG5/N1131
+            HPF Language Specification 2.0.delta (1996-10-19)
+
+
+I have now finished my first reading of the POSIX.1 standard, which
+specifies the System Application Programming Interface (API) of POSIX
+for the C language. As the request for subdivision for the Technical
+Report on Interoperability with C, N1131, expresses WG5's intent to
+be able to interface to system routines using this TR, I felt a review
+of that standard in the light of the current interoperability approach 
+would be useful. This revealed a number of outstanding problems, some 
+of them of a very fundamental nature. They are summarized below.
+
+1. Arguments passed by address (C pointers), and null pointers
+
+Up to now, WG5 has taken the approach (or at least thought of it) to do
+argument passing for scalar dummy arguments inside an BIND(C) interface 
+**by value**, and define a BYVAL/BYREF attribute for dummy arguments to
+be able to switch to passing **by reference**. The HPF-2 attribute 
+PASSBY("VAL") or PASSBY("*") does exactly this inside an EXTRINSIC(C) 
+interface, this functionality might be take over by the WG5 TR. 
+The semantics are that for a C function
+
+  extern void c_func ( int *i );
+
+and a Fortran interface (different function/argument names for clarity)
+
+  INTERFACE
+    BIND(C, NAME="c_func") SUBROUTINE f_func ( j )
+      USE ISO_C ; INTEGER(c_int), PASSBY("*") :: j
+    END SUBROUTINE f_func
+  END INTERFACE
+
+a Fortran call like CALL F_FUNC(K) will cause the compiler (not the 
+user) to get the address of the Fortran actual argument K, and pass 
+that address to #c_func#. This avoids to put C pointers in the Fortran 
+user's hands. It works fine as long as #c_func# only expects #i# to 
+point to a location which holds an #int# value (and only modifies the 
+value of #*i#, not #i# itself). BUT:
+
+ * It may well happen that #c_func# also modifies the value of #i# 
+   itself, because in C there are two possible uses of such a function:
+
+     int f;                  int *g;
+     (void) c_func(&f);      (void) c_func(g);    /* these are CALLs */
+
+   The call using the address #&f# of #f# is what the PASSBY("*") with
+   automatic address-of-actual-arg semantics supports, but not the call
+   with #g#. C functions dealing with the more general call with a 
+   pointer #g# may modify the dummy #i# itself, e.g. store any address 
+   in #i# instead of just modifying its target. This will break the 
+   Fortran program (at best). 
+
+ * It may also happen that the function has a different (but documented
+   and important-to-have) behavior when it is passed a null pointer 
+   (like C's NULL) instead of the address of an #int# variable. 
+   This cannot be supported by the PASSBY("*") mechanism combined with
+   automatic address-of-actual-arg semantics, because the compiler 
+   **always** passes the address of a Fortran actual argument -- which 
+   is different from C's NULL.
+
+A number of POSIX.1 functions make use of this special case of passing
+a null pointer as actual argument. Examples include:
+
+ * The #argv# and #envp# arguments to the <exit> family of functions.
+ * The #const struct utimbuf *times# argument of #utime#.
+ * The #struct sigaction *# arguments to #sigaction()#.
+ * #ctermid# may also have a NULL argument
+
+So the handling of dummy arguments of C pointer types should be 
+reconsidered. If a PASSBY("*") approach with automatic 
+address-of-actual-arg by the compiler is taken, many C functions will 
+not be callable from within Fortran (or at least strange results may 
+occur if they are called).
+
+        ********************************************************
+        ***  This is a very fundamental design problem,      ***
+        ***  which should be addressed as soon as possible!  ***
+        ********************************************************
+
+2. Function result values which are C pointers
+
+A significant portions of the POSIX.1 functions returns a C pointer.
+Examples of such functions and their return types are:
+
+  * The #getlogin#, #getenv#, #ctermid#, #getcwd# and #setlocale# 
+    functions have a return type of #char *#.
+  * #readdir# has return type #struct dirent *#, and #opendir# has 
+    return type #DIR *#, where #DIR# is some typedef-ed type.
+  * #getgrgid# and #getgrnam# have return type #struct group *#.
+  * #getpwuid# and #getpwnam# have return type #struct passwd *#.
+
+In order to support binding to these functions, some mechanism to 
+handle C pointers as result types of functions seems to be inevitable. 
+At first sight, the extension of something like the HPF-2 PASSBY("*") 
+spec to function result variables seems natural.  
+But a very severe problem with such an approach is that some of these 
+functions may return a null pointer (notably #getlogin# and #getenv#) 
+under some conditions, which would (at best) break the program when 
+the Fortran compiler does an automatic de-referencing of that result 
+on return from the C function. This is essentially the same problem 
+as in topic (1).
+
+Even if this problem is ignored, dealing with pointer function results
+would either imply copying of data from the de-referenced C result
+into the Fortran variable (or temporary if the function reference is
+in an expression), or require to provide C-pointer datatypes to the
+Fortran programmer. 
+Neither HPF-2 nor the ISO TR do currently provide such functionality.
+
+3. Structures defined in POSIX.1
+
+A variety of #struct# derived types is defined by POSIX.1. However, for
+all of these structures only the names of the types and their required
+components are specified. POSIX.1 does not define the actual order of 
+these components in the #struct#, neither does it require that the 
+specified components are the only components present in an actual 
+implementation. In reality, there are sometimes many more components
+since vendors include their own extensions in these structures.
+
+  NOTE:
+  This is another argument agains the MAP_TO approach to 
+  interoperability: Since the actual contents of such a #struct# is 
+  not standardized, it is not possible to specify a portable MAP_TO 
+  for it in an interface block residing in application programs.
+
+The structures defined by POSIX.1 are:
+
+  struct dirent           struct flock        
+  struct group            struct lconv        
+  struct passwd           struct sigaction        
+  struct stat             struct tms        
+  struct utsname          struct termios        
+  struct tm               struct utimbuf
+  
+Most of the components are intrinsic or primitive system data types 
+(see topic 7), some are character arrays of implementation-dependent 
+(but fixed?) size. These can all be modeled by using a BIND(C) spec 
+inside a Fortran derived type definition. But some exceptions are 
+important (and difficult):
+
+* A #char*# component which does not hold the actual character data,
+  but only points to its location (possibly in system memory rather
+  than in user memory) is contained in #group# and #passwd#:
+ 
+    group.gr_name
+    passwd.pw_name
+    passwd.pw_dir
+    passwd.pw_shell
+
+* The list of group members is attached to the #group# structure by a
+  #char**# component. This points to a NULL-terminated list, again 
+  possibly in system memory and possibly static.
+
+* A function pointer is contained in #sigaction#:
+
+    sigaction.sa_handler  void(*)()
+
+  It is perhaps not necessary to access this component directly.
+  But users must be able to declare objetcs of this structure type, 
+  so at least some kind of dummy field (of suitable size) must be 
+  declared instead of the function pointer when binding to such
+  structures.
+
+A derived type TYPE(C_CHAR_PTR) seems to be necessary to be able to 
+bind to the #group# and #passwd# structures, as well as a means to
+read the string where it points to into a Fortran CHARACTER object. 
+
+  NOTE:
+  Maybe also the reverse functionality of storing the 
+  "address-of a Fortran CHARACTER object" in a C_CHAR_PTR.
+
+Additionally, a TYPE(C_CHAR_PTR_PTR) including increment/decrement and 
+de-reference operations may be useful. The former would allow to move 
+through such a pointer list, the latter results in a C_CHAR_PTR which 
+can then be accessed as above.
+
+  NOTE:
+  These problems are different from the problem of argument association
+  (by value, by address): they occur in a structure component, and a 
+  data type for these pointer components must be provided to the 
+  application programmer in order to be able to bind to this API. 
+  Automatic handling of the address-of and de-reference operations by 
+  the compiler is not possible here. The same holds for global 
+  variables (see topic 4).
+
+Dealing with function pointers is not possible with F95 facilities 
+since Fortran up to now does not support procedure variables/pointers 
+to procedures. F2000 developments in this area may be incorporated 
+when integrating the TR into IS 1539-1, but this is out of the scope of
+the TR itself.
+
+4. Global variables
+
+POSIX.1 uses at least three external variables:
+
+  extern int errno;
+  extern char **environ;
+  extern char *tzname[2];
+
+Note that POSIX.1 is more restrictive than ISO C because it requires 
+#errno# to be an external variable: the C standard also allows #errno#
+to be a macro. It is necessary that applications can check the value of
+#errno# directly, this shows the need for a means to bind to extern 
+data objects, not only to extern procedures. 
+Section 3.4 of N1178 (96-069) will be enhanced to support this 
+requirement by a module variable approach.
+
+If #environ# were to be accessed directly from Fortran, a corresponding
+datatype would be required, as well as operations to de-reference that
+pointer. This may not be critical, since the same information may be
+accessed by the #getenv()# function. But that same facility is also
+necessary to access some structure components, see above.
+
+5. Underscore as the first character in identifiers
+
+POSIX.1 defines one function, #_exit#, and a number of numerical limits
+and other symbolic constants which have an underscore character as 
+their first character (e.g. all symbols starting with #_POSIX#).
+This is not allowed in Fortran, but is not a severe restriction since
+a Fortran binding to POSIX.1 may establish naming conventions that
+circumvent the leading underscore.
+
+6. Unsigned integers
+
+Some POSIX.1 function have unsigned integer arguments or result type,
+notably the #alarm# and #sleep# functions. Some of the baud rate 
+functions for terminal control have return type #speed_t#, which is 
+also an unsigned integral type.
+This is a minor difficulty: these types may be mapped to their 
+corresponding signed types, leaving the interpretation of "negative" 
+values implementation dependent.
+
+7. Type name aliases for primitive system data types
+
+For portability, POSIX.1 defines a number of so-called primitive system
+data types. They are all #typedef#s to arithmetic types and include:
+
+  dev_t    gid_t    ino_t    mode_t   
+  nlink_t  off_t    pid_t    size_t   
+  ssize_t  time_t   uid_t    
+
+The <type-alias-stmt> of N1178 (96-069) is necessary and sufficient to 
+establish corresponding derived type names for a Fortran binding. 
+
+  NOTE:
+  Working with the original intrinsic types for which these datatypes 
+  are aliases would be possible, but would sacrifice source code
+  portability across platforms. This is a key issue of POSIX.1.
+
+8. Varying length argument lists
+
+There are several POSIX.1 functions which include an <ellipsis> in
+their argument list, using the features of #<stdarg.h>#. These include
+the three members #execl#, #execle# and #execlp# of the <exec> family
+of functions, and the #open# and #fcntl# functions.
+
+The features specified in N1229 (96-153), improved along the lines
+of X3J3's comments from meeting 139, should be sufficient to provide 
+an interface to these functions.
+

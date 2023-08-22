@@ -1,0 +1,135 @@
+
+                                                           J3/06-373
+
+Date: November 11, 2006
+To: J3
+From: Dr. Reinhold Bader
+Subject: Extension of IMPORT statement
+
+References: J3/06-007r1
+
+This suggestion attempts to address a weakness of the submodule concept as 
+presently defined in the draft standard. Assume a module-defined interface
+
+module x
+  type :: tx
+    : 
+  end type
+  interface 
+    module procedure foo(yy, xx)
+      use y        ! here be dragons
+!     import :: tx - disallowed for separate module procedures
+      type(tx), intent(out) :: xx
+      type(ty), intent(in) :: yy
+    end module procedure 
+  end interface
+  :
+end module x
+
+which references a module y with a type ty defined there, and is subsequently
+implemented in a submodule:
+
+submodule(x) x_foo
+  use y
+  type(ty) :: g_foo_y
+contains
+  module procedure foo
+    :
+  end module
+end submodule x_foo
+
+One of the points of this exercise is to enable the module y to make use of
+the type definitions in x:
+
+module y
+  use x
+  type :: ty
+    :
+  end type
+  :
+end module y
+
+Unfortunately this renders the "use y" line in the interface definition a 
+circular module reference and is hence disallowed, while the "use y" line
+in the submodule is OK. For a number of software patterns it would be 
+desirable to be able to access other modules' entities from within an
+interface block; the rationale is similar to that which led to the
+introduction of the IMPORT statement. In fact an extension of IMPORT is
+suggested to fix the above problem; the interface definition would then
+be replaced by 
+
+  interface 
+    module procedure foo(yy, xx)
+      import y :: ty   
+      type(tx), intent(out) :: xx
+      type(ty), intent(in) :: yy
+    end module procedure 
+  end interface
+
+One use case for this is supplied by an article published in the August 2006
+Fortran Forum ("Dynamic Polymorphism in Fortran 95: How Submodules can help").
+
+
+Here is a suggestion for edits of J3/06-007r1:
+
+[299:16]. In 12.4.3.2, change R1209 to read
+
+import-stmt is    IMPORT [[ module-name ::] import-name-list [, rename-list]
+
+
+[299:41-43]. Replace this by the following:
+
+C1210 (R1209)  Using IMPORT to access entities from the local host scoping
+               unit is allowed only in an interface body that is not a module
+               procedure interface body; rename-list may not be specified in
+               this case.
+
+
+C1210a (R1209) Using IMPORT to access entities from a module different from
+               the local host scoping unit is allowed only in an interface
+               body that is a module procedure (or function) interface body.
+
+C1211 (R1209)  Each import-name shall be the name of an entity in the 
+               referenced scoping unit. If no module-name is provided, 
+               this is the local host scoping unit. Any entities accessed by
+               use association can be optionally renamed via rename-list.
+
+[300:32].    Replace this by the following:
+
+               The IMPORT statement within an interface body that is not a 
+               module procedure interface body specifies that the named 
+               entities from the host scoping unit are accessible in the
+               interface body by host association.
+
+[300:41].    Add the following section after this line:
+
+               The IMPORT statement within an interface body that is a 
+               module procedure interface body specifies that the named
+               entities from the referenced module host scoping unit are
+               accessible in the interface body by use association. The 
+               rules listed in 11.2.2 for use association apply, with the
+               exception that it is allowed to indirectly reference the
+               local host scoping unit. Furthermore, omitting import-name-
+               list has an effect analogous to omitting the ONLY part of
+               the USE statement.
+
+[488:6].     Replace this by the following:
+
+               Use association is the association of names in different 
+               scoping units specified either by a USE statement, or by an
+               IMPORT statement within an interface body that is a module 
+               procedure interface body.
+
+Adding the above example as a note might be useful.
+Furthermore, it might be appropriate to add a note to 11.2.3 indicating the
+necessity to explicitly provide a USE statement referencing all modules which
+are needed due to an IMPORT statement in the parent module for a locally 
+implemented separate module procedure, possibly with a consistent renaming 
+scheme. Correspondingly, the syntax rule annex requires part of the above 
+updates.
+--------------------------------------------------------------------------
+Dr. Reinhold Bader
+Email: Reinh.Bader@t-online.de
+
+Leibniz-Rechenzentrum, Abt. Hochleistungssysteme | Tel. +49 89 35831 8825
+Boltzmannstr. 1, 85748 Garching                  | Fax  +49 89 35831 9700

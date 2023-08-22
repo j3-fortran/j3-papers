@@ -1,0 +1,119 @@
+                                                          J3/14-141r1
+To:        J3
+Subject:   FAILED_IMAGES intrinsic in TS 18508
+From:      Van Snyder & Lorri Menard & Daniel Chen
+Date: 2014 June 24
+Reference: 14-130
+
+1. Introduction
+===============
+
+The FAILED_IMAGES intrinsic function in subclause 7.4.12 of TS 18508
+reports an array of failed image indices.  If one wants to inquire
+whether a particular image has failed, one would need to use
+
+  if ( any ( the_interesting_image == failed_images() ) ) ....
+
+It would be convenient if one could also test whether one particular
+image (or set of images) had failed (or stopped).
+
+2. Old Proposal
+===========
+
+An intrinsic function that reports the status of one image or several
+images would be more useful.
+
+Instead of FAILED_IMAGES, provide a function IMAGE_STATUS that returns
+an array of STAT_FAILED_IMAGE, STAT_STOPPED_IMAGE, some other
+processor-dependent value, or zero, for a specified set of images, or
+an array of positive stopped image numbers and negative failed image
+numbers (almost like FAILED_IMAGES is presently specified to do) if no
+image set is specified.
+
+3. New proposal
+=====================================
+Although the original proposal indeed adds the needed functionality,
+it is not desired for a function returning two totally different
+results based on if a particular argument (IMAGES) is present or not.
+This new proposal proposes
+1. keep the form of IMAGE_STATUS that returns an array of
+STAT_FAILED_IMAGE, STAT_STOPPED_IMAGE, some other processor-dependent
+value, or zero, for a particular image or a specified set of images.
+2. Keep the original FAILED_IMAGES intrinsic function in subclause
+7.4.12 of TS 18508.
+3. Add a new intrinsic function STOPPED_IMAGES that returns an
+array of stopped image numbers.
+
+3. Edits to 14-130
+==================
+
+[24:19+] Insert a subclause
+
+7.4.13a STOPPED_IMAGES ( [TEAM, KIND] )
+
+Description: Indices of stopped images.
+
+Class: Transformational function.
+
+Arguments.
+
+TEAM (optional) shall be a scalar of the type TEAM TYPE defined in the
+ISO_FORTRAN_ENV intrinsic module. Its value shall represent an
+ancestor team.
+
+KIND (optional) shall be a scalar integer constant expression. Its
+value shall be the value of a kind type parameter for the type
+INTEGER. The range for integers of this kind shall be at least as
+large as for default integer.
+
+Result Characteristics.  Integer.  If KIND is present, the kind type
+parameter is that specified by the value of KIND; otherwise, the kind
+type parameter is KIND(0).
+
+Result Value. If TEAM is present, its value specifies the team;
+otherwise, the team specified is the current team. The elements
+of the result are the values of the image indices of the stopped
+images in the specified team, in numerically increasing order.
+
+Examples. If image 3 is the only stopped image in the current team,
+STOPPED_IMAGES() has the value [3].If there are no stopped images
+in the current team, STOPPED_IMAGES() is a zero-sized array.
+
+[25:20+] Insert a subclause
+
+7.4.13b IMAGE_STATUS ( IMAGE, [TEAM] )
+
+Description: Status of images.
+
+Class: Elemental function.
+
+Arguments.
+
+IMAGE  shall be of type integer.
+
+TEAM (optional) shall be a scalar of the type TEAM TYPE defined
+in the ISO_FORTRAN_ENV intrinsic module. Its value shall represent
+an ancestor team.
+
+Result Characteristics.  Default integer.
+
+Result Value.  If TEAM is present, its value specifies the team;
+otherwise, the team specified is the current team. The result value is
+STAT_FAILED_IMAGE if the specified image has failed,
+STAT_STOPPED_IMAGE if that image has stopped, a nonzero
+processor-dependent value different from STAT_FAILED_IMAGE or
+STAT_STOPPED_IMAGE if some other error has occurred for that image,
+and zero otherwise.
+
+Examples. If image 3 of the current team has failed, IMAGE_STATUS ( 3 )
+has the value STAT_FAILED_IMAGE.
+
+[43:40-46] Replace with
+
+  status = image_status ( i )
+  if ( status == STAT_FAILED_IMAGE ) then
+    confirm%available(i) = .false.
+    cycle image
+  end if
+  if ( status /= 0 ) error stop
+  call event_query ( confirm%event(i), count )

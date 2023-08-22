@@ -1,0 +1,5088 @@
+--------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 083
+  <TITLE>  Add an Accessibility Attribute Corresponding to READONLY
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION> 1
+
+  <NOTE>
+  Related to pFR 33 (Object Oriented Fortran, OOF),
+             pFR 43 (OOP Capabilities),
+             pFR 54 (Complete Set of Explicit Attributes),
+             N970-18 (Object Oriented Programming),
+             Draft NP for TR2 on Data type enhancements.
+  </NOTE>
+
+  <REFLIST>
+  <REF> Bertrand Meyer
+        "Object-Oriented Software Construction,"
+        Prentice-Hall, New York, 1988
+        ISBN:0-13-629049-3
+  </REFLIST>
+
+  <REQUIREMENT>
+  Allow the developer of a module to specify a finer degree of control over the
+  accessibility of objects declared in a module. Specifically, allow the
+  developer to indicate that certain variables (including components of
+  variables of derived-type) when accessed by use association may not be
+  defined or redefined. An example of a possible syntax is shown after the
+  suggested implementation. 
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  Currently the only control the developer of a module has over the
+  accessibility of individual objects is either to allow complete access,
+  PUBLIC, or forbid any access, PRIVATE. This can lead to awkward or
+  inefficient module implementations. The best example of this is a data object
+  whose value should only be changed through  its interface, but other than
+  that should be retrievable by the user of the module. If declared with the
+  PUBLIC attribute, consistent use of the interface is not guaranteed, If
+  declared with the PRIVATE attribute, the value can only be retrieved by
+  creating a procedure whose sole use is to return the data value. It is
+  difficult, in the second case, to optimize away the procedure overhead
+  implied by the resulting semantics, and the creation of the procedure is an
+  unnecessary burden on the programmer.
+
+  There are two methods of accessing an object, reading a value and writing a
+  value. For simplicity, restrictions on a method should be confined to the
+  values never, once, or always. However, an access restricted to once via
+  procedural encapsulation has little impact on the overall performance of the
+  code.  This suggests that the effective combinations read always + write
+  always, read always + write never, read never + write always, and read never
+  + write never are sufficient. The present access attributes effectively allow
+  only two of the above attributes, PUBLIC (read always + write always), and
+  PRIVATE (read never + write never). 
+
+  The above analysis suggests that two more accessibility attributes could be
+  added to Fortran, with the semantics of read always + write never, and read
+  never + write always. An attribute with read always + write never semantics
+  in particular appears to be very useful and has been implemented in several
+  languages.
+
+  It should also be noted that in many ways a READONLY attribute is similar in
+  semantics to a function without arguments, i.e., a function whose computed
+  value depends only on global values.  The principle of encapsulation suggests
+  that the user of the module should not be able to tell the difference between
+  a data object that can only be read and such a parameterless function.  Such
+  a lack of distinction has been implemented in a few languages.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  The committee should consider adding an accessibility attribute to the
+  present language with read always + write never semantics, to be applied
+  initially only to data entities.  This attribute will be discussed below
+  under the name READONLY (PUBLIC(READ), or READ_ONLY are other possible
+  terms). Should READONLY be adopted and prove useful, then the extension of
+  READONLY to parameterless functions and an additional attribute, WRITEONLY,
+  with read never + write always semantics, may also be considered for
+  adoption.
+  </SUGGESTED IMPLEMENTATION>
+
+  <EXAMPLE SYNTAX>
+  The suggested syntax is for illustration only, exact syntax not part of
+  requirement:
+
+     MODULE FLEET
+        TYPE CAR
+           READONLY
+           INTEGER :: CYLINDERS, MAX_PASSENGERS
+           CHARACTER(LEN=15) :: MANUFACTURER, MODEL_NAME
+        END TYPE CAR
+        TYPE (CAR) :: CAMARY
+        ...
+        INTEGER, READONLY :: FLEET_SIZE
+     CONTAINS
+        TYPE(CAR) FUNCTION REPLACEMENT_CAR(CYLINDERS, &
+           MAX_PASSENGERS, MODEL_NAME)
+        ...
+        END FUNCTION REPLACEMENT_CAR
+        
+        ...  ! Several other subroutines and functions
+     END MODULE FLEET
+
+  The module procedures defined within FLEET can define the components of
+  CAMARY and can define the variable FLEET_SIZE. Scoping units accessing CAMARY
+  or FLEET_SIZE by use association can use the values of the FLEET_SIZE and the
+  values of the components of CAMARY, but cannot directly update those values.
+   The values can be indirectly updated by such units, either as a side effect
+  of invoking one of FLEET's procedures, or, in the case of CAMARY, by using
+  CAMARY as an argument to a procedure, whose corresponding dummy argument has
+  type CAR and an INTENT other than IN, or by an assignment with entities on
+  both sides having type CAR. A procedure with an INTENT other than IN for a
+  dummy argument of type CAR must either be one defined in the MODULE FLEET or,
+  if one defined outside of FLEET, must be one that directly, or indirectly
+  through a chain of calls, performs its update by invoking such a procedure
+  with PUBLIC accessibility. The semantics for updating an entity having a type
+  with READONLY components is intended to correspond to the semantics for
+  updating the components of an entity having a type with PRIVATE components.
+
+  Similarly a module that uses FLEET can declare entities of type CAR, but can
+  only modify their components by using such entities as argument to procedures
+  satisfying the restrictions on updating components of CAMARY
+
+     MODULE OUR_FLEET
+        ...
+        USE FLEET
+        ...
+        TYPE(CAR) :: COMPACT_MODEL=CAMARY
+        ...
+        CONTAINS
+        ...
+           SUBROUTINE CHANGE_COMPACT_MODEL(DESIRED_MODEL, &
+                 DESIRED_CYLINDERS, DESIRED_CAPACITY, ALLOWED)
+           TYPE(CAR), INTENT(IN) :: DESIRED_MODEL
+           ...
+           IF (ALLOWED) THEN COMPACT_MODEL = &
+              REPLACEMENT_CAR(DESIRED_MODEL, DESIRED_CYLINDERS, &
+              DESIRED_CAPACITY, MODEL_NAME)
+           ...
+           END SUBROUTINE CHANGE_COMPACT_MODEL
+         ...
+     END MODULE OUR_FLEET
+
+  This ensures that all components remain consistent, while allowing increased
+  flexibility.
+  </EXAMPLE SYNTAX>
+
+  <PRECEDENTS>
+  The restriction READONLY has been implemented in a number of languages,
+  object oriented languages in particular, e.g., Eiffel, Sather, and Oberon. It
+  has consistently proved useful in such languages. Allowing parameterless
+  functions to also have the equivalent of the READONLY attribute has been
+  implemented in fewer languages, e.g., Eiffel and Sather, but has also proved
+  useful in those languages.  I do not known if WRITEONLY has ever been
+  implemented in any major language. 
+
+  A good description of the semantics of READONLY as implemented in Eiffel,
+  (where it is spelled READ_ONLY), appears in Bertand Meyer, "Object-Oriented
+  Software Construction," Prentice-Hall, New York, 1988, ISBN:0-13-629049-3.
+  </PRECEDENTS>
+
+  <ESTIMATED IMPACT>
+  The suggested requirements should have no impact on the efficiency or
+  compatibility of existing code.  The modifications required in the standard
+  and compilers should be small for READONLY. The text in the standard that
+  needs to be revised appears to be well localized. Implementors already have
+  to make a semantic distinction between used and local entities, and place
+  restrictions on used entities. The additional restrictions are similar to
+  those specified by the INTENT attributes of the dummy arguments of
+  procedures, and require a similar analysis.  The modifications required in
+  the standard and compilers should be small to moderate for "READONLY"
+  functions and WRITEONLY entities.  The modifications are not as well
+  localized as for READONLY.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  William B. Clodius
+  phone: (505) 662-3243
+  email: Wclodius@aol.com
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>email received 22-Dec-1995
+  </HISTORY>
+
+  <SUGGESTED EDITING OF THE STANDARD>
+  The following is a suggested partial editing of the standard to include the
+  READONLY attribute for entities. It is based on the draft Fortran 95 standard
+  as published in the Fortran Forum in June 1995. A more detailed final editing
+  will, of course, eventually be necessary.  Additional modifications would
+  need to be included if READONLY functions, or WRITEONLY entities were added
+  to the standard.
+
+  
+  ----- Section 4.4.1
+
+  ----- line 16, p. 38: replace "[ private-sequence-stmt ]" with "[
+  access-sequence-stmt ]"
+
+  ----- lines 21-22, p. 38: replace with
+
+  R424 access-sequence-stmt   is component-access-stmt
+                              or SEQUENCE
+
+  R424a component-access-stmt  is PRIVATE
+                               or READONLY
+
+  ----- line 23, p. 38: replace "PRIVATE statement" with "component access
+  statement"
+
+  ----- p. 38: Add the following to the constraints after R424
+
+  Constraint:  A component-access-stmt shall not appear more than once in a
+  given derived-type-def.
+
+  ----- p. 38: Add the following to the constraints after R427
+
+  Constraint:  If a component of a derived type is of a type whose components
+  are declared to be readonly, either the derived type definition shall contain
+  a component access statement or the derived type shall be private.
+
+  ----- p. 40:  Add after line 23
+
+  If a type definition contains a READONLY statement, except within the module
+  containing that type definition, an entity of that type or any components of
+  such an entity behave as thought they have the PARAMETER attribute, e.g.,
+  such entities cannot appear on the left hand side of an assignment, and can
+  only be used as the actual argument to a procedure if the corresponding dummy
+  argument has intent IN, even if the type itself is public (5.1.2.2).
+
+  ----- Section 4.4.2, p.43
+
+  ----- line 14:  Place "or READONLY" between "PRIVATE accessibility".
+
+  ----- line 16:  Replace "that are PRIVATE." with "that are PRIVATE or
+  READONLY."
+
+  ----- Section 5.1, p. 48
+
+  ----- line 14: Replace "PUBLIC attribute" in "Constraint:  An entity shall
+  not have the PUBLIC attribute if ..." with "PUBLIC or READONLY attributes".
+
+  ----- the following should be added to the list of constraints after R506
+
+  Constraint:  A named constant shall not have a READONLY attribute.
+
+  
+  ----- Section 5.1.2.2 should be replaced by
+
+  5.1.2.2 Accessibility attribute
+
+  The accessibility attribute specifies the accessibility of entities
+
+  R511 access-spec is PUBLIC
+                   or PRIVATE
+                   or READONLY
+
+  Constraint: An access-spec shall appear only in the specification-part of a
+  module.
+
+  Constraint: READONLY cannot be the access-spec in a derived-type-stmt.
+
+  Entities that are declared with a PRIVATE attribute are not accessible
+  outside the module. Entities that are declared with a PUBLIC or READONLY
+  attribute may be made accessible in other program units by the USE statement.
+  Entities without an explicitly specified access-spec have default
+  accessibility, which is PUBLIC unless the default has been changed by a
+  PRIVATE statement (5.2.3).  Entities with a READONLY attribute, in other
+  program units behave as though they are declared with a PARAMETER attribute,
+  e.g., such entities may not appear on the left hand side of an assignment,
+  and may only be used as actual arguments if the corresponding dummy arguments
+  have intent IN.
+
+  Note 5.9
+
+  An example of an accessibility specification is
+
+  REAL, PRIVATE :: X, Y, Z
+
+  
+  ----- Section 5.2.3 p. 58  After the constraints following R523
+
+  Constraint: The READONLY access-spec shall not appear if a use-name refers to
+  a procedure, a named constant, derived type, or namelist group.
+
+  
+  ----- In Section 6, p. 71: the following should be added to the list of
+  constraints after R601
+
+  Constraint:  array-variable-name shall not have the READONLY attribute if it
+  is made accessible through a USE statement.
+
+  Constraint:  scalar-variable-name shall not have the READONLY attribute if it
+  is made accessible through a USE statement.
+
+  Constraint:  subobject shall not be a subobject designator whose parent has
+  the READONLY attribute if the parent is made accessible through a USE
+  statement.
+
+  Constraint:  subobject shall not be a subobject designator whose parent has a
+  type contains a READONLY statement if the type is made accessible through a
+  USE statement.
+
+  ----- p.71: the following should be added after line 14, i.e., after the
+  constraints which follow R601.
+
+  R601  readable   is scalar-readable-name
+                   or array-readable-name
+                   or readable-subobject
+
+  Constraint:  array-readable-name shall be the name of a data object that is
+  an array.
+
+  Constraint:  scalar-readable-name shall be the name of a data object with the
+  READONLY attribute or whose type contains a READONLY statement, and the
+  object or type is made accessible through a USE statement.
+
+  Constraint:  array-readable-name shall be the name of a data object with the
+  READONLY attribute or whose type contains a READONLY statement, and the
+  object or type is made accessible through a USE statement.
+
+  
+  Constraint:  readable-subobject shall be the name of a subobject whose parent
+  has the READONLY attribute or whose type contains a READONLY statement, and
+  whose parent or type is made accessible through a USE statement.
+
+  ----- Section 7.1.1.1, p. 84, lines 2-8: add to R701 the line
+
+        or readable
+
+  ----- Section 12.4.1.1, p. 199, after line 29
+
+  If the actual argument is a readable object, the dummy argument is not
+  definable and shall not have INTENT(OUT) or INTENT(INOUT).  When a readable
+  object is used as an actual argument, the value associated with the readable
+  object at the time of invocation of the procedure shall be the value
+  associated with actual argument.
+  </SUGGESTED EDITING OF THE STANDARD>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 084
+  <TITLE>  Make Allocatable Objects More Flexible
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION> 1
+
+  <NOTE>
+  Related to pFR 33 (Object Oriented Fortran, OOF),
+             pFR 43 (OOP Capabilities),
+             pFR 54 (Complete Set of Explicit Attributes),
+             N970-16 (Allow ALLOCATABLE Derived Type Components),
+             N970-18 (Object Oriented Programming),
+             Draft NP for TR2 on Data type enhancements.
+  </NOTE>
+
+  <REQUIREMENT>
+  Allow the programmer to utilize allocatable objects in a variety of
+  situations where currently pointers are required.  Specifically, in addition
+  to the present plan to allow allocatable objects in derived types and allow
+  allocatable dummy arguments, the standard should allow the developer to have
+  allocatable scalars, and specify parametrized values in an allocation.  An
+  example of the possible syntax is shown after the rational.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  Fortran 90 introduced three forms of dynamic objects, i.e., automatic arrays,
+  allocatable arrays, and pointers.  Automatic arrays have a syntax and
+  semantics that is relatively straightforward, however, the syntactical and
+  semantic difference between allocatable arrays and pointers is not clear.  It
+  appears that the capabilities of allocatable arrays were limited solely
+  because as some capabilities could be implemented with pointers it was not
+  believed to be necessary to give those capabilities to pointers.
+
+  This basis for the limitation was a mistake.  Pointers, because of their
+  aliasing  properties, will always be able to do things that allocatable
+  objects can do, but also, because of their aliasing properties, will be
+  difficult to optimize for many tasks that allocatable objects can also do.
+   Allocatable arrays should be available for all objects which need to be
+  implemented dynamically, but for which aliasing is not an essential aspect of
+  the object's task.  Pointers should only be used when aliasing is an
+  essential part of the object's task.
+
+  Under the constraints of Fortran 90 and the Fortran 95 draft, pointers must
+  be used instead of allocatable arrays in many situations where aliasing is
+  not an essential part of the object's task.  As a result, in many contexts
+  the processor generates inefficient code.  Further, the many limitations on
+  allocatable arrays are non-intuitive, and it is common for the programmer to
+  attempt to use an allocatable array when the standard does not allow such
+  usage, resulting in wasted development time.  The current plan for Fortran
+  2000 recognizes some of these problems and plans to remove the restrictions
+  on including allocatable components in derived types and on allocatable dummy
+  arguments.  This proposal simply suggests that other unnecessary restrictions
+  be removed
+  </JUSTIFICATION> 
+
+  <SUGGESTED IMPLEMENTATION>
+  The committee should consider removing many of the restrictions on
+  allocatable "arrays".  The following two modifications in the standard are
+  suggested
+
+  1.  Allow allocatable entities to be scalars.  (This facilitates efficient
+  linked lists, trees, etc., but does not, by itself, facilitate efficient two
+  way linked lists and similar structures where a "component" needs to refer to
+  its container.  Such structures will continue to need pointers absent other
+  modifications in the standard.)
+
+  2.  Allow allocation (for both allocatable arrays and pointers) to specify
+  parametrized values.  This adds more flexibility to CHARACTER entities and
+  derived types.  The suggested syntax for such an allocation is
+
+  R622 ALLOCATE ( allocation-list [ , STAT = stat-variable ] )
+
+  R624 allocation is allocate-object [ ( allocate-spec-list ) ] [ * char-length
+  ]
+
+  Note that at present this implies that allocated parametrized value can only
+  be LEN, but this will not continue to be the case if parametrized derived
+  types are included in the standard.
+
+  Each of these modifications probably requires a separate vote.
+  </SUGGESTED IMPLEMENTATION>
+
+  <EXAMPLE SYNTAX>
+  The suggested syntax is for illustration only, exact syntax not part of
+  requirement:
+
+        MODULE EFFICIENT_LINKED_LIST
+        ...
+        TYPE LINKED_LIST
+           CHARACTER(LEN=:), DIMENSION(:), ALLOCATABLE :: NAMES
+           TYPE(LINKED_LIST), ALLOCATABLE :: NEXT
+        END TYPE LINKED_LIST
+        ...
+        TYPE(LINKED_LIST) :: START
+        ...
+        CONTAINS
+        ...
+        RECURSIVE SUBROUTINE ADD_TO_LIST(LIST)
+        TYPE(LINKED_LIST), INTENT(IN OUT) :: LIST, SUBLIST
+        CHARACTER(LEN=:), DIMENSION(:), ALLOCATABLE :: NEW_NAMES
+        INTEGER :: MAX_LENGTH, NUM_LINES
+        LOGICAL :: DONE
+        ...
+        MAX_LENGTH = 0
+        NUM_LINES = 0
+        DONE = .FALSE.
+        CALL GET_NAMES (SUBLIST, NEW_NAMES)
+        IF (.NOT. ALLOCATED(NEW_NAMES)) THEN
+           DONE = .TRUE.
+        ELSE
+           IF (SIZE(NEW_NAMES,1) <= 0) DONE = .TRUE.
+        END IF
+        IF (.NOT. DONE) THEN
+           ALLOCATE(LIST%NEXT)
+           ALLOCATE( LIST % NEXT % NAMES (SIZE(NEW_NAMES,1)) &
+              (LEN(NEW_NAMES(1))))
+           LIST%NEXT%NAMES = NEW_NAMES
+           CALL ADD_TO_LIST ( LIST%NEXT )
+        END IF
+        RETURN
+        ...
+        CONTAINS
+           RECURSIVE SUBROUTINE GET_NAMES(TEMP, TEMP_NAMES)
+           TYPE(LINKED_LIST) :: TEMP
+           CHARACTER, ALLOCATABLE :: TEMP_NAMES(:)(:)
+           INTEGER LINE_LENGTH, STATUS, LINE_NUMBER
+           CHARACTER(LEN=80) :: LINE
+           LENGTH_LINE = 0
+           LINE = ' '
+           READ (FILE,*,IOSTAT=STATUS) LINE
+           IF (STATUS /= 0) LENGTH_LINE = LEN_TRIM(LINE)
+           IF (LENGTH_LINE <= 0 .OR. STATUS /= 0) THEN
+              ALLOCATE ( TEMP_NAMES(NUM_LINES)(MAX_LENGTH) )
+           ELSE
+              IF (LENGTH_LINE > MAX_LENGTH) MAX_LENGTH = LENGTH_LINE
+              NUM_LINES = NUM_LINES + 1
+              LINE_NUMBER = NUM_LINES
+              ALLOCATE( TEMP % NEXT )
+              ALLOCATE( TEMP % NEXT % NAMES(1)(LENGTH_LINE) )
+              TEMP % NEXT % NAMES = TRIM(LINE)
+              CALL GET_NAMES(TEMP%NAMES)
+              TEMP_NAMES(LINE_NUMBER) = TEMP % NEXT % NAMES
+           END IF
+           END SUBROUTINE GET_NAMES 
+        END SUBROUTINE ADD_TO_LIST
+        ...
+        END MODULE EFFICIENT_LINKED_LIST
+
+  Note that lists implemented using allocatable components appear to require
+  recursive subprograms to manipulate the list.
+  </EXAMPLE SYNTAX>
+
+  <ESTIMATED IMPACT>
+  None of the above additions has any impact on the conformance of existing
+  code.  They appear to have no impact on the performance of existing code.
+  The first addition is well localized and has a small impact on the language
+  reference and the design compilers, but the second addition has more
+  extensive impact on the language. Combined the two additions appear to have a
+  moderate to large impact on the language reference and the design of
+  compilers.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  William B. Clodius
+  phone: (505) 662-3243
+  email: Wclodius@aol.com
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>email received 13-Jan-1996
+  </HISTORY>
+
+  <SUGGESTED EDITING OF THE STANDARD>
+  The following is a suggested partial editing of the standard to include all
+  of the above modifications.  Because these modifications also interact with
+  the planned allocatable components of derived types and allocatable dummy
+  arguments, suggested edits for implementing allocatable dummy arguments and
+  components of derived types are also included.  It is based on the draft
+  Fortran 95 standard as published in the Fortran Forum in June 1995. A more
+  detailed final editing will, of course, eventually be necessary.  (Note it is
+  not clear to me whether it would be useful for the sake of syntactic
+  consistency, to have allocatable objects have the NULL() initialization
+  function of pointer objects.  This is not required under the present
+  semantics.)
+
+  Section 4.4.1 p. 38
+
+  replace lines 21-22 with
+
+  R424 component-attribute-spec is ALLOCATABLE
+       or POINTER
+       or DIMENSION ( component-array-spec ) 
+
+  
+  before line 38 add the constraint
+
+  Constraint:  An array shall not have both the ALLOCATABLE attribute and the
+  POINTER attribute.
+
+  
+  in the constraints on lines 38-42 insert "ALLOCATABLE or " before "POINTER"
+
+  
+  replace lines 43-46 with
+
+  Constraint:  If the ALLOCATABLE or POINTER attribute is specified, either the
+  component-array-spec will have a deferred-shape-spec-list, or the
+  char-len-parameter (5.1.1.5) value will have a deferred-len-param for each
+  entity in the component-decl-list with a component-array-spec, or
+  char-len-parameter value.
+
+  Constraint:  If the ALLOCATABLE or POINTER attribute is not specified, each
+  component-array-spec will have an explicit-shape-spec list, and each
+  char-len-parameter value will be a specification-expr.
+
+  
+  p.39 replace lines 2 and 3 with
+
+  R428 component-decl is component-name [ ( component-array-spec ) ] [ *
+  char-length ] [ component-initialization ]
+
+  
+  in line 8 after "expression (7.1.6.2)" add " or a deferred-len-param".
+
+  
+  after line 8 add
+
+  Constraint:  If the character length is a deferred-len-param, either the
+  ALLOCATABLE or POINTER attribute shall appear in the
+  component-attr-spec-list.
+
+  
+  p.40
+
+  add after line 7
+
+  A component is allocatable if its component-attr-spec-list contains the
+  ALLOCATABLE attribute. Allocatable entities have an allocation status of
+  allocated or unallocated.  The default allocation status of an allocatable
+  entity is unallocated.
+
+  
+  p. 42 line 1 replace "A pointer" with "An allocatable or pointer"
+
+  
+  replace lines 6-7
+
+  TYPE NODE
+     INTEGER :: VALUE
+     TYPE (NODE), ALLOCATABLE :: NEXT_NODE
+  END TYPE
+
+  OR
+
+  TYPE POINTER_NODE
+     INTEGER :: VALUE
+     TYPE (POINTER_NODE), POINTER :: NEXT_NODE => NULL()
+  END TYPE
+
+  Types such as these may be used to construct linked lists of OBJECTS of type
+  NODE and POINTER_NODE respectively.  Type NODE will typically have the best
+  run time efficiency as it does not have aliasing.  Type POINTER_NODE can be
+  useful if storage requirements are critical as the same object can be a value
+  for many POINTER_NODEs.  See C.13 for an example.
+
+  
+  p. 48
+
+  delete lines 1 and 2
+
+  
+  Section 5.1.1.5 p. 50 after line 36 add
+
+       or assumed-len-param
+
+       or deferred-len-param
+
+  An assumed-length entity is a non-allocatable/non-pointer dummy argument
+  entity that takes its length from the associated actual argument.
+
+  R510a assumed-len-param is :
+
+  A deferred-length entity is a character pointer or allocatable entity.
+
+  A character allocatable entity is a named character entity with the
+  ALLOCATABLE attribute.  When declared with a deferred-len-param, its length
+  is determined when space is allocated for the entity by execution by an
+  ALLOCATE statement (6.3.1), with the length attributes value associated in
+  with the LEN specifier in the ATTRIBUTES specifier.
+
+  A character pointer is a character entity with the POINTER attribute. When
+  declared with a deferred-len-param, its length is determined when it is
+  associated with a target by pointer assignment (7.5.2), or when space is
+  allocated for the entity by execution by an ALLOCATE statement (6.3.1), with
+  the length attributes value associated in with the LEN specifier in the
+  ATTRIBUTES specifier.
+
+  R510b deferred-len-param  is :
+
+  The length of an unallocated allocatable character entity declared with a
+  deferred-len-param is undefined.
+
+  The length of the target of a disassociated character pointer declared with a
+  deferred-len-param is undefined.  The length of such a character parameter
+  may be specified in two ways:
+
+  (1)  It is specified in an ALLOCATE statement (6.3.1) when the target is
+  allocated, or
+  (2)  It is specified in a pointer assignment statement.
+
+  The length of the character target or allocatable character entity is
+  unaffected by an subsequent redefinition or undefinition of variables
+  involved in the length.
+
+  
+  p. 51 after line 2 add
+
+  Constraint:  If the character length is a deferred-len-param, either the
+  ALLOCATABLE or POINTER attribute shall appear in the
+  component-attr-spec-list.
+
+  
+  p. 53, line 2 replace, " or a dummy pointer" with ", a dummy pointer, or a
+  dummy allocatable object,"
+
+  
+  Section 5.1.2.4.2 p. 54 line 41 after ", but " add "if declared with a
+  deferred shape specifier "
+
+  
+  p. 55, line 3 replace "deferred-shape-spec-list" with "combination of a
+  deferred-shape-spec-list or a deferred-len param.  The
+  deferred-shape-spec-list, if present, shall be declared".
+
+  line 4 add after "(5.2.8).", "The deferred-len-param, if present, shall be
+  declared in the CHARACTER type declaration statement.".
+
+  
+  line 8 after ", but " add "if declared with a deferred shape specifier "
+
+  
+  line 11 replace "shall" with "may"
+
+  
+  lines 15 and 20 before " are undefined" add  "if declared with a deferred
+  shape specifier "
+
+  
+  Section 5.1.2.7, p. 56 line 28-29 replace the last sentence "If the pointer
+  is ..." with "If the pointer is a scalar character object it shall be
+  declared with a deferred length.  If the pointer is a non-character array,
+  the array shall be declared with a deferred-shape-spec.  If the pointer is a
+  character array it shall have a deferred length or the array shall be
+  declared with a deferred-shape-spec."
+
+  
+  Section 5.1.2.9 p. 57 replace the paragraph on lines 2-4 with
+
+  "An object with the ALLOCATABLE attribute shall neither be referenced nor
+  defined unless space has been allocated for the object by execution of an
+  ALLOCATE statement (6.3.1).  If the allocatable object is a scalar character
+  object it shall be declared with a deferred length.  If the allocatable
+  object is a non-character array, the array shall be declared with a
+  deferred-shape-spec.  If the allocatable object is a character array it shall
+  have either a deferred length or the array shall be declared with a
+  deferred-shape-spec.  The full shape and length of the object may only be
+  determined when space has been allocated for the object by execution of an
+  ALLOCATE statement."
+
+  
+  Section 6.1.2 p.73 replace line 5 with
+
+  R613 part-ref  is [ part-name ] [( section-subscript-list ) ]
+
+  
+  Section 6.3 p. 77 line 22 replace the word "arrays" with the word "objects"
+
+  
+  Section 6.3.1 p. 77 line 27 replace the word "arrays" with the word "objects"
+
+  
+  replace line 30 with
+
+  R624 allocation is allocate-object, [ ( allocate-spec-list ) ] [ *
+  char-length ]
+
+  
+  after line 35 add
+
+  R628b char-length is scalar-int-expr
+
+  
+  in line 36 replace the word "array" with the word "object"
+
+  
+  after line 36 add the constraints
+
+  Constraint:  An allocate-spec-list shall appear if the object was declared
+  with a deferred array-spec-list.
+
+  Constraint:  An allocate-spec-list shall not appear if the object was not
+  declared with a deferred array-spec-list.
+
+  Constraint:  An * char-length shall appear if the object is a character
+  object declared with a deferred char-length.
+
+  Constraint:  An * char-length shall not appear if the object is not a
+  character object declared with a deferred char-length.
+
+  
+  Section 6.3.1.1 p. 78 lines 20-26, replace every occurrence of the word
+  "array" with the word "object"
+
+  
+  Section 6.3.1.2 p. 78 lines 27-43, replace every occurrence of the word
+  "array" with the word "object"
+
+  
+  Section 6.3.1.2 p. 79 lines 1-5, replace every occurrence of the word "array"
+  with the word "object"
+
+  
+  Section 6.3.3 p. 80 lines 11 and 14, replace every occurrence of the word
+  "array" with the word "object"
+
+  
+  Section 6.3.3.1 p. 80 lines 29-42, replace every occurrence of the word
+  "array" with the word "object"
+
+  
+  Section 6.3.3 p. 81 line 4, replace the word "array" with the word "object"
+
+  
+  Section 12.4.1.1 before line 38 add the paragraph
+
+  If the dummy argument is an allocatable object, the actual argument shall be
+  either an allocatable object or a pointer and the types, type parameter, and
+  ranks shall agree.  At the invocation of the procedure, the dummy argument
+  receive the allocation status of the actual argument.  If the actual argument
+  is currently allocated, the dummy argument becomes associated with the same
+  object.  The allocation status may change during the execution of the
+  procedure, and may become undefined (14.7.6).
+
+  
+  Section 12.6 p. 211-212 replace every occurrence of "POINTER attribute" with
+  "ALLOCATABLE or POINTER attributes"
+
+  
+  Section 12.7 p. 212 lines 45-46 replace every occurrence of "POINTER
+  attribute" with "ALLOCATABLE or POINTER attributes"
+
+  
+  Section 13.11.15 p 223, delete line 27
+
+  
+  p 224 before Section 13.11.20 line 8 add the section
+
+  13.11.19a Object allocation status functions
+
+  ALLOCATED(OBJECT)  Object allocation status
+
+  
+  Section 13.4.9 p 228 lines 20-26 replace every occurrence of the words
+  "ARRAY" and "array" with "OBJECT" and object respectively.
+
+  
+  Annex A p 289 replace lines 12-13 with
+
+  allocatable object (5.1.2.4.3): A named object having the ALLOCATABLE
+  attribute.  Only when it has space allocated for it may it be referenced or
+  defined.  If it is an array, only when it has space allocated for it does it
+  have a shape.
+  </SUGGESTED EDITING OF THE STANDARD>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 085
+  <TITLE>  Allow Separate Accessibility Attributes for Derived Type Components
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION> 1
+
+  <NOTE>
+  Related to pFR 33 (Object Oriented Fortran, OOF),
+             pFR 43 (OOP Capabilities),
+             pFR 54 (Complete Set of Explicit Attributes),
+             N970-18 (Object Oriented Programming),
+             Draft NP for TR2 on Data type enhancements.
+  </NOTE>
+
+  <REQUIREMENT>
+  Allow the developer of a module to specify a finer degree of control over the
+  accessibility of components of a derived type as declared in a module.
+  Specifically, allow the developer to indicate that certain components of
+  variables of derived-type when accessed by use association may not be defined
+  or redefined, although other components when accessed by use association may
+  be defined or redefined. An example of a possible syntax is shown after the
+  suggested implementation.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  Currently the components of PUBLIC types are either  accessible when the
+  module containing the type is used, the default, or none of them are
+  accessible, if a PRIVATE statement is included in the type definition. This
+  can lead to awkward or inefficient derived type implementations. The best
+  example of this is a data object some of whose values should only be changed
+  through the type interface, but other values can be safely modified by the
+  user. The default does not garantee consistent use of the interface. If a
+  PRIVATE statement is included, then use of procedures must be used to access
+  any component. It is difficult, in the second case, to optimize away the
+  procedure overhead implied by the resulting semantics, and the creation of
+  the procedure is an unnecessary burden on the programmer.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  The components of a derived type should be defined with a syntax as similar
+  as possible to that of module specification part. An access statement near
+  the beginning of the derived type definition defines the default, while an
+  access specifier in a component definition statement defines the specific
+  accessibility of the components defined by the statement.
+  </SUGGESTED IMPLEMENTATION>
+
+  <PRECEDENTS>
+  The use of detailed component accessibility specification has been used in
+  several object oriented languages, in particular, e.g., Eiffel, Sather, and
+  C++. It has consistently proved useful in such languages.
+  </PRECEDENTS>
+
+  <ESTIMATED IMPACT>
+  Small. The amount of text in the standard that needs to be revised appears to
+  be well localized. Implementors already have to make a semantic distinction
+  between used and local variables, and intrinsic and derived types, and place
+  restrictions depending on these restrictions.  They should have no impact on
+  the efficiency or compatibility of heritage code.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  William B. Clodius
+  phone: (505) 662-3243
+  email: Wclodius@aol.com
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>email received on 15-Jan-1996 
+  </HISTORY>
+
+  <SUGGESTED EDITING OF THE STANDARD>
+  The following is a suggested partial editing of the standard to allow
+  accessibility distinctions between different components of a derived type. It
+  is based on the draft Fortran 95 standard as published in he Fortran Forum in
+  June 1995. A more detailed final editing will, of course, eventually be
+  necessary.
+
+  ----- replace 4.4.1 ----- line 16, p. 38: replace "[ private-sequence-stmt ]"
+  with "[ access-sequence-stmt ]"
+
+  ----- lines 21-22, p. 38: replace with
+
+  R424 access-sequence-stmt   is component-access-stmt
+                              or SEQUENCE
+
+  R424a component-access-stmt  is PRIVATE
+                               or PUBLIC
+
+  ----- line 23, p. 38: replace "PRIVATE statement" with "component access
+  statement"
+
+  ----- p. 38: Add the following to the constraints after R424
+
+  Constraint:  A component-access-stmt shall not appear more than once in a
+  given derived-type-def.
+
+  Constraint:  A component-access-stmt shall not appear if the access-spec of
+  the type is PRIVATE.
+
+  ----- lines 31-32, p. 38: replace R426 with
+
+  R426 component-attr-spec is access-spec
+   or POINTER  
+   or DIMENSION ( component-array-spec )  
+
+  ----- p. 38: Add the following to the constraints after R427
+
+  Constraint:  An access-spec shall not appear if the access-spec of the type
+  is PRIVATE.
+    
+  ----- lines 19-23, p. 38:  This paragraph shall be replaced by
+
+  Each component of a derived type has associated with it an accessibility
+  attribute (5.1.2.2).  If a component has the PRIVATE attribute, the component
+  name is accessible only within the module which contains the derived type
+  definition, even if the type itself is public (5.1.2.2).  The component name
+  is inaccessible in any scoping unit accessing the module via a USE statement.
+   The structure constructor for a type that contains private components shall
+  be employed only within the defining module.
+
+  The accessibility attribute is associated with a component in several ways.
+   All components of a derived type whose derived type statement has a PRIVATE
+  access-spec have the PRIVATE attribute.  Components of a derived type whose
+  derived type statement has a PUBLIC access-spec can have either the PRIVATE
+  or PUBLIC attribute.  If the component-def-stmt has an access-spec then its
+  accessibility attribute is that given by the access-spec.  A
+  component-access-stmt specifies the default accessibility that applies to all
+  components of the derived type.  The statement
+
+  PUBLIC
+
+  specifies a default of public accessibility.  The statement
+
+  PRIVATE
+
+  specifies a default of private accessibility.  If no such statement appears
+  in a derived type whose derived type statement has a PUBLIC access-spec, the
+  default is public accessibility.
+  </SUGGESTED EDITING OF THE STANDARD>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 086
+  <TITLE>  STREAM I/O
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION> 1
+  
+  <REQUIREMENT>
+  A extension to the OPEN statement to enable "byte stream" I/O on that logical
+  unit. 
+  </REQUIREMENT>
+  
+  <JUSTIFICATION>
+  C-style "byte stream" has become a de facto standard far beyond the direct
+  scope of the C environment. In a scientific application it is not surprising
+  to have a sensor feeding a stream of data to a processor which in turn feeds
+  the results over a heterogeneous network for additional processing. Fortran
+  record structure provides the user with an obstacle to overcome in this
+  scenario (the processors may not have the same record conventions (even when
+  the CPU architecture is the same), etc.) 
+  
+  A special specifier on the OPEN statement to provide (formatted or
+  unformatted, direct or sequential) stream I/O. It is intended that such I/O
+  be compatible with that processors equivalent C environment. 
+  </JUSTIFICATION>
+  
+  <IMPLEMENTATION>
+  A possible implementation might look like:
+  
+  	OPEN (unit=5, file = "stdin", form = "formatted", style = "stream")
+   
+  As there will be no record information stored, BACKSPACE will be prohibited
+  on this unit. There may well be other limitations. 
+  
+  (Note: this is not the same as non-advancing I/O. In that case, there is a
+  record structure, even if the programmer only  operates on  a single record
+  during an entire run. Though the difference may be moot in some operating
+  environments, it may be critical in others. In addition, the extra record
+  information could present difficulties to other Fortran processors or to
+  processors other than Fortran.) 
+  </IMPLEMENTATION>
+  
+  <SUBMITTED BY>
+  Keith Bierman, X3J3
+  </SUBMITTED BY> 
+  
+  <HISTORY> 
+  <EVENT> Feb-1996, meeting 136, paper 96-044
+  </HISTORY> 
+  
+  </FORTREQ> 
+  
+  ------------------------------------------------------------------------------
+  
+  <FORTREQ>
+  <NUMBER> 087
+  <TITLE>  Volatile
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION> 1
+  
+  <REQUIREMENT>
+  A new data attribute, volatile, to allow a user to instruct the processor
+  that a variable may have its value changed at any time by means other
+  than Fortran. 
+  </REQUIREMENT>
+  
+  <JUSTIFICATION>
+  When writing device drivers and for some forms of shared memory, it is
+  necessary to treat some memory as "volatile" that is it may be changed by
+  means other than Fortran at "any" time. Some implementations have a special
+  declaration "VOLITILE" which notifies the processor that the variable in
+  question must be treated specially (especially by the optimizer). That
+  implementations have seen fit to provide such facilities for many years,
+  suggests that there is a legitimate need. 
+  
+  Note that while it can be argued that device driver style code is inherently
+  non-portable, shared memory (at least on a family of operating systems) is
+  often portable across processors. 
+  </JUSTIFICATION>
+  
+  <SUBMITTED BY>
+  Keith Bierman, X3J3
+  </SUBMITTED BY> 
+  
+  <HISTORY> 
+  <EVENT> Feb-1996, meeting 136, paper 96-044
+  </HISTORY> 
+  
+  </FORTREQ> 
+  
+  ------------------------------------------------------------------------------
+  
+  <FORTREQ>
+  <NUMBER> 088
+  <TITLE>  User specified precedence
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION> 1
+  
+  <REQUIREMENT>
+  A method to allow users to specify operator precedence rules for user
+  specified operations on derived types. 
+  </REQUIREMENT>
+  
+  <JUSTIFICATION>
+  It is unhelpful to offer users the ability to extend their system to have new
+  datatypes and operations, but to have no control over operator precedence. It
+  is implausible for projects such as INTERVAL ARITHMETIC to establish their
+  interfaces as good candidates for eventual standardization if the prototypes
+  cannot look and feel as if they are part of the language. 
+  </JUSTIFICATION>
+  
+  <SUGGESTED IMPLEMENTATION>
+  (Note: It has been suggested that the built in arithmetic operators should
+  retain their precedence rules for derived types, this would limit this new
+  feature to user defined operators of the .op. form. This may be acceptable,
+  but it should be noted that not all mathematical datatypes/operators have the
+  same mathematical properties. It would be nice if Fortran could reflect
+  this). 
+  
+  At the point at which a user defined operator is defined, a user specified
+  precedence could be assigned, something of the form: 
+  
+  	..., PRECEDENCE =n
+  
+  where n is an integer constant, where 1 has the highest precedence and each
+  larger value is lower. Ties to be broken using a simple left to right rule. 
+  </SUGGESTED IMPLEMENTATION>
+  
+  <SUBMITTED BY>
+  Keith Bierman, X3J3
+  </SUBMITTED BY> 
+  
+  <HISTORY> 
+  <EVENT> Feb-1996, meeting 136, paper 96-044
+  </HISTORY> 
+  
+  </FORTREQ> 
+  
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 089
+  <TITLE>  Generic pointers
+  <KEYWORDS> POINTER, GENERIC, OBJECT ORIENTED, POLYMORPHISM
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP> /OOF
+  <VERSION> 1
+
+  <REQUIREMENT>
+  Allow a generic pointer, which could point to targets of
+  multiple types.  The set of allowed target types is
+  specified at compile time.
+
+  To simplify both the descriptive model and the implementation,
+  the set of allowed operations with generic pointers is
+  restricted.  The general restriction is that a generic
+  pointer can not be used in any context that requires
+  a reference to the target.  The only things allowed with
+  such a pointer would be nullification, pointer assignment,
+  and argument passing.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  It is very common to define procedures that conceptually
+  apply to any data type and that need know virtually nothing
+  about the details of a data type; all they need to know is
+  how to point to an object of such a type.  Classic examples
+  of such procedures include ones implementing stacks, lists,
+  trees, and other such data structures.  A single program
+  might well want to apply such a procedure to many different
+  types.
+
+  For example, I have a module that is used to associate names with
+  objects.  (These names are run-time-defined character values, not
+  variable names known at compile time).  Several thousand objects
+  of a given type might exist in a run of the program.  Each object
+  is assigned a name when it is created at run-time.  One procedure
+  in the module is called to "associate" the object with the name.
+  The user can then later reference the object by name; another
+  procedure in the module is used to return a pointer to the
+  object of a specified name.  There are about a dozen different
+  types of objects which use this naming service.
+
+  This is a basic form of polymorphism that could be achieved
+  with a generic pointer.  Pointer assigment or argument
+  association would be used to "transfer" between the generic
+  pointers and regular, specifically typed pointers.
+
+  With f95, such polymorphism is extremely awkward.  I can come
+  up with 3 general approaches, but none of them are satisfactory.
+
+  One approach is to just write N copies of the desired code,
+  where N is the number of types to be handled.  The N copies
+  can define specific versions of a generic procedure.  This
+  approach is awkward enough when there are "only" a dozen
+  or so versions needed as in my application; the problem
+  rapidly expands as soon as there can be combinations of
+  types involved.  In addition to the code maintenance
+  problems, this approach ends up with needless duplication
+  of virtually identical executable code.
+
+  Another approach, suggested in several of the f90 textbooks, is
+  to make use of the TRANSFER intrinsic.  I've tried this. The code
+  necessary to actually do it is incredibly complicated and
+  obscure.  I have to wonder if those people recommending this have
+  never actually tried it (and without making the non-standard
+  assumption that pointers to different types were always the same
+  physical size, which f95 specifically says need not be the case).
+  The code to do this is so ugly that I'll not try to include it
+  here; I've done a sample as a separate paper.  I don't think anyone
+  will ever point to it as a reasonable approach.  Additionally,
+  such code makes semantic assumptions about the effects of
+  TRANSFER that are not really guaranteed by the standard; it also
+  almost invariably breaks garbage collectors.
+
+  The third approach is to "punt" back to Fortran 77 style
+  and use array indices instead of pointers.  This basically
+  takes advantage of the fact that the same integer type can
+  be used as an index into an array of any type.  This approach
+  can be made to work (witness lots of F77 code), but is pretty
+  restrictive in many ways, and can cause performance problems
+  (if you keep having to resize arrays because you don't know
+  ahead of time how many objects of the type you will need).
+
+  All of the above approaches strike me as being "object-hostile"
+  instead of object oriented.  That they can be made to work at
+  all just reflects the cliche that you can write code to do
+  almost anything in almost any language - but you probably
+  wouldn't want to.  Generic pointers would provide a relatively
+  simple way to make at least this limitted form of object
+  orientation viable in Fortran.
+  </JUSTIFICATION>
+
+  <IMPLEMENTATION>
+  The restrictions placed on generic pointers allow processors
+  to avoid the issues of binding.  A processor never really
+  needs to know what the actual type of the target is.  The
+  processor may keep track of the type of the target at run
+  time to check for user errors, but this is not required
+  (much like a processor may check for exceeding array bounds,
+  but it is not required).
+
+  The following are preliminary concepts of the limitations
+  placed on generic pointers.
+
+  A generic pointer can be pointer-assigned to point to a target
+  of any of the specific types for the generic; rank agreement is
+  required.  A pointer assignment statement of the form
+
+     specific-pointer => generic-pointer
+
+  can be executed only if generic-pointer is either disassociated
+  of is associated with a target of the same type as specific-pointer.
+  Note that the only way to dereference a generic pointer is to
+  pointer-assign a specific pointer to it and then dereference
+  the specific pointer.
+
+  A generic pointer could appear as an actual or dummy argument;
+  the corresponding dummy or actual argument would have to be a
+  pointer of the same rank, but could be of any of the specific
+  types for the generic.  While a generic pointer dummy argument
+  is associated with a specific pointer actual argument, it
+  may become pointer-associated only with targets of the
+  type of the actual argument.  If a generic pointer actual
+  argument is associated with a specific pointer dummy argument,
+  the initial association status of the dummy argument is
+  undefined if the generic pointer points to a target of
+  an inappropriate type (this last rule could be strengthened
+  to disallow the mismatch in the first place; that would
+  force users to nullify generic pointers before using them
+  as actual arguments in some cases).
+  </IMPLEMENTATION>
+
+  <SUBMITTED BY>
+  Richard Maine, maine@altair.dfrc.nasa.gov
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT> Feb 96, Meeting 136: Submitted as X3J3/96-046
+  </HISTORY>
+
+  </FORTREQ>
+
+ -------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 090
+  <TITLE>  Optional "START" Statement
+  <KEYWORDS>     
+  <STATUS> Registered
+  <TARGET>  
+  <SUBGROUP>     
+  <VERSION> 1
+
+  <REQUIREMENT>
+       Allow an optional start statement between data declarations and 
+  executable statements and constructs.  This statement must follow PARAMETER
+  statements, derived-type definitions, interface blocks, type declaration
+  statements, specification statements, and statement function statements.
+  This statement must precede executable constructs.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+       This feature would improve readability and may marginally improve 
+  compiler performance.  I expect that it would be required in educational
+  environments.  It provides a compiler check that a similar comment line
+  would not give.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+
+       The statement would take the form of:
+
+            START [program-class [name] ]
+
+  where the program-class is PROGRAM, SUBROUTINE, or FUNCTION.  The syntax
+  should be similar to the END statement.  name, if present, must match the
+  name of the program, subroutine, or function.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+       Loren Meissner, Professor of Computer Science
+       University of San Francisco
+       meissner@usfca.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>   February 1996, meeting 136: submitted 96-042
+  </HISTORY>
+
+  </FORTREQ>
+
+ -------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 091
+  <TITLE>  Extend MAX, MIN, etc. to CHARACTER Data Type
+  <KEYWORDS>     
+  <STATUS> Registered
+  <TARGET>  
+  <SUBGROUP>     
+  <VERSION> 1
+
+  <REQUIREMENT>
+       Extend the intrinsic functions MAX, MIN, MAXVAL, MINVAL, MAXLOC, 
+  and MINLOC to accept arguments of CHARACTER data type.  
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+       Regularity is the primary reason for this requirement.  These 
+  intrinsic functions accept arguments of two other intrinsic data types,
+  REAL and INTEGER.  Accepting this proposal would recognize first class
+  status of the CHARACTER data type and would extend these functions to all
+  intrinsic data types for which they would make sense.
+
+       This requirement would considerably simplify the implementation of 
+  generic sort algorithms that are sometimes applied to CHARACTER data.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  </ESTIMATED IMPACT>
+  
+  <SUBMITTED BY>
+       Loren Meissner, Professor of Computer Science
+       University of San Francisco
+       meissner@usfca.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>   February 1996, meeting 136: submitted 96-042
+  </HISTORY>
+
+  </FORTREQ>
+
+ -------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 092
+  <TITLE>  Permit (LEN=*) for Initialized CHARACTER Variables
+  <KEYWORDS>     
+  <STATUS> Registered
+  <TARGET>  
+  <SUBGROUP>     
+  <VERSION> 1
+
+  <REQUIREMENT>
+       Permit (LEN=*) designation for initialized CHARACTER variables 
+  with the specific length to be determined from the initialization expression.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+       This feature would primiarily benefit programs in which all string 
+  values have the same actual length with padding or truncation occurring
+  rarely.  It simplifies program construction because it is not necessary to
+  count characters in the initialization expression.  It adds a bit of
+  regularity in analogy with PARAMETERs of CHARACTER type.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+       Loren Meissner, Professor of Computer Science
+       University of San Francisco
+       meissner@usfca.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>   February 1996, meeting 136: submitted 96-042
+  </HISTORY>
+
+  </FORTREQ>
+
+ -------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 093
+  <TITLE>  Extend Non-advancing I/O to List-Directed I/O
+  <KEYWORDS>     
+  <STATUS> Registered
+  <TARGET>  
+  <SUBGROUP>     
+  <VERSION> 1
+  <REQUIREMENT>
+       Permit list-directed formatting with the ADVANCE="NO" specifier.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+       This feature adds regularity.  It simplifies frequently occurring 
+  operations where parts of an output record are generated in successive
+  statements by permitting it to be list-directed.  It also permits input
+  from a single record to occur in separate statements.  In this latter case,
+  the input might include tests based on the first part of the input data.
+
+       Proof that this would be feasible can be found in most freshman 
+  Pascal programs.  In such programs, the most common I/O operation is
+  equivalent to Fortran list-directed non-advancing.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+       Loren Meissner, Professor of Computer Science
+       University of San Francisco
+       meissner@usfca.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>   February 1996, meeting 136: submitted 96-042
+  </HISTORY>
+
+  </FORTREQ>
+
+ -------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 094
+  <TITLE>  Extend Initialization of COMPLEX Variables
+  <KEYWORDS>     
+  <STATUS> Registered
+  <TARGET>  
+  <SUBGROUP>     
+  <VERSION> 1
+
+  <REQUIREMENT>
+       Permit initialization of COMPLEX constants with named constant in 
+  either part.  Alternatively, permit the intrinsic function CMPLX in
+  initialization expressions.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+       Applications which make extensive use of conplex numbers need 
+  maximum flexibility to permit suitable programming style.  Such applications
+  occur in a wide variety of fields such as electrical engineering, as seen in
+  the example below.
+
+       The current standard requires 
+
+            REAL, PARAMETER     :: Omega = 1.23E6
+            COMPLEX             :: J_Omega = (0.0, 1.23E6)
+
+  which means that the same constant must be declared twice, once real 
+  and again in the imaginary part of the complex constant.  This could lead to
+  inadvertent programming errors.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+       The first method would allow the following syntax:
+
+            REAL, PARAMETER     :: Omega = 1.23E6
+            COMPLEX             :: J_Omega = (0.0, Omega)
+
+       The alternative method would allow the following syntax:
+
+            REAL, PARAMETER     :: Omega = 1.23E6
+            COMPLEX             :: J_Omega = CMPLX (0.0, Omega)
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+       Loren Meissner, Professor of Computer Science
+       University of San Francisco
+       meissner@usfca.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>   February 1996, meeting 136: submitted 96-042
+  </HISTORY>
+
+  </FORTREQ>
+
+ -------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 095
+  <TITLE>  Lower Case Syntax Elements
+  <KEYWORDS>    
+  <STATUS> Registered
+  <TARGET> 
+  <SUBGROUP>    
+  <VERSION> 1
+
+  <REQUIREMENT>
+  A Fortran processor should recognize the use of lower case letters in all
+  Fortran syntax elements. This should include all keywords and symbolic names.
+  In all cases the use of lower case letters should be equivalent to upper case
+  letters except in a character context (i.e., Fortran syntax would continue to
+  be case insensitive).  There may be a need for a second exception as part of
+  the functionality needed to implement interoperability with C. 
+
+  Examples in the standard should include mixed case syntax.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  The need to restrict syntax elements to upper case letters is a relic from
+  the 1960s.  Up until the early 1980s, some machines did not support lower
+  case letters in their character sets.  Now, such a restriction is no longer
+  necessary; all platforms with a Fortran 90 processor include support for
+  lower case letters. 
+
+  Removing the upper case only restriction would allow programmers to write
+  more visually appealing code.  All other major languages already support
+  lower case letters in their syntax elements. 
+
+  Removing this restriction would help remove the image that Fortran still has
+  of being a "Stone Age" relic. 
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  All that would be necessary would be to make the appropriate edits to 
+  the text in section 3.1.1.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  Minimal.  Almost all modern Fortran processors already support mixed 
+  case syntax elements as an extension.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  Craig T. Dedo
+  17130 W. Burleigh Place
+  Brookfield, WI   53005
+  (414) 783-5869
+  E-mail:  Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+  ISO/IEC 1539:1991 (E)  3.1.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>  February 1996, meeting 136: submitted 96-049
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 096
+  <TITLE>  Any Kind of Integer for I/O Specifiers
+  <KEYWORDS>    
+  <STATUS> Registered
+  <TARGET> 
+  <SUBGROUP>    
+  <VERSION> 1
+
+  <REQUIREMENT>
+  I/O specifiers which use INTEGER data objects should be able to use any kind
+  of INTEGER which is defined on the processor.  The current restriction which
+  requires the use only of default INTEGER data objects should be removed. 
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  Recent e-mail discussion brought attention to the fact that that the Fortran
+  90 standard permits any kind of integer for some I/O keywords while it
+  requires the use of default integer data objects for other I/O keywords. 
+  This is an unnecessary irregularity. 
+
+  Some Fortran processors use a default integer size of 4 bytes (32 bits)
+  always but also allow the user to specify an 8 byte (64 bit) integer data
+  object.  Other Fortran processors also support 8 byte integers but offer the
+  user a choice of a default integer size of either 2 bytes or 4 bytes.  On
+  these processors, certain large size I/O operations (i.e., those with a
+  number of records or a record size greater than 2.147 billion) are more
+  difficult than they need to be.  Although workarounds are possible, they are
+  clumsy and error prone. 
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  Replace scalar-default-int-variable with scalar-int-variable wherever it
+  occurs in connection with an I/O specifier. 
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  Minimal.  Many Fortran processors already support this feature as an 
+  extension.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  Craig T. Dedo
+  17130 W. Burleigh Place
+  Brookfield, WI   53005
+  (414) 783-5869
+  E-mail:  Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>  February 1996, meeting 136: submitted 96-049
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 097
+  <TITLE>  Standardized and Unique KIND Numbers
+  <KEYWORDS>    
+  <STATUS> Registered
+  <TARGET> 
+  <SUBGROUP>    
+  <VERSION> 1
+
+  <REQUIREMENT>
+  The next Fortran standard should require that certain KIND numbers always
+  represent specific representations of data types. 
+
+  If unsigned integers become part of Fortran, they should also have the same
+  standard KIND numbers as the same sized signed integers. 
+
+  The standard should also reserve certain ranges of KIND numbers for use by
+  future Fortran standards while reserving other ranges for processor dependent
+  data representations. 
+
+  All KIND number assignments to data representations should be unique; i.e.,
+  for a particular intrinsic data type, there should be a one-to-one
+  correspondence between KIND numbers and data representations. 
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  Portability is the main reason for this feature.  An application programmer
+  who uses one of the standardized KIND numbers can be guaranteed that the
+  standard KIND will behave the same regardless of processor. 
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  As a first proposal, the standard should assign KIND numbers to data type 
+  representations as follows:
+
+  Data Type     KIND   Representation
+
+  LOGICAL       1      8 bit logical
+  INTEGER       1      8 bit signed integer
+  INTEGER       2      16 bit signed integer
+  INTEGER       4      32 bit signed integer
+  INTEGER       8      64 bit signed integer
+  REAL          4      32 bit IEEE representation
+  REAL          8      64 bit IEEE representation
+  REAL          16     128 bit IEEE representation
+  COMPLEX       4      32 bit IEEE representation each for real and imaginary 
+                        parts
+  COMPLEX       8      64 bit IEEE representation each for real and imaginary 
+                        parts
+  COMPLEX       16     128 bit IEEE representation each for real and imaginary 
+                        parts
+  CHARACTER     1      ASCII 
+  CHARACTER     2      ISO 10646 (2 byte), a.k.a. Unicode
+  CHARACTER     3      C language character set (8 bit)
+
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  This feature should have minimal to moderate impact.  Most of the proposed
+  KIND number assignments are already in use in most Fortran 90 processors.  A
+  few vendors will have to change the KIND numbers of their non-IEEE
+  representations in order to satisfy the uniqueness requirement. 
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  Craig T. Dedo
+  17130 W. Burleigh Place
+  Brookfield, WI   53005
+  (414) 783-5869
+  E-mail:  Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>   February 1996, meeting 136: submitted 96-049
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 098
+  <TITLE>  Required INTEGER and LOGICAL Kinds
+  <KEYWORDS>  
+  <STATUS> Registered
+  <TARGET>  
+  <SUBGROUP>  
+  <VERSION> 1
+
+  <REQUIREMENT>
+  The new Fortran standard should require Fortran processors to support one
+  kind of LOGICAL and four kinds of INTEGER data objects, as shown in the
+  following table.  If unsigned integers become part of Fortran, they should
+  also be supported in the same manner as for signed integers. 
+
+  Data Type KIND Representation
+
+  LOGICAL   1    8 bit logical
+  INTEGER   1    8 bit signed integer
+  INTEGER   2    16 bit signed integer
+  INTEGER   4    32 bit signed integer
+  INTEGER   8    64 bit signed integer
+
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  This feature will greatly aid portability.  An application programmer who
+  uses one of the required kinds can be guaranteed that the standard kind will
+  be available regardless of processor. 
+  </JUSTIFICATION>
+
+  <ESTIMATED IMPACT>
+  Minimal.  Some vendors may have to develop support for one of the kinds on
+  the list.  In some cases the hardware will not support one of the kinds so
+  the processor will have to emulate the kind in software. 
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  Craig T. Dedo
+  17130 W. Burleigh Place
+  Brookfield, WI   53005
+  (414) 783-5869
+  E-mail:  Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>   February 1996, meeting 136: submitted 96-049
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 099
+  <TITLE>  Include "Sets" and "Subsets"
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION> 1
+
+  <NOTE>
+  Related to pFR 1 (Bit Data Type, Non-string)?,
+             pFR 12 (Condition Handling),
+             pFR 17 (Bit Data Type, String),
+             pFR 33 (Object Oriented Fortran),
+             N970-5 (Exception Handling),
+             N970-11 (Aliasing Type Definitions),
+             N970-14 (Parameterized Derived Types),
+             N979-18 (Object Oriented Programming),
+             Draft NP for TR2 on Data type enhancements.
+  </NOTE>
+
+  <REQUIREMENT>
+  Provide a means of specifying a collection of objects, and other collections
+  that may only contain a subset of that collection of objects, or collections
+  that contain a superset of that collection of objects.  Collections that are
+  subsets of the same collection should be allowed the normal binary set
+  operations, e.g., union, disjoint union, difference, symmetric difference,
+  intersection, and inquiries as to whether one is a subset or superset of the
+  other, or whether the sets are equivalent. Elements of a set and subsets of
+  the set should be subject to the operations of element insertion, element
+  deletion, and inquiries as to whether the element is also an element of the
+  subset.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  The concept of set is intrinsic to many aspect of programming languages,
+  e.g., type systems, and many problems addressed by programming languages.
+  Typically this concept is implicit in programming languages, but some
+  languages have benefited by explicitly including the concept, e.g., SETL and
+  the set types of Modula 3.  Fortran would benefit in several ways by
+  explicitly including the set concept.  Direct benefits could include serving
+  as the basis of an exception handling mechanism, implementing the
+  capabilities of bit data types, providing the capabilities of the
+  enumerations of other languages in a safer form, providing a type with a KIND
+  value that can map to some implementations of C's enums, and as a means of
+  expressing typed polymorphism.  It would benefit Fortran indirectly by
+  serving as a reminder to those involved with the language of the set basis of
+  every programming language.
+
+  The question might arise as to whether the inclusion of sets in the language
+  is the best means of obtaining the desired benefits.  Of the noted
+  applications, only the bit data type appears to be implementable as a library
+  or user defined module.  The other applications typically involve name
+  recognition or syntax of a form that must be implemented either by a compiler
+  or by a preprocessor.  Although these capabilities can individually be made
+  part of the language with their set relationship invoked abstractly if at
+  all, if more than one or two of these capabilities are to be added to the
+  language it appears to be simpler to give the language an overall framework
+  for their description.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  There are at least two ways Fortran would benefit by incorporating the set
+  concept.  One is as a special form of user defined type, defining a finite
+  set of values, the other is as an entity attribute, which defines an entity
+  that may contain more than one value of a type.  It is simplest to restrict
+  the second concept to subsets of a type defined via the first concept, as
+  that avoids any problems associated with dealing with very large value sets,
+  e.g., INTEGERs and REALs.  This is similar to the set concept of Modula 3.
+
+  Both implementations should be subject to the normal operations of sets,
+  e.g., union, disjoint union, difference, symmetric difference, intersection,
+  inquiries as to whether one set is a subset, superset, or equivalent to
+  another, element insertion, element deletion, and inquiries as to whether the
+  element is also an element of the set.  However, unlike normal sets, which
+  may contain any object and hence are considered untyped, for efficiency and
+  type safety the syntax and semantics should restrict the possible contents of
+  the sets so that the sets can be considered typed objects.  It should also be
+  possible to index arrays with elements of set.
+
+  It is possible that Fortran would also benefit from sets of entities, similar
+  to SETL's implementation of sets.  In particular such sets would facilitate
+  some forms of parallelization.  However, inclusion of that capability would
+  have much larger impact, both on the language and on compilers and should
+  only be considered after other approaches have failed.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  The impact on the efficiency or compatibility of heritage code should be
+  negligible.  The effect on the text of the standard and compilers can be
+  anywhere from very small, if the sets are confined to user defined types, to
+  moderate, if subsets are made an attribute of entities of such user defined
+  types, to very large if subsets of large value sets or of sets of entities
+  are added to the language.
+  </ESTIMATED IMPACT>
+
+  <REFERENCES>
+  William B. Clodius, "Comments on sets and their inclusion in Fortran,"
+  X3J3/96-060.
+
+  J.M. Sipelstein and G.E. Blelloch, "Collection-Oriented Languages," Carnegie
+  Mellon University, School of Computer Science report, CMU-CS-90-127, March
+  18, 1991.
+
+  W. Kirk Snyder, "The SETL2 Programming Language," Technical Report 490,
+  Courant Institute of Mathematical Sciences, New York University, September 9,
+  1990.
+
+  Samuel P. Harbison, "Modula-3." pp. 92-97, Prentice-Hall, Engelwood Cliffs,
+  New Jersey, 1992.
+  </REFERENCES>
+
+  <SUBMITTED BY>
+  William B. Clodius
+  phone: (505) 662-3243
+  email: Wclodius@aol.com
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>email received on 13-Mar-1996
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 100
+  <TITLE>  Implementing an Arbitrary Number of Nested DO Loops
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION> 1
+
+  <REQUIREMENT>
+  Permit a programmer to use an instruction allowing implementation
+  of an ARBITRARY number of nested DO loop statements.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  Usually, any problem which needs a given number of nested DO statements
+  in the current compilers cannot be programmed in a general manner, unless
+  a convenient algorithm is used. The users cannot simply program an
+  expression, called a NESTED SUMMATION SYMBOL (NSS), like:
+
+       (summation from j1) (summation from j2) ... (summation from jn),
+
+  being n a variable. The aim of a NESTED DO LOOP (NDL) statement is to
+  provide automatic Fortran implementation of this kind of general
+  instruction.  This statement is more universal than the FORALL one. A NDL
+  sentence is fully parallellizable.
+  </JUSTIFICATION>
+
+  <ESTIMATED IMPACT>
+  All Fortran users can benefit of a sentence like that. Fortran, at this 
+  moment, has not a direct capability to implement algorithms involving a
+  variable number of DO loops. Providing an automatic way to program such a
+  sentence will ease the implementation of many mathematical, physical, che-
+  mical, and many other problems related to nested sums.
+  This feature should be a Fortran standard because it provides in a unique
+  sentence the possibility to translate a wide variety of mathematical formu-
+  lations.
+  The implementation costs of satisfying this requirement cannot be very big,
+  because once the FORALL sentence is already accepted, then a small modifica-
+  tion will tremendously enhance the existing and new codes.
+  The impact of including NESTED DO LOOP sentences will be so wide that it 
+  will encompass all the hardware supports, from sequential to parallell 
+  machines.
+  The inclusion of NDL senteces will not invalidate any existing program.
+
+  Additional information:
+
+  BACKGROUND OF NESTED DO LOOPS (NDL)
+
+  A new mathematical concept, the Nested Summation Symbol (NSS) is proposed
+  here. This concept is attached to a mathematical linear operator
+  directly related to the summation symbols. We insist over this symbol
+  potential usefulness to develop sequential and parallel computational
+  algorithms, constituting a powerful link between mathematical formalism and
+  high level languages programming. A NSS is well suited in order to express
+  some kind of mathematical formulae and to implement them in any computational
+  environment. In this sense, NSS's are directly related to Artificial
+  Intelligence techniques. Nested sums are connected with NDL structures.
+
+  A) DEFINITION
+
+  A NDL is the algorithmic implementation of a set of NESTED SUMATION 
+  SYMBOLS (NSS) like:
+
+  (summation from j1=i1 to f1 step s1) (summation from j2=i2 to f2 step s2)
+  ...
+        (summation from jn=in to fn step sn) [EXPRESSION(j1,j2,...,jn)]
+
+  In a NDL one must describe the following parameters:
+
+   j :  A vector which returns at every time the summation symbol index values
+   i :  A vector containing the initial values for the indices collected in
+        vector j
+   f :  A vector containing the final values for the indices collected in
+        vector j
+   s :  A vector containing the increment values for the indices collected in
+        vector j
+   n :  The so called dimension of the NDL, that is, the number of DO
+        sentences to nest. n is the dimension of all the previous vectors.
+
+  B) UTILITY
+
+  Among other mathematical and general applications, using a NDL you can solve
+  several problems such as:
+
+       *  How to simulate n DO sentences ?
+       *  How to count and generate all the combinations of m elements taken 
+          in groups of n ?
+
+  Answers:
+
+       *  How to simulate n DO sentences ?
+
+  Program 1 codifies in FORTRAN language a simple algorithm which generates
+  all the j index vectors arising from a general NSS. The step vector s can
+  have positive or negative indices. The values of the parameters depend on
+  the particular application one wants when running the algorithm. A call to
+  the Application routine is performed for every form of the vector j.
+
+  ! Program 1. Fortran 90 version.
+  !------------------------------------------------------------------------- 
+  ! This is a solution using NDL.
+  ! This produces n=3 nested DO instructions.
+  ! The value range for each index is from 0 to 1 with an increment of 1.
+  !------------------------------------------------------------------------- 
+         Parameter (n=3)               ! Dimension of the NSS
+         Integer*1 j(n),i(n),f(n),s(n) ! Parameters of the NSS
+  ! < Initial parameter values >
+         i(:)=0    ! Initial value
+         f(:)=1    ! Final value
+         s(:)=1    ! Step increment
+         j(:)=i(:) ! Initialization of NSS variable
+  ! < NDL procedure >
+         k=n          ! k signals the active summatory number
+  NDL:   do while (k>0)
+            if ((j(k)-f(k))*s(k)>0) then ! Index out of range ?
+               j(k)=i(k); k=k-1
+            else ! executes and application using the n vector j indices
+               write (*,*) j ! Here the Expression(j) is evaluated
+               k=n
+            end if
+            if (k>0) j(k)=j(k)+s(k)  ! Step Increment
+         end do NDL
+         END
+  !----------------------------------------------------------------------- 
+  ! The output of this program is
+  !
+  !           0           0           0
+  !           0           0           1
+  !           0           1           0
+  !           0           1           1
+  !           1           0           0
+  !           1           0           1
+  !           1           1           0
+  !           1           1           1
+  !
+
+       *  How to count and generate all the combinations of m elements taken 
+          in groups of n ?
+
+  !------------------------------------------------------------------------- 
+  ! This is a solution using a revised version of a NDL.
+  ! This simulates how to count and GENERATE the 10 combinations of M=5
+  ! elements taken in groups of N=3
+  !------------------------------------------------------------------------- 
+        integer*1 J(0:2),F(2)
+  !
+        M=5
+        N=2 ! Is the dimension of the NDL
+        MN=M-N
+        J(0)=0; DO I=1,N; J(I)=J(I-1)+1; F(I)=MN+i; END DO ! Initializes NDL
+  !
+        ICOUNTER=0; K=N
+  NDL:  DO WHILE (K/=0)
+           IF (J(K)>F(K)) THEN
+              K=K-1; J(K)=J(K)+1
+              DO I=K+1,N; J(I)=J(I-1)+1; END DO ! Redefines internal indices
+           ELSE
+              ICOUNTER=ICOUNTER+1                          !
+              WRITE(*,'(I3,2X,3I3)') ICOUNTER,(J(I),I=1,N) ! Application
+              K=N; J(K)=J(K)+1
+           END IF
+        END DO NDL
+        END
+  !----------------------------------------------------------------------- 
+  ! The output of this program is
+  !
+  !    1    1  2
+  !    2    1  3
+  !    3    1  4
+  !    4    1  5
+  !    5    2  3
+  !    6    2  4
+  !    7    2  5
+  !    8    3  4
+  !    9    3  5
+  !   10    4  5
+
+  A NDL is a general algorithm, which enables to perform a parallel
+  EXPRESSION(j1,j2,...,jn) implementation, if the available hardware allows to
+  run it in this manner. This is so because the NDL internal statements may
+  always run independently on separate CPUs. That is, despite the forms of the
+  vector j are generated in a sequential manner, the evaluation of the code in
+  EXPRESSION(j1,j2,...,jn) using a vector j form can be done independently of
+  the remaining vector forms.
+  In fact, it can be said that any formula or algorithm which can be written in
+  terms of NSS can be written in a NDL form and parallelized.
+
+  Some Fortran or C compilers, by the way, have no capacity of processing more
+  than a limited number of classical do loops in a nest. Thus, a simple scheme
+  as the one shown in Program 1 is a good candidate to circumvent this
+  limitation in any compiler, if it is present. 
+
+  But the principal characteristic of a NDL is that a single routine serves 
+  to simulate 1, 2, ... or n NESTED DO LOOP statements.
+
+  See Program 2 for details about the practical implementation of a NSS in terms
+  of a NDL in the C++ language. There it is shown how the NSS codification can
+  be easily used as a pseudoinstruction. It can be seen how once the Header of
+  the program is defined, the use of the NDL appears to be an 'ad hoc' language
+  capability.
+
+  As an example, Program 2 shows a main program using Header 1: It defines a
+  NDL and calls the application procedure. There the application is a routine
+  showing the current values of the NDL index vector j. In Program 2 the Header
+  has been used and it has been defined a NDL with the parameters  n=3,
+  j=(0,0,0), i=(1,1,1), f=(1,1,1) and step vector s=(1,1,1). This NDL generates
+  all the 3 digit binary numbers in canonical order (variations generation). 
+
+  // Program 2
+  //------------------------------- Program in C++ version ------------ 
+  #include <stdio.h>
+  #include <process.h>
+  #include <stdarg.h>
+  #include <iostream.h>
+  #include "ndl.h"  // NDL methods: Header 1 code
+  // Application shows the J vector index values of the NDL
+  void Application(NDL &A)
+  {
+     for (int i=1 ; i<=A.DIMENSION() ; i++) cout << A.J(i);
+     puts("");
+  }
+  void main()
+  {
+  // Defines the 3-dimensional NDL called A
+     NDL A(3, 0,0,0, 1,1,1, 1,1,1);
+  // Generates forms of vector J and calls Application
+     while (A.RUNNING()) Application(A);
+  }
+  //------------------------------------------------------------------ 
+  //The output generated by Program 2 is:
+  //
+  //         000
+  //         001
+  //         010
+  //         011
+  //         100
+  //         101
+  //         110
+  //         111
+
+  
+  Header 1 shows the header file needed to implement the NDL object and related
+  methods. This implementation covers the ability to define arbitrary
+  dimensional NDL's. Error tests have been omitted in order to simplify the
+  program listing and make it more transparent. 
+
+  // Header 1
+  //-------------------------------------------------------------------------- 
+  class NDL    // Defines the NDL object
+      {
+         int dimension,n,k;  // n, k: Auxiliar variables
+         int *j,*i,*f,*s;    // Pointers to the Parameters of the NDL
+  public:
+                NDL(const int, ...);  // Constructor
+                ~NDL(void);           // Destructor
+       unsigned int RUNNING(void);        // Generates next leader vector
+                void INITIALIZE(void);     // Initializes NDL
+                int DIMENSION(void);      // Returns NDL dimension
+                int J(int);               // Return NDL J index value
+      };
+  //------------------------------------------------------------------------ 
+  // Nested Do Loop (NDL) algorithm
+  unsigned int NDL::RUNNING(void) // Generates next leader vector form
+   {
+   if (k>=0) *(j+k)+=*(s+k);  // Step
+
+   while (k>=0)
+         if ( (*(j+k)-*(f+k))*(*(s+k))>0 ) // Limit exceeded: index out of range
+             {
+             *(j+k)=*(i+k);
+             k--;
+             if (k>=0) *(j+k)+=*(s+k);  // Step
+             }
+         else
+             {
+             k=n;
+             return 1; // Another vector J form is achieved
+             }
+    NDL::INITIALIZE();  // Initialize NDL for further use
+    return 0;           // Ends NDL vector generation
+   }
+  //-------------------------------------------------------------------------- 
+  int NDL::DIMENSION(void) { return dimension; } // Returns the NDL dimension
+  //-------------------------------------------------------------------------- 
+  // Returns the NDL vector index m value (indices numbered from 1 to dimension)
+  int NDL::J(int m) { return *(j+m-1); }
+  //-------------------------------------------------------------------------- 
+  // NDL definition
+  NDL::NDL(const int dim, ...) // Constructor
+   {
+   va_list index;
+   va_start(index,dim);
+
+     j=new int[dim]; // Allocate needed vectors
+     i=new int[dim];
+     f=new int[dim];
+     s=new int[dim];
+     dimension=dim;  // Store auxiliar variables
+     n=dim-1;
+
+   // Initial, Final and Step vectors (variable number of arguments)
+     for (int m=0;m<dim;m++) {*(i+m)=va_arg(index,int);}
+     for (m=0;m<dim;m++) {*(f+m)=va_arg(index,int);}
+     for (m=0;m<dim;m++) *(s+m)=va_arg(index,int);
+
+   va_end(index);
+   NDL::INITIALIZE(); // Initialize NDL
+   }
+  //-------------------------------------------------------------------------- 
+  void NDL::INITIALIZE(void) // Initializes leader vector J of the NDL
+   {
+   for (int m=0 ; m<n ; m++) *(j+m)=*(i+m);
+   *(j+n)=*(i+n)-*(s+n); // Last index decremented
+   k=n;
+   }
+  //-------------------------------------------------------------------------- 
+  NDL::~NDL(void) // Destructor
+   {
+   dimension=n=k=0;
+   delete j,i,f,s; // Deallocates vectors
+   }
+  //-------------------------------------------------------------------------- 
+  Header 1: Codification of the NDL object definition and related methods.
+  </ESTIMATED IMPACT>
+
+  <REFLIST>
+     1.  Nested Summation Symbols and Perturbation Theory.
+         R.Carbo and E.Besalu. J.Math.Chem. 13 331-342 (1993)
+
+     2.  Definition, Mathematical Examples and Quantum Chemical  Applications of
+         Nested Summation Symbols and Logical Kronecker Deltas.
+         R.Carbo and E.Besalu. Computers & Chemistry 18 (2) 117-126 (1994)
+
+     3.  Applications of Nested Summation Symbols to Quantum Chemistry:
+         Formalism and Programming Techniques.
+         R.Carbo and E.Besalu in
+         Strategies and Applications in Quantum Chemistry: from Astrophysics
+         to Molecular Engineering. M.Defranceschi and Y.Ellinger (Editors).
+         Kluwer Ac.Pub. Amsterdam (1993)
+  </REFLIST>
+
+  <SUBMITTED BY>
+   Emili Besalu & Ramon Carbo
+     Phone: 34 72 226366 or 34 72 418362
+       Fax: 34 72 418357
+   Address: emili@stark.udg.es or director@iqc.udg.es
+   Postal Add.: Institute of Computational Chemistry
+                University of Girona
+                17071 Girona
+                Spain
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>email from US2RMC::"admpap@xamba.udg.es" "Pilar del Acebo" on
+         12-Mar-1996
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 101
+  <TITLE>  Permit BOZ constants in the TRANSFER function
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION> 1
+
+  <REQUIREMENT>
+  Permit BOZ literal constants to be used in the SOURCE argument of
+  the TRANSFER function, either as scalar values or within array
+  constructors.  Prohibit the use of such constants in the TRANSFER
+  function if they are too long to fit in any available integer
+  representation method.
+  </REQUIREMENT>
+
+  <SUGGESTED IMPLEMENTATION>
+  EDITS (based on X3J3/94-007R4):
+
+  1. [32:1-2] Section 4.3.1.1: Replace the paragraph beginning "In a
+     DATA statement..." with,
+
+        An unsigned binary, octal, or hexadecimal literal
+        constant may be used as a <i>data-stmt-constant</>
+        corresponding to an integer scalar variable in a DATA
+        statement (5.2.9) or in the SOURCE argument to the
+        TRANSFER function (13.13.110).
+
+  2. [32:6] Section 4.3.1.1: In the constraint following R407, after
+     "DATA statement" add "or in the SOURCE argument of the TRANSFER
+     function".
+
+  3. [44:40+] Section 4.5: Insert after the first line of R433,
+
+                     <b>or</>   <i>boz-literal-constant</>
+
+  4. [45:5+] Section 4.5: Add the following constraints:
+
+        Constraint: An <i>array-constructor</> shall not
+                    contain a <i>boz-literal-constant</> unless
+                    it is the actual argument corresponding to
+                    the SOURCE dummy argument of the TRANSFER
+                    function (13.13.110).
+
+        Constraint: All <i>boz-literal-constant</>s used in an
+                    <i>array-constructor</> must explicitly
+                    specify the same number of bits.
+
+  5. [271:10+] Section 13.13.110: Add the following new paragraph to
+     the end of the "Result Value" section:
+
+        If SOURCE is specified as a <i>boz-literal-constant</>
+        (4.3.1.1), or as an <i>array-constructor</> containing
+        <i>boz-literal-constant</>s, these constants shall be
+        treated as integer values in the representation method
+        having the smallest value for the model parameter,
+        <i>s</> (13.5.7), that is at least as large as the number
+        of bits explicitly specified in the constant.  For
+        example, if SOURCE is specified as Z'00FF', it is treated
+        as 255_K16, where K16 is whatever integer kind type
+        parameter gives the smallest value of BIT_SIZE(0_K16)
+        that is greater than or equal to 16.  A
+        <i>boz-literal-constant</> specifying more bits than
+        allowed by any available integer representation method
+        shall not be used in SOURCE.
+  </SUGGESTED IMPLEMENTATION>
+
+  <SUBMITTED BY>
+  Leonard J. Moss <ljm@slac.stanford.edu>
+  Stanford Linear Accelerator Center
+  MS 97; P.O. Box 4349; Stanford, CA 94309
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>email received from LJM@SLACVM.bitnet on 15-Dec-1994
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>   
+  <NUMBER> 102
+  <TITLE>  Delete Arithmetic IF
+  <KEYWORDS>  
+  <STATUS> Registered
+  <TARGET>    
+  <SUBGROUP>  
+  <VERSION>   1
+
+  <REQUIREMENT>
+    The Fortran 2000 standard should delete the arithmetic IF construct
+  (8.2.4, B.2(1)).  
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The arithmetic IF is a construct left over from the 1950s when Fortran
+  was designed to run on a particular machine, i.e., the IBM 704, which had
+  an instruction set which was particularly well suited to this form of
+  branching.  Continued use of this feature encourages the construction of
+  difficult to follow, spaghetti-style control flow.  
+
+    The arithmetic IF can be replaced by the block IF construct, which is an
+  easier to use and more generalized form of the IF control structure.  The
+  availability of sophisticated, highly reliable code restructuring tools means
+  that converting arithmetic IF constructs to block IF constructs can be done
+  automatically, efficiently, and economically.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Delete section 8.2.4 from the standard.  Enter the text of 8.2.4 into
+  Annex B as part of section B.1 for the benefit of those vendors who wish to
+  continue supporting the arithmetic IF feature.  Most likely, the person who
+  does the work will have to find the other places in the standard where this
+  construct is mentioned.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  As noted above, users of older codes can easily convert their
+  arithmetic IF constructs to block IF constructs.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 8.2.4, B.2(1)
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-070
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>   
+  <NUMBER> 103
+  <TITLE>  Delete Non-Block DO Constructs
+  <KEYWORDS>  
+  <STATUS> Registered
+  <TARGET>    
+  <SUBGROUP>  
+  <VERSION>   1
+
+  <REQUIREMENT>
+    The Fortran 2000 standard should delete the non-block form of the DO
+  construct (8.1.4.1.2, 8.1.4.2, B.2(2)).  
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The non-block form of the DO construct is a construct left over from the
+  1950s and 1960s when little was known about how to write code so that it
+  would be easy to follow.  The high cost of main memory and disk space in
+  those years also put a high premium on writing Fortran so that it would
+  occupy as little space as possible.  Continued use of this feature encourages
+  the construction of difficult to follow, spaghetti-style control flow.  
+
+    The non-block form of the DO construct can be replaced by the block
+  form of the DO construct, which is an easier to use form of the DO control
+  structure.  The availability of sophisticated, highly reliable code
+  restructuring tools means that converting non-block DO constructs to block
+  DO constructs can be done automatically, efficiently, and economically.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Delete section 8.1.4.1.2 and the second paragraph of 8.1.4.2 from the
+  standard.  Move the text of both parts into Annex B as part of section B.1
+  for the benefit of those vendors who wish to continue supporting the non-block
+  DO construct.  Most likely, the person who does the work will have to
+  find the other places in the standard where this construct is mentioned.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  As noted above, users of older codes can easily convert their
+  non-block DO constructs to block DO constructs.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 8.1.4.1.2, 8.1.4.2, B.2(2)
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-070
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>   
+  <NUMBER> 104
+  <TITLE>  Delete Computed GO TO Statements
+  <KEYWORDS>  
+  <STATUS> Registered
+  <TARGET>    
+  <SUBGROUP>  
+  <VERSION>   1
+
+  <REQUIREMENT>
+    The Fortran 2000 standard should delete the computed GO TO
+  statement (8.2.3, B.2.2).  
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The computed GO TO statement is a construct left over from the 1950s
+  and 1960s when little was known about how to write code so that it would
+  be easy to follow.  The high cost of main memory and disk space in those
+  years also put a high premium on writing Fortran so that it would occupy
+  as little space as possible.  Continued use of this feature encourages the
+  construction of difficult to follow, spaghetti-style control flow.  
+
+    The computed GO TO statement can be replaced by a CASE construct,
+  which is an easier to use and more generalized form of the same kind of
+  control structure.  The availability of sophisticated, highly reliable code
+  restructuring tools means that converting computed GO TO constructs to
+  CASE constructs can be done automatically, efficiently, and economically.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Delete section 8.2.3 from the standard.  Move the text of section 8.2.3
+  into Annex B as part of section B.1 for the benefit of those vendors who
+  wish to continue supporting the computed GO TO construct.  Most likely,
+  the person who does the work will have to find the other places in the
+  standard where this construct is mentioned.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  As noted above, users of older codes can easily convert their
+  computed GO TO constructs into CASE constructs.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 8.2.3, B.2.2
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-070
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>   
+  <NUMBER> 105
+  <TITLE>  Delete Fixed Form Source
+  <KEYWORDS>  
+  <STATUS> Registered
+  <TARGET>    
+  <SUBGROUP>  
+  <VERSION>   1
+
+  <REQUIREMENT>
+    The Fortran 2000 standard should delete fixed form source (3.3.2,
+  B.2.6).
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Fixed form source was designed when the principal machine-readable
+  input medium for new programs was punched cards.  Now that new and
+  amended programs are generally entered via keyboards using text editing /
+  word processing software and stored on disk files, it is unnecessary
+  overhead and error prone, to have to locate positions 6, 7, and 72 on a line. 
+  Free form source was designed expressly for this more modern technology.  
+
+    Fixed form source can be replaced free form source, which is an easier
+  to use and more generalized form of source code.  The availability of
+  sophisticated, highly reliable code restructuring tools means that converting
+  fixed form source to free form source can be done automatically, efficiently,
+  and economically.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Delete section 3.3.2 from the standard.  Move the text of section 3.3.2
+  into Annex B as part of section B.1 for the benefit of those vendors who
+  wish to continue supporting fixed form source.  Most likely, the person who
+  does the work will have to find the other places in the standard where this
+  construct is mentioned.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal. As noted above, a software tool can easily convert from fixed
+  to free form source.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 3.3.2, B.2.6
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-070
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>   
+  <NUMBER> 106
+  <TITLE>  Delete Alternate Return
+  <KEYWORDS>  
+  <STATUS> Registered
+  <TARGET>    
+  <SUBGROUP>  
+  <VERSION>   1
+
+  <REQUIREMENT>
+    The Fortran 2000 standard should delete alternate return (12.4,
+  12.4.1.3, B.2.1).
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Alternate return is a construct left over from the 1950s and 1960s when
+  little was known about how to write code so that it would be easy to follow. 
+  The high cost of main memory and disk space in those years also put a high
+  premium on writing Fortran so that it would occupy as little space as
+  possible.  Continued use of this feature encourages the construction of
+  difficult to follow, spaghetti-style control flow.  
+
+    Alternate return specifiers can be replaced by a status variable which
+  indicates the completion status of the subroutine and what, if any problems
+  occurred during its execution.  The status variable can be evaluated by
+  either a CASE construct or block IF construct immediately after the call to
+  the subroutine.   Either of these block structures is an easier to use and
+  more structured method of evaluating a completion status.  The availability
+  of sophisticated, highly reliable code restructuring tools means that
+  converting alternate return constructs to CASE constructs or block IF
+  constructs can be done automatically, efficiently, and economically.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Delete rule R1215 and the last constraint following R1215 from the
+  standard.  Delete section 12.4.1.3 from the standard.  Move this text into
+  Annex B as part of section B.1 for the benefit of those vendors who wish to
+  continue supporting alternate returns.  Most likely, the person who does the
+  work will have to find the other places in the standard where this construct
+  is mentioned.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal. As noted above, a software tool can easily convert alternate
+  return constructs to CASE or block IF constructs.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 12.4, 12.4.1.3, B.2.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-070
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>   
+  <NUMBER> 107
+  <TITLE>  Delete Statement Functions
+  <KEYWORDS>  
+  <STATUS> Registered
+  <TARGET>    
+  <SUBGROUP>  
+  <VERSION>   1
+
+  <REQUIREMENT>
+    The Fortran 2000 standard should delete statement functions (12.5.4,
+  B.2.3).
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Statement functions are subject to a number of non-intuitive restrictions
+  and are a potential source of error since their syntax is easily confused with
+  that of an assignment statement.
+
+    The internal function is a more generalized form of the statement
+  function and completely supersedes it.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Delete section 12.5.4 from the standard.  Move this text into Annex B as
+  part of section B.1 for the benefit of those vendors who wish to continue
+  supporting statement functions.  Most likely, the person who does the work
+  will have to find the other places in the standard where statement functions
+  are mentioned.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 12.5.4, B.2.3
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-070
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>   
+  <NUMBER> 108
+  <TITLE>  Delete DATA Statements Among Executable Statements
+  <KEYWORDS>  
+  <STATUS> Registered
+  <TARGET>    
+  <SUBGROUP>  
+  <VERSION>   1
+
+  <REQUIREMENT>
+    The Fortran 2000 standard should delete the appearance of DATA
+  statements among executable statements (2.3.1, 2.3.2, Table 2.1, B.2.4).
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The statement ordering rules of FORTRAN 66, FORTRAN 77, and
+  Fortran 90 allowed DATA statements to appear anywhere in a program
+  unit after the specification statements.  The ability to position DATA
+  statements among executable statements is very rarely used, is
+  unnecessary, and is a potential source of error.  It is generally considered
+  good programming practice to position specification statements such as
+  DATA statements, before the first executable statement.
+
+    DATA statements which now occur among executable statements can
+  easily be moved into the declarations part of a program without any loss of
+  functionality or program effectiveness.  The availability of sophisticated,
+  highly reliable code restructuring tools means that moving DATA
+  statements can be done automatically, efficiently, and economically.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Delete the references to DATA statements among executables in
+  sections 2.3.1 and 2.3.2 from the standard.  Delete the entry in Table 2.1
+  which shows "DATA statements" to the left of "Executable constructs". 
+  Move this text into Annex B as part of section B.1 for the benefit of those
+  vendors who wish to continue supporting DATA statements among
+  executable statements.  Most likely, the person who does the work will have
+  to find the other places in the standard where statement functions are
+  mentioned.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 2.3.1, 2.3.2, Table 2.1, B.2.4
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-070
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 109
+  <TITLE>  Binary stream I/O
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION> 1
+
+  <REQUIREMENT>
+   Implement a binary stream I/O facility to allow writing and reading
+   to/from unformatted files without any internal structure.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+   Traditionally, Fortran I/O facilities have been record oriented.
+   Fortran 90 has introduced a non advancing I/O facility that provides
+   for reading and writing partial records in formatted sequential files.
+
+   However, thers is a category of files that are definitely not record
+   oriented. This category is called "binary stream files". These files
+   are merely constituted of a continuous sequence of storage units,
+   without any internal structure. Stream files are prevalent in many
+   operating systems such as Unix, DOS, Windows and OS/2. Also, there
+   are "industry-standard" file formats that are not record oriented,
+   such as GIF and TIFF formats for digital images. 
+
+   Accessing stream files with standard Fortran I/O facilities is often
+   difficult: unformatted sequential access may fail because the file
+   contains no record delimiters. Using unformatted direct access is also
+   awkward since the data cannot be accessed easily with fixed record 
+   lengths. In short, a new file access is needed.
+
+   Many vendors have already extended their compilers to provide 
+   this facility by allowing "binary" or "transparent" file access 
+   methods, showing a need for standardization.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+   The feature could be implemented without introducing any new statements:
+   only new keywords and options in OPEN, READ, WRITE, and INQUIRE 
+   are needed. 
+
+   A binary stream file consists of a sequence of processor-dependant
+   storage units. These units must be the same to those used to define
+   the record length of an unformatted direct file. The storage units
+   are numbered from 1 to n, n being the last unit written. Two concepts
+   are present in a stream file. A file position pointer is used to locate
+   the next storage unit to be read or written. Following the last storage
+   unit of the file, there is an end-of-file marker that may physically
+   exist or not. This marker can be checked in a READ statement by END
+   or IOSTAT specifiers. The file position pointer may point to the 
+   end-of-file marker.
+
+   Opening a binary stream file could be done by simply adding
+   ACCESS='STREAM' in the OPEN statement. The POSITION specifier
+   is valid for these files.
+
+   Binary stream I/O should work following in an hybrid fashion between
+   sequential and direct access. Sequential access should be done by
+   using the syntax of unformatted sequential READ and WRITE, except
+   that the unit is connected to a binary stream file. The file position
+   pointer is moved by the amount of data storage units transferred 
+   by each READ or WRITE statements executed. Random access should be
+   provided by adding a POS=location specifier to the READ or WRITE 
+   statements. Mixed access should be allowed for the same unit.
+   When a WRITE statement overwrites a portion of a stream file,
+   only the amount of storage tranferred should replace the existing
+   locations; the remaining storage units should remain intact
+   (in the contrary of conventional unformatted sequential WRITEs).
+   
+   READ and WRITE statement with POS specifiers but with an empty
+   I/O list merely move the pointer inside the file. In the case
+   of a WRITE statement, if the position pointer is moved with 
+   the POS specifier beyond the end-of-file marker, the gap is filled 
+   with unitialized data.
+
+   The BACKSPACE statement should be disallowed for such files, since
+   there is no record delimiters.
+
+   The ENDFILE statement is used to truncate the binary stream file
+   at the current file pointer position.
+
+   New specifiers should be added to the INQUIRE statements. 
+
+   In particular, a CURRPOS specifier to obtain the current position
+   of the pointer, and a FILESIZE specifier that returns the amount
+   of units written to the file. The ACCESS specifer should also be 
+   extended to allow ACCESS='STREAM' to be returned.
+
+  
+  <COMPATIBILITY CONSIDERATIONS>
+   None. This new feature can be blended easily with the existing I/O
+   facilities, as described above.
+  </COMPATIBILITY CONSIDERATIONS>
+
+  <ESTIMATED IMPACT>
+   The new feature affects the OPEN, READ, WRITE, and INQUIRE statements.
+   The ENDFILE statement will acquire a new functionality.
+
+   Implementing this feature should be very easy, since a similar
+   functionality is already provided as an extension by many vendors.
+   The implementation of the FILESIZE specifier in the INQUIRE statement
+   shouldn't also cause problems since virtually all operating systems
+   provide a facility to obtain the size of a file in bytes or words.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+      Jean Vezina (phone: (514) 256-6698; email: patrjacq@abl.ca)
+      6292 Villanelle
+      St-Leonard, Quebec
+      Canada
+      H1S 1W1
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT>email received on 23-Apr-1996
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 110
+  <TITLE>  In-line procedures
+  <KEYWORDS> PROCEDURE, IN-LINE
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP> 
+  <VERSION> 1
+
+  <REQUIREMENT>
+  Provide a means for a programmer to specify that the desired implementation
+  of that procedure is by in-line expansion of the code at the point of
+  reference to the procedure rather than branch to and return from a single
+  code image.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  In almost any programming method involving significant data abstraction
+  (including, but not limited to, object-oriented programming), there tend
+  to be a number of procedures which bridge levels of abstraction, but which
+  do little "real" work.  In-line expansion of such procedures significantly
+  reduces their cost.  In addition, there tends to increased opportunities for
+  optimization in the calling scoping unit.  [The value of in-line expansion
+  of statement functions is well known and an example of what this requirement
+  would provide in a somewhat broader context.]
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  Allow a keyword such as INLINE on the procedure header.
+
+  Since we cannot reasonably directly require in-line expansion, the semantics
+  of this keyword are to prohibit obstacles to in-line expansion:
+
+  o  The INLINE keywords would be permitted on module procedures and internal
+     procedures, but not external procedures or interface bodies.
+
+  o  A procedure could not be both INLINE and RECURSIVE.
+
+  o  An INLINE procedure could not be associated with a dummy procedure (nor
+     with a pointer to a procedure, if we add those).
+
+  We would have to leave it to market pressure to actually ensure that INLINE
+  procedures are expanded in-line.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  The impact on the document should be well localized.
+
+  Impact on existing processors will vary:  A processor wishing to meet the
+  literal requirements (without actually doing in-line expansion) could do
+  so with a small amount of syntax checking.
+
+  Typically, existing processors already do at least some in-line expansion
+  (for statement functions) and some do in-line expansion of arbitrary
+  procedures, but it seems likely that it will vary from processor whether
+  the existing in-line expansion infrastructure is sufficient for doing
+  the kind of expansion expected in this requirement.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  Kurt W. Hirchert, hirchert@ncsa.uiuc.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT> 29 April 96: submitted
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 111
+  <TITLE>  Local declaration block
+  <KEYWORDS> SCOPING
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP> 
+  <VERSION> 1
+
+  <REQUIREMENT>
+  Provide a mechanism for declaring entities with a more limited scope than
+  an entire procedure or main program.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  When a program requires an explicitly named temporary, the nature of that
+  entity is clearer to both the compiler and human readers if its scope can
+  be limited.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  A SCOPE ... END SCOPE construct with usual nesting rules relative to other
+  block constructs.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  Impact on the document should be localized.
+
+  Impact on existing processors involves stealing heavily from the
+  implementation of internal procedures.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  Kurt W. Hirchert, hirchert@ncsa.uiuc.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT> 29 April 96: submitted
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 112
+  <TITLE>  "Clean up" conformance rules
+  <KEYWORDS> CONFORMANCE
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP> 
+  <VERSION> 1
+
+  <REQUIREMENT>
+  Review conformance rules with an eye towards making them more regular,
+  easier to understand, more useful, etc.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  The standard would be easier to understand, more useful, etc.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  Specific issues I would suggest looking at include the following:
+
+  o  If a Fortran program uses a procedure defined by means other than
+     Fortran, it can still be a standard-conforming program.  However,
+     if the vendor changes that procedure to an intrinsic procedure to
+     make it more efficient, the program becomes nonconforming.  We
+     should try to treat these cases similarly.
+
+  o  If a format is written as a FORMAT statement, the processor is required
+     to be able to check it for correctness, but if it is written as
+     a CHARACTER constant, the processor is not.
+
+  o  If we should separate the concepts of a program which is standard
+     conforming in form (i.e., on a static basis) from whether or not
+     the execution of that program conforms.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  Much of this could be done with only localized changes to the document,
+  but identifying the difference between static and dynamic requirements
+  in the standard might be more widespread.
+
+  Most of this should have very limited impact on existing processors.  The
+  obvious exception would be a requirement that processors check the
+  correctness of formats expressed as character constant expressions.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  Kurt W. Hirchert, hirchert@ncsa.uiuc.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT> 29 April 96: submitted
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 113
+  <TITLE>  Allow MERGE in constant expressions
+  <KEYWORDS> MERGE, EXPRESSIONS, PARAMETER, CONSTANT
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP> 
+  <VERSION> 1
+
+  <REQUIREMENT>
+  Modify the limitations on initialization expressions in some way that would
+  allow the MERGE intrinsic to be used.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  It is possible to work around the lack of MERGE, at least for integer
+  relations, but the result tends to be obscure in the extreme.
+  </JUSTIFICATION>
+
+  <ESTIMATED IMPACT>
+  The document changes will likely be difficult to formulate, but well
+  localized.  The changes to existing processors should be similarly localized.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  Kurt W. Hirchert, hirchert@ncsa.uiuc.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT> 29 April 96: submitted
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 114
+  <TITLE>  Extend ALLOCATE to specify non-KIND type parameters
+  <KEYWORDS> ALLOCATABLE, POINTER, ALLOCATE, CHARACTER,
+             PARAMETERIZED DERIVED TYPES
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP> 
+  <VERSION> 1
+
+  <REQUIREMENT>
+  Extend the ALLOCATE statement to allow specification of type parameters.
+  Allow POINTER or ALLOCATABLE to be used with declaration forms used to
+  "assume" type parameters.
+
+  In the current standard, this affects only the LEN parameter of the
+  CHARACTER type, but it would extended to parameterized derived types.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  This should be an obvous part of parameterized derived types.  E.g.,
+  if one creates a parameterized MATRIX type, it should be obvious that
+  one might want an allocatable matrix for much the same reasons one wants
+  allocatable arrays.
+
+  The ISO varying string module demonstrated the difficulty of having to
+  allocate a character array when what you really needed was a string
+  whose length you could control.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  CHARACTER(*), ALLOCATABLE :: C
+  ...
+  ALLOCATE ((LEN=L)C)
+  </SUGGESTED IMPLEMENTATION>
+
+  <SUBMITTED BY>
+  Kurt W. Hirchert, hirchert@ncsa.uiuc.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT> 29 April 96: submitted
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 115
+  <TITLE>  Mixed function/subroutine generics
+  <KEYWORDS> GENERIC
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP> 
+  <VERSION> 1
+
+  <REQUIREMENT>
+  Allow generic names (but not operators or assignment) to apply to functions
+  and subroutines at the same time, with function vs. subroutine being an
+  added way to distinguish two specific procecures.
+
+  Review whether intrinsics such as MVBITS, PACK, and UNPACK should have both
+  function and subroutine interfaces.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  Subroutine interfaces can be more efficient if only part of what could be
+  modified will actually be modified in a given call.  Functions are more
+  suited for allowing operations to be composed.  Allowing both interfaces
+  to be provided avoids the necessity of prejudging which issue is going to
+  be most important in the programs of people using the interface.
+  </JUSTIFICATION>
+
+  <ESTIMATED IMPACT>
+  Impact on both the document and existing processors should be localized.
+  (Some existing processors already have generic intrinsics that mix
+  functions and subroutines.)
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  Kurt W. Hirchert, hirchert@ncsa.uiuc.edu
+  <SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT> 29 April 96: submitted
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 116
+  <TITLE>  "Simultaneous" assignment
+  <KEYWORDS> 
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP> 
+  <VERSION> 1
+
+  <REQUIREMENT>
+  Provide some mechanism for more general "simultaneous" assignment, i.e.
+  evaluating all "right hand sides" before modifying the "left hand sides".
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+  It is a common problem to have a set of variables that must be updated
+  based on their collective current state.  Introducing explict temporary
+  variables to achieve this obscures the logic and may produce less efficient
+  code than what a compiler can do with architecture-specific temporary
+  generation.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+  I can think of several very different notation approaches.  One would be
+  to allow derived type "pseudo-variables" on the left hand side of an
+  assignment (making use of the simultaneity within a derived type assignment):
+        SWAP(X,Y)=SWAP(Y,X)
+  Another would be to try to extend the simultaneity of the FORALL statement:
+        FORALL(I=1:2)
+        SELECT CASE(I)
+        CASE(1); N=M
+        CASE(2); M=N+M
+        END SELECT
+        END FORALL
+  Yet another would be to create a new construct for this:
+        SIMUL
+          X=X*COS_THETA-Y*SIN_THETA
+          Y=X*SIN_THETA+Y*COS_THETA
+        END SIMUL
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+  The impact on the document is likely to be localized.  Impact on existing
+  processors appears potentially significant.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+  Kurt W. Hirchert, hirchert@ncsa.uiuc.edu
+  </SUBMITTED BY>
+
+  <HISTORY>
+  <EVENT> 29 April 96: submitted
+  </HISTORY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 117
+  <TITLE>  Use of the SIZE= Keyword
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Allow the use of the SIZE= specifier for both advancing and non-advancing
+  I/O.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Fortran 90 allows the use of the SIZE= specifier only for non-advancing
+  I/O.  Informal conversations at X3J3 meetings in 1994 suggested that the
+  developers of the Fortran 90 standard thought that it would be useful mainly
+  for non-advancing I/O.  This is unduly restrictive; users should be able to
+  use the SIZE= specifier both in advancing and non-advancing I/O.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be accomplished by making minor edits to sections 9.2.1.3.1,
+  9.4.1, and 9.4.1.9.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  Many Fortran compilers already have some other method for
+  obtaining the size of the record when using advancing I/O.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 9.2.1.3.1, 9.4.1, 9.4.1.9
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-nnn
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 118
+  <TITLE>  Internal File Data Type
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Allow the data objects of any KIND of CHARACTER data type that is
+  defined on the processor to be used as internal files.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Fortran 90 requires that internal files must be of default CHARACTER
+  type.  This is an unnecessary restriction.  In the next 10-12 years (i.e., the
+  expected useful life of the Fortran 2000 standard), I expect that the use of
+  multi-byte character sets such as Unicode (a.k.a. ISO 10646) will grow to be
+  of substantial importance in character manipulation.  Fortran should
+  anticipate this development and be prepared to handle it.  In addition, not
+  allowing all KINDs of character variables as internal files creates an
+  irregularity.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be accomplished by making minor edits to sections 9.2.2.1, 9.3,
+  and 9.4.2.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  Any Fortran processor which supports different KINDs of
+  CHARACTER data types already has to deal with issues such as
+  representation and translation.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 9.2.2.1, 9.3, 9.4.2
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-nnn
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 119
+  <TITLE>  Internal Files and List-Directed Formatting
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Add a note to the standard which explicitly states that starting with
+  Fortran 90, it is permitted to do list-directed I/O on internal files.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    A frequently asked question about Fortran 90 is whether it is permitted to
+  perform list-directed I/O on internal files.  FORTRAN 77 did not permit this
+  practice, but Fortran 90 removed this restriction.  Unfortunately, the
+  frequency of the question indicates that many users still doubt whether this
+  is permitted. A note in the standard should make this point clear.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Create a note at the end of section 9.2.2.2 which would read something
+  along the lines of, "Starting with Fortran 90, it is permissible to perform
+  list-directed I/O on internal files."
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    None.  This is mostly an editorial matter.  Some vendors may wish to
+  change their documentation.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 9.2.2.2
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-nnn
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 120
+  <TITLE>  Named Scratch Files
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Allow the user to specify a file name if a file is opened with
+  STATUS="SCRATCH".
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Fortran 90 does not allow the user to name scratch files.  We should lift
+  this restriction.  Allowing the programmer to name scratch files can be
+  useful, especially if the program crashes.  Not allowing the programmer to
+  name a file in this one case is an unnecessary irregularity.  since there is
+  legacy code which has STATUS="SCRATCH" without a FILE= specifier, the best
+  solution is to allow the optional use of FILE= with STATUS="SCRATCH".
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be accomplished by making minor changes to section  9.3.4.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  Adding this capability should not be very difficult to implement.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 9.2.2.2
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-nnn
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 121
+  <TITLE>  Behavior of OPEN with STATUS="UNKNOWN"
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    If the OPEN statement specifies that a file is opened with
+  STATUS="UNKNOWN", the standard should specify that if the file exists, it
+  is opened as if STATUS="OLD", and if the file does not exists, it is opened as
+  if STATUS="NEW".
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Fortran 90 and 95 leave this behavior as processor dependent.  This
+  definition interferes with portability.  It also requires the user to
+  anticipate the processor's behavior instead of relying on a known, standard
+  behavior.  This is an unnecessary irregularity.  The recommended change to
+  the standard behavior is already a popular implementation of OPEN with
+  STATUS="UNKNOWN".  The DEC (VMS, Unix, and NT), IBM AIX, and Lahey Fortran
+  compilers already use this implementation.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be accomplished by making minor changes to section  9.3.4.2.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    This change should not pose any serious implementation problems.  I
+  expect that the instances of actual incompatibility will be few.  Programmers
+  should be able to easily resolve any such conflicts.  Implementors should be
+  able to easily and inexpensively change their implementations to conform to
+  the new rule, which is equivalent to the following code:
+  CHARACTER (LEN=250) ::   FILENAME
+  INTEGER   ::   LUN
+  LOGICAL   ::   LEXIST
+  ! Define the values of LUN and FILENAME somewhere prior to opening the
+  file.
+  INQUIRE (FILE=FILENAME, EXIST=LEXIST)
+  IF (LEXIST)  THEN
+    OPEN (LUN, FILE=FILENAME, STATUS="OLD")
+  ELSE
+    OPEN (LUN, FILE=FILENAME, STATUS="NEW")
+  END IF
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 9.3.4.2
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-nnn
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 122
+  <TITLE>  Action of STATUS="REPLACE" with Multiple Version Files
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    If an operating system or file system supports files with multiple version
+  numbers, opening a file with STATUS="REPLACE" should create a new file
+  with the next available version number or version designator.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The standard is silent on what should happen if a file is opened with
+  STATUS="REPLACE" and the operating system or a file system supported by the
+  operating system supports multiple version files.  Currently, the Fortran 95
+  DIS says, "If REPLACE is specified and the files does exist, the file is
+  deleted, a new file is created with the same name, and the status is changed
+  to old."  This appears to imply that on a system that supports multiple
+  versions of files, the old version should be deleted and an empty file with
+  the same version number created in its place.  However, close consideration
+  of the text does not make it clear whether:
+    (1) the old version should be deleted or,
+    (2) a new file created with he next available version designator.
+
+    Here is an example.  There is an existing file COMPLEX_FILE.DAT;3,
+  where the number following the semicolon is the version designator.  A Fortran
+  program opens the file using STATUS="REPLACE".  Does the Fortran
+  program delete COMPLEX_FILE.DAT;3 and re-create it as empty?  Or, does
+  the Fortran program create a new version, e.g., COMPLEX_FILE.DAT;4?
+
+    I believe that the more useful choice is to create a new file with the next
+  available version designator.  Choosing this option would preserve the
+  purpose of multiple versions of files, i.e., to make it easier for users of
+  all kinds to recover from disastrous mistakes.
+
+    For reasons of clarity, regularity, and portability, we should rule on this
+  issue rather than leaving it as processor dependent.
+
+    Some may argue that few operating systems or file systems offer multiple
+  versions of files right now and therefore this issue is irrelevant for the
+  vast majority of Fortran programmers.  While multiple version file systems
+  may be few, this feature of a file system may greatly increase in popularity
+  during the life of the Fortran 2000 standard., which may be as late as 2012.
+  Therefore, the issue may be very relevant for a significant fraction of
+  Fortran programmers during the life of the Fortran 2000 standard.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be accomplished by making minor changes to section  9.3.4.2.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  Adding this capability should not be very difficult to implement.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 9.3.4.2
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-nnn
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 123
+  <TITLE>  BACKSPACE with List-Directed and Namelist Formats
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Remove the restriction which prohibits backspacing over records written
+  using list-directed and namelist formatting.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    There appears to be very little, if any, difference between records written
+  using formatted I/O and those using list-directed or namelist I/O.  Therefore,
+  this appears to be an unnecessary restriction.  Fortran 2000 should remove
+  this restriction.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be accomplished by making minor changes to section 9.5.1
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  Adding this capability should not be very difficult to implement.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 9.5.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-nnn
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 124
+  <TITLE>  NEXTREC= Specifier in the INQUIRE Statement
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should allow the use of the NEXTREC= specifier for both
+  direct access and sequential access files.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The Fortran 95 DIS only allows the use of the NEXTREC= specifier only
+  for direct access files.  This is an unnecessary irregularity.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be accomplished by making minor changes to section 9.6.1.14
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  Adding this capability should not be very difficult to implement.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 9.6.1.14
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-nnn
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 125
+  <TITLE>  ADVANCE="NO" Specifier and Prompting
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should guarantee that the use of the ADVANCE="NO"
+  specifier in I/O statements can be used by programmers to implement a
+  genuine prompting capability.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Interpretations of the Fortran 90 standard indicate that the of the
+  ADVANCE="NO" specifier in I/O statements does not guarantee that
+  programmers can use a combination of such I/O statements in order to
+  implement a genuine prompting capability.
+
+    It is my belief that most users expect ADVANCE="NO" I/O statements to
+  provide a prompting capability.  This difference creates a gap between what
+  users expect and what the current standard actually provides.  The existence
+  of this gap contributes to the image that Fortran has of being a "Stone Age"
+  relic.  This situation should be corrected.
+
+    Although the growing popularity of windowing systems reduces the
+  severity of this gap, I expect that a need for a genuine prompting capability
+  will exist for the life of Fortran 2000.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be accomplished by making minor changes to sections 9.2.1.3.1
+  and 9.4.1.8.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  Adding this capability should not be very difficult to implement.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 96-007r0 9.2.1.3.1, 9.4.1.8
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-nnn
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 126
+  <TITLE>  Editorial Changes for Chapter 9
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should include any of the editorial changes to Chapter 9 that
+  I recommended in my paper 94-375 at the November of 1994 meeting of X3J3,
+  and which did not make it into Fortran 95.  Many of these changes were not
+  included in Fortran 95 due to the heavy schedule of other editorial work that
+  had to be done in order to keep Fortran 95 on schedule.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    I recommended these editorial changes in order to make Chapter 9 a much
+  more coherent and well organized part of the document.  Making these changes
+  would make Chapter 9 much more readable and easier to use.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be accomplished by making the recommended changes
+  throughout Chapter 9.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    There would be no impact on the technical content of Fortran 2000.  There
+  could be moderate to extensive editorial work required.  X3J3 should ask the
+  Fortran 2000 Project Editor to provide an estimate of the impact.
+
+    Since some of the recommendations reorganize subsections of Chapter 9,
+  it would be necessary to check other parts of the document to see if
+  cross-references to the reorganized parts need to be changed.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    X3J3 / 94-375, "Editorial Changes for 007r3 Chapter 9"
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-nnn
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 127
+  <TITLE>  CPU_TIME Enhancements
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    The CPU_TIME intrinsic subroutine should be extended to include
+  additional arguments and to make the TIME argument optional.  The
+  additional arguments would allow for the inquiry and measurement of user
+  time, system time, and the minimum unit of time in the processor's
+  measurement system.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    It is possible that a precise definition of CPU_TIME will evolve as an ISO
+  standard in the near future.  This capability would allow the Fortran standard
+  to anticipate and keep up with any such development.
+
+    If these extensions become part of CPU_TIME, the TIME argument may
+  not be relevant in all calls to CPU_TIME.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    One method would be to use the following interface:
+  SUBROUTINE CPU_TIME (TIME, USER, SYSTEM, DELTA)
+  REAL, OPTIONAL, INTENT (OUT) :: TIME    ! Processor time
+  REAL, OPTIONAL, INTENT (OUT) :: USER    ! User time
+  REAL, OPTIONAL, INTENT (OUT) :: SYSTEM ! System time
+  REAL, OPTIONAL, INTENT (OUT) :: DELTA   ! Minimum time increment
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    This feature would have no impact on existing implementations.  The cost
+  to vendors to implement this feature should be very low.
+  </ESTIMATED IMPACT>
+
+  <REFERENCE>
+    ISO/IEC 1539:1996 (E) 13.14.25 (a.k.a. X3J3/95-007r1)
+    X3J3/95-259
+    X3J3/95-268
+  </REFERENCE>
+
+  <SUBMITTED BY>
+  Craig Dedo               On behalf of Jens Bloch Helmers
+  Elmbrook Computer Services    Det Norske Veritas Research AS
+  17130 W. Burleigh Place
+  Brookfield, WI   53005        N-1322 Hoevik
+  USA                   NORWAY
+  +1 (414) 783-5869             +47 (67) 57 75 31
+  E-mail: Craig.Dedo@mixcom.com E-mail: helm@vr.dnv.no
+  </SUBMITTED BY>
+
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 128
+  <TITLE>  $ Character in Symbolic Names
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should include the use of $ as a permissible character for
+  Fortran symbolic names for such things as arrays, variables, COMMON blocks,
+  modules, etc.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The $ character is a popular extension.  David Levine's survey of
+  extensions found that it is included in the Cray, DEC, EPC, HP, IBM, and
+  Lahey compilers.  Names contain the $ character are often used to name many
+  operating system functions and subroutines.  Including this character in the
+  standard will make it easier to have Fortran programs use such routines.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Change the list of permissible characters in symbolic names in section 3.1.1
+  so that $ is in the list.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 3.1.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 129
+  <TITLE>  Standardized Character Sets Including ASCII
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+  Fortran 2000 should require a compiler to provide full support for the 7-bit
+  ASCII character set.   This would be the ANSI definition, WITHOUT the
+  National character Set Options.  This would mean that 7-bit ASCII would be a
+  required KIND on a standard conforming compiler.  It would not be necessary
+  for a processor to offer 7-bit ASCII as the default character set or as the
+  KIND type for Fortran source statements.  However, a processor would be
+  required to include in the Fortran character set all of the characters in
+  positions 32 - 126 in the ASCII table.
+
+    In addition, Fortran 2000 should require support of the ASCII character
+  set interpreted according to the latest ISO C language standard.  This C
+  language character set would have its own unique KIND number.
+
+    As an extension of this requirement, the standard could also require
+  support for the ISO Latin-1 character set and possibly other ISO character
+  sets.
+
+    Development of this requirement should follow the recommendations of the
+  ISO TR 10176, Guidelines for the Preparation of Programming Language
+  Standards.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    This requirement would greatly increase portability of code, both from one
+  platform to another and from one country to another.  Although workarounds
+  exist, they usually are difficult and costly to use.  The time and effort of
+  application developers should be spent solving their problems rather than
+  fighting the limitations of the programming language.
+
+    The increasing use of multiple platforms for software development and the
+  increasingly international character of general business and trade over time
+  means that this functionality gets more desirable each year.  Use of a wider
+  variety of characters in ordinary printed materials is becoming far more
+  widespread than previously.  This means that the kluges of the past are
+  becoming untenable.  It also means that portability is becoming far more
+  important than it used to be.
+
+    If this issue is ignored, it will become increasingly difficult and costly
+  to engage in workarounds.
+
+    I do not believe that standards bodies can ignore any longer the need for
+  some standardized character sets in programming languages.  The earlier such
+  fundamental issues are standardized, the less costly and difficult
+  implementation will be.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    The language of sections 3.1 and 4.3.2.1 can be modified to require support
+  of the selected ISO character sets.  This should be quite simple by making
+  reference to the necessary ISO standards.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    This would require vendors to support several additional KINDs for
+  CHARACTER data types.  It should not be very difficult or costly for vendors
+  to implement this requirement.  Some changes may be required to compilers
+  in the case of vendors who support ASCII according to the C language
+  conventions.
+
+    This requirement may involve considerable debate in the standards making
+  process in order to make a high quality selection of required character sets.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 3.1, 4.3.2.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 130
+  <TITLE>  TAB Character in Fortran Source
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should allow the use of TAB characters in free source form.
+  The TAB character should be interpreted as if it was one blank character.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    This is a popular extension and often makes the source code easier to read.
+  Several vendors, including Cray, DEC, EPC, HP, IBM, and Lahey support this
+  feature.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Add TAB to the list of characters in the Fortran character set.  Write a
+  rule requiring that TAB be treated the same as space.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 3.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 131
+  <TITLE>  BYTE Data Type
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should include support for the BYTE data type, defined an a
+  sequence of 8 bits. The BYTE data type could be used for very small signed or
+  unsigned integers, for bit masks, and for 8 bit characters.  It could be the
+  TARGET of a POINTER assignment and used in building derived types.  It could
+  be storage associated with any other data type using the EQUIVALENCE
+  statement.  Any kind of data should be able to be assigned to a BYTE data
+  type or a BYTE array.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The BYTE data type is very useful for building data structures used to
+  access operating system data structures.  It also could be used for building
+  various derived types that either are cumbersome or impossible to build using
+  the currently available data types.  BYTE arrays can also be used for various
+  types of low level data manipulation which is difficult to do using the
+  current data types.  The implementation of the BYTE data type in compilers
+  from Cray, DEC, EPC, HP, IBM, Lahey, and Sun attests to the popularity and
+  usefulness of the BYTE data type.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This feature should be implemented in the same manner as the BYTE data
+  type is implemented in the compilers mentioned above.  The syntax should
+  follow the model used for current intrinsic data types.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    There should be little impact to current processors.  Vendors who do not
+  support BYTE should find this easy to implement.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 4.3.2, 5.1, 5.1.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 132
+  <TITLE>  Automatic or Dynamic Data Objects
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should provide a means of declaring that data objects
+  definitely disappear when they go out of scope.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    In the Fortran 90 standard and the Fortran 95 DIS, it is processor
+  dependent what happens to data objects if they do not have the SAVE
+  attribute.  Some processors make all data objects static while others make
+  non-SAVE data objects dynamic (a.k.a. automatic).  There should be a way for
+  an application developer to declare that a data object definitely disappears
+  when it goes out of scope.  This would give the application developer more
+  control on exactly how data objects are declared and used.  Most other
+  popular languages have this capability.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This feature could be implemented by defining another data object
+  attribute (5.1.2) and statement (5.2).  Probably the best keywords would be
+  either DYNAMIC or AUTOMATIC.  The EPC, HP, IBM, and Sun Fortran
+  compilers use the AUTOMATIC keyword as an extension to Fortran.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    This feature should not cost a great deal to implement.  Since its
+  equivalent appears in most other languages and this feature is already an
+  extension to several Fortran compilers, the implementation methods are
+  already well known.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 5.1.2, 5.2
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 133
+  <TITLE>  Piecewise Construction of Named Constant Arrays
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should allow a programmer to construct arrays which are
+  named constants (i.e., have the PARAMETER attribute) in several statements.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The current Fortran 90 standard and Fortran 95 DIS require that arrays
+  which are named constants be completely constructed in the same statement
+  in which they are declared.  This restriction places a stringent limit on the
+  length of such an array.  It also increases program complexity and decreases
+  program understandability since such declarations sometimes require lengthy
+  declaration statements with many continuation lines.
+
+    According to Jens Bloch Helmers of Det Norske Veritas Research, large
+  sized arrays of named constants are useful in certain fields of research and
+  engineering.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    One possible method would be to remove the restriction that named
+  constants need to be initialized in the same statement in which they are
+  declared.  Then the application developer could use successive PARAMETER
+  statements to initialize successive parts of the array.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    It is difficult to estimate how much effort it would take for vendors to
+  implement this requirement.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 5.1, 5.2.1.2, 5.2.9
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 134
+  <TITLE>  Period as Derived Type Delimiter
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should recognize the use of the period (.) as a delimiter in
+  derived types in addition to the percent sign (%).
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The main reason is aesthetic.  The period in this context is easier to
+  read. This is shown by the choice of the period as the derived type delimiter
+  in most other languages that support derived types, including Pascal, C, and
+  C++.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Change the rule to allow either a period or percent sign as the delimiter.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    This feature may cause a conflict with user-defined operators.  This
+  conflict could be resolved by defining one to have a higher precedence than
+  the other. Implementation costs should be moderate at worst.  There may need
+  to be some extra syntax checking.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 6.1.2
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 135
+  <TITLE>  Floating Point Operations in Initialization Expressions
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should allow the use of any floating point data objects,
+  functions, and operations in an initialization expression.  I.e., the Fortran
+  2000 standard should remove all current restrictions on the use of floating
+  point data objects, functions, and operations in initialization expressions.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The current Fortran 90 standard and the Fortran 95 DIS restricts the use of
+  floating point data objects in initialization expressions.  It does not allow
+  the use of floating point exponents nor the use of floating point functions.
+  These limits unnecessarily restrict the freedom of the application developer.
+   If these restrictions are removed, the application developer can initialize
+  data objects using more intuitive and straightforward methods.  Thus, this
+  feature would increase programmer productivity.
+
+    The current restrictions may have been necessary in earlier days when
+  machine time was extremely expensive and computing complex floating point
+  operations would have greatly increased the time required for compilation.
+  Today, the cost of programmer time greatly exceeds the cost of machine time.
+  This trend is expected to continue during the expected useful life of the
+  Fortran 2000 standard (1996-2012).
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    Remove the current restrictions in section 7.1.6.1.
+
+    Compilers could call the relevant run-time math library if necessary in
+  order to evaluate complex floating point operations or functions.  Such
+  capabilities are already available since at run time it is necessary to
+  perform such operations.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  Some Fortran compilers already allow this feature as an
+  extension.  It would be useful to ask implementors what unforseen
+  complexities could result from this feature.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 7.1.6.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 136
+  <TITLE>  Indirection and Address Operators and/or Functions
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should provide operators and/or functions for obtaining the
+  address of a data item and the value of an item given its address.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Very often, the use of operating systems procedures is made easier if this
+  functionality is available.  This capability could also be used for
+  applications in which fine control of memory is necessary.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    One possibility is to use the number sign (#) as the address operator and
+  the commercial at sign (@) as the indirection (i.e., value-at-address)
+  operator. Another option is to standardize the LOC() or %LOC() function.
+  Unfortunately, there is no widely used function name for the inverse (i.e.,
+  value-at-address) function.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Implementation costs should be quite low.  These capabilities are
+  implemented in many other languages.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 7.2
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 137
+  <TITLE>  BLOCKSIZE= Specifier on OPEN
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should support the BLOCKSIZE= specifier on the OPEN
+  statement, as implemented as an extension in several Fortran compilers.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Many file systems allow the user to specify the size of I/O transfer blocks,
+  i.e., the physical record size of data transfers.  This could be used by
+  knowledgeable programmers to optimize I/O operations.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be implemented as a BLOCKSIZE=numeric-expression keyword in the
+  OPEN statement.  If absent, the block size would use a processor-dependent
+  default value.  If the operating system or file system does not support
+  user-specified block sizes, the use of this keyword would have no effect.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  This keyword is already supported on several popular compilers.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 9.3.4
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 138
+  <TITLE>  BUFFERCOUNT= Specifier on OPEN
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should support the BUFFERCOUNT= specifier on the OPEN
+  statement, as implemented as an extension in several Fortran compilers.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Many file systems allow the user to specify the number of I/O buffers. This
+  could be used by knowledgeable programmers to optimize I/O operations.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be implemented as a BUFFERCOUNT=numeric-expression keyword in
+  the OPEN statement.  If absent, the buffer count would use a
+  processor-dependent default value.  If the operating system or file system
+  does not support user-specified buffer counts, the use of this keyword would
+  have no effect.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  This keyword is already supported on several popular compilers.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 9.3.4
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 139
+  <TITLE>  CARRIAGECONTROL= Specifier on OPEN
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should support the CARRIAGECONTROL= specifier on the
+  OPEN statement, as implemented as an extension in several Fortran
+  compilers.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Many Fortran processors allow the user to specify the kind of carriage
+  control which is used on the file during I/O operations.  This specifier would
+  allow the programmer to specify the carriage control rather than being
+  required to use the carriage control which is mandated by the Fortran compiler
+  for that particular kind of file.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be implemented as a CARRIAGECONTROL=character-expression keyword
+  in the OPEN statement. The character-expression would take one of the
+  following values:
+
+    FORTRAN   Specifies traditional Fortran interpretation of the first
+               character.
+    LIST      Process with single spacing between records.
+    NONE      Do not use any carriage control processing.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  This keyword is already supported on several popular compilers.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 9.3.4
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 140
+  <TITLE>  INITIALSIZE= and EXTENDSIZE= Specifiers on OPEN
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should support the INITIALSIZE= and EXTENDSIZE=
+  specifiers on the OPEN statement, as implemented as an extension in several
+  Fortran compilers.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Many file systems allow the user to specify the initial size and extend
+  sizes of file.  This could be used by knowledgeable programmers to optimize
+  I/O operations.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be implemented as INITIALSIZE=numeric-expression and
+  EXTENDSIZE=numeric-expression keywords in the OPEN statement.  If absent, the
+  initial size and extend size would use processor-dependent default values.
+  If the operating system or file system does not support user-specified
+  initial or extend sizes, the use of this keyword would have no effect.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  This keyword is already supported on several popular compilers.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 9.3.4
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 141
+  <TITLE>  ORGANIZATION= Specifier on OPEN
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should support the ORGANIZATION= specifier on the OPEN
+  statement, as implemented as an extension in several Fortran compilers.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Some file systems allow the user to specify the organization of the file as
+  either sequential (no fixed size and records are organized sequentially),
+  relative (fixed number of fixed-length records), or indexed (some fields are
+  keyed for indexed file access).  Knowledgeable programmers would benefit by
+  being able to specify the organization which is appropriate for the
+  application, if such organization is available.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This feature could be implemented by an ORGANIZATION=character-expression
+  keyword in the OPEN statement.  The character-expression would take one of
+  the following values:
+
+    SEQUENTIAL   The file does not have a fixed size and records are
+                  organized sequentially.
+    RELATIVE     The file has a fixed number of fixed-length records.
+    INDEXED      The file has some fields in each record keyed for
+                  indexed file access.
+  If the file system in use does not support a particular organization, the use
+  of the ORGANIZATION keyword would have no effect.
+  </SUGGESTED IMPLEMENTATION>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 9.3.4
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 142
+  <TITLE>  RECORDTYPE= Specifier on OPEN
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should support the RECORDTYPE= specifier on the OPEN
+  statement, as implemented as an extension in several Fortran compilers.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Some file systems allow the user to specify the record type of the file.
+  Knowledgeable programmers would benefit by being able to specify the record
+  type which is appropriate for the application, if such record type is
+  available.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This feature could be implemented by an RECORDTYPE=character-expression
+  keyword in the OPEN statement.  The character-expression would take one of
+  the following values:
+    FIXED     Specifies fixed length records.
+    VARIABLE  Specifies variable length records.
+    STREAM    Specifies stream records, i.e., records which have no
+  organization.
+  As an extension, a processor could offer additional record type values.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal to moderate.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 9.3.4
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 143
+  <TITLE>  USEROPEN= Specifier on OPEN
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should support the USEROPEN= specifier on the OPEN
+  statement, as implemented as an extension in several Fortran compilers.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Some file systems allow the user to specify a user-written external
+  procedure which controls the opening of the file..  Knowledgeable programmers
+  would benefit by being able to specify additional I/O capabilities which are
+  not available using the regular OPEN keywords.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This feature could be implemented by a USEROPEN=procedure-name
+  keyword in the OPEN statement.  The procedure would be declared
+  EXTERNAL and, if it is a function, be of a processor-dependent type.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal to moderate.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 9.3.4
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 144
+  <TITLE>  UNLOCK Statement
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should allow a programmer to unlock the most recently read
+  or written record without depending on processor, operating system, or file
+  system defaults.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Many operating systems and file systems lock records when they are read
+  or written.  In many cases, the record is unlocked at an indeterminate time.
+  This can cause problems in shared file applications and certain other
+  situations.  It would be helpful to give to the application programmer the
+  ability to force the unlocking of records.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be implemented by creating a statement of the form:
+    UNLOCK ([UNIT=]io-unit [, ERR=label] [, IOSTAT=iostatus])
+  where:
+    io-unit   is an I/O unit number
+    label     is a label of a branch target statement that receives control if
+               there is an error
+    iostatus  is a scalar integer variable that is defined as a processor-
+               dependent positive integer if there is an error and as zero if
+               there is no error
+
+    If there is no record locked at the time the UNLOCK statement is
+  executed, the statement has no effect.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+       Implementation costs should be quite low since record locking is a
+  function which is inherent to the READ and WRITE operations.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 9.3, 9.4
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 145
+  <TITLE>  $ and \ Edit Descriptors
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should include support for the $ and \ edit descriptors, as
+  implemented as extensions in several Fortran compilers.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    Both of these edit descriptors suppress end-of-record information at the
+  end of a record.  This makes it possible to concatenate two or more records
+  in one output line or to create prompting.  The $ edit descriptor is an
+  extension in the Cray, DEC, EPC, HP, IBM, Lahey, and Sun compilers.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    The Fortran 2000 standard should implement these edit descriptors as
+  defined in the above mentioned compilers.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    The impact of implementing these edit descriptors should not be great.
+  The algorithms already exist.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 10.2.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 146
+  <TITLE>  Q Edit Descriptor (Input Character Count Editing)
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should support the Q edit descriptor, as implemented as an
+  extension in several Fortran compilers.  This edit descriptor obtains the
+  number of characters remaining in the current input record.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    It is often very useful to obtain a count of the remaining characters in an
+  input record, right in the middle of the input record.  The support for the Q
+  edit descriptors an extension in the DEC, EPC, IBM, Lahey, and Sun compilers
+  attests to the popularity and usefulness of this feature.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    On input, if a Q edit descriptor corresponds to a scalar integer variable,
+  the integer variable is set to the number of characters remaining in the
+  input record.  If the corresponding input variable is some other data type,
+  an error occurs.  On output, the corresponding output list element is
+  ignored.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Since this is a popular extension, the algorithms are well know.  Therefore,
+  it should be fairly inexpensive to implement this feature.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 10.2.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 147
+  <TITLE>  Field and Record Justification
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should provide edit descriptors which allow the user to
+  specify whether a particular field is right justified, center justified, or
+  left justified.  If justification is not specified, it would default to the
+  current rules.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    The current Fortran 90 standard and the Fortran 95 DIS only allow
+  justification as defined by the standard.  If the programmer could specify
+  field and record justification, s/he could produce much better aligned output
+  with much less effort.  Right now, it takes quite a lot of effort on the
+  programmer's part in order to justify output, especially if it is to be
+  centered on a record.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    One method would be to precede each field with JR for right justification,
+  JL for left justification, and JC for center justification, with the target
+  field immediately following in parentheses.  Specifying JR, JC, or JL at the
+  beginning of a record could specify justification for entire records.
+  Investigation may reveal more effective methods for implementing each of
+  these features.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Unknown.  This may be fairly easy to implement or there may be
+  unforseen complications.  However, the existence of this feature in almost all
+  word processing and spreadsheet software indicates that the algorithms are
+  already highly developed and well known.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 10.2.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+
+  <FORTREQ>
+  <NUMBER> 148
+  <TITLE>  Prohibit Embedded Blanks in Edit Descriptors
+  <KEYWORDS>
+  <STATUS> Registered
+  <TARGET>
+  <SUBGROUP>
+  <VERSION>   1
+
+  <REQUIREMENT>
+    Fortran 2000 should require that format edit descriptors not contain
+  embedded blanks, except for character strings appearing inside quotes or
+  parentheses.
+  </REQUIREMENT>
+
+  <JUSTIFICATION>
+    A Fortran 90 interpretation allowed embedded blanks to appear in format
+  edit descriptors.  This is counter-intuitive.  It is contrary to the practice
+  of the last 1000 years (in Western languages) whereby blanks signify the
+  separation of words and tokens.  A format edit descriptor is a single token
+  or "word" in the eyes of application developers.  Therefore, embedded blanks
+  should not be allowed inside of edit descriptors.
+  </JUSTIFICATION>
+
+  <SUGGESTED IMPLEMENTATION>
+    This could be implemented by changing the rules in section 10.2.1
+  governing the format of edit descriptors.
+  </SUGGESTED IMPLEMENTATION>
+
+  <ESTIMATED IMPACT>
+    Minimal.  Some implementors will have to modify their compilers in order
+  to comply with the new rule.  Some users who used blanks embedded in format
+  edit descriptors will have to restructure their code.
+  </ESTIMATED IMPACT>
+
+  <SUBMITTED BY>
+    Craig T. Dedo
+    Elmbrook Computer Services
+    17130 W. Burleigh Place
+    Brookfield, WI   53005
+    (414) 783-5869
+    E-mail: Craig.Dedo@mixcom.com
+  </SUBMITTED BY>
+
+  <REFERENCE>
+    ISO/IEC 1539:1991 (E) 10.2.1
+  </REFERENCE>
+
+  <HISTORY>
+  <EVENT>     May 1996, meeting 137: submitted 96-074
+  </HISTORY>
+  </FORTREQ>
+
+  ------------------------------------------------------------------------------
+

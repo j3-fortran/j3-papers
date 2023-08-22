@@ -1,0 +1,118 @@
+                                                            09-205
+To: J3
+From: Malcolm Cohen
+Subject: Revised interp F03/0024 (see also 09-196).
+Date: 2009 April 22
+
+This paper combines 09-196 with the existing (failed) interp F03/0024.
+I have taken the liberty of rewriting the question from scratch to
+include the obvious edge cases.
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0024
+TITLE: Pointer deallocation and "whole object"
+KEYWORDS: DEALLOCATE, POINTER
+DEFECT TYPE: Interpretation
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+6.3.3.2 paragraph 2 (F03 [116:24-25]) states
+  "If a pointer appears in a DEALLOCATE statement,
+   it shall be associated with the whole of an object
+   that was created by allocation."
+
+What does this requirement entail?  In particular, which of the
+following examples conform to this requirement?
+
+Q1.  REAL,POINTER :: X(:),Y(:)
+     ALLOCATE(X(10))
+     Y => X(1:10)
+     ! Note that ASSOCIATED(X,Y) is true.
+     DEALLOCATE(Y)
+
+Q2.  REAL,POINTER :: X(:),Y(:)
+     ALLOCATE(X(10))
+     Y => X(10:1:-1)
+     ! Note that ASSOCIATED(X,Y) is false because the order differs.
+     DEALLOCATE(Y)
+
+Q3.  REAL,POINTER :: X(:),Y(:)
+     ALLOCATE(X(0))
+     Y => X
+     ! Note that ASSOCIATED(X,Y) is false because they are zero-sized.
+     DEALLOCATE(Y)
+
+Q4.  REAL,POINTER :: X(:),Y(:,:)
+     ALLOCATE(X(100))
+     Y(1:10,1:10) => X(1:100)
+     ! Note that ASSOCIATED(X,Y) is false because the shapes differ.
+     DEALLOCATE(Y)
+
+Q5.  REAL,POINTER :: X(:),Y
+     ALLOCATE(X(1))
+     Y => X(1)
+     ! Note that one is not permitted to ask ASSOCIATED(X,Y).
+     DEALLOCATE(Y)
+
+Q6.  TYPE T
+       REAL NOTHING(0)
+       REAL A(0)
+       CHARACTER C
+     END TYPE
+     TYPE(T),POINTER :: X
+     CHARACTER,POINTER :: Y
+     ALLOCATE(X)
+     Y => X%C
+     ! Note that one is not permitted to ask ASSOCIATED(X,Y).
+     DEALLOCATE(Y)
+
+Q7.  TYPE T
+       CHARACTER C
+     END TYPE
+     TYPE,EXTENDS(T) :: XT
+       ! No additional components
+     END TYPE
+     TYPE(XT),POINTER :: X
+     TYPE(T),POINTER :: Y
+     ALLOCATE(X)
+     Y => X%T
+     ! Note that one is not permitted to ask ASSOCIATED(X,Y).
+     DEALLOCATE(Y)
+
+ANSWER:
+
+In this context, "whole object" requires the type and type parameter
+values to be the same, and if the object is an array that the elements
+are the same elements in the same array element order.  A scalar is
+never the "whole" of an array (a processor is permitted to have extra
+padding between array elements).
+
+This gives the answers to the specific questions as follows:
+ Q1 - conforming;
+ Q2 - not conforming (order differs);
+ Q3 - conforming;
+ Q4 - conforming;
+ Q5 - not conforming (scalar vs. array);
+ Q6 - not conforming (type differs);
+ Q7 - not conforming (type differs).
+
+An edit is supplied to clarify this intent.
+
+EDITS:
+
+[116:25] After "by allocation." insert new sentence
+  "The pointer shall have the same dynamic type and type parameters as
+   the allocated object, and if the allocated object is an array the
+   pointer shall be an array whose elements are the same as those of
+   the allocated object in array element order."
+
+SUBMITTED BY: Aleksandar Donev
+
+HISTORY: 04-378    m170  F03/0024 submitted
+         04-378r1  m170  Passed by J3 meeting
+         05-146    m171  Failed J3 letter ballot #10
+         09-205    m188  Revised answer
+
+----------------------------------------------------------------------

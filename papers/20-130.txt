@@ -1,0 +1,642 @@
+To: J3                                                     J3/20-130
+From: Malcolm Cohen
+Subject: J3 Fortran interp letter ballot #36 - due 04-July-2020
+Date: 2020-June-02
+
+Enclosed in the next letter ballot on Fortran interpretations.
+
+This is a formal letter ballot; only one vote per principal member.
+An alternate member may vote if the principal member does not vote;
+in any case, comments are welcome from non-voting alternates and from
+members of WG5 that are not J3 members, and will be taken into
+consideration by J3/interp.
+
+The rules for interpretation handling by which we operate say:
+
+    o   J3 votes on the answer at a J3 meeting; a simple majority
+        vote marks the answer as "passed by J3 meeting".
+
+    o   Between J3 meetings the chair of /interp sends a J3 letter
+        ballot to J3 to approve interp answers that have been "passed
+        by J3 meeting".  The letter ballot runs for 30 days.  An interp
+        answer passes by a 2/3rds vote;  a no vote must be accompanied
+        by an explanation of the changes necessary to change the member's
+        vote to yes.
+
+        J3/interp reserves the right to recall an interp answer for
+        more study even if the answer passes.
+
+
+4 Fortran interpretations are currently "Passed by J3 meeting" after
+J3 meeting #221.  This is the letter ballot phase to go from "Passed
+by J3 meeting" to "Passed by J3 letter ballot".
+
+
+The following Fortran interpretations are being balloted:
+
+Yes  No   Number    Title
+
+---  ---  F18/015  Example in C.6.8 is wrong
+---  ---  F18/016  Host association changes in Fortran 2018
+---  ---  F18/017  Final subroutine invocation order
+---  ---  F18/018  Public namelist and private variable
+
+The text of these interpretations is attached.  Each interpretation
+starts with a row of "-"s.
+
+Please mark the above -Y- in the Yes column for "yes", -C- in the Yes
+column for "yes with comment", or -N- in the No column for a "no"
+answer {be sure to include your reasons with "no"} and send only the
+above text {not this entire mail message} with any comments to
+
+        j3@j3-fortran.org
+
+by 11:59:59PM, PDT, Saturday, 04-July-2020, in order to be counted.
+
+
+Thanks                         /Malcolm
+
+
+----------------------------------------------------------------------
+
+NUMBER: F18/015
+TITLE: Example in C.6.8 is wrong
+KEYWORDS: failed images
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 meeting
+
+The example code for failed images in C.6.8 raises several issues about
+its correctness.
+
+
+QUESTION:
+
+Q1.
+
+   A: In the example in C.6.8, the assignments
+        me[k] = failures(i)
+        id[k] = 1
+      are made by image 1 and the assignments
+        me = THIS_IMAGE ()
+        id = MERGE (1, 2, me<=images_used)
+      are made by image k in unordered segments. Was this intended?
+
+   B: In the example in C.6.8, the assignment
+           me[k] = failures(i)
+      is made by image 1 and me[k] is referenced on other images in
+      the FORM TEAM statement in unordered segments. Was this
+      intended?
+
+Q2.
+
+    Suppose the program in C.6.8 is executed by 11 images, so 1 is
+    intended to be a spare. If image 9 in the initial team fails
+    immediately before it executes the first FORM TEAM statement, then
+    image 10 in the initial team, which executes FORM TEAM with a
+    team-number == 1 and NEW_INDEX == 10 (== me), will have specified
+    a NEW_INDEX= value greater than the number of images in the new
+    team.  Should there be a test for this in the code?
+
+Q3.
+
+   A: If a replacement image has failed, its image index will be the
+      value of an element of the array failures, a replacement for it
+      will be found, and the replacement will be placed in team 1. Was
+      this intended?
+
+   B: The value of images_used increases each time the setup loop is
+      executed.  However, the array failures will contain the image
+      indices of all the failed images and allocate all of them fresh
+      replacements. Was this intended?
+
+ANSWER:
+
+1-A: No. An image control statement that provides segment ordering is
+     needed.
+
+1-B: No.
+
+2: This is quite a low-probability event, so exiting with the error
+   condition seems appropriate.
+
+3-A: No.
+ 
+3_B: No. It was intended to allocate replacements only for the newly
+     failed images.
+
+Furthermore, the example contains more errors than in the list above.
+Therefore an edit is provided that replaces the entire example with
+a complete rewrite, involving correction of additional errors, a
+better choice of names, and more comments.
+
+Some of the noteworthy additional changes are:
+ - declarations separated out and many comments added or changed;
+ - logical variable START added to distinguish the first execution of
+   the outer do loop when READ_CHECKPOINT should be false;
+ - rename ME to LOCAL_INDEX and ID to TEAM_NUMBER;
+ - code added to calculate the local indices of team 2;
+ - THEN keyword added to ELSE IF (done) statement. 
+
+EDITS to 18-007r1:
+
+[543:42-545:17] C.6.8 Example involving failed images,
+                Replace the entire example with the code below.
+                Note that many lines and comments are broken to keep
+                them within 70 columns, these should be joined up or
+                reformatted in the actual standard.
+"
+PROGRAM possibly_recoverable_simulation
+  USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY:TEAM_TYPE, STAT_FAILED_IMAGE
+  IMPLICIT NONE
+  INTEGER, ALLOCATABLE :: failures (:) ! Indices of the failed images.
+  INTEGER, ALLOCATABLE :: old_failures(:) ! Previous failures.
+  INTEGER, ALLOCATABLE :: map(:) ! For each spare image k in use, 
+             ! map(k) holds the index of the failed image it replaces.
+  INTEGER :: images_spare ! No. spare images.
+                          ! Not altered in main loop.
+  INTEGER :: images_used ! Max index of image in use.
+  INTEGER :: failed ! Index of a failed image.
+  INTEGER :: i, j, k ! Temporaries
+  INTEGER :: status ! stat= value
+  INTEGER :: team_number [*] ! 1 if in working team; 2 otherwise.  
+  INTEGER :: local_index [*] ! Index of the image in the team.
+  TYPE (TEAM_TYPE) :: simulation_team
+  LOGICAL :: read_checkpoint ! If read_checkpoint true on
+     ! entering simulation_procedure, go back to previous check point.
+  LOGICAL :: done [*] ! True if computation finished on the image.
+  LOGICAL :: start ! True initially.
+
+  ! Keep 1% spare images if we have a lot, just 1 if 10-199 images,
+  !                                             0 if <10.
+  images_spare = MAX(INT(0.01*NUM_IMAGES()),0,MIN(NUM_IMAGES()-10,1))
+  images_used = NUM_IMAGES () - images_spare
+  ALLOCATE ( old_failures(0), map(images_used+1:NUM_IMAGES()) )
+  start = .true.
+
+  outer : DO
+    local_index = THIS_IMAGE ()
+    team_number = MERGE (1, 2, local_index<=images_used)
+    SYNC ALL (STAT = status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+    IF (IMAGE_STATUS (1) == STAT_FAILED_IMAGE) &
+        ERROR STOP "cannot recover"
+    IF (THIS_IMAGE () == 1) THEN
+    ! For each newly failed image in team 1, move into team 1 a
+    ! non-failed image of team 2.
+       failures = FAILED_IMAGES () ! Note that the values
+                   ! returned by FAILED_IMAGES increase monotonically.
+       k = images_used
+       j = 1
+       DO i = 1, SIZE (failures)
+          IF (failures(i) > images_used) EXIT ! This failed image and
+          ! all further failed images are in team 2 and do not matter.
+          failed = failures(i)
+          ! Check whether this is an old failed image.
+          IF (j <= SIZE (old_failures)) THEN
+             IF (failed == old_failures(j)) THEN
+                j = j+1
+                CYCLE ! No action needed for old failed image.
+             END IF
+          END IF
+          ! Allow for the failed image being a replacement image.
+          IF (failed > NUM_IMAGES()-images_spare) failed = map(failed)
+          ! Seek a non-failed image
+          DO k = k+1, NUM_IMAGES ()
+            IF (IMAGE_STATUS (k) == 0) EXIT
+          END DO
+          IF (k > NUM_IMAGES ()) ERROR STOP "cannot recover"
+          local_index [k] = failed
+          team_number [k] = 1
+          map(k) = failed
+       END DO
+       old_failures = failures
+       images_used = k 
+       ! Find the local indices of team 2
+       j = 0
+       DO k = k+1, NUM_IMAGES ()
+            IF (IMAGE_STATUS (k) == 0) THEN
+            j = j+1 
+            local_index[k] = j
+          END IF
+       END DO
+    END IF
+    SYNC ALL (STAT = status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+    !
+    ! Set up a simulation team of constant size.
+    ! Team 2 is the set of spares, so does not participate.
+    FORM TEAM (team_number, simulation_team, NEW_INDEX=local_index, &
+               STAT=status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+
+    simulation : CHANGE TEAM (simulation_team, STAT=status)
+      IF (status == STAT_FAILED_IMAGE) EXIT simulation
+      IF (start) read_checkpoint = .FALSE.
+      start = .FALSE.
+      IF (team_number == 1) THEN
+         iter : DO
+           CALL simulation_procedure (read_checkpoint, status, done)
+           ! The simulation_procedure:
+           !  - sets up and performs some part of the simulation;
+           !  - resets to the last checkpoint if requested;
+           !  - sets status from its internal synchronizations;
+           !  - sets done to .TRUE. when the simulation has completed.
+           IF (status == STAT_FAILED_IMAGE) THEN
+              read_checkpoint = .TRUE.
+              EXIT simulation
+           ELSE IF (done) THEN
+              EXIT iter
+           END IF
+           read_checkpoint = .FALSE.
+         END DO iter
+      END IF
+    END TEAM (STAT=status) simulation 
+
+    SYNC ALL (STAT=status)
+    IF (THIS_IMAGE () > images_used) done = done[1]
+    IF (done) EXIT outer
+  END DO outer
+  IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) &
+    PRINT *,'Unexpected failure',status
+END PROGRAM possibly_recoverable_simulation
+"
+
+SUBMITTED BY: John Reid
+
+HISTORY: 19-182   m219  Submitted
+         19-182r3 m219  Revised draft - Passed by J3 meeting
+         19-228   m220  Failed J3 letter ballot #35
+         20-105   m221  Revised answer - Passed by J3 meeting
+
+----------------------------------------------------------------------
+----------------------------------------------------------------------
+
+NUMBER: F18/016
+TITLE: Host association changes in Fortran 2018
+KEYWORDS: Host association
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 meeting
+
+QUESTION:
+
+The default semantics for accessing entities by host association from
+an interface body appear to be different in Fortran 2018 than in
+Fortran 2008.
+
+Problem 1:
+In Fortran 2008, an interface body that is not a module procedure
+interface body cannot access entities in its host by host association
+unless an IMPORT statement is present in the interface body.  The same
+rule applies by default in Fortran 2018 if the interface body is for
+an external or dummy procedure, but not if the interface body is for
+an abstract interface or a procedure pointer that is not a dummy
+procedure pointer (see 8.8 "IMPORT statement" [117:17-19]).
+
+For example, in
+    DOUBLE PRECISION X
+    ABSTRACT INTERFACE
+        SUBROUTINE SUB(A)
+            REAL(KIND(X)) A
+        END SUBROUTINE
+    END INTERFACE
+Fortran 2008 specifies that X is default REAL, and that therefore so
+is argument A, but Fortran 2018 specifies that X is accessed by host
+association and so argument A is double precision.
+
+Problem 2:
+The Fortran 2008 standard specified that a submodule has access to
+host entities, but the Fortran 2018 standard does not specify any
+default host association semantics for a submodule (it specifies
+IMPORT semantics only for nested scoping units (see 8.8 "IMPORT
+statement" [117:23-26]).  That makes submodules using host association
+not conforming.
+
+For example, in
+    MODULE mod
+        INTERFACE
+            MODULE SUBROUTINE S
+            END SUBROUTINE
+        END INTERFACE
+        INTEGER,PARAMETER :: WP = KIND(0.0)
+    END MODULE
+    SUBMODULE (mod) submod
+        REAL(WP) X
+    END SUBMODULE
+the submodule references WP by host association in Fortran 2008, but
+Fortran 2018 does not specify any semantics and so the whole thing is
+not conforming.
+
+Problem 3:
+The Fortran 2008 standard specified that generic identifiers were
+accessible by host association, but the Fortran 2018 standard specifies
+that host association is for named entities.
+
+For example, in
+    INTERFACE OPERATOR(.plus.)
+        PROCEDURE plusfun
+    END INTERFACE
+    ...
+    CONTAINS
+        SUBROUTINE SUB(a,b,c)
+        ...
+        c = a.plus.b
+Fortran 2018 would not permit access to the user-defined operator.
+
+Problem 4:
+The Fortran 2018 standard specifies that BLOCK constructs access named
+entities in their hosts by host association.  This makes no sense
+because BLOCK constructs already have access to entities in their
+hosts through inclusive scoping.
+
+Were these changes intended?
+
+ANSWER:
+
+No, none of these changes were intended.
+
+Edits are provided to restore the semantics specified in the Fortran
+2008 standard.
+
+EDITS to 18-007r1:
+
+[117:18-19] 8.8 IMPORT statement, p2, second sentence,
+            Replace "interface body for an ... procedure."
+            with
+                "interface body that is not a module procedure
+                 interface body."
+
+        making the sentence read
+
+        "This is the default for an interface body that is not
+         a module procedure interface body."
+
+[117:25-26] 8.8 IMPORT statement, p4, second sentence,
+            Change "for a nested scoping unit ... procedure"
+            to "for a derived-type definition, internal subprogram,
+                module procedure interface body, module subprogram, or
+                submodule"
+            making the sentence read
+                "This is the default for a derived-type definition,
+                 internal subprogram, module procedure interface body,
+                 module subprogram, or submodule."
+
+[502:7] 19.5.1.4 "Host association", p1, first sentence
+        Change "nested scoping unit"
+        to "derived-type definition, interface body, internal
+            subprogram, module subprogram, or submodule",
+        Delete "named",
+        Making the sentence read
+            "A derived-type definition, interface body, internal
+             subprogram, module subprogram, or submodule has access to
+             entities from its host as specified in 8.8."
+
+SUBMITTED BY: Robert Corbett
+
+HISTORY: 19-257   m220  F18/016 Submitted
+         19-257r1 m220  Revised draft - Passed by J3 meeting
+
+----------------------------------------------------------------------
+----------------------------------------------------------------------
+
+NUMBER: F18/017
+TITLE: Final subroutine invocation order
+KEYWORDS: FINAL ALLOCATABLE
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 meeting
+
+QUESTION:
+
+Consider
+
+  Module m
+    Type base
+    Contains
+      Final basef
+    End Type
+    Type other
+    Contains
+      Final otherf
+    End Type
+    Type,Extends(base) :: t
+      Type(other),Allocatable :: comp
+    Contains
+      Final tf
+    End Type
+  Contains
+    Subroutine basef(a)
+      Type(base),Intent(InOut) :: a
+      Print *,'basef'
+    End Subroutine
+    Subroutine otherf(b)
+      Type(other),Intent(InOut) :: b
+      Print *,'otherf'
+    End Subroutine
+    Subroutine tf(c)
+      Type(t),Intent(InOut) :: c
+      Print *,'tf'
+    End Subroutine
+  End Module
+  Program test
+    Use m
+    Call sub
+  Contains
+    Subroutine sub
+      Type(t) x
+      Allocate(x%comp)
+    End Subroutine
+  End Program
+
+When the subroutine is executed, it will finalize X on exit,
+so what is the expected output?
+
+Finalization of X occurs before auto-deallocation of X%COMP;
+this follows from 9.7.3.2 paragraph 9.
+
+According to 7.5.6.2, in sequence
+  (1) the object's final procedure is invoked, i.e. TF is called,
+  (2) finalizable components are finalized, i.e. OTHERF is called,
+  (3) the parent is finalized, i.e. BASEF is called.
+And according to 7.5.6.3, deallocating X%COMP finalizes it,
+and so
+  (4) OTHERF is called.
+I.e. the output is
+  TF
+  OTHERF
+  BASEF
+  OTHERF
+
+However, this violates the principle that you only finalize something
+once.
+
+Q1. Is X%COMP actually finalized twice?
+
+It could be argued that "finalizing X before deallocating X%COMP"
+only puts an order on invocation of TF, and in particular, finalizing
+the parent pseudo-component need not precede the deallocation. But
+this would still invoke OTHERF twice.
+
+Q3. Is the auto-deallocation of an allocatable component required to
+    follow the finalization of other components and the parent
+    pseudo-component?
+
+Now consider the case where X%COMP is not allocated (i.e. delete the
+ALLOCATE statement). According to 7.5.6.2, it should invoke
+  (1) TF on X
+  (2) OTHERF on X%COMP
+  (3) BASEF on X%BASE
+however, as X%COMP is unallocated, the invocation in step (2) does
+not conform to the procedure reference requirements, i.e. the program
+is not conforming.
+
+Q2. Is X%COMP required to be allocated when X is finalized?
+
+DISCUSSION:
+
+An object is only finalized in situations listed in 7.5.6.3.
+Every such situation would also unconditionally deallocate any
+allocatable component, and if that component were finalizable,
+such deallocation would also unconditionally finalize the
+component (* except for intrinsic assignment, where a previous
+interpretation added an exclusion).
+
+Therefore it seems to be broken to finalize any allocatable component
+during finalization of the object it is contained in, as either it
+will be non-conforming, or will be finalized twice (* except for the
+previously-added exception).
+
+The design where allocatable entities are finalized at the time of
+deallocation would seem to be simpler, easier to understand, and less
+buggy.
+
+Perhaps the finalization of allocatable components in 7.5.6.2 step
+(2) should be removed, and the exclusion for intrinsic assignment for
+deallocation-finalization should also be removed?
+
+ANSWER:
+
+A1. No object should be finalized twice.
+A2. No, a finalizable allocatable component should not be required to
+    be allocated when its containing object is finalized.
+
+The inclusion of allocatable components in 7.5.6.2 step (2) is an
+error in the standard, and the intrinsic assignment exception for
+finalization on deallocation is likewise an error.
+
+Edits are provided to correct these errors.
+
+A3. An allocatable component should be able to be finalized as soon
+    as the object's final subroutine returns, i.e. there should be no
+    requirement on the processor to produce a particular invocation
+    order here.
+
+The ambiguity in whether component deallocation and component
+finalization should be ordered is inadvertent. An edit is provided
+to remove any implication that these need to have a specific order.
+
+EDITS to 18-007r1:
+
+[80:9] 7.5.6.2 The finalization process, p1, item (2),
+       "All finalizable" -> "All nonallocatable finalizable".
+{Remove redundant finalization.}
+
+[80:22] 7.5.6.3 When finalization occurs, p2,
+    After
+      "unless it is the variable in an intrinsic assignment statement"
+    Delete "or a subobject thereof".
+{Remove allocatable component exclusion in intrinsic assignment.}
+
+[137:28] 9.7.3.2 Deallocation of allocatable variables, p9,
+  Change "that object is finalized"
+  To     "any final subroutine for that object is executed",
+  Making the whole paragraph read
+    "If an allocatable component is a subobject of a finalizable
+     object, any final subroutine for that object is executed before
+     the component is automatically deallocated."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 20-117   m221  F18/017 Submitted - Passed by J3 meeting
+
+----------------------------------------------------------------------
+----------------------------------------------------------------------
+
+NUMBER: F18/018
+TITLE: Public namelist and private variable
+KEYWORDS: NAMELIST PUBLIC PRIVATE
+DEFECT TYPE: Clarification
+STATUS: Passed by J3 meeting
+
+QUESTION:
+
+Consider
+
+  Module m1
+    Real,Public :: x
+  End Module
+  Module m2
+    Use m1
+    Private x
+    Namelist/nml/x
+  End Module
+
+On the face of it, module M2 appears to violate
+  C8105 (R868) A namelist-group-object shall not have the PRIVATE
+       attribute if the namelist-group-name has the PUBLIC attribute.
+as the local X indeed has the PRIVATE attribute. On the other hand,
+it is just a local name for the remote X which is PUBLIC, which
+raises doubts.
+
+Comment: This seems to be a very old constraint dating back to when
+         the standard was much more restrictive about such things.
+         It is not clear why this should be disallowed.
+         Even if X were a local variable of M2, it is not clear what
+         purpose this constraint serves.
+
+A quick compiler survey revealed that most but not all compilers
+think that it is where the variable is defined that matters, i.e.
+many accept the example code.
+
+Q1. Should PRIVATE local variables really be prohibited from a PUBLIC
+    namelist?
+
+If the answer to Q1 is yes,
+Q2. Is it PRIVATE on the local name that matters, or PRIVATE on the
+    variable where it is defined?
+
+COMMENT:
+
+A NAMELIST statement can contain several namelist-group-names, so it
+is also somewhat ambiguous as to which namelist-group-objects this
+constraint applies to.
+
+ANSWER:
+
+A1. Yes. Although this restriction appears to serve little purpose,
+    it is a deliberate restriction (which could be lifted in a future
+    standard).
+
+A2. It is whether the local name has the PRIVATE attribute that
+    matters, not where the variable is declared.
+
+An edit is provided.
+
+EDIT to 18-007r1:
+
+[119:8-9] 8.9 NAMELIST statement, C8105,
+  After "PRIVATE attribute" insert "in the local scope",
+  and change "the namelist-group-name" to "its namelist-group-name",
+  making the whole constraint read
+    "C8105 (R868) A namelist-group-object shall not have the PRIVATE
+           attribute in the local scope if its namelist-group-name
+           has the PUBLIC attribute."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 20-127   m221  F18/018 Submitted
+         20-127r1 m221  Passed by J3 meeting
+
+----------------------------------------------------------------------
+
+===END===
+
+

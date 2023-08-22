@@ -1,0 +1,72 @@
+                                                           J3/16-236
+To: J3
+From: Malcolm Cohen
+Subject: Noncontiguous array with unspecified locality
+Date: 2016 June 09
+
+
+1. Introduction
+
+There is a problem with copy-in/copy-out affecting adjacent elements of an
+array when unspecified locality is used.  This paper attempts to correct
+the requirements and semantics in this case.
+
+
+2. Example
+
+  SUBROUTINE outer(x)
+    REAL x(:)
+    INTERFACE
+      PURE SUBROUTINE set(a,j,v)
+        INTEGER,INTENT(IN) :: j
+        REAL,INTENT(INOUT) :: a(*)
+        REAL,INTENT(IN) :: v
+      END SUBROUTINE
+    END INTERFACE
+    ...
+    DO CONCURRENT(I=1:N)
+      ...
+      CALL set(x,i,1.5*i) ! Potential copy-in/out of all of x.
+      ...
+    END DO
+  END SUBROUTINE
+  !
+  PURE SUBROUTINE set(a,j,v)
+    INTEGER,INTENT(IN) :: j
+    REAL,INTENT(INOUT) :: a(*)
+    REAL,INTENT(IN) :: v
+    a(j) = v
+  END SUBROUTINE
+
+If X is contiguous, no copy-in/out is expected to occur, and each element
+of X is only assigned to once, and not referenced in any other iteration.
+
+However, if X is discontiguous, copy-in/out is expected; unless X is
+already implicitly LOCAL (by virture of being previously defined), this is
+likely to cause strange behaviour if the DO CONCURRENT is parallelised.
+
+There are two possibilities:
+(1) disallow this case;
+(2) continue to allow this case, effectively disabling parallelisation and
+    other such optimisations in this case.
+
+An edit is suggested to disallow this case.
+
+3. Edits to 16-007r1
+
+[26:14+] Fortran 2008 compatibility,
+    "Fortran 2008 permitted a noncontiguous array that was supplied as an
+     actual argument corresponding to a contiguous INTENT (INOUT) dummy
+     argument in one iteration, without being previously defined in that
+     iteration, to be defined in another iteration; this document does not
+     permit this."
+
+[185:28+] 8.1.7.5 Additional semantics for DO CONCURRENT constructs, p4,
+          insert additional bullet point after the first:
+  "- if it is noncontiguous and is supplied as an actual argument
+     corresponding to a contiguous INTENT (INOUT) dummy argument in an
+     iteration, it shall either be previously defined in that iteration or
+     shall not be defined in any other iteration;"
+{Treat this as referencing the whole array.}
+
+===END===

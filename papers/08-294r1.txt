@@ -1,0 +1,209 @@
+From: R. Bader (Bader_AT_lrz_DOT_de)
+To: J3                                                           08-294r1
+Subject: Coarray transactions
+Date: 2008 November 07
+References: J3/08-007r2, WG5/N1753, WG5/N1754, WG5/N1756
+
+This paper aims to solve the problem discussed in section B. of N1754,
+along the lines indicated in N1756. The relevant section of N1756 is
+reproduced here to motivate the edits to the standard that follow.
+
+The example program in section D. of N1754 is a bit of a red herring
+since deadlock situations with companion processors or I/O may also
+occur if only two images are involved. The author has however, in my
+opinion, hit on a bug in the specification that must be fixed; I am
+referring to 8.5.1 para6. With the first bullet of para6, the
+following situations are covered:
+
+
+----------------------------------------------------------------
+Legend:
+P, Q, ... are image numbers
+a is a coarray
+S(XY) is a pairwise synchronization which induces segment
+ordering for the two specified images.
+Time goes downward ... whatever that means.
+----------------------------------------------------------------
+
+
+              P             Q
+              |             |
+              |             | a = ...
+        S(PQ) ~~~~~~~~~~~~~~~                RAW
+              |             |
+ ... = a[Q]   |<------------|
+
+
+and further diagrams covering WAW (push instead of pull by P), WAR.
+What is however not covered correctly are the cases in the lower
+part of the following diagram:
+
+              P             Q            R
+              |             |            |
+              |  ... = a[R] |<-----------|
+        S(PQ) ~~~~~~~~~~~~~~~            |   WAR (R "passive")
+              |             |            |
+ a[R] = ...   |------------------------->|
+              |             |            |
+        S(PR) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+              |       S(QR) ~~~~~~~~~~~~~~
+              |             |            |
+              |  ... = a[R] |<-----------|   RAW (R "passive")
+              |             |            |   (or WAW, R "passive",
+                                              not shown)
+
+Indeed it appears the present formulation of the draft standard
+requires S(PQ) twice in the above diagram (instead of the S(PR)
++S(QR) sequence drawn above), making it look like a
+one-sided MPI call with a passive partner. This is not
+implemented e.g., in MPICH2 or Intel MPI for good reason; the
+MPI 2.1 standard indeed says that while concurrency of a passive
+target put/get can be suppressed for RMA, no guarantee can be given
+that put will actually be executed before get.
+
+Hence, R should only be passive with respect to references
+to a, but not with respect to requiring a
+
+sync images (/P,Q,R/)
+
+(as drawn in the diagram) for the RAW case, as images P and Q do.
+However, for WAR indeed only S(PQ) is needed.
+
+So I think it is appropriate to introduce the concept of an image
+being "owner" of a coarray, and then attend to
+all conceivable transactions with the owner. If this is done, one
+obtains 16 elementary transactions, of which 12 involve
+updates. Of these, 9 involve image communication, and of these
+again, the above 3 need special treatment.
+
+
+
+Edits to 08-007r2:
+~~~~~~~~~~~~~~~~~~
+
+[35] add two new paragraphs to 2.5.7:
+
+4+1 A coarray update may happen on either the image owning it (Uo),
+    or a remote image (Ur). Coarray updates comprise
+    * the definition or undefinition of a coarray variable either
+      on the image owning it (Uo), or a remote image (Ur).
+    * the allocation of an allocatable subobject of a coarray or
+      pointer association of a pointer subobject of a coarray by
+      the image owning it (Uo).
+
+    Note 2.17+:
+
+    The definition or undefinition by a remote image of a noncoarray
+    dummy argument whose effective argument is a coarray is not
+    counted as a coarray update. This is to avoid side effects
+    due to presence or lack of copy-in/copy-out. Hence, this case
+    receives special treatment with respect to image execution
+    (8.5.1).
+
+4+2 A coarray reference from the image owning it is denoted by (Ro);
+    a coarray reference from any other image is denoted by (Rr).
+
+[32] add a new section:
+
+2.4.6 Coarray transactions
+
+1 During execution of all images of a program, the sequence of all
+  references or updates of a coarray entity owned by a particular
+  image (2.5.7) is composed of elementary transactions, where the
+  final part of each transaction overlaps with the initial part of
+  the next transaction, provided the latter exists.
+
+2 There exist 16 elementary coarray transactions:
+  * (Ro) after (Ro), (Ro) after (Rr), (Rr) after (Ro), (Rr) after (Rr)
+  * (Ro) after (Uo), (Ro) after (Ur), (Rr) after (Uo), (Rr) after (Ur)
+  * (Uo) after (Ro), (Uo) after (Rr), (Ur) after (Uo), (Ur) after (Rr)
+  * (Uo) after (Uo), (Uo) after (Ur), (Ur) after (Uo), (Ur) after (Ur)
+
+  Note 2.14+1:
+
+  Each elementary coarray transaction involves 1, 2 or 3 images.
+  The case of 1 image refers to serial execution. In the case of
+  3 images, only two images will execute statements that actually
+  perform the transaction.
+
+  Note 2.14+2:
+
+  The selection of each elementary transaction is performed by the
+  programmer, based on the needs imposed by the parallel algorithm
+  to be implemented.
+
+
+[188] replace para6 of 8.5.1 by
+
+6 If two or more images perform an elementary coarray transaction, and
+  either zero or exactly one image performs its part of the transaction
+  by executing a GET_ATOMIC or SET_ATOMIC intrinsic on the coarray,
+
+  (C848+1) the segment of the image owning the coarray shall be
+           ordered with respect to the segment of the remote image
+           referencing the coarray for the elementary transactions
+           (Ro) after (Ur), (Rr) after (Uo),
+           (Uo) after (Rr), (Ur) after (Uo),
+           (Uo) after (Ur), (Ur) after (Uo).
+
+  (C848+2) the segments of both remote images shall be ordered
+           with respect to the image owning the coarray for
+           the elementary transactions (Rr) after (Ur),
+           (Ur) after (Ur). If the remote images are not the
+           same image, the segments of the remote images shall
+           also be ordered with respect to each other.
+
+  (C848+3) the segments of two different remote images shall be
+           ordered with respect to each other for the access sequence
+           (Ur) after (Rr).
+
+7 For all elementary access sequences by two different images which
+  contain at least one coarray update, and for which at least one
+  image executes a procedure in segments Pi, Pi+1 , ..., Pk for which
+  the coarray is an effective argument associated with a non-coarray
+  dummy argument,
+
+  (C848+5)  the coarray shall not be referenced, defined, or become
+            undefined on the other image Q in a segment Qj unless Qj
+            precedes Pi or succeeds Pk.
+
+  Note 8.30:
+
+  Any prescribed image segment ordering must be consistent with the
+  semantics of the elementary transaction it is associated with.
+
+  Note 8.31
+
+  The processor may optimize the execution of a segment as if it were
+  the only image in execution. In particular, this applies to
+  transaction sequences which do not involve updates, and to
+  transaction sequences which contain references and/or updates
+  by the owning image only.
+
+  Note 8.31+1:
+  The model upon which the interpretation of a program is based is
+  that there is a permanent memory location for each coarray and that
+  all images can access it. In practice, an image may make a copy of
+  a coarray (in cache or a register, for example) and, as an
+  optimization, defer copying a changed value back to the permanent
+  location while it is still being used. It is safe to defer this
+  transfer until the end of the current segment and thereafter to
+  reload from permanent memory any coarray that was not defined within
+  the segment. It would not be safe to defer these actions beyond the
+  end of the current segment since another image might reference the
+  variable then.
+
+  Note 8.31+2:
+  The incorrect sequencing of image control statements can suspend
+  execution indefinitely. For example, one image might be executing
+  a SYNC ALL statement while another is executing an ALLOCATE
+  statement for a coarray.
+
+
+Further comment:
+~~~~~~~~~~~~~~~~
+
+   The above edits assume that VOLATILE coarrays have been
+   disallowed, and been replaced by the atomic statements or
+   intrinsics suggested in N1753.
+

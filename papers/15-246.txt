@@ -1,0 +1,240 @@
+                                                             J3/15-246
+To:         J3 Members
+From:       Van Snyder &  Daniel Chen
+Subject:    Tirade against locality specs
+Date: 2015 October 13
+
+The following replies and edits address the rants of 15-224. The Rant
+sections are copied from 15-224.
+
+
+Rant 1:
+-------
+Locality specs for DO CONCURRENT were rushed into existence.  Their
+interaction with other facilities has not been thought through.  We
+should not be adding warts and large gobs of interp bait at this time.
+
+Reply 1:
+
+Repairing the current spec seems preferable to replacing it with a
+proposal that has been previously rejected.
+
+
+Rant 2:
+-------
+8.1.6.5p2 says that a variable that has LOCAL or LOCAL_INIT locality has
+the same attributes as the variable with the same name outside the
+construct.  How far outside?  In some other module but not accessed by
+use association? In a BLOCK construct that does not include the DO
+CONCURRENT construct?  What if there are several different ones in
+enclosing scoping units?
+
+Reply 2:
+
+Outside variables are the ones that are in the innermost executable
+construct or scoping unit that includes the DO CONCURRENT construct.
+
+An edit is provided.
+
+
+Rant 3:
+-------
+Some of the attributes of an "outside" variable, even a properly-defined
+one, are clearly impossible or at least undesirable.  For example, a
+variable with LOCAL_INIT locality and INTENT(IN) cannot be initialized
+as specified in 8.1.6.5p2.  If it has INTENT(OUT) does that mean it gets
+finalized and becomes undefined as soon as (or immediately before?)
+being defined?  If the "outside" variable has the PARAMETER attribute,
+or was gotten by use association and has the PROTECTED attribute, can it
+be initialized?  Do we really want the construct entity to have the
+ALLOCATABLE, ASYNCHRONOUS, POINTER, and VOLATILE attributes
+automatically?  What if it's OPTIONAL and absent?
+
+Reply 3:
+
+INTENT(IN): A construct entity that has LOCAL or LOCAL_INIT locality
+shall not have the INTENT(IN) attribute.
+
+An edit is provided.
+
+INTENT(OUT): Finalization for INTENT(OUT) arguments occurs at the
+entrance of the procedure. It applies to dummy variables only.  A
+construct entity that has LOCAL or LOCAL_INIT locality is not a dummy
+argument, so it does not have the INTENT(OUT) attribute.
+
+PARAMETER: It is not allowed because R825 requires a
+<variable name> [174:31].
+
+PROTECTED: A construct entity that has LOCAL or LOCAL_INIT locality
+also has the PROCTECTED attribute if the variable with the same name
+in the innermost executable construct or scoping unit that includes the
+DO CONCURRENT construct has the PROTECTED attribute.
+
+ALLOCATABLE/POINTER: A construct entity that has LOCAL or LOCAL_INIT
+locality can also have the ALLOCATABLE or POINTER attribute.
+8.1.6.5 [178:15-19] specifies the initial value of such a construct
+entity.
+
+ASYNCHRONOUS/VOLATILE: A construct entity that has LOCAL/LOCAL_INIT
+locality can also have the ASYNCHRONOUS or VOLATILE attribute.
+
+OPTIONAL: A construct entity that has LOCAL or LOCAL_INIT locality
+is not a dummy argument, so it does not have the OPTIONAL attribute.
+If the variable with the same name in the innermost executable
+construct or scoping unit that includes the DO CONCURRENT construct
+has the OPTIONAL attribute, it shall be present.
+
+An edit is provided.
+
+
+Rant 4:
+-------
+For LOCAL_INIT, what if there is no outside variable and IMPLICIT NONE
+is not in effect?  If there is no outside variable and IMPLICIT NONE is
+in effect, is the outside variable implicitly defined, and the inside
+variable initially undefined?  That's ugly.
+
+Reply 4:
+
+Constraint C817 requires the existence of a variable in the innermost
+executable construct or scoping unit that includes the DO CONCURRENT
+construct for any construct entity that has a locality spec.
+
+No edit is needed.
+
+
+Rant 5:
+-------
+If a variable has LOCAL or LOCAL_INIT locality, is it a construct
+entity?  Subclause 16.4 is entirely silent concerning LOCAL and
+LOCAL_INIT.
+
+Reply 5:
+
+A variable that has LOCAL or LOCAL_INIT locality is a construct entity
+as stated in [178:12].
+
+Subclause 16.4 should be updated to reflect that. An edit is provided.
+
+
+Rant 6:
+-------
+The specifications concerning SHARED locality are clearly defective when
+compared to those concerning unspecified locality.
+
+Reply 6:
+
+An edit is provided to improve the wording.
+
+
+Rant 7:
+-------
+There was a remark that the effects of locality specs can be achieved
+using a BLOCK construct inside a DO CONCURRENT construct.  None of these
+questions arise in that case because a construct entity declared in a
+block specification part does NOT automatically have the attributes of
+an entity of the same name in the enclosing scope.  There are a few
+questions that need to be addressed in that case (which might need
+interps), but nothing approaching the scope of questions concerning
+locality specs.
+
+Reply 7:
+
+A BLOCK construct inside a DO CONCURRENT doesn't fix the problem that
+the locality specs resolve.  The problem is not how to identify
+iteration local variables. It is how to identify iteration shared
+variables.  Without the locality specs, the compiler is forced to do
+copy-in/copy-out for some iteration shared variables since the
+information is not known at the compile time. This would impact the
+performance and is not desired.
+
+No edit is needed.
+
+
+Additional issue:
+-----------------
+
+Discussion:
+Should a variable that has LOCAL or LOCAL_INIT locality be a coarray or
+coindexed object?
+
+Answer: No. It is not desired to make a construct entity from a
+coarray or coindexed object because it involves making a local temp.
+An edit is provided to disallow it.
+
+
+
+Edits to 15-007r2:
+==================
+
+Reply 2:
+
+[175:7-9] 8.1.6.2 Form of a DO construct, split C817 into two
+constraints as:
+
+"C817 A <variable-name> in a <locality-spec> shall be the name of a
+variable in the innermost executable construct or scoping unit that
+includes the DO CONCURRENT construct."
+
+"C817a A <variable-name> in a <locality-spec> shall not be the name of
+an assumed-size array and shall not be the same as an <index-name> in
+the <concurrent-header> of the same DO CONCURRENT statement."
+
+[178:13] 8.1.6.5 Additional semantics for DO CONCURRENT constructs,
+para 2: Replace "variable with the same name outside the construct"
+with "variable with the same name in the innermost executable
+construct or scoping unit that includes the DO CONCURRENT construct."
+
+[178:13] 8.1.6.5 Additional semantics for DO CONCURRENT constructs,
+para 2: Replace ", and the outside variable" with " The variable in
+the innermost executable construct or scoping unit that includes the
+DO CONCURRENT construct".
+
+
+
+Reply 3:
+
+[175:9+] 8.1.6.2 Form of a DO construct, after C817 insert a two new
+constraints:
+
+"C817b A <variable-name> that has LOCAL or LOCAL_INIT locality shall
+not have the INTENT(IN) attribute."
+
+"C817c A <variable-name> that has LOCAL or LOCAL_INIT locality shall
+not be the name of an absent optional dummy data object in the
+innermost executable construct or scoping unit that includes the DO
+CONCURRENT construct."
+
+
+Reply 5:
+
+[484:10] 16.4 Statement and construct entities, Insert the following
+before "An entity": "A variable that has LOCAL or LOCAL_INIT locality
+in a DO CONCURRENT is a construct entity. "
+
+[484:33+] 16.4 Statement and construct entities, after p5, add a new
+paragraph as:
+"A variable that has LOCAL or LOCAL_INIT locality in a DO CONCURRENT
+construct has the scope of the construct. It has the same type, type
+parameters, rank, shape (if any), and attributes as the variable with
+the same name in the innermost executable construct or scoping unit
+that includes the DO CONCURRENT construct."
+
+Reply 6:
+
+[178:23] 8.1.6.5 Additional semantics for DO CONCURRENT constructs,
+para 3, Replace "scoping unit" with "innermost executable construct or
+scoping unit that includes the DO CONCURRENT construct".
+
+
+Additional Issue:
+
+[175:9++] 8.1.6.2 Form of a DO construct, after C817 insert a new
+constraint:
+
+"C817d A variable that has LOCAL or LOCAL_INIT locality shall not be a
+coarray or a coindexed object."
+
+
+
+

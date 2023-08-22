@@ -1,0 +1,265 @@
+To: J3                                                 09-201
+From: Nick Maclaren
+Subject: Atomic Semantics (Proposal A)
+Date: 2009 April 21
+References:
+
+
+There has been an inconclusive Email debate about the parallel semantics
+of ATOMIC variables, which has asked two questions: (a) what semantics
+should they have, and (b) what the current intent is.  There seems to be
+no consensus on the first and little on the second.
+
+The debate has centred around Note 8.39.  There is no disagreement that
+it will work on any system that can support any useful form of
+synchronisation using atomic operations.  The problem is that it relies
+on semantics that are not explicitly specified by the normative text,
+but does not say so, and there is no agreement over whether they are an
+implication of the normative text.
+
+The purpose of this document (and its alternative, "Atomic Semantics
+(Proposal B)") is to reach the state that the example relies solely on
+defined semantics.
+
+
+
+I do not believe that this issue is resolvable by wording alone, and
+believe that the best (and actually simplest) solution is to separate
+ATOMIC_INT_KIND and ATOMIC_LOGICAL_KIND into two:
+
+
+       ATOMIC_ONLY_INT_KIND and ATOMIC_ONLY_LOGICAL_KIND
+
+    These are atomic but with no more REQUIRED consistency than is
+    specified for non-atomic coarrays; a processor would be free to
+    define extra semantics, of course.  That is what we agreed in Tokyo.
+
+    They would always provide the right semantics for trace variables,
+    progress monitor variables, the implementation of user-defined
+    reductions and so on, but would be useful for synchronisation only
+    in some implementations.
+
+    These are efficiently and scalably implementable even on commodity
+    clusters, and would be usable even when it is essential not to
+    distort the timing of an image's serial execution, or when maximal
+    performance is critical.  On a shared memory system, the compiler
+    would need only to avoid reordering accesses, and otherwise would
+    generate normal code.
+
+
+        ATOMIC_SC_INT_KIND and ATOMIC_SC_LOGICAL_KIND
+
+    These are sequentially consistent, would behave as most users would
+    expect, and would provide reliable semantics for synchronisation.
+
+    On commodity clusters, they would need special, processor dependent,
+    implementation, would not be very scalable and would not be suitable
+    for trace variables.  Even on shared memory systems, they would
+    usually need special code, as the underlying hardware rarely
+    guarantees sequential consistency.
+
+    There is considerable experience that users expect sequential
+    consistency, no matter what they are taught.  In the 30 years since
+    Lamport's paper, there have been many attempts to define a weaker
+    model, but none have been accepted by the community.  Also, C++
+    has taken this path.
+
+    There is a specification problem in that these behave a bit like
+    image control statements for a single variable, and therefore need
+    the same constraints on where they may be defined or referenced.
+    This is why I felt that simply saying that atomics are sequentially
+    consistent would not work; see below for my proposed wording.
+
+
+The wording changes appear extensive, but that is only because of the
+name changes.  The only significant ones are an extra paragraph and
+two extra Notes in 13.1; I have put them first, so the edits are not in
+sequential order.  It would be possible to leave one name unchanged,
+if that were preferred.
+
+
+
+Edits to CD 1539-1 (J3/09-007r1)
+--------------------------------
+
+[319:16-17] In 13.1, after paragraph 3, insert a new paragraph and a
+new Note:
+
+    "There is a total order on all atomic actions on all objects of
+    type integer with kind ATOMIC_SC_INT_KIND or of type logical with
+    kind ATOMIC_SC_LOGICAL_KIND, consistent with 2.3.5 and 8.5.2.  A
+    call to an atomic subroutine with an ATOM argument of these types
+    and kinds shall be used only where an image control statement is
+    permitted.  A dependency between accesses to objects of these
+    types and kinds may be used to construct a user-defined ordering
+    [8.5.5]."
+
+    "NOTE 13.x
+    This states that accesses to atomic variables of those kinds are
+    sequentially consistent, as described in Lamport, L., IEEE Trans.
+    Comput. C-28,9 (Sept. 1979), 690-691."
+
+[[[ Justification:
+
+The first sentence is hacked from the current C++ draft.
+
+The last sentence is needed to make their use for synchronisation
+standard defined rather than processor dependent (see 8.5.5, paragraph
+4).  Exactly what a dependency is remains processor dependent, though
+all reasonable code will be portable. ]]]
+
+
+[319:25-26] In 13.1, after old paragraph 7, insert a new Note:
+
+    "NOTE 13.x
+    The order of accesses to atomic variables other than with kind
+    ATOMIC_SC_INT_KIND or ATOMIC_SC_LOGICAL_KIND may not appear to
+    be consistent between different images or between different
+    variables.  The most reliable way to use these is for a single
+    image to define a particular variable, repeatedly, and for another
+    image to inspect its changes."
+
+
+[[[ The following changes are less significant. ]]]
+
+
+[190:23-*] In 8.5.2, change Note 8.31 by replacing "volatile variables"
+by "volatile variables and atomic actions on objects of kind
+ATOMIC_SC_INT_KIND or ATOMIC_SC_LOGICAL_KIND".  Note 8.32 also needs
+fixing to match this.
+
+
+[193:10-*] In 8.5.5, change Note 8.39 by replacing "ATOMIC_LOGICAL_KIND"
+by "ATOMIC_SC_LOGICAL_KIND".
+
+
+[[[ All of the following edits are name changes, or minor changes for
+consistency. ]]]
+
+
+[319:15-16] In 13.1, paragraph 3, change the last sentence:
+
+    "How sequences of atomic actions in unordered segments interleave
+    with one another is processor dependent."
+
+to:
+
+    "How sequences of atomic actions in unordered segments interleave
+    with one another is processor dependent, except when explicitly
+    stated otherwise."
+
+
+[335:22-23] In 13.7.20, paragraph 3, replace:
+
+    "shall be scalar and of type integer with kind ATOMIC_INT_KIND or of
+    type logical with kind ATOMIC_LOGICAL_KIND, where ATOMIC_INT_KIND
+    and ATOMIC_LOGICAL_KIND are the named constants in the intrinsic
+    module ISO_FORTRAN_ENV."
+
+by:
+
+    "shall be scalar and of type integer with kind ATOMIC_ONLY_INT_KIND
+    or ATOMIC_SC_INT_KIND or of type logical with kind
+    ATOMIC_ONLY_LOGICAL_KIND or ATOMIC_SC_LOGICAL_KIND, where
+    ATOMIC_ONLY_INT_KIND, ATOMIC_SC_INT_KIND, ATOMIC_ONLY_LOGICAL_KIND
+    and ATOMIC_SC_LOGICAL_KIND are the named constants in the intrinsic
+    module ISO_FORTRAN_ENV."
+
+[[[ The only variation from the existing wording is the duplication of
+the names. ]]]
+
+
+[335:35-37] In 13.7.21, paragraph 3, replace:
+
+    "shall be scalar and of type integer with kind ATOMIC_INT_KIND or of
+    type logical with kind ATOMIC_LOGICAL_KIND, where ATOMIC_INT_KIND
+    and ATOMIC_LOGICAL_KIND are the named constants in the intrinsic
+    module ISO_FORTRAN_ENV."
+
+by:
+
+    "shall be scalar and of type integer with kind ATOMIC_ONLY_INT_KIND
+    or ATOMIC_SC_INT_KIND or of type logical with kind
+    ATOMIC_ONLY_LOGICAL_KIND or ATOMIC_SC_LOGICAL_KIND, where
+    ATOMIC_ONLY_INT_KIND, ATOMIC_SC_INT_KIND, ATOMIC_ONLY_LOGICAL_KIND
+    and ATOMIC_SC_LOGICAL_KIND are the named constants in the intrinsic
+    module ISO_FORTRAN_ENV."
+
+[[[ This edit is identical to that of 13.7.20. ]]]
+
+
+[400:1-6] In 13.8.2.2 and 13.8.2.2, replace:
+
+    "13.8.2.2 ATOMIC_INT_KIND
+
+    The value of the default integer scalar constant ATOMIC_INT_KIND is
+    the kind type parameter value of type integer variables for which
+    the processor supports atomic operations specified by atomic
+    subroutines.
+
+    13.8.2.2 ATOMIC_LOGICAL_KIND
+
+    The value of the default integer scalar constant ATOMIC_LOGICAL_KIND
+    is the kind type parameter value of type logical variables for which
+    the processor supports atomic operations specified by atomic
+    subroutines."
+
+by:
+
+    "13.8.2.2 ATOMIC_ONLY_INT_KIND
+
+    The value of the default integer scalar constant
+    ATOMIC_ONLY_INT_KIND is the kind type parameter value of type
+    integer variables for which the processor supports atomic operations
+    specified by atomic subroutines with no special ordering.
+
+    13.8.2.2 ATOMIC_ONLY_LOGICAL_KIND
+
+    The value of the default integer scalar constant
+    ATOMIC_ONLY_LOGICAL_KIND is the kind type parameter value of type
+    logical variables for which the processor supports atomic operations
+    specified by atomic subroutines with no special ordering.
+
+    "13.8.2.2 ATOMIC_SC_INT_KIND
+
+    The value of the default integer scalar constant ATOMIC_SC_INT_KIND
+    is the kind type parameter value of type integer variables for which
+    the processor supports atomic operations specified by atomic
+    subroutines with sequentially consistent ordering.
+
+    13.8.2.2 ATOMIC_SC_LOGICAL_KIND
+
+    The value of the default integer scalar constant
+    ATOMIC_SC_LOGICAL_KIND is the kind type parameter value of type
+    logical variables for which the processor supports atomic operations
+    specified by atomic subroutines with sequentially consistent
+    ordering."
+
+[[[ The only variation from the existing wording is the duplication, the
+names, and the phrase at the end. ]]]
+
+
+
+Discussion
+----------
+
+These correspond very closely to C++'s memory_order_relaxed and
+memory_order_cst atomic variables, which should help to reduce
+confusion in mixed-language programs.
+
+It still does not require Note 8.39 to complete in finite time (i.e. at
+all).  That is only a difference in degree from existing timing issues,
+which are outside the scope of the standard.
+
+The implementation issues I raised in N1754 remain, but only for
+ATOMIC_SC_INT_KIND and ATOMIC_SC_LOGICAL_KIND.  There is no difficulty
+in implementing ATOMIC_ONLY_INT_KIND and ATOMIC_ONLY_LOGICAL_KIND on
+commodity clusters.  I remain very doubtful about the portability and
+reliability of synchronised atomics.
+
+The restriction on where actions can be performed is needed to maintain
+consistency with the rest of the standard; I don't like its wording, but
+don't know how to do better.  Problematic areas include functions that
+are not evaluated, WHERE, FORALL and DO CONCURRENT, but there may be
+others.
+

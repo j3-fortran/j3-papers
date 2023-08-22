@@ -1,0 +1,322 @@
+                                                            J3/15-142r1
+To: J3
+From: Malcolm Cohen
+Subject: SELECT RANK
+Date: 2015 February 25
+
+
+1. Introduction
+
+This paper contains formal requirements, specifications, and syntax for a
+SELECT RANK construct as recently discussed on the J3 mailing list.
+
+
+2. Formal requirements
+
+That it be possible in Fortran, without using any C wrapper, to operate on
+an assumed-rank array variable.  In particular, it shall be possible to
+reference and define elements of the array.  Requiring additional "glue"
+code would be acceptable when processing an assumed-rank array that is
+eventually associated with an assumed-size array.
+
+
+3. Specifications
+
+There will be a construct to select a block based on the rank of an
+assumed-rank array that is not associated with an assumed-size array:
+- within each such block there will be an associate-name of that rank
+  associated with the selector, with the bounds of the selector;
+- within each such block, it shall be possible to use whole array
+  and array section notation safely,
+In the case of being associated with an assumed-size array, there will be a
+single special block that will catch all ranks of assumed-size, and in that
+block the associate-name will have shape (1:*); this can be reshaped using
+sequence association.
+There will be a "default" case, this will be a single special block will
+catch all other non-matching ranks, and in that block the associate-name is
+assumed-rank.
+
+
+4. Syntax
+
+select-rank-construct ::= select-rank-stmt
+                            [ select-rank-case ]...
+                          end-select-stmt
+
+select-rank-stmt ::= SELECT RANK ( [ associate-name => ] selector )
+
+Constraint: (select-rank-stmt) selector shall be the name of an
+            assumed-rank array.
+
+select-rank-case ::= rank-case-stmt
+                     block
+
+rank-case-stmt ::= RANK ( int-constant-expr )
+               |   RANK ( * )
+               |   RANK DEFAULT
+
+Constraint: int-constant-expr shall be non-negative and less than or equal
+            to the maximum rank supported by the processor.
+
+
+5. Example
+
+SUBROUTINE process(x)
+  REAL x(..)
+  !
+  SELECT RANK(y=>x)
+  RANK (0)
+    y = 0
+  RANK (1)
+    y(::2) = 1
+  RANK (2)
+    y(:,2) = 2
+  RANK (*)
+    Do i=1,100
+      If (y(i)==0) Exit
+      y(i) = -y(i)
+    End Do
+  RANK DEFAULT
+    Print *, 'I did not expect rank', RANK(y), 'shape', SHAPE(y)
+  END SELECT
+
+
+6. Assumed-size handling rationale and example
+
+Because an assumed-size object starts out with sequence association, rank
+is more of a movable feast with assumed-size than it is with other classes
+of arrays, like assumed-shape, allocatables, and pointers.  For all other
+array types, it is best to get the shape as if it were deferred shape, then
+we get all the usual whole array operations.  If the assumed-size array is
+wanted with any other rank or bounds than the default of (1:*), sequence
+association can be used again...  for example
+
+   SELECT RANK (y => x)
+   RANK (*)
+     IF (RANK(x)==2) THEN
+       ! Special code for the rank two case.
+       CALL sequence_assoc_2(y, LBOUND(x,1), UBOUND(x,1), LBOUND(x,2))
+     ELSE
+       ... same code as above for the non-rank-2 case.
+     END IF
+     ...
+     SUBROUTINE sequence_assoc_2(a, lb1, ub1, lb2)
+       REAL a(lb1:ub1,lb2:*)
+       ... do whatever you like with assumed-size array A.
+
+
+7. Pointer and allocatable
+
+Assumed-rank pointer and allocatable variables are permitted, but these can
+only be allocated and deallocated from C (except via the ultimate
+non-assumed-rank pointer/allocatable).  It would be useful to permit this
+for assumed-rank inside SELECT RANK; this requires the associate-name
+attribute rules to be slightly different for SELECT RANK.
+
+8. Edits to 15-007
+
+[xviii] Introduction, Data usage and computation, add new feature
+        "The SELECT RANK construct provides structured access to the
+         elements of an assumed-rank array.".
+
+[31:25-] 2.1 High level syntax, R213 executable-construct,
+         Before "<<or>> <select-type-construct>"
+         Insert "<<or>> <select-rank-construct>".
+{Add the construct to the high-level syntax.}
+
+[100:4] 5.5.8.5 Assumed-size array, p1,
+  After "effective argument",
+  insert ", or the associate name of a RANK (*) block in a SELECT RANK
+          construct".
+{New class of assumed-size array.}
+
+[101:8] 5.5.8.7 Assumed-rank entity, p1
+  After "effective argument"
+  insert ", or the associate name of a RANK DEFAULT block in a SELECT RANK
+          construct".
+{New class of assumed-rank entity.}
+
+[101:15-16] Same subclause, C539
+            "or the first" -> "the first",
+            After "inquiry function" insert
+            ", or the selector of a SELECT RANK statement".
+{Allow assumed-rank object in SELECT RANK.}
+
+[171:10+] 8.1.1 Blocks, p1, bullet list,
+          After "SELECT CASE construct;"
+          Insert new bullet "SELECT RANK construct;".
+{Add to list of constructs containing blocks.}
+
+[173:1] 8.1.3.3 Other attributes of associate names, p1,
+  Before "cobounds"
+  insert paragraph break and change "The" to
+    "Within an ASSOCIATE, SELECT RANK, or SELECT TYPE construct, the".
+{We don't want to do the rank stuff, but we want to do everything else.}
+
+[185:1-] Immediately before 8.1.9 SELECT TYPE construct,
+         insert new subclause
+  "
+8.1.8a SELECT RANK construct
+
+8.1.8a.1 Purpose and form of the SELECT RANK construct
+
+The SELECT RANK construct selects for execution at most one of its
+constituent blocks. The selection is based on the rank of an
+assumed-rank variable.  A name is associated with the variable (16.4,
+16.5.1.6), in the same way as for the ASSOCIATE construct.
+
+R839a <select-rank-construct> <<is>> <select-rank-stmt>
+                                       [ <select-rank-case-stmt>
+                                         <block> ]...
+                                     <end-select-rank-stmt>
+
+R839b <select-rank-stmt> <<is>> [ select-construct-name : ] SELECT RANK
+                                 ( [ associate-name => ] selector )
+
+C834a (R839b) The <selector> in a <select-rank-stmt> shall be the name
+      of an assumed-rank array.
+
+R839c <select-rank-case-stmt> <<is>> RANK ( <scalar-int-constant-expr> )
+                                     [ <select-construct-name> ]
+                              <<or>> RANK ( * )
+                                     [ <select-construct-name> ]
+                              <<or>> RANK DEFAULT
+                                     [ <select-construct-name> ]
+
+C834b (R839c) A <scalar-int-constant-expr> in a <select-rank-case-stmt>
+      shall be non-negative and less than or equal to the maximum rank
+      supported by the processor.
+C834c (R839a) For a given <select-rank-construct>, the same rank value
+       shall not be specified in more than one <select-rank-case-stmt>.
+C834d (R839a) For a given <select-rank-construct>, there shall be at
+      most one RANK ( * ) <select-rank-case-stmt> and at most one
+      RANK DEFAULT <select-rank-case-stmt>.
+C834e (R839a) If <select-construct-name> appears on a <select-rank-case-
+      stmt> the corresponding <select-rank-stmt> shall specify the same
+      <select-construct-name>.
+C834f A SELECT RANK construct shall not have a <select-rank-case-stmt>
+      that is RANK ( * ) if the selector has the ALLOCATABLE or POINTER
+      attribute.
+
+R839d <end-select-rank-stmt> <<is>> END SELECT [ <select-construct-name> ]
+
+C834g If the <select-rank-stmt> of a <select-rank-construct> specifies a
+      <select-construct-name>, the corresponding <end-select-rank-stmt>
+      shall specify the same <select-construct-name>.  If the
+      <select-rank-stmt> of a <select-rank-construct> does not specify a
+      <select-construct-name>, the corresponding <end-select-rank-stmt>
+      shall not specify a <select-construct-name>.
+
+The associate name of a SELECT RANK construct is the <associate-name> if
+specified; otherwise it is the name that constitutes the selector.
+
+8.1.8a.2 Execution of the SELECT RANK construct
+
+A SELECT RANK construct selects at most one block to be executed.  During
+execution of that block, the associate name identifies an entity which is
+associated (16.5.1.6) with the selector.  A RANK ( * ) statement matches
+the selector if the selector is argument associated with an assumed-size
+array.  A RANK ( <scalar-int-constant-expr> ) statement matches the
+selector if the selector has that rank and is not argument associated with
+an assumed-size array.  A RANK DEFAULT statement matches the selector if no
+other <select-case-rank-stmt> of the construct matches the selector.  If a
+<select-case-rank-stmt> matches the selector, the block following that
+statement is executed; otherwise, control is transferred to the
+<end-select-rank-stmt>.
+
+It is permissible to branch to an <end-select-rank-stmt> only from within
+its SELECT RANK construct.
+
+8.1.8a.3 Attribute of a SELECT RANK associate name
+
+Within the block following a RANK DEFAULT statement, the associating entity
+(16.5.5) is assumed-rank and has exactly the same attributes as the
+selector.  Within the block following a RANK ( * ) statement, the
+associating entity has rank 1 and is assumed-size, as if it were declared
+with DIMENSION(1:*).  Within the block following a RANK (
+<scalar-int-constant-expr> ) statement, the associating entity has the
+specified rank; the lower bound of each dimension is the result of the
+intrinsic function LBOUND (13.7.91) applied to the corresponding dimension
+of the selector, and the upper bound of each dimension is the result of the
+intrinsic function UBOUND (13.7.176) applied to the corresponding dimension
+of the selector.
+
+If the selector has the ALLOCATABLE attribute, the associating entity has
+that attribute.  If the selector has the POINTER attribute, the associating
+entity has that attribute (and not the TARGET attribute).  The other
+attributes of the associating entity are described in 8.1.3.3.
+
+8.1.8a.4 Examples of the SELECT RANK construct
+
+This example shows using a SELECT RANK construct to process scalars and
+rank-2 arrays; anything else will be rejected as an error.
+
+SUBROUTINE process(x)
+  REAL x(..)
+  !
+  SELECT RANK(x)
+  RANK (0)
+    x = 0
+  RANK (2)
+    IF (SIZE(x,2)>=2) x(:,2) = 2
+  RANK DEFAULT
+    Print *, 'I did not expect rank', RANK(y), 'shape', SHAPE(y)
+    ERROR STOP 'process bad arg'
+  END SELECT
+
+The following example shows how to process assumed-size arrays, including
+how to use sequence association if you want to do multi-dimensional
+processing of an assumed-size array.
+
+   SELECT RANK (y => x)
+   RANK (*)
+     IF (RANK(x)==2) THEN
+       ! Special code for the rank two case.
+       CALL sequence_assoc_2(y, LBOUND(x,1), UBOUND(x,1), LBOUND(x,2))
+     ELSE
+       ! We just do all the other ranks in array element order.
+       i = 1
+       DO
+         IF (y(i)==0) Exit
+         y(i) = -y(i)
+         i = i + 1
+       END DO
+       ... same code as above for the non-rank-2 case.
+     END IF
+   END SELECT
+   ...
+CONTAINS
+   ...
+   SUBROUTINE sequence_assoc_2(a, lb1, ub1, lb2)
+     REAL a(lb1:ub1,lb2:*)
+     j = lb2
+ outer: DO
+          DO i=lb1,ub1
+            IF (a(i,j)==0) EXIT outer
+            a(i,j) = a(i,j)**2
+          END DO
+          j = j + 1
+          IF (ANY(a(:,j))==0) EXIT
+          j = j + 1
+        END DO outer
+    END SUBROUTINE
+".
+{The new construct.}
+
+[188:21] 8.2.1 Branch concepts, p1,
+         Between "<end-select-stmt>" and "<select-type-stmt>"
+         insert "<select-rank-stmt>, <end-select-rank-stmt>".
+{Allow branching to SELECT RANK and its END SELECT.}
+
+[301:18] 12.5.2.5 Allocatable and pointer dummy variables, p3,
+  In the first sentence, beginning "The rank",
+  after "dummy argument"
+  insert ", unless the dummy argument is assumed-rank".
+{This is repairing a bug in assumed-rank.}
+
+[305:30] 12.5.2.12 Argument presence and restrictions..., p3, item (10),
+         "SELECT TYPE or ASSOCIATE"
+         ->"ASSOCIATE, SELECT RANK, or SELECT TYPE".
+{Do not allow rank selection on absent dummies.}
+
+===END===

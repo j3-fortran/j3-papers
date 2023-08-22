@@ -1,0 +1,402 @@
+                                                             J3/15-224
+To:         J3 Members
+From:       Van Snyder
+Subject:    Tirade against locality specs
+Date: 2015 September 25
+
+1. Introductory rant
+====================
+
+Locality specs for DO CONCURRENT were rushed into existence.  Their
+interaction with other facilities has not been thought through.  We
+should not be adding warts and large gobs of interp bait at this time.
+
+8.1.6.5p2 says that a variable that has LOCAL or LOCAL_INIT locality has
+the same attributes as the variable with the same name outside the
+construct.  How far outside?  In some other module but not accessed by
+use association? In a BLOCK construct that does not include the DO
+CONCURRENT construct?  What if there are several different ones in
+enclosing scoping units?
+
+Some of the attributes of an "outside" variable, even a properly-defined
+one, are clearly impossible or at least undesirable.  For example, a
+variable with LOCAL_INIT locality and INTENT(IN) cannot be initialized
+as specified in 8.1.6.5p2.  If it has INTENT(OUT) does that mean it gets
+finalized and becomes undefined as soon as (or immediately before?)
+being defined?  If the "outside" variable has the PARAMETER attribute,
+or was gotten by use association and has the PROTECTED attribute, can it
+be initialized?  Do we really want the construct entity to have the
+ALLOCATABLE, ASYNCHRONOUS, POINTER, and VOLATILE attributes
+automatically?  What if it's OPTIONAL and absent?
+
+For LOCAL_INIT, what if there is no outside variable and IMPLICIT NONE
+is not in effect?  If there is no outside variable and IMPLICIT NONE is
+in effect, is the outside variable implicitly defined, and the inside
+variable initially undefined?  That's ugly.
+
+If a variable has LOCAL or LOCAL_INIT locality, is it a construct
+entity?  Subclause 16.4 is entirely silent concerning LOCAL and
+LOCAL_INIT.
+
+The specifications concerning SHARED locality are clearly defective when
+compared to those concering unspecified locality.
+
+There was a remark that the effects of locality specs can be achieved
+using a BLOCK construct inside a DO CONCURRENT construct.  None of these
+questions arise in that case because a construct entity declared in a
+block specification part does NOT automatically have the attributes of
+an entity of the same name in the enclosing scope.  There are a few
+questions that need to be addressed in that case (which might need
+interps), but nothing approaching the scope of questions concerning
+locality specs.
+
+One alternative to trying to repair locality specs before we hope to
+forward the standard to ISO for ballot and publication is simply to
+delete the feature, since everything it offers can be specified by a
+BLOCK construct with IMPORT statements.
+
+To make it more palatable to delete locality specs, i.e., to reduce the
+number of statements by two, DO constructs could be made scoping units,
+with the same rules as BLOCK constructs, and a very small number of
+additional rules, which are needed in any case, concerning DO CONCURRENT
+constructs (see the edit for [178:10-27 8.1.6.5p1-4] in Section 2
+below).
+
+For decades, users have asked for a mechanism to allow nonsaved local
+variables to spring into existence with a specified value that is not a
+constant expression.  Had we done that, there would have been no
+question about a reference to an absent optional argument in the
+expression that defines the initial value, the facility of LOCAL_INIT
+would already be available, and LOCAL_INIT would not be a special
+half-baked wart.  Can we stop adding special-case narrowly-usable
+kludges made from paper clips, bubble gum, masking tape, and papier
+mache, and do something more generally useful for a change?
+
+Redesigning the way to specify entities local to each iteration of DO
+CONCURRENT is within the remit of J3:  WG5 provides requirements.  J3
+does development.  The method to satisfy the requirement, i.e., the
+syntax, as proposed in London, was necessarily a suggestion, not a
+requirement.
+
+By doing one or more of the following things we do ourselves and all
+other users of our standard a favor:
+
+1. Delete locality specs because everything they offer can be done using
+   BLOCK constructs.
+2. Uncripple block specification parts:  Make DO constructs scoping
+   units, so BLOCK... END BLOCK isn't needed (I proposed that every
+   construct ought to have a specification part in 97-114, 03-258r1,
+   and 04-155).
+3. Provide an AUTOMATIC attribute and dynamic initialization for
+   AUTOMATIC variables.
+
+We would produce a much smaller gob of interp bait because 1 and 2
+depend upon features that have a long history.  3 would provide
+something that users have requested for decades.
+
+2. Edits to delete locality specs
+=================================
+
+[xviii Introduction] Under "data usage and computation, delete "The
+locality ... explicitly specified."
+
+[78:32-33 4.5.6.3p5] Delete the paragraph.
+
+[174:23 R818] Delete "<concurrent-locality>".
+
+[174:30-175:1 R824-R825] Delete R824 and R825.
+
+[175:7-17 8.1.6.2 C817-C820] Delete C817-C820.
+
+[178:10-27 8.1.6.5p1-4] Replace 8.1.6.5p1-3 and the introductory
+line of 8.1.6.5p4 with:
+
+"If a variable is declared within a <block-specification-part> within a
+DO CONCURRENT construct, a separate instance of that variable exists in
+each iteration.  Otherwise, if a variable that appears in a DO
+CONCURRENT construct".
+
+{This edit is needed in any case.  Does it need an interp?}
+
+[178:28,31,34,36,38 8.1.6.5p4] Delete "if it" five times.
+
+3. Edits for DO constructs to be scoping units
+==============================================
+
+[xviii Introduction] Introduce a new list item, maybe before "Intrinsic
+procedures and modules":
+
+"  o Constructs
+     A DO construct may contain a specification part."
+
+[xviii Introduction, under "Program units"] Replace "or BLOCK" with
+", or BLOCK or DO".
+
+[12:4+2 NOTE 1.5] Replace "construct" with "and DO constructs".
+
+[16:21 1.3.126] Insert "or DO" after "BLOCK".
+
+[16:25 1.3.126.1]  "or DO" after "BLOCK".
+
+[17:27 1.3.136.1] Insert "or DO" after "BLOCK".
+
+[35:19 2.3.5p2] Insert "or DO" after "BLOCK" and "and 8.1.6" after
+"8.1.4".
+
+[37:16 2.4.3.2.1] Insert "or DO" after "BLOCK".
+
+[78:30,31 4.5.6.3p3] Insert "or DO construct that is not a DO CONCURRENT
+construct" after "BLOCK construct" twice.
+
+[78:32-33 4.5.6.3p5] Replace the paragraph:
+
+"A nonpointer nonallocatable local variable of a DO CONCURRENT construct
+is finalized when execution of every iteration completes."
+
+[91:6,9 5.3p2] Insert "or DO" after "BLOCK" twice.
+
+[91:7 5.3p2] Replace "or on execution of the BLOCK statement" with
+"or before evaluating any expressions in the specification part of
+the BLOCK or DO construct"
+
+[92:30 5.5.4p4] Insert "or DO" after "BLOCK".
+
+[95:5 C530] Insert "or DO" after "BLOCK".
+
+[95:6,9 5.5.6.3p3] Insert "or DO" after "BLOCK" twice.
+
+[95:7-8 5.5.6.3p3] Replace "or on execution of the BLOCK statement" with
+"or before evaluating any expressions in the specification part of
+the BLOCK or DO construct"
+
+[97:2 C532]  Insert "or DO" after "BLOCK".
+
+[97:5,9 5.5.8.2p2] Insert "or DO" after "BLOCK" twice.
+
+[97:7 5.5.8.2p2] Replace "or on execution of the BLOCK statement" with
+"or before evaluating any expressions in the specification part of
+the BLOCK or DO construct".
+
+[103:21 5.5.16p2] After "construct" insert "or DO construct that is not
+a DO CONCURRENT construct".
+
+[103:23 5.5.16p2] Delete "BLOCK".
+
+[105:3 C567] Insert "or DO" after "BLOCK".
+
+[105:7 5.5.19p2] Insert "or DO" after "BLOCK".
+
+[112:21 C593] Insert "or DO" after "BLOCK".
+
+[112:31 5.7p3] Insert "or DO" after "BLOCK".
+
+[114 NOTE 5.39] Insert "or DO" after "BLOCK".
+
+[132:31 6.7.3.2p3] After "BLOCK construct" insert "or DO construct that
+is not a DO concurrent construct".  After "terminates" insert "or an
+iteration of a DO CONCURRENT construct completes".
+
+[133:26+12 NOTE 6.24] Replace "or END BLOCK" with "END BLOCK, or END
+DO".
+
+[152:4,16,17,18 7.1.11p1] Delete "BLOCK" four times.
+
+[171:15-16 R807] Replace "[ <block-specification-part> ]" and "<block>"
+with "<specification-block>".
+
+[171:18+ R808+] Insert a syntax rule:
+
+"R808a <specification-block> <<is>> [ <block-specification-part> ]
+                                      <block>"
+
+[172:1 C807] Delete "of a BLOCK construct".
+
+[172:3 C808] Replace "BLOCK construct" with
+"<block-specification-part>".
+
+[172:8 8.1.4p1] Replace "BLOCK construct" with
+"<block-specification-part>"
+
+[172:9,10 8.1.4p1] Delete "BLOCK" twice.
+
+[174:13+ R814] Replace "<block>" with "<specification-block>".
+
+[177:3+ 8.1.6.4.3p1(1)+] Insert a list item:
+
+"   (1a) Evaluating the expressions within its specification part, in
+         a processor-dependent order."
+
+[178:10-27 8.1.6.5p1-4] Replace 8.1.6.5p1-3 and the introductory
+line of 8.1.6.5p4 with:
+
+"If a variable is declared within a <block-specification-part> within a
+DO CONCURRENT construct, a separate instance of that variable exists in
+each iteration.  Otherwise, if a variable that appears in a DO
+CONCURRENT construct".
+
+{This edit might be necessary even if DO constructs do not get a
+<block-specification-part>.  Is an interp needed?}
+
+[484:11 16.4p1] After "BLOCK" insert "or DO".
+
+[502:35+ A.2] Insert a list item:
+
+"  o The order of evaluating expressions within the specification
+     part of a DO construct when each iteration of the construct is
+     executed (8.1.6.4.3)."
+
+4. Edits for AUTOMATIC
+======================
+
+[xviii under "Data declaration" insert "A variable may be declared to be
+automatic, and may have initialization that is not a constant
+expression.  Such variables do not have the SAVE attribute."
+
+[31:1+ R213] After "<<or>> <asynchronous-stmt>" insert a syntax
+alternative:
+
+"            <<or>> <automatic-stmt>"
+
+[72:8 R444] replace "<designator>" with "<data-target>".
+
+[72:18 C466] Replace "The <designator> shall designate" with "If
+<initial-data-target> appears in <component-initialization>, the
+<data-target> shall be a <designator> that designates".
+
+[72:35 4.5.4.6p6] After "explicit initialization" insert "of a variable
+that is not an automatic data object".
+
+[89:19+ R502] After "<<or>> ASYNCHROUOUS" insert a syntax alternative:
+
+"            <<or>> AUTOMATIC"
+
+[90:18 R505] Replace "constant-" with "automatic-"
+
+[90:21+ C510-] Insert three constraints:
+
+"C509a (R505) The <object-name> shall not be the name of a dummy
+       variable that has the INTENT(IN), INTENT(INOUT), OPTIONAL, or
+       VALUE attributes."
+
+"C509b (R505) If the <object-name> is not an automatic data object (5.3)
+       or dummy argument, <automatic-expr> shall be a constant
+       expression."
+
+"C509c (R505) The <automatic-expr> shall be a restricted expression
+       (7.1.11)."
+
+[91:3 5.3p1] Append ", or that has the AUTOMATIC attribute".
+
+[91:13 5.4p1] After "specified" insert "or is an automatic data object".
+
+[91:14 5.4p1] Replace "constant-" with "automatic-" twice.  Before
+the semicolon insert "unless it is an absent dummy argument".
+
+{Users have repeatedly asked for a way to initialize an absent dummy
+argument, which would effectively but only dynamically behave more like
+a VALUE argument; it would be useful if the PRESENT intrinsic function
+still returned true.  If it is assumed shape and absent, it effectively
+becomes implied shape.  This would be a larger (but compatible) project
+that would entail changing the rules of when absent optional arguments
+can be referenced.  It could all be made to fit the existing framework,
+but would be more editing than appears here.  This extension is not
+directly related to replacing the locality specs for DO CONCURRENT, and
+therefore might reasonably be considered to be outside the scope of the
+London resolutions.}
+
+[91:16 5.4p1] Before "A variable" insert "If it is allocatable it is
+allocated as if by an ALLOCATE statement in which the
+<automatic-expr> in <initialization> appeared as <source-expr>.  If
+it is a nonpointer dummy argument the corresponding actual argument
+shall be definable."
+
+{The definability requirement covers the case of unspecified intent.}
+
+[91:21 5.4p3] After "variable" insert "that is not an automatic data
+object \obs{and}".
+
+[93:3- 5.5.5-] Insert a subclause
+
+"5.5.4a AUTOMATIC attribute
+
+An entity with the AUTOMATIC attribute is an automatic data object (5.3).
+
+C517a An entity with the AUTOMATIC attribute shall be a variable or
+      procedure pointer and shall not have the INTENT(IN),
+      INTENT(INOUT), OPTIONAL, SAVE, or VALUE attributes, and shall not
+      have  a <language-binding-spec>.
+
+NOTE 5.3a
+  Automatic data objects do not automatically have the AUTOMATIC
+  attribute.
+"
+
+[100:19 5.5.10p4] Before "Any actual" insert a sentence: "If a dummy
+argument has initialization, initialization occurs after undefinition,
+and finalization if any."
+
+[106:8+ 5.6.3+] Insert a subclause
+
+"5.6.3a AUTOMATIC statement
+
+R531a <automatic-stmt> <<is>> AUTOMATIC [::] <object-name-list>
+
+The AUTOMATIC statement specifies the AUTOMATIC attribute (5.5.4a) for a
+list of objects."
+
+[152:11-12 7.1.11p2(2)] Replace the list item:
+
+"  (2)  an object designator that is a dummy argument that does not have
+        the INTENT(OUT) attribute, unless the dummy argument is declared
+        earlier and is an automatic data object (5.3) that has
+        initialization, and does not have the OPTIONAL attribute if the
+        expression is within the specification part of a subprogram,"
+
+{The part of this feature concerning optional arguments would be useful
+in any case, for specification expressions in BLOCK constructs.  The
+base object can be optional if the expression is within the
+specification part of a construct.  The rules concerning reference to
+absent optional arguments apply to that case.}
+
+[152:14+ 7.1.11p2(4)+] Insert a list item:
+
+"  (4a) an object designator with a base object that is declared earlier
+        within the same scoping unit and is a nonpointer automatic data
+        object (5.3) that has initialization, or an automatic pointer
+        data object that has an initial data target that does not have
+        an undefined value,"
+
+[172:12 8.1.4p2] Delete "specification".  After "part" insert ",
+assignment of initial values to automatic variables that have
+<initialization>, and association of initial targets to automatic
+pointers that have <initialization>,".
+
+[172:13+] Insert a note:
+
+"NOTE 8.3a
+  A partial order of evaluation is necessarily implied because a
+  variable is prohibited to be referenced during evaluating an
+  expression if its value is undefined.  A processor is expected to
+  assign values to nonpointer automatic variables, or associate data
+  targets with pointer automatic variables, before those variables are
+  reference within expressions within the same specification part."
+
+[305:38+ 12.5.2.12p3(12+)] Add a list item:
+
+"  (13) It shall not be a primary in a restricted expression (7.1.11)."
+
+{Maybe this is already covered by 12.5.2.12p3(1).}
+
+[501:30 A.2] Replace "specification expressions" with "expressions,
+assignment of values to automatic variables that have <initialization>,
+and association of initial targets to automatic pointers that have
+<initialization>,"
+
+[502:35+ A.2] {Slightly different from the edit for the same place in
+Section 3 above} Insert a list item:
+
+"  o The order of evaluating expressions, assignment of values to
+     automatic variables that have <initialization>, and association of
+     initial targets to automatic pointers that have <initialization>,
+     within the specification part of a DO construct as each iteration
+     of the construct is executed (8.1.6.4.3)."

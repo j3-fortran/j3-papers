@@ -1,0 +1,236 @@
+To: J3                                                     J3/19-232
+From: Malcolm Cohen
+Subject: Formal Syntax for True Enumeration types
+Date: 2019-October-09
+Reference: 19-216r1 19-230 19-231
+
+
+1. Introduction
+
+This paper contains the formal syntax specification for true enumeration
+types.
+
+The Formal Requirements and Formal Specifications papers (19-230 & 19-231)
+are essential background reading for this paper.
+
+Although this is a formal syntax paper, the syntax will be defined by prose
+and by example, not by BNF. This is to aid comprehension without having to
+expand a set of BNF rules in one's head.
+
+
+2. Formal Syntax
+
+(a) Syntax of an enumeration type definition.
+
+Note: This syntax assumes specification 11.ALTERNATIVE ONE; if some other
+      variation of specification 11 is chosen, it may need to be reflected
+      here.
+
+    (i) This should look as much like a normal derived type definition
+        as possible. A new type attribute keyword, ENUMERATION, determines
+        that this is an enumeration type definition and not a structure.
+
+    (ii) Other type attributes are permitted when they make sense; at this
+         time that means EXTENDS, PRIVATE, and PUBLIC.
+
+    (iii) The body of the type definition shall be a sequence of ENUMERATOR
+          statements. If the type is not an extended type, the sequence
+          shall be non-empty. Unlike the ENUM,BIND(C) construct, the
+          ENUMERATOR statements are not permitted to specify a value.
+
+    (iv) The initial value may be specified by an INITIAL statement at the
+         end of the type definition. COMMENT: This is so that all the
+         enumerator definitions are seen before we access any of them.
+
+    (v) An initial value shall be an enumerator denotation; that is,
+        either a name, or the alternative syntax that qualifies the
+        enumerator name with the type name. The initial value shall
+        be of the enumeration type or an ancestor type.
+
+    (vi) The ENUMERATOR statement may have an accessibility attribute
+         specified (if in a module specification part). This may also
+         appear on an ENUMERATOR statement in an ENUM,BIND(C) construct.
+
+         The default accessibility is the accessibility of the enumeration
+         type name itself.
+
+For example,
+
+    TYPE,ENUMERATION,PUBLIC :: my_enum
+        ENUMERATOR a,b
+        ENUMERATOR c
+        INITIAL c
+    END TYPE
+
+    TYPE,ENUMERATION,EXTENDS(my_enum),PRIVATE :: my_extra_enums
+        ENUMERATOR :: d
+        ENUMERATOR,PUBLIC :: e
+        ENUMERATOR,PRIVATE :: f
+        INITIAL :: a
+    END TYPE
+
+ALTERNATIVE SYNTAX:
+(a1) Omit the "TYPE," in the initial statement, and
+     change TYPE to ENUMERATION in the final statement.
+     e.g.
+     ENUMERATION,PUBLIC :: my_enum
+         ...
+     END ENUMERATION
+
+(a2) Instead of the rather long keyword ENUMERATION, reuse our existing
+     keyword ENUM. This could be combined with (a0) or (a1), e.g.
+        TYPE,ENUM,PUBLIC :: my_enum
+     or
+        ENUM,PUBLIC :: my_enum
+
+(a3) Instead of an INITIAL statement at the end of the type definition,
+     use an INITIAL(value) attribute at the beginning of the
+     type definition.
+
+(a4) As we are inside a type definition, we could require the initial value
+     to be a simple unqualified enumerator name; this is not ambiguous as
+     we are inside the scope of the type definition and so its enumerators
+     would block host association.
+
+(a5) We could permit the initial value to be specified by a constant
+     expression instead of a name or denotation. This would add complexity
+     without functionality.
+
+(a6) We could permit a PRIVATE statement within an enumeration type defn,
+     to specify the default accessibility of the enumerators to be PRIVATE.
+     This does not seem useful enough to be worth doing.
+
+- - - - -
+
+(b) Syntax for declaring entities of enumeration type:
+        TYPE(enumeration-type-name)
+
+- - - - -
+
+(c) Syntax for accessing the first and last values of an enumeration type:
+    use the intrinsic functions TINY (the first) and HUGE (the last), i.e.
+        TINY(enumeration-type-object)
+        HUGE(enumeration-type-object)
+
+ALTERNATIVE SYNTAX:
+(c1) Instead of reusing TINY and HUGE, add new generic intrinsic functions
+     FIRST and LAST just for enumeration types.
+
+(c2) Have FIRST and LAST as implicitly-created type-bound functions in the
+     enumeration type. E.g., given an entity EV of enumeration type,
+        EV%FIRST() ! returns the first enumeration value
+        EV%LAST()  ! returns the last enumeration value
+
+COMMENT: Would preclude use in constant expressions without some careful
+         new wording.
+
+(c3) Have FIRST and LAST as pseudo-parameters in the enumeration type,
+     like kind type parameters, e.g.
+        EV%FIRST ! is the first enumeration value
+        EV%LAST  ! is the last enumeration value
+
+(c4) Have FIRST and LAST be accessible through the type name instead of
+     an entity name (contradicts specification 22, but remains in accord
+     with the related requirement L). For example,
+        MY_ENUM%FIRST
+        MY_ENUM%LAST
+
+COMMENT: Depending on the syntax used for qualified enumerator denotation,
+         c2, c3, and c4 might preclude using FIRST and LAST as enumerator
+         names. c4 uses the type name in a way we have never used a type
+         name before.
+
+- - - - -
+
+(d) Syntax for, given an enumeration value, getting the next value or the
+    previous value: use new generic intrinsic functions
+        NEXT(enumeration-value)
+        PREV(enumeration-value)
+    If NEXT and PREV are to return an error status instead of "clamping"
+    their result to the enumeration range, they should have an optional
+    STAT= argument.
+
+    If there is an optional STAT= argument, it follows the usual rules;
+    zero for success, positive for error, error termination on error if it
+    is absent.
+
+ALTERNATIVE SYNTAX:
+(d1) Implicitly-created type-bound functions in the enumeration type, e.g.
+        EV%NEXT()
+        EV%PREV()
+     If the functions don't clamp, there should be an optional STAT=, e.g.
+        EV%NEXT( [ STAT= stat-variable ] ) etc.
+     A STAT= argument would follow the same rules as above.
+
+COMMENT: The names PRED and SUCC have been suggested instead of NEXT and
+         PREV. Although NEXT and PREV are not terribly exciting names, at
+         least they wouldn't make the standard "succ"; I suppose
+         PREDECESSOR and SUCCESSOR would be acceptable if overly verbose.
+
+- - - - -
+
+(e) Syntax for "qualified denotation", i.e. specifying an enumerator within
+    a specific named enumeration type. As the enumerators live inside the
+    type, just use the type name followed by the type-access token %
+    and the enumerator name, e.g.
+        MY_ENUM % HIDDEN_ENUMERATOR_NAME
+
+ALTERNATIVE SYNTAX:
+(e1) Use a new token instead of reusing %; e.g.
+        MY_ENUM ` HIDDEN_ENUMERATOR_NAME
+
+(e2) Use the type constructor with the inaccessible enumerator name as its
+     argument, e.g.
+        MY_ENUM ( HIDDEN_ENUMERATOR_NAME )
+
+COMMENT: e2 syntax is ambiguous if MY_ENUM is to be treated as a generic
+         function, as we do with derived types since Fortran 2003. Even if
+         there is no ambiguity in a particular example, it promulgates
+         confusion between local entity names and names inside a type.
+
+- - - - -
+
+(f) Syntax for 21.ALTERNATIVE (the mechanism for turning an integer value
+    into an enumeration value is a function).
+
+    The function is generic, pure, and elemental.
+    The name of the function is the name of the enumeration type.
+
+    If all the arguments of the function are constant expressions, the
+    function reference is a constant expression.
+
+    The argument of the function that supplies the integer value shall be
+    VALUE. Any kind of integer is acceptable. There shall be an optional
+    STAT= argument, which is defined with a processor-dependent positive
+    value if VALUE is out of range, and zero otherwise. If VALUE is out of
+    range and there is no STAT= argument, error termination is initiated.
+
+    There shall be no ERRMSG= argument.
+
+    Note that the restriction against having an INTENT(OUT) argument in a
+    pure function actually applies only to function subprograms, not to
+    intrinsic functions, functions in intrinsic modules or any other such
+    automagical entity, so this would not create a pure problem.
+
+    For example,
+
+        MY_ENUM (IVAL)
+        MY_ENUM (VALUE=123)
+        MY_ENUM ( [ 1,2,3 ] ) ! if elemental.
+        MY_ENUM (STAT=ISTAT,VALUE=X)
+
+- - - - -
+
+(g) Syntax for turning an enumeration value into integer: just use the
+    intrinsic function INT, e.g.
+        INT(enumeration-value)
+
+ALTERNATIVE SYNTAX:
+(g1) Provide this using a type-bound procedure, e.g.
+        EV%INT()
+     COMMENT: This raises namespace and constant-expression issues, but
+              seems to have little other to offer than confusion.
+
+===END===
+
+

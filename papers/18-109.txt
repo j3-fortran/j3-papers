@@ -1,0 +1,131 @@
+To: J3                                                     J3/18-109
+From: Tom Clune
+Subject: Use case for error handling ugliness
+Date: 2018-February-03
+
+The contents of this paper are in paper J3/##-###.xxx
+
+
+Introduction:
+-------------
+
+Over time, the complexity of many Fortran applications has grown
+considerably.  A consequence of this growth in complexity is that the
+relative fraction of non-numerical lines of code has also inreased
+substantially.  Indeed, except for the bottom-most procedures many
+procedures consist of nothing except a sequence of procedure calls to
+other layers of the application or to external libraries.
+
+The ability to meaningfully trap run-time errors becomes extremely
+important in such large applications.  Indeed nearly well-supported
+libraries with Fortran interfaces either include a so-called
+return-code integer dummy argument or use functions whose integer
+return value is used for the same purpose.  Many applications follow a
+similar practice for their own infrastructure layers.
+
+Whereas many developers ignore these return-codes at their own peril,
+well-run development shops have mandatory practices for checking all
+return codes.  Because of the desire to determine the call path, the
+check consists of (1) a test of the value, (2) a call to the error
+handler, (3) setting the return-code of the current procedure, and (4)
+a RETURN statement.
+
+
+Example:
+--------
+
+Combined with the
+statement above about the growing fraction of code that is in the form
+of calls ot other layers, the number of lines of code spent trapping
+potential error conditions is actually quite large in some codes.
+
+Here is a simple example of what such high-level code then tends to
+look like:
+
+CALL proc1(dum1, dum2, ..., rc=status)
+IF (status /= SUCCESS) THEN
+   CALL ERROR_HANDLER('proc 1 failed, status)
+   rc = status
+   RETURN
+END IF
+CALL proc2(dum1, dum2, ..., rc=status)
+IF (status /= SUCCESS) THEN
+   CALL ERROR_HANDLER('proc 2 failed', status)
+   rc = status
+   RETURN
+END IF
+...
+
+
+As you can see, the lines of code for error handling can actually
+exceed those for the actual main line of work by a substantial margin!
+Further, this example is actually oversimplified in some respects.
+E.g., development teams often want to know the file and line number
+where the failure occurs, and thus resort to __FILE__ and __LINE__
+CPP/FPP macros.  And at that point, one can introduce a custom CPP
+macro of the form:
+
+
+#define _VERIFY(msg,s) IF(s/=SUCCESS)THEN; \
+        CALL ERROR_HANDLER(msg,__FILE__,__LINE__,s);rc=s;RETURN;ENDIF
+
+And the example then looks like:
+
+
+CALL proc1(dum1, dum2, ..., rc=status)
+_VERIFY('proc 1 failed',status)
+CALL proc2(dum1, dum2, ..., rc=status)
+_VERIFY('proc 2 failed',status)
+...
+
+
+This is a significant improvement, but the approach still has significant
+drawbacks:
+
+1) The remaining error handling lines still tends to significantly
+   obscure the natural flow of the algorithm.
+
+2) If a developer accidentally omits a _VERIFY() statement somewhere
+   in the chain, then code may continue to execute until some other
+   error is encountered.  This can complicate forensics when the small
+   trace for the first error is hidden in a deluge of subsequent output.
+
+3) Although CPP/FPP provide the file and line number, it would also be
+   useful to know the module name and procedure name where the error
+   was encountered.
+
+
+
+Desired outcome:
+----------------
+
+Provide language features to support robust error handling in a less
+verbose manner.
+
+
+Note that the desire is to ameliorate the issue in higher-level
+procedures where performance overhead for error handling is minimal.
+If potential solutions have inherent overhead then it should be
+possible to disallow the capability within performance intensive
+procedures.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

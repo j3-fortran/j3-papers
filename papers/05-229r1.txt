@@ -1,0 +1,103 @@
+
+                                                      J3/05-229r1
+
+Date:    09 August 2005
+To:      J3
+From:    Rich Bleikamp
+Subject: Can child I/O statements be advancing I/O statements?
+
+NUMBER: F03/0070
+TITLE: Can child I/O statements be advancing I/O statements?
+KEYWORDS: UDDTIO, ADVANCE=
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+
+[175:30-31] of Fortran 2003 states:
+    An advancing input/output statement always positions a record file
+    after the last record read or written, unless there is an error
+    condition.
+
+Since a child I/O statement does not position a file after the last
+Record [194:19][199:8-9], this implies that a child I/O statement cannot 
+be an advancing I/O statement.
+
+[189:6-9] of Fortran 2003 states:
+    The ADVANCE= specifier determines whether advancing input/output
+    occurs for this input/output statement. If YES is specified,
+    advancing input/output occurs. If NO is specified, nonadvancing
+    input/output occurs (9.2.3.1). If this specifier is omitted from
+    an input/output statement that allows the specifier, the default
+    value is YES.
+
+This clearly states that any data transfer statement is an advancing
+I/O statement if the value 'NO' is not specified for the ADVANCE=
+specifier.
+
+These two statements seem to contradict each other. 
+
+QUESTION:
+If a child I/O statement does not have an ADVANCE= specifier with the
+value 'NO', is it an advancing I/O statement?
+
+
+DISCUSSION:
+
+The answer to this question affects the value for the IOSTAT variable
+for child READ statements in some situations.  For example, in the
+following program, the value of "stat1" should be equal to IOSTAT_EOF
+if the child READ statement is advancing, but it should be equal to
+IOSTAT_EOR if the statement is nonadvancing.
+
+      MODULE m
+        TYPE t
+          CHARACTER(2) :: x(2)
+        CONTAINS
+          PROCEDURE :: readT
+          GENERIC :: READ(FORMATTED) => readT
+        END TYPE
+      CONTAINS
+        SUBROUTINE readT(dtv, unit, iotype, v_list, iostat, iomsg)
+          CLASS(t), INTENT(INOUT) :: dtv
+          INTEGER, INTENT(IN) :: unit
+          CHARACTER(*), INTENT(IN) :: iotype
+          INTEGER, INTENT(IN)  :: v_list(:)
+          INTEGER, INTENT(OUT) :: iostat
+          CHARACTER(*), INTENT(INOUT) :: iomsg
+          READ (unit, '(2a2)', IOSTAT=iostat) dtv%x
+        END SUBROUTINE
+      END MODULE
+
+      PROGRAM p
+        USE m
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(t) t1
+        CHARACTER(3) :: c = '123'
+        INTEGER stat1
+        READ (c, *, IOSTAT=stat1) t1
+        PRINT *, (stat1 == IOSTAT_EOR), (stat1 == IOSTAT_EOF)
+      END PROGRAM
+
+
+ANSWER:
+No, such a child I/O statement is not advancing.  Edits are provided
+to correct this inconsistency.
+
+
+EDITS:
+
+All edits refer to 04-007.
+
+[189:7]  After "this" insert " non-child".
+
+[189:9]  Replace "from an" with "from a non-child".
+
+[189:9]  After "YES." Insert
+         "  A child input/output statement is a non-advancing input/output
+          statement, and any ADVANCE= specifier is ignored."
+
+
+SUBMITTED BY: Rob James
+
+HISTORY: 05-229   m173 Submitted
+         05-229r1 m173 Proposed response

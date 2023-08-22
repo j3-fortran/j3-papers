@@ -1,0 +1,592 @@
+To:        J3                                                J3/15-163
+Subject:   Alternative to SELECT RANK
+From:      Van Snyder
+Reference: 15-007r1, 04-195, 13-216
+Date: 2015 June 07
+
+1. Introduction
+===============
+
+A SELECT RANK construct has been proposed to allow access to assumed
+rank dummy arguments.
+
+It was inscrutably crippled, for no specified reason, by prohibiting its
+use with specific-rank objects.
+
+An alternative that has broader applicability and is simpler to use can
+be based upon what was proposed in 04-195 and 13-216.  The proposal in
+04-195 is extended here to cover essentially everything that a SELECT
+RANK construct would offer, with equal security.
+
+2. Proposal
+===========
+
+Allow a rank-1 extent R integer array to specify all the subscripts of a
+rank R array or assumed-rank entity.  The result is a scalar.  This
+allows the result of, e.g., FINDLOC to be directly usable as a
+subscript if DIM is not present.  For example
+
+  print *, A(findloc(A%key,hunt))%value
+
+works whether the array A is of specified or assumed rank.
+
+Allow a rank-1 extent R integer array and one or two conformant
+expressions to specify all subscripts and strides of a rank R array or
+assumed-rank entity.  The result is a rank R array section if R > 0,
+else it is a scalar.
+
+For example
+
+  print *, A( [ ( 1, i = 1, rank(A) ) ] )
+
+prints the (1,1,...1) element of the array A, no matter whether A is of
+specified or assumed rank, and
+
+  print *, A( [ ( 1, i = 1, rank(A) ) ]: [ ( w, i = 1, rank(A) ) ] )
+
+prints the (1:2,1:2,...1:2) section of the array A, no matter whether A
+is of specified or assumed rank.
+
+Allow a rank M+1 integer array, with M > 0 and extent R in its first
+dimension, to be the subscript of a rank R array or assumed-rank
+entity.  The result is a rank M array section, having the same shape as
+dimensions 2..M of the subscript, if R > 0, else it is a scalar.  This
+is a vector subscript, and the rules concerning vector subscripts,
+appropriately generalized, apply.  A subscript triplet having M > 0
+should not be allowed, because the result would have rank M*R.
+
+C613a, C613b, and subclause 5.5.8.2.2 in the proposed edits below ensure
+that a subscript of this form for an assumed-rank array has the same
+(first) extent as the rank of the array.  It is therefore equally as
+secure as a SELECT RANK construct, but easier to use, and has far more
+utility.
+
+Allow assumed-rank pointers and pointer targets.
+
+Allow a rank-1 extent R integer array to declare the lower or upper
+bounds of an explicit-shape array, or the lower bounds alone of an
+assumed-shape array, which array is declared to have rank R.  This
+allows, e.g., UBOUND without a DIM argument, to be used directly as an
+array bound.  For example
+
+  real :: B ( lbound(A) : ubound(A) )
+
+declares an array B that has the same rank and bounds as A, even if A is
+of assumed rank.  This is much simpler than, for example
+
+  real :: B ( lbound(A,1) : ubound(A,1) , &
+            & lbound(A,2) : ubound(A,2) , &
+            & lbound(A,3) : ubound(A,3) , &
+            & lbound(A,4) : ubound(A,4) )
+
+which cannot be used if A is of assumed rank.
+
+See 13-216.
+
+Allow a rank-1 extent R integer array to declare the lower bounds of an
+assumed-rank array of rank R.
+
+Allow a rank-1 extent R integer array to declare the lower bounds or both
+bounds of a data pointer object in a pointer assignment statement.
+
+3. Edits
+========
+
+{Allow to declare an array using an array to specify either the lower or
+upper bounds, or arrays to specify both.}
+
+[98:8+ R515] Add an alternative to R515 <array-spec>:
+
+"                           <<or>> <explicit-array-spec>"
+
+[98:9+ R515] Add an alternative to R515 <array-spec>:
+
+"                           <<or>> <assumed-shape-lower-bounds-spec>"
+
+[98:15+ 5.5.8.2p1-] Insert a subclause header:
+
+"5.5.8.2.1 Shape specification"
+
+[98:18+ R518+] Define <explicit-array-spec>:
+
+"
+R518a <explicit-array-spec> <<is>> [ <lower-array-bound> : ] \smudge
+                                   \smudge <upper-array-bound>
+                            <<or>> <specification-array>
+
+R518b <lower-array-bound>   <<is>> <specification-array>
+                            <<or>> <specification-expr>
+
+R518c <upper-array-bound>   <<is>> <specification-array>
+                            <<or>> <specification-expr>
+
+R518d <specification-array> <<is>> <int-expr>
+
+[99:2+ C532+] Add constraints that guarantee an array that is not an
+assumed-rank array has constant rank:
+
+"
+C532a (R518d) A <specification-array> shall be a rank-1 specification
+      expression.  In an <explicit-array-spec> or
+      <assumed-shape-lower-bounds-spec> it shall have constant extent
+      (5.5.8.2.2).
+"
+
+{Requiring constant extent prevents assumed-rank automatic variables.}
+
+C532b (R518a) If <lower-array-bound> and <upper-array-bound> both
+      appear, either they shall be <specification-array>s that have the
+      same extent, or one shall be a <specification-array>.
+
+C532c (R518a) A <lower-array-bound> or <upper-array-bound> that is not a
+      constant expression shall appear only in a subprogram, derived
+      type definition, BLOCK construct, or interface body.
+"
+
+{No provision is made for type parameters to be arrays, so if
+<specification-array> appears in a component declaration, it will
+necessarily be either a named constant or an array constructor, not a
+type parameter value.}
+
+[99:3-4 5.5.8.2p1] After "<explicit-shape-spec-list>" insert "or
+<explicit-array-spec>".  Replace "The" with "If the shape is specified
+by <explicit-shape-spec-list>".  Append a sentence to the end of the
+paragraph: "If the shape is specified by <explicit-array-spec> the rank
+is equal to the extent of whichever of <lower-array-bound> or
+<upper-array-bound> is not a scalar."
+
+[99:12 5.5.8.2p3] Before "The value" insert the following as a new
+paragraph:
+
+"The values of the elements of <lower-array-bound>, or the value of
+<lower-array-bound> if it is a scalar, specify the lower bounds of all
+dimensions.  The values of the elements of <upper-array-bound>, or the
+value of <upper-array-bound> if it is a scalar, specify the upper bounds
+of all dimensions.  If <lower-array-bound> does not appear, the lower
+bound in every dimension is 1."
+
+Then start a new paragraph with "The value...."
+
+{Define the terms "constant extent" or "extent determined by reference
+to the RANK intrinsic function:}
+
+[99:15+ 5.5.8.2p3+] Insert a subclause
+
+"5.5.8.2.2 Determinable extent
+
+"The extent of a dimension of an explicit-shape array is either
+constant, or equal to the value of a reference to the RANK intrinsic
+function with an assumed-rank argument, if the array is
+
+  o a constant expression,
+  o an explicit-shape variable and the lower and upper bounds of the
+    dimension in question are constants if the condition is that the
+    extent be constant, or one is a constant and the other is a
+    reference to the RANK intrinsic function,
+  o an array constructor, every <ac-value> is a scalar or an array that
+    has constant extent in every dimension, and the iteration count
+    meets the condition,
+  o the result of an intrinsic elemental operation and the extent in the
+    dimension in question of the operand that determines the shape of
+    the result meets the condition,
+  o the result of the intrinsic function ALL, ANY, COUNT, or PARITY, the
+    DIM argument appears and is a constant expression not equal to the
+    dimension in question, and the dimension of the MASK argument that
+    determines the extent in the dimension in question of the result
+    meets the condition,
+  o the result of the intrinsic function CSHIFT, EOSHIFT, MAXVAL, or
+    MINVAL, and the dimension in question of the ARRAY argument meets
+    the condition,
+  o the result of the intrinsic function FINDLOC, MAXLOC, MINLOC,
+    PRODUCT, or SUM, and either the DIM argument does not appear, or DIM
+    appears, is a constant expression not equal to the dimension in
+    question, and the dimension of the ARRAY argument that determines
+    the extent in the dimension in question of the result meets the
+    condition,
+  o the result of the intrinsic function IALL, IANY, or IPARITY, the DIM
+    argument appears and is a constant not equal to the dimension in
+    question, and the dimension of the ARRAY argument that determines
+    the extent in the dimension in question of the result meets the
+    condition,
+  o the result of the intrinsic function LBOUND or UBOUND, the ARRAY
+    argument is not assumed rank if the condition is that the extent is
+    constant, and the DIM argument does not appear,
+  o the result of the intrinsic function LCOBOUND or UCOBOUND, and the
+    DIM argument does not appear,
+  o the result of the intrinsic function PACK, and either the MASK
+    argument is a constant array, the VECTOR argument appears and its
+    extent meets the condition, or VECTOR does not appear, MASK is a
+    scalar with the constant value true, and the extent in the dimension
+    of ARRAY meets the condition,
+  o the result of the intrinsic function RESHAPE, the SHAPE argument is
+    an array constructor or a named constant, and the element of the
+    SHAPE argument that determines the dimension in question of the
+    result meets the condition,
+  o the result of the intrinsic function SPREAD,the DIM argument is a
+    constant expression and either the value of DIM is not the dimension
+    in question and the extent in the dimension in question of SOURCE
+    meets the condition in the dimension in question, or the value of
+    DIM is a constant expression equal to the dimension in question and
+    NCOPIES meets the condition,
+  o the result of the intrinsic function TRANSFER, and the SIZE argument
+    appears and meets the condition,
+  o the result of the intrinsic function UNPACK and the extent in the
+    dimension in question of the MASK argument meets the condition,
+  o the result of an elemental function that has an array result and the
+    dimension in question of the array argument that determines the
+    shape of the result meets the condition, or
+  o the result of a nonelemental nonintrinsic function that has an array
+    result and the dimension in question of the result meets the
+    condition.
+
+{Defined <assumed-shape-lower-bounds-spec>:}
+
+[99:19+ R519+] Insert a syntax rule:
+
+"R519a <assumed-shape-lower-bounds-spec> <<is>> <specification-array> :"
+
+[99:20 5.5.8.3p2] Replace "The" with "If <assumed-shape-spec> appears,
+the".  Append a sentence: "If <assumed-shape-lower-bounds-spec> appears,
+the rank is the extent of <specification-array>."
+
+{C532a above ensures the rank specified by the extent of
+<assumed-shape-lower-bounds-spec> is a constant.}
+
+[99:20+ 5.5.8.3p2+] Insert a paragraph:
+
+"If <assumed-shape-lower-bounds-spec> appears, each element specifies
+the lower bound of the corresponding dimension of the dummy argument
+array."
+
+[99:24+ 5.5.8.3p3+] Insert a note:
+
+"NOTE 5.12a
+  The declarations
+
+    real :: A ( -1:, 0:, 1: ), B ( lbound(a) : )
+
+  declare A and B to be assumed-shape dummy argument arrays.  The array
+  B has the same rank and lower bounds as the array A.
+"
+
+{Allow to specify lower bounds for assumed-rank objects:}
+
+[101:10 R525] Replace R525:
+
+"R525 <assumed-rank-spec> <<is>> [ <specification-array> : ] .."
+
+[101:20 C540+] Insert a paragraph:
+
+"If <specification-array> appears and has extent greater than zero, each
+element specifies the lower bound of the corresponding dimension of the
+assumed-rank entity."
+
+{It will be seen below in C540a that the extent of <specification-array>
+is necessarily the same as the rank of the array being declared.}
+
+{Allow assumed-rank pointers:}
+
+[101:12 C538] After "attribute" insert ", or shall have the POINTER
+attribute."
+
+{Allow a subscripted assumed-rank object.  The subscript will be seen in
+edits for [123:8+] to be a rank-1 array of extent equal to the assumed
+rank.}
+
+[101:13 C539] Replace "in a designator or expression" with "without a
+subscript,"
+
+{If no other part of this proposal is accepted, replace the proposal for
+SELECT RANK with the following edit, and edits below for pages 162 and
+163:}
+
+[101:15 C539] After "except" insert "as the <data-target> in a pointer
+assignment statement"
+
+[101:20+ C540+] Insert a constraint:
+
+"
+C540a (R525) If <lower-bounds> appears it shall be a rank-one integer
+      array whose extent is equal to the rank of the dummy data object
+      being declared (5.5.8.2.2).
+"
+
+{Specify the requirements on <part-ref>.}
+
+[123:1 R612] Replace "( <section-subscript-list> )" with
+"<element-selector>".
+
+[123:1+ R612+] Insert syntax rule:
+
+"
+R612a <element-selector> <<is>> ( <section-subscript-list> )
+                         <<or>> ( <array-element-selector> )
+
+R612b <array-element-selector> <<is>> ( <array-subscript> )
+                               <<or>> ( <array-array-section> )
+"
+
+[123:7 C613] After "appears" insert "and <part-name> is not of
+     assumed rank"
+
+[123:8+ C613+] Add constraints:
+
+"
+C613a (R612a) If <part-name> is of assumed rank and <data-ref> is
+     neither an actual argument nor a <data-pointer-object> or
+     <data-target> in a pointer assignment statement,
+     <array-element-selector> shall appear.  If <part-ref> is of assumed
+     rank, <section-subscript-list> shall not appear.
+
+C613b (R612a) The extent of the first dimension of <array-subscript>
+     shall be equal to the rank of <part-name> (5.5.8.2.2).  The extent
+     of the first dimension of each <array-subscript> or <stride> of
+     <array-array-section> that is not a scalar shall be equal to the
+     rank of <part-name> (5.5.8.2.2).  That extent shall be constant if
+     <part-name> is not of assumed rank.
+"
+
+{C613a and C613b ensure that the (first) extent of the
+<array-element-selector> is equal to the rank of the <part-ref>.  This
+is equally as secure as a SELECT RANK construct, and simpler to use.}
+
+[123:10 C615] Replace "<section-subscript-list>" with
+"<element-selector>".
+
+[123:18+ C618+] Insert paragraphs that define the rank of <part-ref>:
+
+"If <part-name> is of assumed rank and <element-selector> does not
+appear, <part-ref> is of assumed rank.
+
+"If <part-name> is not of assumed rank and <element-selector> does not
+appear, or <array-array-section> appears, the rank of the <part-ref> is
+its declared rank.  If <section-subscript-list> appears, the rank of
+<part-ref> is the number of <section-subscript>s that are
+<subscript-triplet>.
+
+"If <array-subscript> appears, the rank of <part-ref> is one less than
+the rank of <array-subscript>.  If <array-array-section> appears the
+rank of <part-ref> is the rank of <part-name>."
+
+{Specify how subscripting using array subscripts works:}
+
+[125:26+ R620+] Insert syntax rules:
+
+"
+R620a <array-subscript>  <<is>> <int-expr>
+
+R620b <array-array-section> <<is>> [ <array-section-subscript> ]:\smudge
+                         \smudge [ <array-section-subscript> ] \smudge
+                         \smudge [ : <array-stride> ]
+
+R620c <<array-stride> <<is>> <int-expr>
+"
+
+[126:5+ C627+] Insert constraints and paragraphs:
+
+"C627a (R620a) <array-subscript> shall not be a scalar.
+
+"C627b (R620b) <array-section-subscript> shall be a scalar or a rank-1
+       array.
+
+"C627c (R620b) <array-stride> shall be a scalar or a rank-1 array.
+
+"C627d (R620b) At least one <array-section-subscript> or <array-stride>
+       shall appear and not be a scalar.
+
+"C628c (R620b) The shapes of <array-subscript>s and <stride> shall
+       conform.
+
+"Denote <array-subscript> by S. If S has shape [ $n_1$ ], the effect is
+as if $n_1$ <subscript>s appeared, with the $i^\text{th}$ subscript
+having the value S($i$), and $i$ taking all values within the bounds of
+S; the <part-ref> has rank zero.
+
+"If S has shape $[ n_1, n_2, ..., n_{m+1} ]$, the shape of <data-ref> is
+$[ n_2, ..., n_{m+1} ]$.  The $( i_2, ... i_{m+1} )$ element of
+<data-ref> is the element selected by the array subscript S( :, i_2,
+..., i_{m+1} )$, where each $i_k$ independently takes all values within
+the bounds of the $k^\text{th}$ dimension of S.
+
+"If <array-array-section> appears in <part-ref>, the effect is as
+if a number of <section-triplet>s equal to the extent of an array
+in <array-array-section> had appeared, in which the $i^\text{th}$
+<subscript-triplet> consisted of the $i^\text{th}$ element of the
+first <array-section-subscript>, or the value of the first
+<array-section-subscript> if it is a scalar, or the lower bound of
+the $i^\text{th}$ dimension of the array if the first
+<array-section-subscript> does not appear, followed by the
+$i^\text{th}$ element of the second <array-section-subscript>, or
+the value of the second <array-section-subscript> if it is a
+scalar, or the upper bound of the $i^\text{th}$ dimension of the
+array if the second <array-section-subscript> does not appear,
+followed by the $i^\text{th}$ element of <array-stride>, or the
+value of <array-stride> if it is a scalar, or 1 if <array-stride>
+does not appear."
+
+[127:6+ 6.5.3.3p1+] Insert a paragraph and note:
+
+"In an <array-section> having <array-element-selector> that is
+<array-subscript> and <array-subscript> has rank greater than one, the
+rank of the array section is one less than the rank of the
+<array-subscript>.  If the shape of the <array-subscript> is $[n_1, n_2,
+..., n_{m+1}]$, the shape of the array section $[n_2, ..., n_{m+1}]$.
+Each rank-one section of the <array-subscript> on its first dimension
+specifies a set of subscripts for the <part-name>.  Each element of the
+array section is an element of the <part-ref> selected by one of those
+rank-one sections, in the same position in the array section as the
+rank-one section is in the <array-subscript>."
+
+"NOTE 6.11a
+  Assume array A3 has dimensions (10,10,10).  Assume a rank-two array
+                                                    [ 3 4 ]
+  S2 = reshape ( [ 3, 6, 5, 4, 7, 8 ], [ 3, 2 ] ) = | 6 7 |.  Then
+                                                    [ 5 8 ]
+  the extent of the first dimension of S2 is 3, and S2 is therefore
+  allowed as a subscript for A3.  A3(S2) is a rank-one array section
+  consisting of A3(3,6,5) and A3(4,7,8).  The array [ A3(3,6,5),
+  A3(4,7,8) ] has the same shape and values as A3(S2), but it is a copy
+  of A3(S2), and it cannot appear in a variable-definition context.
+
+  Assume array B has dimension (10).  Assume a rank-three array
+  S3 = reshape ( [ 3, 6, 5, 4, 7, 8 ], [ 1, 3, 2 ] ).  Then the extent
+  of the first dimension of S3 is 1 and S3 is therefore allowed as a
+  subscript for.  B(S3) is a rank-two array with elements
+  [ B(3) B(4) ]
+  | B(6) B(7) |.  These are elements of B,  not copies of their values.
+  [ B(5) B(8) ]
+  The array constructed by
+  reshape ( [B(3), B(6), B(5), B(4), B(7), B(8)], [ 3, 2 ] ) is an array
+  of the same shape and values as B(S3), but it is a copy of B(S3), and
+  it cannot appear in a variable-definition context."
+
+{Define "vector subscript" to include subscripting by an array that has
+extent greater than one:}
+
+[128:1+ 6.5.3.3.2p1-] Insert a paragraph
+
+"A vector subscript is an array that is a subscript for a single
+dimension, or an array that specifies subscripts for all dimensions and
+has rank greater than one."
+
+[128:5 6.5.3.3.2p3] after "vector subscript" insert "is an array of rank
+one that".
+
+[128:6+ 6.5.3.3.2p3+] Insert a paragraph:
+
+"If a vector subscript is an array of rank greater than one and any two
+rank-one sections of the <array-subscript> on its first dimension have
+the same sequences of values, an array section specified by that
+subscript is not definable and shall not be defined or become
+undefined."
+
+[130:15+ R631+] Add an alternative in R631:
+
+"    <<or>> <allocate-object> ( <allocate-shape> ) \smudge
+            \smudge [ <lbracket> <allocate-coarray-spec> <rbracket> ]"
+
+[130:20+ R635+] Insert syntax rules:
+
+"R635a <allocate-shape> <<is>> [ <lower-bounds> : ] <upper-bounds>
+
+"R635b <lower-bounds> <<is>> <int-expr>
+
+"R635c <upper-bounds> <<is>> <int-expr>"
+
+[130:30+ C633+] Insert a constraint:
+
+"C633a (R635a) If <upper-bounds> and <lower-bounds> both appear, at
+       least one of them shall be a rank-one array; otherwise,
+       <upper-bounds> shall be a rank-one array array.  The extent of
+       the array (or arrays) shall be a constant equal to the rank of
+       the <allocate-object> (5.5.8.2.2)."
+
+[130:31 C633] After "<allocate-shape-spec-list>" insert "or
+<allocate-shape>".
+
+[130:33 C634] Replace "<allocate-shape-spec-list>" with "neither
+<allocate-shape-spec-list> nor <allocate-shape>".
+
+[132:2 6.7.1.2p1] Replace "is specified" with "or <allocate-shape>
+appears".
+
+[132:5-6 6.7.1.2p1] Replace the final sentence of 6.7.1.2p1 with new
+paragraphs:
+
+"If <upper-bounds> is an array, each element specifes the upper bound of
+the corresponding dimension of <allocate-object>.  Otherwise it
+specifies all upper bounds of <allocate-object>.  If <lower-bounds>
+appears and is an array, each element specifes the lower bound of the
+corresponding dimension of <allocate-object>.  If <lower-bounds> appears
+and is a scalar it specifies all lower bounds of <allocate-object>.  If
+<lower-bounds> does not appear, the lower bound of each dimension is 1.
+
+"If the upper bound in any dimension is less than the corresponding
+lower bound, the extent in that dimension is zero and the array has zero
+size."
+
+[161:34+ R733] Insert an alternative
+"  <<or>> <data-pointer-object> ( <lower-bounds> : ) => <data-target>"
+
+[161:35+ R733] Insert an alternative
+"  <<or>> <data-pointer-object> \smudge
+     \smudge( <lower-bounds> : <upper-bounds> ) => <data-target>"
+
+[162:8+ C717+] Insert constraints:
+
+"C717a (R733) If <lower-bounds> appears it shall be a rank-one array.  If
+       <data-pointer-object> is not an assumed-rank entity, the extent of
+       <lower-bound> shall be a constant equal to the rank of
+       <data-pointer-object> (5.5.8.2.2)."
+
+C717b (R733) At least one of <upper-bounds> and <lower-bounds> shall be a
+       rank-one array.  If <data-pointer-object> is not an assumed-rank
+       entity, the extent of the array (or arrays) shall be a constant
+       equal to the rank of the <data-pointer-object> (5.5.8.2.2)."
+
+{If no other part of this proposal is accepted, replace the proposal for
+SELECT RANK with the following edits, and the second edit above for C539
+on page 101:}
+
+[162:8+ C717+] Insert constraints:
+
+
+"C717c (R733) If <data-pointer-object> is an assumed-rank entity, neither
+       <bounds-spec-list> nor <bounds-remapping-list> shall appear.
+
+"C717d (R733) If <data-target> is of assumed rank, either
+       <data-pointer-object> shall be of assumed rank, shall be a
+       scalar, or <bounds-remapping-list> shall appear."
+
+[163:23+ 7.2.2.3p3+] Insert paragraphs:
+
+"If <data-pointer-object> is a scalar and <data-target> is an
+assumed-rank object that is a scalar, <data-pointer-object> becomes
+associated with <data-target>.  If <data-pointer-object> is a scalar and
+<data-target> is an assumed-rank object that is an array,
+<data-pointer-object> becomes associated with the first element of
+<data-target>, in array element order.
+
+"If <data-pointer-object> is an assumed-rank entity and neither
+<lower-bounds> nor <upper-bounds> appear, its rank becomes the rank of the
+<data-target>.  If <data-pointer-object> is an assumed-rank entity and
+either <lower-bounds> or <upper-bounds> appears, its rank becomes the
+extent of whichever of <lower-bounds> or <upper-bounds> is an array; if
+they both appear, either one shall be a scalar, or they shall have the
+same extents."
+
+[163:35 7.2.2.3p9] Replace "; the" with ".  If <upper-bounds> and
+<lower-bounds> appear they specify both bounds, and thus the extents, of
+all dimensions of the <data-pointer-object>.  If the pointer target is an
+assumed-rank entity the extent of whichever of <upper-bounds> or
+<lower-bounds> are arrays shall be equal to the rank of the pointer target
+(5.5.8.2.2); otherwise the"  Replace ", and" with ".  The pointer target".
+
+[164:1 7.2.2.3p9] After <bounds-remapping-list> insert "or <upper-bounds>
+and <lower-bounds>.
+
+[164:5 7.2.2.3p10] replace "it" with "or <lower-bounds> appears and
+<upper-bounds> does not appear, <bounds-spec-list> or <lower-bounds>".
+Replace "; otherwise," with ".  If <lower-bounds> appears the extent of
+<lower-bounds> shall be equal to the rank of the pointer target
+(5.5.8.2.2).  If neither <bounds-spec-list> nor <lower-bounds> appears,".

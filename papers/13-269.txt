@@ -1,0 +1,237 @@
+                                                           13-269
+To: J3
+From: Nick Maclaren and Mark Batty
+Subject: Specifying Fortran's data consistency model
+Date: 2013 June 20
+
+
+1. Segment ordering
+-------------------
+
+Probably all we need to do is to spell out that a processor shall ensure
+that the ordering of all image control statements is a DAG that is
+consistent with the standard's requirements.  The current standard
+specifies precisely that, but there is a concern at how to specify events
+so that this property continues to be guaranteed.
+
+However, we also need to spell out that an implementation must ensure
+that the data transfer via collectives and atomics is consistent with
+the segment order.
+
+There is a slight problem with teams, in that the combination of
+consistent atomics and SYNC MEMORY (i.e. a plain fence) provides a
+covert channel between inside and outside.  However, teams have no
+direct involvement with segment ordering, and so this is not a problem.
+It is a concern, however.
+
+
+1.1 Events
+----------
+
+Fortran events are general semaphores.  Dijkstra himself pointed out
+that they are no more powerful than binary semaphores.  See 4.2 in:
+
+    http://www.cs.utexas.edu/users/EWD/transcriptions/EWD01xx/EWD123.html
+
+While these are well-studied, there seems to be no precise description
+of their ordering semantics.  Worse, the current specification defines
+behaviour if they are unsuccessful, and is is completely unclear what
+implications that might have.  This is a recipe for every vendor and
+user assuming different interpretations.
+
+In particular, events affect segment ordering and, if we do not specify
+anything, that is going to break the properties of the data consistency
+model that we agreed (after much discussion!) in Fortran 2008.  If
+we simplify them to binary, unconditional semaphores, this problem
+becomes trivial.
+
+If this is not done, they will have to be integrated with the segment
+model in some suitable way.
+
+
+
+2. Mapping to the C/C++ release/acquire model
+---------------------------------------------
+
+We have followed the model and terminology used in C++ as closely as we
+think makes sense for Fortran, though we have changed "modification
+order" to "defines before" and reversed its sense.  The most useful
+paper on this seems to be:
+
+    http://www-users.cs.york.ac.uk/~miked/publications/...
+        .../POPL.13.library_abstraction_c_cpp.pdf
+
+And, of course, 1.10 [intro.multithread] in:
+
+    http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3376.pdf
+
+*** Open Question ***
+
+ATOMIC_SET and ATOMIC_VALUE are used to refer to versions of
+ATOMIC_DEFINE and ATOMIC_REF that are consistent with the other atomics
+and with the collectives.  There are also uses for inconsistent (highly
+relaxed) atomic subroutines, but those have no defined ordering other
+than that implied by the (serial) execution order of a single image and
+segment ordering.
+
+Whether both should exist is an orthogonal matter to this document, as
+which of them get the names ATOMIC_DEFINE and ATOMIC_REF, if both do.
+WG5 needs to take a decision on that.
+
+*** End of Open Question ***
+
+In the following, only standard-conforming programs are considered.
+There is no indeterminate ordering in Fortran, and the execution
+sequence is a true partial order.  Fortran does not use a dependency
+model; statements (including subroutine calls and assignments) define a
+partial order, and the order of expression evaluation (including
+function calls) is effectively unspecified.
+
+Inter alia, this means that unsynchronised non-atomic accesses are
+undefined if either involves definition, and that only ordered image
+control statements specify such synchronisation.  Similarly,
+inconsistent atomic accesses are processor-defined under the same
+conditions.  There are no exceptions.
+
+The following summarises the existing situation:
+
+    A statement A is ordered before a statement B if either of the
+    following are true:
+
+        Statements A and B are executed on the same image P and 
+        statement A occurs before statement B in the execution order
+        of P
+
+    or:
+
+        Statement A is in a segment P, statement B is in a segment Q,
+        and segment P is ordered before segment Q
+
+The following is what we think that we need to state for the collectives
+and consistent atomics:
+
+    A statement A inter-image happens together with a statement B
+    if they are matching collective subroutine calls other than
+    CO_BROADCAST, and RESULT_IMAGE is not specified.
+
+    A statement A inter-image happens before a statement B if any
+    of the following are true:
+
+        Statement A is in segment P, statement B is in segment Q, and
+        segment P is ordered before segment Q
+
+    or:
+
+        Statement A in image P is a CO_BROADCAST call where SOURCE_IMAGE
+        is P, and statement B is a matching CO_BROADCAST call on image Q
+
+    or:
+
+        Statement A in image P is a collective subroutine call other
+        than CO_BROADCAST with a RESULT_IMAGE of Q, and statement B is
+        a matching collective subroutine call on image Q
+
+    or:
+
+        X is an atomic variable, statement A is any consistent atomic
+        subroutine except ATOMIC_VALUE, B is any consistent atomic
+        subroutine except ATOMIC_SET, X is the ATOM argument to both
+        A and B, and B references the value defined by A
+
+    or:
+
+        Statement A is ordered before statement C which inter-image
+        happens before or together with statement B
+
+    or:
+
+        Statement A inter-image happens before or together with
+        statement C which is ordered before statement B
+
+    or:
+
+        Statement A inter-image happens before statement C which
+        inter-image happens before statement B
+
+This deliberately does not state that collectives wait unless they have
+to.  In this, we are following MPI.  We have spelled out the atomic and
+collective behaviours to avoid the murk caused by calls like
+ATOMIC_AND(atom,0), and reductions where the result can be determined
+before all data are in.
+
+    A statement A happens before a statement B if either of the
+    following are true:
+
+        Statement A is ordered before statement B
+
+    or:
+
+        Statement A is inter-image ordered before statement B
+
+All variables have the following constraints on the order of their
+definitions:
+
+    If statements A and B are any consistent atomic subroutines except
+    ATOMIC_VALUE and X is the ATOM argument to both A and B, then a
+    processor shall ensure that either statement A defines X before
+    statement B or statement B defines X before statement A
+  
+    If X is a variable, and both statements A and B define X, then
+    statement A defines X before statement B defines X if any of the
+    following are true:
+
+        Statement A is ordered before statement B
+
+    or:
+
+        Statements A and B are any consistent atomic subroutines except
+        ATOMIC_VALUE, X is the ATOM argument to both A and B, and
+        statement A happens before statement B
+  
+    or:
+
+        Statement A defines X before a statement C that defines X before
+        statement B defines X.
+
+In particular, this defines a total order on their definitions, provided
+that all definitions are either ordered by the single-image and segment
+rules or created by the consistent atomic subroutines.  Note that
+defining an atomic variable using a consistent atomic subroutine ensures
+that all previous definitions (by whatever means) in the same segment
+are flushed.  Beyond that, programmers are on their own.
+
+There are also some constraints that need specifying on processors, to
+prevent over-aggressive optimisation creating causal loops and other
+such bizarre effects.  All apply only to standard-conforming programs.
+
+    A processor shall ensure that, if a statement A happens before
+    a statement B, then statement B does not happen before statement A
+
+    If a statement A is any consistent atomic subroutine except
+    ATOMIC_VALUE and ATOMIC_SET and X is the ATOM argument to A, then
+    the value it returns is the value that X was defined to by the
+    immediately preceding definition in the definition order of X
+
+    If X is a variable, then:
+
+    [ CoWR ] If statement A defines X before statement B defines X,
+    statement C references the value of X, and statement B happens
+    before statement C, then statement C shall not use the value of X
+    that was defined by statement A
+
+These may seem obvious but, regrettably, they need spelling out.
+
+The following is needed only if we provide inconsistent (relaxed) atomic
+define and reference (see the Open Question above).  If we do, we should
+also add:
+
+    If statements A and B are ATOMIC_DEFINE and X is the ATOM argument
+    to both A and B, then a processor shall ensure that either statement
+    A defines X before statement B or statement B defines X before
+    statement A
+  
+That is probably all that is needed, because that would imply that
+ATOMIC_REF follows the rules for ordinary (non-atomic) accesses, and
+anyone who mixes ATOMIC_DEFINE and ATOMIC_SET on the same variable is
+asking for trouble.  That provides the maximum flexibility for
+implementors.

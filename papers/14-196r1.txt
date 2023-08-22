@@ -1,0 +1,237 @@
+                                                            J3/14-196r1
+To: J3
+From: Malcolm Cohen
+Subject: Conformance to ISO/IEC/IEEE 60559:2011
+Date: 2014 June 26
+
+
+1. Introduction
+
+This paper contains specification and syntax, with limited discussion, for
+making Fortran 2015 conformant with ISO/IEC/IEEE 60559:2011.
+
+A background paper with more discussion is 13-356r1.  Discussion here
+is limited to the options that are more likely to be controversial.
+
+
+2. Specifications
+
+That we conform as much as reasonably possible to ISO/IEC/IEEE 60559:2010,
+aka IEEE 754-2008.  In particular:
+
+(a) Where there is a change of terminology from the old IEEE 754,
+    we should use the new terminology, both in text and in names
+    of module entities.  In particular:
+      denormal/denormalized -> subnormal
+
+(b) IEEE_RINT needs its description updated to say that it does the
+    IEEE operation roundIntegralToExact.
+
+(c) New rounding mode, roundTiesToAway (not required for binary formats,
+    but required for decimal formats).  This is rather like our i/o
+    rounding mode "COMPATIBLE".
+
+(d) New rounding function(s) for rounding to an integral value according
+    to a particular scheme, corresponding to a rounding mode.
+
+(e) New functions that compute nextUp and nextDown (changing existing
+    functions is less convenient as well as less compatible).
+
+(f) Clarify description of IEEE_REM to say that it conforms to the
+    specification for "remainder".
+
+(g) New functions for maxNum, maxNumMag, minNum, minNumMag, pairwise
+    only.
+
+(h) No provision for quantize operation.
+
+(i) No additional functions for scaleB and logB; logBFormat is type
+    REAL so scaleB is IEEE_SCALE(x,INT(y)).
+
+(j) Provide fusedMultiplyAdd operation.
+
+(k) Provide either convertToInteger{rounding} or
+    convertToIntegerExact{rounding} (processor-dependent).
+
+(l) Provide convertFromInt operation.
+
+(m) Do nothing about convert{From,To}DecimalCharacter operations.
+
+(n) Provide convert{From,To}HexCharacter operations.
+
+(o) Do nothing about copy/negate/abs/copySign operations.
+
+(p) Provide compare{Quiet,Signalling}{Equal,Greater...} operations.
+
+(q) Do not provide is754version1985 and is754version2008 operations.
+
+(r) Provide isSignMinus operation.
+
+(s) Leave provision of the totalOrder operation as an exercise for the
+    programmer.  Don't document that.
+
+(t) Provide for getDecimalRoundingDirection and
+    setDecimalRoundingDirection, separately from binary.
+    See discussion.
+
+(u) Provide saveModes and restoreModes operations.
+
+Remaining operations are reasonably programmable via short code sequences
+by the user, so we need not provide them.
+
+
+3. Discussion
+
+(a) For backwards compatibility it is good to require that the old names
+    will still work.  Of course any vendor could (and would?) do that even
+    if we were silent on the issue, but requiring compatibility is best.
+
+(e) We could remove IEEE_NEXT_AFTER since its purpose is better provided by
+    IEEE_NEXT_UP and IEEE_NEXT_DOWN.  The syntax and edits leave
+    IEEE_NEXT_AFTER in place (for backwards compatibility).
+
+(h) quantize is a decimal-only operation, and (it seems to me) one more
+    tailored to Cobol operations than to Fortran ones.  A vendor who
+    provides decimal floats can add IEEE_QUANTIZE themselves.  Portability
+    might argue that we should describe it for guidance purposes, but it
+    would have to be optional (there being no such thing as an empty
+    generic).
+
+(i) Perhaps we should document this?  No edits for that yet.
+
+(j) This is the easiest-to-understand and least burdensome way to satisfy
+    the requirement.  Otherwise we should say just exactly when it is that
+    a user-written a*b+c will do FMA.  Also an explicit function imposes
+    less burden on hardware without FMA.
+
+(k) The only difference between the two operations is whether IEEE_INEXACT
+    is raised; processor-dependent to remove potential hardware burden, as
+    few if any users will care about the INEXACT flag (those who do need
+    to know can write portable code to do whichever one they want given
+    the above).
+
+(l) On some hardware/software combinations, REAL would do this as long as
+    it did not raise INEXACT and rounded according to the dynamic rounding
+    modes.  A separate function avoids potential impact on REAL efficiency
+    for users who don't care about these.
+
+(m) Because with appropriate ROUND= settings, READ and WRITE should already
+    do these.  We might consider documenting that somewhere.
+
+(o) These can all be synthesised from trivial code sequences if
+    IEEE_COPY_SIGN does not raise INVALID on a SNaN argument or result (we
+    allow, but do not require, this to be the case).  We could make this
+    claim in the normative text, or even give the example code sequences.
+    Or if we wanted to be maximally useful, add four subroutines (these
+    are subroutines NOT functions) IEEE_{COPY,NEGATE,ABS,SIGNCOPY}.
+
+(q) For the functions and functionality we provided before, there is
+    virtually no change.  New functions and functionality is almost always
+    done with additional procedures, so use of them mostly needs to be a
+    compile-time thing (or link-time), there does not seem to be much one
+    can do at runtime.  I.e. since we are providing 60559:2011 support,
+    the answer to "have we got 1985 support but not 2011 support" is almost
+    always going to be "no" anyway.
+
+(r) We could claim IEEE_COPY_SIGN(x,1.0)<0 does this operation, but C has
+    a signbit macro so it is better for us to provide something easy.
+
+(t) This will complicate our rounding mode discussions since there are two
+    of them (decimal and binary).  We need to specify a reasonable default
+    for which one we are talking about, either that of the operands, both
+    decimal and binary, or just binary.
+
+    We could of course decide not to provide separate access to 60559's
+    binary and decimal rounding modes, i.e. the "Fortran/IEEE rounding
+    mode" would encompass both and both would change in lockstep.  But
+    that might lead to later interoperability conflicts with other
+    languages that follow the "separate binary/decimal" path.
+
+(u) The defaultModes operation can be performed by the user doing getModes
+    at program startup time.
+
+
+4. Syntax
+
+Specification feature (a):
+  In IEEE_FEATURES,
+    IEEE_DENORMAL -> IEEE_SUBNORMAL
+  In IEEE_ARITHMETIC,
+    IEEE_NEGATIVE_DENORMAL -> IEEE_NEGATIVE_SUBNORMAL
+    IEEE_POSITIVE_DENORMAL -> IEEE_POSITIVE_SUBNORMAL
+    IEEE_SUPPORT_DENORMAL -> IEEE_SUPPORT_SUBNORMAL
+  Plus require the old names to still work, i.e. they are synonyms for the
+  new names.
+
+Specification feature (c):
+  New named constant of IEEE_ROUND_TYPE, IEEE_AWAY, for roundTiesToAway.
+  {An alternative spelling would be IEEE_ROUND_AWAY, but none of the other
+   rounding mode constants have the word "ROUND" in them.}
+
+Specification feature (d):
+  New optional argument ROUND for IEEE_RINT, which specifies the rounding
+  mode to use.  This does not affect the dynamic rounding mode.
+
+Specification feature (e):
+  New functions IEEE_NEXT_UP(X) and IEEE_NEXT_DOWN(X) that follow the rules
+  for nextUp and nextDown; IEEE_SUPPORT_DATATYPE(X) restriction.  Leave
+  the unnecessary IEEE_NEXT_AFTER in place for backwards compatibility.
+
+Specification feature (f):
+  Leave description of IEEE_REM as is with the claim appended that this is
+  equivalent to 60559's remainder operation.
+
+Specification feature (g):
+  New functions IEEE_MAX_NUM, IEEE_MAX_NUM_MAG, IEEE_MIN_NUM, and
+  IEEE_MIN_NUM_MAG, all with arguments (X,Y), X and Y being REAL with the
+  same kind and IEEE_SUPPORT_DATATYPE(X).
+
+Specification feature (j):
+  New function IEEE_FMA(A,B,C).
+
+Specification feature (k):
+  New function IEEE_INT which either does convertToInteger or
+  convertToIntegerExact (processor-dependent).
+  Arguments (X,ROUND[,KIND]).  Dynamic rounding mode unaffected.
+
+Specification feature (l):
+  New function IEEE_REAL(A[,KIND]), where KIND specifies a REAL type with
+  IEEE_SUPPORT_DATATYPE, and A is Integer or Real with
+  IEEE_SUPPORT_DATATYPE(A).  For Integer A this is convertFromInt,
+  for Real A this is convertFormat.
+
+Specification feature (n):
+  For output, new edit descriptors EXw.d and EXw.dEe.
+    -- w==0 for minimal field width,
+    -- d==0 for minimal mantissa width,
+    -- e==0 (or Ee omitted) for minimal exponent width.
+  Format according to 60559 subclause 5.12.3.
+  Recognise on input; exponent always required, scale factor no effect,
+                      no embedded blanks.
+  Don't provide as literal constants.
+
+Specification feature (p):
+  Add requirement that normal comparisons of IEEE floating values obey
+  the 60559 requirements for the signalling operations.  Add new functions
+  for the quiet versions, IEEE_QUIET_EQ(X,Y), IEEE_QUIET_LT et al.
+
+NOT Specification feature (q):
+  If we were to support this feature (instead of not supporting it), the
+  suggested syntax would be an optional YEAR argument to
+  IEEE_SUPPORT_STANDARD with acceptable values for YEAR being 1985 and 1989
+  (for old IEEE 754) and 2008 or 2011 for new IEEE 754.  The default would
+  be 1985.
+
+Specification feature (r):
+  New function IEEE_SIGNBIT(X), X is REAL with IEEE_SUPPORT_DATATYPE(X),
+  returns true if the signbit is set, false otherwise, without exception.
+
+Specification feature (t):
+  Add optional RADIX argument to IEEE_{GET,SET}_ROUNDING_MODE.  If omitted,
+  the default is 2.
+
+Specification feature (u):
+  New data type in IEEE_ARITHMETIC, IEEE_MODES_TYPE.
+  New subroutines IEEE_GET_MODES (MODES) and IEEE_SET_MODES (MODES).
+
+===END===

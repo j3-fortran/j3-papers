@@ -1,0 +1,174 @@
+To: J3                                                     J3/21-203
+From: Malcolm Cohen
+Subject: Ramifications of 21-178 (integration issue?)
+Date: 2021-October-25
+
+
+1. Introduction
+
+21-178 notes that IEEE_GET_FLAG and IEEE_GET_HALTING_MODE are described
+inconsistently, in one place as (impure) elemental, and another as simple
+(which includes pure) elemental.
+
+21-202 is an interp request, because these are impure elemental in the
+current standard F2018, but pure in F2003.
+
+Looking closer at the subroutines defined by the IEEE modules, however,
+reveals some inconsistencies. This paper addresses those inconsistencies.
+
+
+2. Inconsistent?
+
+(A) The "inquiry" subroutines.
+
+Obviously (?) IEEE_GET_FLAG and IEEE_GET_HALTING_MODE are performing a kind
+of inquiry, and have no side-effect, so it is perfectly reasonable that
+they are considered to be pure.
+
+Looking at IEEE_GET_ROUNDING_MODE and IEEE_GET_UNDERFLOW_MODE, we see that
+these are classed as IMPURE subroutines, despite on the face of it having
+no side-effect.
+
+Similarly IEEE_GET_MODES and IEEE_GET_STATUS have no side-effect, and would
+be safe to use in a parallel execution context, but they too are classified
+as impure.
+
+(B) The setting subroutines
+
+The halting modes (one per exception) are restored on return from a
+procedure that invoked IEEE_SET_HALTING_MODE. This means that
+IEEE_SET_HALTING_MODE does not cause the invoking procedure to have a
+side-effect that is visible in its caller. (If halting actually happens,
+that will bring down the whole program down which is a pretty big side-
+effect, but this is consistent with other means of error termination.)
+
+It is further noted that these routines are only safe for pure procedures,
+and not for other parallel contexts such as DO CONCURRENT, where indeed
+they are prohibited despite being pure.
+
+The rounding and underflow modes, like the halting modes, are likewise
+restored on return from a procedure that invokes IEEE_SET_ROUNDING_MODE
+or IEEE_SET_UNDERFLOW_MODE (or IEEE_SET_MODES), and therefore by the same
+reasoning as for IEEE_SET_HALTING_MODE, they are safe to use in a parallel
+execution context. Safer actually, as changing the underflow or rounding
+mode does not potentially create an additional opportunity for termination!
+
+Similarly, IEEE_SET_MODES merely sets all the modes in one call, so one
+would expect that to be pure if the individual mode settings were pure.
+Similarly, IEEE_SET_STATUS merely sets the flags and modes, and these will
+be restored on exit from the procedure, so it is hard to see what is impure
+about it.
+
+
+3. Missing functionality
+
+Having IEEE_SET_ROUNDING_MODE impure makes it virtually impossible to do
+effective interval arithmetic in user-defined pure procedures.
+By "effective", I mean the upper and lower bounds do not get unnecessarily
+wider. Without the ability to set the rounding mode, the bounds will almost
+always need to be made 2 ulps wider with ever operation.
+
+
+4. Analysis
+
+The IEEE modules were developed immediately after Fortran 95 was produced,
+and PURE was completely new and easy to forget about.
+
+That IEEE_GET_FLAG and IEEE_GET_HALTING_MODE are pure could be merely an
+accident: because there are several exceptions, it makes sense for these
+to operate elementally, and thus be described as elemental.
+
+That is, it looks very much like the current purity/impurity state is a
+mere happenstance occasioned by the plurality of exceptions and the
+singularity of the rounding mode and the underflow mode.
+
+
+5. Recommendation (specs/syntax)
+
+All of these mode subroutines should be pure and simple, and forbidden
+inside DO CONCURRENT like IEEE_GET_HALTING_MODE is.
+
+Formally, the procedures
+    IEEE_GET_ROUNDING_MODE
+    IEEE_SET_ROUNDING_MODE
+    IEEE_GET_UNDERFLOW_MODE
+    IEEE_SET_UNDERFLOW_MODE
+in IEEE_ARITHMETIC, and
+    IEEE_GET_MODES
+    IEEE_SET_MODES
+    IEEE_GET_STATUS
+    IEEE_SET_STATUS
+in IEEE_EXCEPTIONS,
+shall be specified to be pure and simple.
+
+There is no new syntax.
+
+
+6. Edits to 21-007r2
+
+[xiii] Introduction, "Intrinsic procedures and modules" bullet,
+       insert somewhere
+ "The subroutines IEEE_GET_ROUNDING_MODE, IEEE_GET_UNDERFLOW_MODE,
+  IEEE_SET_ROUNDING_MODE, and IEEE_SET_UNDERFLOW_MODE from the intrinsic
+  module IEEE_ARITHMETIC, are now considered to be pure and simple.
+  The subroutines IEEE_GET_MODES, IEEE_GET_STATUS, IEEE_SET_MODES, and
+  IEEE_SET_STATUS from the intrinsic module IEEE_EXCEPTIONS, are now
+  considered to be pure and simple."
+{Describe this.
+ Should we break this up into separate bullets for intrinsic procedures
+ and intrinsic modules? It is looking rather wall-of-texty.}
+
+[195:38-39] 11.1.7.5 Additional semantics for DO CONCURRENT constructs,
+            C1144 "A reference to..."
+            add the three routines IEEE_GET_STATUS, IEEE_SET_MODES and
+            IEEE_SET_STATUS to the list in the constraint and alphabetize,
+            making the whole contraint read:
+ "C1144 A reference to the procedure IEEE_GET_FLAG, IEEE_GET_HALTING_MODE,
+        IEEE_GET_STATUS, IEEE_SET_HALTING_MODE, IEEE_SET_MODES, or
+        IEEE_SET_STATUS from the intrinsic module IEEE_EXCEPTIONS, shall
+        not appear within a DO CONCURRENT construct."
+{Omitting IEEE_GET_MODES is safe because the modes cannot be changed.}
+
+[196:1+] Immediately after that constraint, insert new constraint
+ "C1144a A reference to the procedure IEEE_SET_ROUNDING_MODE or
+         IEEE_SET_UNDERFLOW_MODE from the intrinsic module IEEE_ARITHMETIC
+         shall not appear within a DO CONCURRENT construct."
+{Prohibit mode changes where we can see them.}
+
+[466:9] 17.10 Summary of the procedures, p3,
+        delete line "S indicates... impure subroutine,".
+{Will no longer be used.}
+
+[466] In Table 17.2 IEEE_ARITHMETIC module procedure summary,
+      change all four lines with class "S" to class "SS".
+
+[467] In Table 17.3 IEEE_EXCEPTIONS module procedure summary,
+      change all four lines with class "S" to class "SS".
+
+[470:10] 17.11.7 IEEE_GET_MODES (MODES), p2 Class,
+         "Subroutine" -> "Simple subroutine".
+
+[470:25] 17.11.8 IEEE_GET_ROUNDING_MODE (ROUND_VALUE [, RADIX]), p2 Class,
+         "Subroutine" -> "Simple subroutine".
+
+[471:3] 17.11.9 IEEE_GET_STATUS (STATUS_VALUE), p2 Class,
+         "Subroutine" -> "Simple subroutine".
+
+[471:16] 17.11.10 IEEE_GET_UNDERFLOW_MODE (GRADUAL), p2 Class,
+         "Subroutine" -> "Simple subroutine".
+
+[483:30] 17.11.41 IEEE_SET_MODES (MODES), p2 Class,
+         "Subroutine" -> "Simple subroutine".
+
+[484:7] 17.11.42 IEEE_SET_ROUNDING_MODE (ROUND_VALUE [, RADIX]), p2 Class,
+         "Subroutine" -> "Simple subroutine".
+
+[484:28] 17.11.43 IEEE_SET_STATUS (STATUS_VALUE), p2 Class,
+         "Subroutine" -> "Simple subroutine".
+
+[485:3] 17.11.44 IEEE_SET_UNDERFLOW_MODE (GRADUAL), p2 Class,
+         "Subroutine" -> "Simple subroutine".
+
+===END===
+
+

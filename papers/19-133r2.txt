@@ -1,0 +1,323 @@
+To: J3                                                     J3/19-133r2
+From: Tom Clune & Dan Nagle & Steve Lionel & Gary Klimowicz
+Subject: Use cases for exception handling
+Date: 2019-February-13
+
+
+Introduction
+============
+
+This paper presents a set of closely related use cases associated with
+managing exceptional situations that arise in Fortran codes.  These
+scenarios are of particular concern for larger, more complex
+applications, but are relevant even in relatively simple applications.
+By "exceptional" we generally mean states that invalidate the
+usual/intended logic of an algorithm.  Such situations can arise
+from lack of available resources (open, allocate, etc.), illegal
+values for an operation (cannot divide by zero, invalid communicator
+in MPI call, etc.), as well as other scenarios.
+
+Generally, these use cases consist of two interacting software parts.
+One part _identifies_ the exceptional situation and reports it by some
+mechanism, while the other part _branches_ depending on the existence of
+the exceptional situation.  We refer to this latter aspect as "error
+handling" or "exception handling".
+
+For each use case below, we provide a semi-concrete example, describe
+common practice, and then discuss some of the deficiencies in the
+common practice that might be ameliorated by appropriate extensions to
+Fortran.
+
+We also define a level of importance to each use case, as some use cases
+are more important than others.
+
+
+Use Case 1:  Checking return codes from library calls (Very Important)
+======================================================================
+
+The typical scenario here is that a procedure invocation returns an
+integer value, often called a return code, that indicates
+success/failure of the invocation.  Often the return code is the last
+argument to the subroutine, but for some libraries it is implemented
+as the return value of a function.  Closely related variants are
+Fortran executable statements that return an integer status for
+exceptional conditions.  E.g., IOSTAT for the OPEN statement.  While
+the implementation could ignore these return codes in the optimistic
+hope that the exceptional cases never happen, such an approach is
+generally untenable in larger projects.
+
+To allow for failures, robust client code must always check all return
+codes and take appropriate actions based on their values.  Almost
+universally, a value of 0 is used to indicate success, with all other
+values indicating various types of failures.  Depending on the
+specific scenario, all failure modes may be handled by a single
+branch, or each may have its own custom error handling logic.
+
+A simple concrete example of error handling would be to execute a
+PRINT statement and then return in the case of a failing return code:
+
+   INTEGER :: status
+   CALL foo(x, y, rc=status)
+   IF (status /= 0) THEN
+      PRINT*,'Error calling foo():  return code was ', status
+      RETURN
+   END IF
+
+Quite often library interactions involve a sequence of several similar
+procedure calls each of which requires nearly identical error
+handling.  Further, in complex applications with multiple layers, the
+return codes must usually be returned up through multiple software
+layers with checks at each and every stage.
+
+
+1.2  Deficiencies of common practice
+
+Deficiency 1: In higher layers of a complex code, error handling logic
+can often dwarf the primary logic.  Even in the very simple case given
+above, the error handling involved 5 lines of code (including the
+declaration of the return code variable), while the library call was a
+single line.  The error handling logic therefore dominates the
+implementation and interferes with the ability of subsequent
+developers to follow the intended logic.
+
+Deficiency 2: Often the appropriate location to handle an unexpected
+failure is at a much higher level in the call tree.  If a failure
+condition is detected in a low-level call, each intervening procedure
+must inject a tedious bit of logic to re-detect the failure condition,
+pass the condition up to its caller and immediately RETURN.  Much
+better would be if the program could directly jump to error-handling
+logic; this logic can decide to continue execution (perhaps with some
+sort of "fix-up" or report of the condition, return from the current
+procedure level (perhaps with a defined return value), or terminate
+execution. The logic might also decide that it doesn't want to handle
+the exception and wants "another level" to take a turn at handling it
+(nested exception handling.)
+
+
+Deficiency 3: The duplication of identical or nearly identical logic
+in error-handling leads to maintenance difficulties.  When a decision
+is made to change the error handling approach, numerous changes are
+required throughout the application.  ("Shotgun surgery" in the
+parlance of Code Smells.)  For example, a project may decide to start
+reporting errors to ERROR_UNIT, or the file and line number where the
+problem occurred.
+
+
+Deficiency 4: Inconsistent approaches to returning errors.  As
+mentioned above, multiple conventions exist for returning failure
+states: optional and nonoptional subroutine arguments, function return
+variables, side-effects, etc.  This lack of consistency is encouraged
+by the lack of guidance from the Fortran standard.  If all software
+implementations use an exception mechanism provided by the standard
+itself, it would encourage a more uniform and ultimately more portable
+approach to error handling.
+
+Deficiency 5: Integers provide only a very weak description of an
+error condition.  Here there are many aspects to consider.  An integer
+is limited in the amount of information it can encode.  Integers are
+opaque.  Any specific value has no natural association with a
+particular exception.  When multiple independent packages are exercise
+within a single system, return code values may not be unique.  If the
+return codes are passed up the calling tree, it may not be possible to
+determine the specific type of error.  There is no standard mechanism
+to determine the set of allowed return codes for a given interface.
+
+With regard to opacity, in the best scenario a library provides an
+auxiliary routine that developers can call to convert a returned error
+code into an error message.  Some packages at least provide named
+constants for return codes that allow developers to more clearly label
+the various error handling branches.  For example:
+
+   CALL foo(x, y, rc=status)
+   SELECT VALUE (status)
+   CASE (ERR_USE_ALT_INTERFACE)
+      CALL foo2(x, y, z, rc=status)
+   CASE (ERR_RESOURCE_NOT_AVAILALE)
+    ! give up
+      PRINT*,'foo() failed with return', status
+   END SELECT
+
+Even then, developers must first consult documentation to determine
+the names of the potential return codes.  And of course, some packages
+fail to document their return codes at all or even treat them
+inconsistently from procedure to procedure.
+
+Ideally, there would be a standardized approach for an interface to
+indicate the potential exceptions that may arise in the use of that
+interface.  Further there would be a mechanism for a package to ensure
+that its exceptions are unique.  And finally, an exception should be
+able to encode additional metadata about the failure in a non-opaque
+manner.
+
+
+Deficiency 6: Missing error checks.
+A common source of program error is when error checks are
+unintentionally omitted after a call to a routine that produces
+an error status.  It would be good to have a standardized approach
+that prohibits or reduces this kind of error.
+
+
+Use Case 2:  System generated exceptions (Medium Importance)
+============================================================
+
+Here we consider failure modes that are directly detected by the
+processor.  Examples include overflow, divide by zero, out-of-bounds,
+etc.
+
+It would be desirable to have a mechanism to allow such failures to be
+treated in a manner consistent with the treatment of user-defined
+exceptions as addressed in the previous use-cases.  Performance
+considerations and backwards compatibility would understandably
+prevent this from being default behavior, but a mechanism could be
+provided to allow a given interface to "throw an exception" when these
+conditions arise rather than halting execution.
+
+An error-handling block should be able to have a branch that handles a
+divide-by-zero exception alongside a branch that handles an invalid
+procedure parameter exception.  Alternatively, a single branch should
+be able to handle all exceptions including processor generated ones.
+
+
+
+Use Case 3: Software testing frameworks (Lower Importance)
+===========================================================
+
+In this use case, a developer wishes to exercise a suite of tests,
+each of which exercises some aspect of an application.  The typical
+structure of each test is the following:
+
+   SUBROUTINE test()
+     <declare variables>
+     <set initial values>
+     CALL system_under_test(...)
+     <compare outputs with expected values>
+   END SUBROUTINE test
+
+This aspect alone often gives rise to many of the deficiencies
+described in Use Case 1 above.  But then consider the testing
+framework itself, which then exercises the suite of tests in a manner
+similar to the following:
+
+   PROCEDURE(), POINTER :: p_test
+
+   DO i = 1, num_tests
+      CALL test_suite%get_ith_test(i, p_test)
+      CALL p_test()
+      <detect and report failures>
+   END DO
+
+The key issue here is how to implement the <detect and report
+failures> chunk in the above snippet that will work (and be useful)
+for a wide variety of underlying implementation styles and across
+completely independent applications.  Multiple software layers with
+different error handling mechanisms may be involved.  Existing
+practice is to either use a passed return code (ala Use Case 1 above),
+or to use a global variable such as a table of error message strings.
+
+Deficiency 1: The lack of a standard mechanism to indicate the
+existence of an exceptional condition and to describe the exception in
+a humanly readable form.  The framework cannot sensibly convert a
+failure return code into any humanly useful description because it
+does not know about the underlying libraries being used.
+
+Deficiency 2: By design, error handling here is handled at the highest
+level.  The lack of a standard mechanism to jump to this error
+handling when lower layers of the system under test encounter
+exceptions forces testable applications to either saturate each level
+of the software tree with error handling logic.  Unlike use case 1
+above, stopping execution is not an option in this context.
+
+
+
+
+Use Case 4:  Software contracts (Not Important at this time)
+============================================================
+
+In this use case, the implementation of a set of related interfaces
+provides preconditions, postconditions and invariants for those
+interfaces.  Preconditions guarantee that input arguments satisfy
+certain conditions, while postconditions verify that the output
+arguments satisfy other conditions .  Invariants are conditions that
+are expected to hold at every entry/exit and may include internal
+state.  Contract verification is expected to be disabled for
+performance in production code, but activated during routine
+development.
+
+While Fortran does not (yet) support software contracts, it is
+conceivable that any language specification for contracts would be
+closely related to the specification for exceptions.  In that regard,
+this use case should at least be kept in mind when considering
+potential designs for exceptions.
+
+
+JOR Summary of Requirements for Error Handling
+==============================================
+JoR would like plenary to discuss using this paper and these use
+cases as the frame around the requirements for error handling in the
+future version of Fortran. The topic of exception handling has come up
+before (see 94-358r4.txt for example), and it will be critical for us
+to agree on the scope of the problem we hope to address.
+
+So, any proposals for handling errors should
+    - address each of these use cases, and any additional use cases
+      deemed critical by the members;
+    - be consistent (at least, not inconsistent) with the IEEE_Exceptions
+      module and error handling mechanisms;
+    - support high performance application development using the error
+      handling facility.
+
+JoR would like to see J3 agree on and document the scope of requirements
+for error handling by the end of Meeting 218.
+
+
+In the discussion Wednesday, JoR heard several important points from
+the full committee.
+    1. The problem of unintentionally forgetting to check error status
+       is a common source of program faults. Too often, a bad result
+       is propagated further down in the execution sequence of the
+       program, leading to program errors that are difficult to
+       diagnose This has been described in Deficiency 6 in Use Case 1
+       (checking return codes).
+
+    2. Use Case 2 (software testing) is considered less important
+       than Use Case 1.
+
+    3. Use Case 3 (software contracts) is considered speculative.
+       There is no need to satisfy this at this time.
+
+    4. Unifying the mechanisms for handling application errors and
+       system-generated errors would be useful. It didn't sound like
+       it was critical.
+
+Note that we have reordered the use cases based on their perceived
+importance.
+
+
+
+JoR Summary of Potential Proposal Steps
+=======================================
+We discussed several kinds of proposals for dealing with error-handling,
+which we attempt to summarize below. We should have a straw vote.
+
+    1. Do nothing further in Fortran 202X for error handling.
+       Fortran already provides mechanisms for returning error status
+       from callee to caller. Existing practice also includes examples
+       of the caller informing the called procedure that it does (or
+       doesn't) care about error status reporting. Likewise, the
+       ability to pass a procedure pointer that acts as an error
+       handler also can be done (though can be cumbersome). Categorize
+       these as best practices to encourage using what Fortran already
+       provides.
+
+    2. Entertain proposals to satisfy the deficiencies in Use Case 1.
+
+    3. Entertain proposals to satisfy the deficiencies in Use Case 2.
+
+    4. Entertain proposals to satisfy Use Case 1 and Use Case 2.
+
+    5. Entertain even more comprehensive proposals.
+
+    6. No opinion.
+
+
+

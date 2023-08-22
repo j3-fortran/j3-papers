@@ -1,0 +1,137 @@
+To: 07-140
+From: Aleksandar Donev
+Subject: Equals in macro actual arguments
+Date: 2007 January 27
+References: 07-007
+
+----------------------------------------
+Ambiguity in the Macro Actual Argument Syntax
+----------------------------------------
+
+The syntax for macro actual arguments (macro-actual-arg) allows the
+sequence of tokens comprising it to contain an equals sign. This
+conflicts with the use of keyword macro arguments, since
+
+EXPAND M(X=1)
+
+is ambiguous if X is the name of a dummy argument. This technical
+problem needs to be fixed.
+
+In J3 discussions a fix has been proposed involving a new constraint
+that essentially prohibits the above EXPAND section when X is the
+name of a dummy argument of the macro, but allows it otherwise. This
+is inconsistent and a technical fix that removes the ambiguity but
+at the burden of arbitrary, confusing, and unneccessary restrictions
+from the point of the user. Firstly, if the name of the dummy argument
+of the macro happens to be X and the user needs to pass "X=1" as the
+actual, he/she is stuck. Secondly, for the purpose of code clarity,
+one may want to use a keyword argument afterall, as in:
+
+EXPAND M(X=X=1)
+
+which is again ambiguous to parse.
+
+I propose that we add a new delimiter for macro actual arguments,
+which allows the inclusion of an equals sign in the token sequence
+without ambiguity or difficulty reading the EXPAND statement. I
+propose that curly braces be used for this purpose. The curly braces
+do not actually contribute to the Fortran source code produced by the
+macro expansion; they are merely used as delimiters. Therefore this
+use of curly braces does not preclude their future use in Fortran
+syntax. Using this delimiter, the above example would become:
+
+EXPAND M(X={X=1})
+
+If curly braces are too precious to use for this purpose, one can
+invent other delimiters. We should add a new delimiter for this
+purpose, rather than reuse an old one, to avoid confusion. We can
+use composite delimiter pairs alike array-constructor "(/../)", to
+minimize the possibility that we later want to use the same delimiter
+pair for something else. For example, use
+(|...|)
+instead of curly braces. In the edits below I use curly braces,
+but it can be replaced with whatever J3 agrees on.
+
+----------------------------------------
+Additional Reasons Why We Should Do This
+----------------------------------------
+
+1. Clarity
+
+Delimiting token sequences inside a left/right delimiter pair
+aids readability. This is especially important since macro actual
+arguments are allowed to be essentially arbitrary token sequences. I
+find statements such as:
+
+EXPAND M(dummy=real(kind=r_wp) :: x(size(y)), **3, silly token
+sequence)
+
+hard to read, and not in the spirit of Fortran's simple and clear
+syntax. The proposed:
+
+EXPAND M(dummy={real(kind=r_wp) :: x(size(y))}, {**3}, {silly token
+sequence})
+
+is simpler to parse by humans. I am not asking that the curly braces
+be required, but I do want them to be allowed so that those programmers
+wishing to use them can.
+
+2. Commas and Semicolons in actual arguments
+
+Macro actual arguments can be pretty much arbitrary token sequences,
+with proper matching of left/right delimiters, but without commas
+and semicolons. The exclusion of commas will be suprising to users
+and lead to errors and frustration on their part. Consider the example:
+
+DEFINE MACRO M(declaration,statement)
+   MACRO OPTIONAL :: statement
+   declaration
+   MACRO IF(PRESENT(statement))
+      statement
+   MACRO END IF
+END MACRO
+
+Expanding this with:
+
+EXPAND M( REAL :: X )
+
+works as expected. However, a programmer may think that:
+
+EXPAND M(REAL :: X, Y=1)
+
+will declare two variables, X and Y, whereas in fact it will declare
+X and then assign Y=1, which will likely compile just fine and produce
+misteriously failing code.
+
+Using curly braces for delimiters would allow commas to be included:
+
+EXPAND M(declaration={REAL :: X, Y=1})
+
+which is both easier to read and safer.
+
+Additionally, including semicolons is also useful:
+
+EXPAND M(declaration={REAL :: X, Y=1}, &
+         statement={ X=SIN(Y); WRITE(*,*) X })
+
+----------------------------------------
+Edits
+----------------------------------------
+
+[30:9+] Add a new delimiter "{...}" to the list of delimiters.
+
+[38:27] Replace R344 with:
+
+R344 macro-actual-arg-value is basic-token-sequence
+                            or { delimited-basic-token-sequence }
+
+And add two new syntax rules:
+
+R344a delimited-basic-token-sequence is delimited-basic-token
+   or [ delimited-basic-token-sequence] nested-token-sequence
+      [ delimited-basic-token-sequence ]
+   or delimited-basic-token delimited-basic-token-sequence
+
+R344a delimited-basic-token  is  basic-token
+                             or  ,
+                             or  ;

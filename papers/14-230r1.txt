@@ -1,0 +1,386 @@
+                                                           J3/14-230r1
+To:      J3
+From:    Nick Maclaren & Stan Whitlock
+Subject: Implicit copying, association etc.
+Date: 2014 October 14
+
+This is not an interp;  there are lots of text, a few philosophical
+questions, and some examples.  Nick withdrew this paper via an e-mail
+reply on 13-Oct-2014 to Malcolm's request for clarifications.
+
+There will be no further processing of this paper.
+
+======================================================================
+
+1. Introduction
+---------------
+
+I have tried splitting this up and writing it as interpretations, and
+have failed in both.  The reason that I cannot explain this simply is
+that it is not a simple problem, even in serial Fortran.  While the
+problems were largely ignorable in Fortran 2003, they are not once
+coarrays were introduced.
+
+Some of the are also exposed in serial code only by true asynchronous
+I/O, such as in some forms of RDMA and MPI non-blocking transfers.
+Partially asynchronous I/O, which happens asynchronously but which is
+copied to and from the program's data space, does not show them up.
+However, asynchronous access by external agents was introduced only in
+Fortran 2008.
+
+Such failures can and do occur even when a location has its existing
+value overwritten by the same one (i.e. there is no change to the
+value).  There have been transports where the RDMA 'locked' an active
+location, and conflicting accesses failed rather than were serialised.
+They are undefined behaviour in MPI, for precisely that sort of reason.
+
+There are two questions that need to be answered:
+
+    1) Exactly what are the semantics of copying?
+
+    2) Exactly when is copying required, forbidden and permitted?
+
+Resolving this is a critical prerequisite to specifying ANY form of data
+consistency or progress model.
+
+It is important to note that MPI and similar standards have a much
+easier task than Fortran does, in that all of the accesses they need to
+consider are explicit, with a specific location in the code, and with a
+specific direction or operation.  Fortran association and evaluation is
+not so simple.
+
+
+1. Effects of Copying
+---------------------
+
+The existing restrictions (mainly 12.5.2.13, and those on the use of
+coindexed objects) are enough to ensure that association by copying is
+well-defined for serial code, though there are a few edge cases that
+need tidying up.
+
+However, nowhere in the standard does it say how implicit copying during
+association or evaluation interacts with the restrictions in 8.5.2p3,
+nor even when copying occurs or may occur.  In this context, evaluation
+is mainly ASSOCIATE and the VALUE attribute.  There are two possible
+readings of the standard:
+
+    a) It is the programmers's task to ensure that implicit accesses
+also follow the restrictions in 8.5.2p3, or
+
+    b) It is the processors's task to ensure that implicit accesses
+are not constrained by the restrictions in 8.5.2p3.
+
+The former is an unreasonable burden on ordinary programmers, because
+guessing when a compiler might need to introduce implicit accesses is
+not easy.  Members of WG5 will have no difficulty, but that is not the
+point (nor what is required by the ISO directives).
+
+The latter is an unreasonable burden on implementors, and will
+invalidate most existing implementations, because there are many
+circumstances where the actual copying occurs in code that is itself
+purely serial.
+
+In summary, the interaction of association and evaluation with 8.5.2p3
+needs defining, whether by specifying when copying is permitted (and in
+which direction) or otherwise.
+
+
+2. When is it Used?
+-------------------
+
+As far as I can see, argument association with the VALUE attribute is
+the only case in which the standard actually requires copying during
+association.  However, as numerous notes indicate, it permits it in
+several forms of association, especially argument association
+unconstrained by TARGET, ASYNCHRONOUS, VOLATILE etc.  It is also
+unspecified (when it is allowed) whether objects may be copied in,
+copied out, or both.  It is required or likely to be used in at least
+the following circumstances:
+
+Association:
+    Association of coindexed objects
+    Sequence association
+    Actual arguments with vector indices
+
+Evaluation:
+    Use of coindexed objects in expressions
+    Dummy arguments with the VALUE attribute
+    Array constructors (e.g. as actual arguments)
+    ASSOCIATE with an expression
+    Derived type constructors (e.g. as actual arguments)
+
+Most of the latter are 'obviously' evaluations, at least to an
+implementor, but the standard does not describe them as such.
+
+Call by reference (pointing to an address) and call by value/return
+(copy-in/copy-out) are not the only mechanisms used for association.
+Call by accessor (Algol 60 call by name or thunking) is sometimes used,
+but it is rare and will be ignored here.  The cases being considered are
+those where call by reference is not appropriate.
+
+Most compilers will use call by value/return (in some cases, in just one
+direction) for sequence association, all association of coindexed
+objects, and ASSOCIATE with an expression selector; some will use it for
+ordinary argument association because of the improved cache locality it
+can deliver.  There may be other circumstances, too.
+
+It should also be noted that Fortran does not forbid the use of call by
+value/return for dummy arguments with the TARGET attribute, provided
+that it adjusts all pointers appropriately.  This is exactly the same
+"as if" rule that allows the use of compacting garbage collectors with
+Fortran.
+
+There is also an issue with allocatable components, as in example C1.
+The statement marked 'Zero' is required to print 'T', but what about the
+ones marked 'One', 'Two' and 'Three'?  By implication, they aren't
+required to print 'T', but does the standard require even 'Two' to print
+'F'?
+
+In summary, if implicit accesses do interact with 8.5.2p3 (as is almost
+essential for an MPI-based implementation), then it is critical to state
+when copying may be used and in which directions.  It would be in
+terms of being processor-dependent, of course.
+
+
+3. Lack of Specification
+------------------------
+
+The lack of an explicit specification was largely ignorable before
+coarrays, for the reasons given above.
+
+The main confusion is whether copying the source counts as a reference
+or definition (as relevant), in the sense of 7.1.4p2 and 12.5.2.13p1
+points (3)(b) and (4)(b), as in examples A1 to A4.  That may be
+obvious to an implementor, but it isn't to an ordinary programmer.  Note
+that there are many other variations on this theme, not all of which
+involve functions.
+
+Another possible confusion arises from 7.2.1.3p14, which says "The
+processor may perform the component-by-component assignment in any order
+or by any means that has the same effect."  That could be read to imply
+that it is permitted to call the Copy subroutine in example B.
+
+Allocatable components need not be copied even if their parent objects
+are, as in example C2, and several compilers don't.  That isn't a
+problem, except as how it affects any interaction with 8.5.2p3.
+
+In summary, the semantics of intrinsic assignment are spelled out in
+7.2.1.3p13, but I can find nothing equivalent for copying.  At the very
+least, some wording is needed as to whether it might count as a
+reference or definition in the sense of 8.5.2p3, and that an object may
+be copied without its components being copied.  Again, everything would
+be processor dependent.
+
+
+4. Examples
+-----------
+
+Example A1:
+
+Is the following program conforming?
+
+PROGRAM Main
+    INTEGER :: coarray(10)[*] = 0
+    SYNC ALL
+    CALL Fred(coarray(:)[1])
+    SYNC ALL
+    IF (THIS_IMAGE() == 1) PRINT *, coarray
+CONTAINS
+    SUBROUTINE Fred (arr)
+        INTEGER :: arr(:)
+        CALL Joe(arr(THIS_IMAGE()::NUM_IMAGES()))
+    END SUBROUTINE Fred
+    SUBROUTINE Joe (a)    ! In general, an external procedure
+        INTEGER :: a(*)
+        SYNC ALL
+    END SUBROUTINE Joe
+END PROGRAM Main
+
+
+Example A2:
+
+Is the following program conforming?
+
+PROGRAM Main
+    IMPLICIT NONE
+    INTEGER :: array(10)
+    array = 0
+    CALL Fred(array,array)
+CONTAINS
+    SUBROUTINE Fred (arg1, arg2)
+        INTEGER :: arg1(:), arg2(:)
+        PRINT *, Joe(arg1(::2))+Joe(arg2(::2))
+    END SUBROUTINE Fred
+    INTEGER FUNCTION Joe (arg)    ! In general, an external function
+        INTEGER :: arg(*)
+        Joe = 123+arg(1)
+    END FUNCTION Joe
+END PROGRAM Main
+
+
+Example A3:
+
+Is the following program conforming?
+
+PROGRAM Main
+    INTEGER :: coarray[*] = 0
+    coarray = THIS_IMAGE()
+    IF (THIS_IMAGE() == 1) THEN
+        coarray = 1
+    ELSE
+        CALL Fred(coarray[1])
+    END IF
+CONTAINS
+    SUBROUTINE Fred (a)
+        INTEGER, VALUE :: a
+        CONTINUE
+    END SUBROUTINE Fred
+END PROGRAM Main
+
+
+Example A4 (dependent on TS 18508):
+
+Is the following program conforming?
+
+PROGRAM Main
+    INTEGER :: coarray(10)[*] = 0, dummy = 0
+    coarray = THIS_IMAGE()
+    CALL CO_SUM(dummy)
+    CALL Fred(coarray(:)[1])
+    CALL CO_SUM(dummy)
+    coarray = - THIS_IMAGE()
+    SYNC ALL
+    IF (THIS_IMAGE() == 1) PRINT *, coarray
+CONTAINS
+    SUBROUTINE Fred (arr)
+        INTEGER :: arr(:)
+        CALL Joe(arr(THIS_IMAGE()::NUM_IMAGES()))
+    END SUBROUTINE Fred
+    SUBROUTINE Joe (a)    ! In general, an external procedure
+        INTEGER :: a(*)
+        SYNC ALL
+    END SUBROUTINE Joe
+END PROGRAM Main
+
+
+Example B:
+
+Is the processor required, forbidden or permitted to call procedure Copy
+when copying the argument in the call to procedure Check?
+
+MODULE Assign
+    IMPLICIT NONE
+    TYPE, PUBLIC :: Mytype
+        INTEGER :: comp = 123
+    CONTAINS
+        PROCEDURE, PRIVATE :: Copy
+        GENERIC :: ASSIGNMENT (=) => Copy
+    END TYPE Mytype
+CONTAINS
+    ELEMENTAL SUBROUTINE Copy (a, b)
+        CLASS(Mytype), INTENT(OUT) :: a
+        CLASS(Mytype), INTENT(IN) :: b
+        PRINT *, 'Copying', b%comp
+        a%comp = b%comp
+    END SUBROUTINE Copy
+END MODULE Assign
+
+PROGRAM Main
+    USE Assign
+    IMPLICIT NONE
+    TYPE :: Weeble
+        TYPE(Mytype), ALLOCATABLE :: arr
+    END TYPE Weeble
+    TYPE(Weeble) :: object, temp
+    ALLOCATE(object%arr)
+    object%arr%comp = 123
+    temp = object
+    PRINT *, 'Checking', object%arr%comp
+    PRINT *, 'Checkpoint'
+    CALL Check(temp)
+CONTAINS
+    SUBROUTINE Check (arg)
+        TYPE(Weeble), VALUE :: arg
+        PRINT *, 'Checking', arg%arr%comp
+    END SUBROUTINE Check
+END PROGRAM Main
+
+
+Example C1:
+
+PROGRAM Main
+    USE ISO_C_BINDING
+    TYPE :: Weeble
+        INTEGER, ALLOCATABLE :: comp
+    END TYPE Weeble
+    TYPE(Weeble) :: object(10)
+    TYPE(C_PTR) :: a, b
+    INTEGER :: i, n = 2
+    DO i = 1,10
+        ALLOCATE(object(i)%comp)
+        object(i)%comp = 123
+    END DO
+    a = Getaddr(object(1))
+    CALL Fred(object)
+    PRINT *, C_ASSOCIATED(a,b)    ! Zero
+    IF (C_ASSOCIATED(a,b)) n = 1
+    CALL Joe(object)
+    PRINT *, C_ASSOCIATED(a,b)    ! One
+    CALL Joe(object(::2))
+    PRINT *, C_ASSOCIATED(a,b)    ! Two
+    CALL Joe(object(::n))
+    PRINT *, C_ASSOCIATED(a,b)    ! Three
+CONTAINS
+    SUBROUTINE Fred (arg)
+        TYPE(Weeble) :: arg(:)
+        b = Getaddr(arg(1))
+    END SUBROUTINE Fred
+    SUBROUTINE Joe (arg)
+        TYPE(Weeble) :: arg(*)
+        b = Getaddr(arg(1))
+    END SUBROUTINE Joe
+    TYPE(C_PTR) FUNCTION Getaddr (arg)
+        TYPE(Weeble), TARGET :: arg
+        Getaddr = C_LOC(arg)
+    END FUNCTION Getaddr
+END PROGRAM Main
+
+
+Example C2:
+
+PROGRAM Main
+    USE ISO_C_BINDING
+    TYPE :: Weeble
+        INTEGER, ALLOCATABLE :: comp
+    END TYPE Weeble
+    TYPE(Weeble) :: object(10)
+    TYPE(C_PTR) :: a, b
+    INTEGER :: i, n = 2
+    DO i = 1,10
+        ALLOCATE(object(i)%comp)
+        object(i)%comp = 123
+    END DO
+    a = Getaddr(object(1)%comp)
+    CALL Fred(object)
+    PRINT *, C_ASSOCIATED(a,b)    ! Zero
+    IF (C_ASSOCIATED(a,b)) n = 1
+    CALL Joe(object)
+    PRINT *, C_ASSOCIATED(a,b)    ! One
+    CALL Joe(object(::2))
+    PRINT *, C_ASSOCIATED(a,b)    ! Two
+    CALL Joe(object(::n))
+    PRINT *, C_ASSOCIATED(a,b)    ! Three
+CONTAINS
+    SUBROUTINE Fred (arg)
+        TYPE(Weeble) :: arg(:)
+        b = Getaddr(arg(1)%comp)
+    END SUBROUTINE Fred
+    SUBROUTINE Joe (arg)
+        TYPE(Weeble) :: arg(*)
+        b = Getaddr(arg(1)%comp)
+    END SUBROUTINE Joe
+    TYPE(C_PTR) FUNCTION Getaddr (arg)
+        INTEGER, TARGET :: arg
+        Getaddr = C_LOC(arg)
+    END FUNCTION Getaddr
+END PROGRAM Main

@@ -1,0 +1,168 @@
+                                                            J3/10-158
+To: J3
+From: Malcolm Cohen
+Subject: Final interp request 1.
+Date: 2010 June 01
+
+----------------------------------------------------------------------
+
+NUMBER:
+TITLE: How many times are constructed values finalized?
+KEYWORDS: Finalization
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the program:
+
+      Module m
+        Type t1
+          Real c
+        Contains
+          Final :: f10,f11
+        End Type
+        Type,Extends(t0) :: t2
+          Real d
+        Contains
+          Final :: f20,f21
+        End Type
+      Contains
+        Subroutine f10(x)
+          Type(t),Intent(InOut) :: x
+          Print *,'f10 called'
+        End Subroutine
+        Subroutine f11(x)
+          Type(t),Intent(InOut) :: x(:)
+          Print *,'f11 called'
+        End Subroutine
+        Subroutine f20(x)
+          Type(t),Intent(InOut) :: x
+          Print *,'f20 called'
+        End Subroutine
+        Subroutine f21(x)
+          Type(t),Intent(InOut) :: x(:)
+          Print *,'f21 called'
+        End Subroutine
+      End Module
+      Program q
+        Call sub(1.5,2.5)
+      End Program
+      Subroutine sub(x,y)
+        Use m
+        Type(t1),Parameter :: p1 = t1(2.5)
+        Type(t2),Parameter :: p2 = t2(3.5,-3.5)
+        Call s10(t1(x))
+        Call s11([p1])                     ! (a)
+        Call s11([t1(x)])                  ! (b)
+        Call s11([ [ [ p1,p1 ] ] ])        ! (c)
+        Call s20(t2(x,y))
+        Call s21([p2])                     ! (d)
+        Call s21([t2(y,y)])                ! (e)
+        Call s21([t2(t1=p1,y)])            ! (f)
+        Call s21([t2(t1=t1(x),y)])         ! (g)
+        Call s21([(p2,t2(x,y),i=1,10**7)]) ! (h)
+      End Program
+
+The topic is how many times each final procedure is called on return
+from each subroutine?
+
+For s10, clearly f10 is called once.
+
+For s11(a), clearly f11 is called once, and f10 is not called.
+
+For s11(b), the standard (4.5.6.3 para 5) seems to indicate that f10
+  is called.  That would not make much sense - the value of the
+  structure constructor is part of the value of the array constructor,
+  so calling f10 would mean that that array element would be finalized
+  twice (once by f11, once by f10, in no set order).
+
+For s11(c), the standard standard appears to say that f11 is called
+  three times, once for each (nested) array constructor.  Seeing as
+  how nesting array constructors is a syntactic thing that makes zero
+  difference to the value - the value of [[anything]] is identical in
+  every respect to the value of [anything] - this does not seem to
+  make sense.
+
+For s20, clearly f20 is called once, and f10 is called afterwards to
+  finalize the parent component.
+
+For s21(d), clearly f21 is called once, followed by f11 to finalize the
+  parent components.  f20 and f10 are not called.
+
+For s21(e), f21 and f11 are called as in s21(d); the standard implies
+  that f20 and then f10 are called, but that does not make sense, the
+  same as case s11(b).
+
+For s21(f), the situation seems to be the same as s21(e); the wanted
+  f21 and f11, and (unordered) the unwanted f20 and f10.
+
+For s21(g), f21 and f11 are called as in s21(d); the standard implies
+  that f10 is called to finalize t1(3) and also that f20 and then f10
+  are called to finalize t2(t1=t1(3),4).  This makes even less sense
+  than before, since the t1 part of the array constructor element is
+  going to be finalized 3 times just because of the syntax we used.
+
+For s21(h), f21 and f11 are called as in s21(d) to finalize the whole
+  array constructor value; the standard also implies that f20 and then
+  f10 are called on all of the 5000000 even-numbered elements.
+  Requiring the processor to keep track of all those elements to be
+  finalized on return from s21 seems rather severe.
+
+Furthermore, an object that has been finalized is not permitted to be
+referenced or defined.  That makes the multiple finalization
+interpretation even more hard to understand.
+
+Philosophically, finalization should finalize objects exactly once.
+
+There seem to be three possibilities here.
+(1) The finalizers are called multiple times, but on the separate
+    entities created by the constructors.  For example s21(g), that is
+    t1(3) is created as object X, when t2(...) is evaluated a new
+    separate object Y is created and that value is copied into it, and
+    when [...] is evaluated a third object Z is created with the value
+    of Y copied into it; afterwards, we effectively have
+       call f10(X); call f20(Y); call f21(Z); call f11(Z%t1)
+    For s21(h) that burden is going to be extreme because the standard
+    says these are "finalized after execution of the innermost
+    executable construct containing the reference" (and it is possible
+    to detect this in a conforming program); changing that to
+    "finalized after the value has been used" would be better if
+    slightly vague.
+(2) These entities are indeed finalized multiple times, just as the
+    standard implies.
+(3) Constructors that are merely providing part of the value of a
+    bigger constructor are not finalized.
+(4) Constructors should never be finalized in themselves, this was
+    just a design error that inevitably leads to multiple or
+    unwanted finalization.
+
+Which is the correct approach?
+
+ANSWER:
+Approach 3.  Finalizing anything more than once, or constructors that
+merely provide part of the value of a bigger constructor, was not the
+intention.  Edits are provided to correct the mistake.
+
+ALTERNATIVE ANSWER:
+Approach 4.  Constructors don't do anything that needs finalization.
+Edits are provided to correct the mistake.
+
+EDITS:
+
+{to 10-007}
+
+[76:24,28] In 4.5.6.3 When finalization occurs, paragraphs 5 and 7,
+  Before ", the entity created"
+  Insert "that is not a <component-data-source> or <ac-value>".
+
+ALTERNATIVE EDITS:
+
+[76:24-25,28-29] Delete paragraphs 5 and 7 of 4.5.6.3
+                 (When finalization occurs).
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 10-nnn   m192 Submitted
+
+----------------------------------------------------------------------

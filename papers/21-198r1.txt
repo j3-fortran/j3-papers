@@ -1,0 +1,143 @@
+To: J3                                                     J3/21-198r1
+From: Brad Richardson & Thomas Clune
+Subject: Transformations on Generic Containers
+Date: 2021-October-27
+
+Reference: 21-144r4
+
+1. Introduction
+
+Further discussions amongst generics subgroup members revealed a broad
+category of use cases that appear to have important implications for
+how generic programming should be implemented in Fortran.  This
+category arises when a procedure manipulates two or more _distinct_
+instantiations of a templated derived type and requires access to
+their private components.  Here we do not imply that the derived type
+itself has template parameters - it could for instance be defined
+within a parameterized module.
+
+This paper presents a specific use case in this category and concludes
+with a small amount of analysis about options for supporting it.
+
+
+2. Concrete use case: A map function
+
+Posit a generic container. For the sake of illustration, let's
+consider a nicely encapsulated sparse-array. One might define such a
+container (with syntax purely for illustration) like the following.
+(Not: quantities in angle brackets are meant to be suggestive of
+template parameters.  No implication is made here about just where
+such template parameters would be located in a template definition.)
+
+module sparse_array_m
+    type :: sparse_array_t<T>
+        private
+        type(T), allocatable :: elements(:)
+        integer, allocatable :: indices(:)
+    contains
+        procedure :: insert_at
+        procedure :: get
+    end type
+contains
+    subroutine insert_at<T>(self, index, element)
+        class(sparse_array_t<T>), intent(inout) :: self
+        integer, intent(in) :: index
+        type(T), intent(in) :: element
+
+        ...
+    end subroutine
+
+    function get<T>(self, index) result(element)
+        class(sparse_array_t<T>), intent(in) :: self
+        integer, intent(in) :: index
+        type(T) :: element
+
+        ...
+    end function
+end module
+
+A desirable operation on such a container would be to transform the
+data from one instantiation to another , without changing the internal
+structure.  Presumably, since the components are private, this would
+be provided as a procedure in the module defining the container. It
+might be implemented like the following.
+
+function map<T, U>(transformation, xs) result(ys)
+    interface
+        pure function transformation_i(x) result(y)
+            type(T), intent(in) :: x
+            type(U) :: y
+        end function
+    end interface
+    procedure(transformation_i) :: transformation
+    type(sparse_array_t<T>), intent(in) :: xs
+    type(sparse_array_t<U>) :: ys
+
+    ys%indices = xs%indices
+    ys%elements = etransformation(xs%elements)
+contains
+    elemental function etransformation(x) result(y)
+        type(T), intent(in) :: x
+        type(U) :: y
+
+        y = transformation(x)
+    end function
+end function
+
+Note that this requires two distinct instantiations of the container
+type, input and output. Also, this procedure must have requires access
+to the private components for each of the instantiated container
+types.
+
+3. Analysis
+
+Our first observation is that a map template such as above cannot be
+implemented by Parameterized Modules (PM) alone.  With PM, one cannot
+instantiate a derived type within the same (parameterized) module as
+the type definition.  The map function would need to be part of a
+separate (parameterized) module, and therefore could not have access
+to private components.
+
+Option A:  Software engineering solution
+
+The developer relaxes encapsulation either by making the components
+PUBLIC, _or_ by providing additional methods (type-bound procedures)
+that allow external client code to faithfully determine and faithfully
+reproduce the internal structure.  The former is highly undesirable.
+The latter is not terribly burdensome for the simple container here,
+but could be quite involved for more complex data structures such as
+trees.
+
+Option B:  Allow templated types
+
+If we allow for templated derived types, as suggested in the example
+code, then it becomes more feasible to instantiate the type within the
+same module.   This is the preferred direction of subgroup.
+
+Option C: Allow other means to "violate" encapsulation
+
+Here the notion is either something like C++ friend classes that have
+explicit permission to violate encapsulation, or something vaguely
+like submodules.  Possibly this is even a natural extension of
+submodules, but subgroup has not given significant thought to this.
+
+
+Straw Vote:  (Vote was 17-1-2)
+
+1. Subgroup should not make special provision for this use case.
+
+2. Subgroup should make reasonable attempts to iclude this use case.
+
+3. Undecided
+
+
+   
+
+
+
+
+
+
+
+
+

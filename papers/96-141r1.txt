@@ -1,0 +1,288 @@
+                                                      X3J3 / 96-141R1
+
+Date:        Aug 14, 1996
+To:          X3J3
+From:        Data
+Subject:     Specs for R.5, PDTs
+
+This paper summarizes the specifications for parameterized
+derived types, item R.5 on the F2k requirements list of
+X3J3/96-115r4.  These specifications are based on those in the
+WG5 D28 paper labelled "Option 2 + Component Selection", which
+appears as part of X3J3/96-125 as a starting point.  The current
+paper summarizes those specifications and makes some further
+refinements and modifications.  The rationale and discussions are
+mostly omitted from this summary in order to keep it short; they
+are well presented in paper D28.
+
+1. Type-definition statement
+
+  An optional list of type parameter names may be added in parens
+  following the type-name in a type-definition statement.
+
+  Example:
+    type matrix(kind, dim)
+
+2. Type parameter typing
+
+  All type parameters are of type integer.  This may be confirmed
+  by an explicit INTEGER declaration in the derived type
+  definition.  An explicit declaration can also be used to
+  declare a type parameter to be of an integer kind other than
+  default integer.
+
+  Examples:
+
+    type matrix(kind, dim)
+      !-- kind and dim are implicitly default integer
+      real(kind) :: element(dim, dim)
+    end type
+
+    type humogous_matrix(kind, dim)
+      integer :: kind  !-- Confirms kind as default integer
+      integer(selected_int_kind(12)) :: dim
+           !--  Specify a non-default kind for dim
+      real(kind) :: element(dim, dim)
+    end type
+
+3. Kind vs non-kind parameters
+
+  Type parameters are either kind type parameters on non-kind
+  type parameters.  Kind type parameters participate in overload
+  resolution and may appear in initialization expressions
+  (particularly, in kind expressions for components) and in
+  specification expressions.  Non-kind type parameters do not
+  participate in overload resolution and may not appear in
+  initialization expressions; they may appear in specification
+  expressions.  A kind type parameter is said to have the KIND
+  attribute.
+
+  A type parameter may be declared to have the KIND attribute by
+  using a KIND attribute on the INTEGER declaration of the
+  parameter.  It may also be declared to not have the KIND
+  attribute by using a NO_KIND attribute.  If a type parameter
+  does not explicitly or implicitly (see below) have the KIND
+  attribute, then it has the NO_KIND attribute by default;
+  it is never required to explicitly specify the NO_KIND
+  attribute, but it is allowed as a confirmation.
+
+  Example:
+
+    type stuff(kind, dim)
+      integer, kind :: kind
+      integer, no_kind :: dim
+      real(kind) :: element(dim, dim)
+      real(kind+1) :: scratch(2*dim)
+        !-- kind is used as a primary in initialization exprs.
+        !-- dim is used as a primary in specification exprs.
+    end type
+
+4. Implicit kind declaration
+
+  With the exception mentioned below, appearance of a type
+  parameter in an initialization expression implicitly declares
+  it to have the kind attribute.  This implicit declaration may
+  be confirmed by an explicit declaration.  It is an error for a
+  type parameter to appear in an initialization expression if the
+  type parameter was declared with the NO_KIND attribute.
+
+  Example:
+
+    type matrix(kind, dim)
+      real(kind) :: element(dim, dim)
+    end type
+    !-- kind is implicitly a kind type parameter because
+    !-- it appears in an initialization expr.
+    !-- dim is implicitly no_kind.
+
+  If a derived type MY_TYPE has a component COMP that is a
+  pointer to a (possibly different) derived type, the appearance
+  of a type parameter of MY_TYPE in the expressions for the kind
+  type parameter values of COMP implicitly declares it to be a
+  kind type parameter of MY_TYPE only if the type definition for
+  COMP precedes that of MY_TYPE.  For example
+
+      type type_1(a)
+        integer, kind :: a  !-- required because we don't yet know
+                            !-- whether type_2 has a kind type parameter.
+        type(type_2(a)), pointer :: comp
+      end type
+
+      type type_2(b)
+        !-- No explicit declaration of b needed here.
+        type(type_1(b)), pointer :: comp
+      end type
+
+  Note that this is never at issue except with pointer
+  components.
+
+5. Object declaration.
+
+  The syntax for declaring an object of parameterized derived
+  type closely follows that of intrinsic parameterized types.
+  The type parameter values are specified in parens after the
+  type name, in either keyword or positional form.  There are no
+  optional type parameters for derived types, so there is no
+  concept of a default type-parameter value.
+
+  The expression for a kind type parameter shall be an integer
+  initialization expression.  The expression for a non-kind type
+  parameter may be either a specification expression or assumed.
+  The expressions for type parameter values need not be of the
+  same integer kind as the type parameter.
+
+  Examples:
+    type(matrix(4,1000)) :: a
+    type(matrix(kind=4,dim=1000) :: b
+
+    subroutine sub(c, d, n)
+      integer :: n
+      type(matrix(kind=8, dim=*)) :: c
+      type(matrix(kind=8, dim=2*n)) :: d
+
+6. Constructors
+
+  Steve's paper proposed to redefine all derived type
+  constructors (not just those for parameterized derived types)
+  to be generic functions.  This raises several subtle points
+  that are largely orthogonal to the introduction of
+  parameterized derived types.  Those points do not appear to be
+  addressed in Steve's proposal.
+
+  Therefore, data proposes to separate these issues.  A
+  subsequent proposal might make this modification, but for now
+  this proposal is less ambitious.
+
+  A constructor for a parameterized derived type has the same
+  form as the constructor for the existing derived types, with
+  the addition of the type parameters at the end of the list.
+
+  The form of all derived type constructors is also enhanced to
+  allow a keyword form syntactically identical to that of a
+  function call.  However, we avoid for now the extra
+  complications of actually defining these constructors to be
+  functions.
+
+  Examples:
+
+    type stock_item  !-- Note this is *not* a pdt.
+      integer :: id, holding, buy_level
+      character(len=20) :: desc
+      real :: buy_price, sell_price
+    end type
+    type(stock_item) :: &
+         s = stock_item(12345,75,10,"pencils", 1.5, 2.4)
+    ...
+    s = stock_item(desc="pencils", id=12345, &
+                   holding=75, sell_price=2.4, &
+                   buy_level=10, buy_price=1.5)
+
+    type node(key_len)  !-- This one is a pdt
+      character(key_len) :: desc
+      type(node(keylen)), pointer :: next
+    end type
+    type (node(16)) :: word
+    ...
+    word = node("ralph", null(), key_len=16)
+
+7. Type parameter inquiry
+
+  Component selection syntax is used to inquire about type
+  parameter values.  An inquiry about a kind type parameter can
+  appear as a primary in an initialization expression; an inquiry
+  about a non-kind type parameter can appear as a primary in an
+  initialization expression if the actual value inquired about
+  was defined as a constant expression.  an inquiry about any
+  type parameter can appear as a primary in a specification
+  expression.
+
+  This directly follows the existing rules for how the existing
+  intrinsic inquiry functions can be used.
+
+  Examples:
+     word%key_len  !-- word declared as above.
+
+  The component selection syntax is also extended to the
+  intrinsic types.
+
+  Examples:
+    real(4) :: a
+    character*20 :: c
+    write (*,*) a%kind, c%len  !-- i.e. 4 and 20
+
+8. Intrinsic assignment
+
+  Intrinsic assigment for parameterized derived types is defined
+  only when the variable and expression have the same type and type
+  parameter values
+
+
+9. Argument association and overload rules
+
+  The argument association rules follow those for objects of
+  intrinsic types.  The actual and dummy arguments must agree in
+  type and type parameters.  For non-kind parameters, the dummy
+  argument may assume the value from the actual argument.
+  Kind-type parameters may not be assumed.  Kind type parameters
+  may be used to resolve generic overloads.
+
+  Examples:
+
+      type(matrix(kind=4, dim=100)) :: a
+      call sub(a)
+      ...
+    subroutine sub(b)
+      type(matrix(kind=4, dim=*)) :: b  !-- dim is assumed.
+
+    module matrix_manipulation
+
+      type matrix(kind, dim)
+        real(kind) :: element(dim, dim)
+      end type
+
+      interface invert_in_place
+        module procedure invert_single, invert_double
+      end interface
+
+    contains
+
+      subroutine invert_single(a)
+        type(matrix(kind=4, dim=*)), intent(inout) :: a
+        ...
+      end subroutine invert_single
+
+      subroutine invert_double(a)
+        type(matrix(kind=8, dim=*)), intent(inout) :: a
+        ...
+      end subroutine invert_double
+
+    end module matrix_manipulation
+
+10. Visibility and scoping
+
+  The type parameter names are useable as keywords in object
+  declarations even when the derived type has private components.
+  Likewise, the parameter values can be inquired about even when
+  the components of the derived type are private.
+
+  Thus the type parameter names have more visibility than the
+  component names.  This is consistent with the usage with
+  intrinsic types.  This is not the rule proposed in Steve's
+  paper.
+
+  Also Steve's paper mentioned renames for type parameters.
+  No such facility exists or is proposed; this mention was
+  presumably a holdover from the inquiry function approach.
+
+11. Sequence
+
+  Parameterized derived types may have the SEQUENCE property.
+  A parameterized derived type is never considered a numeric
+  or character sequence type even if all of its ultimate
+  components are numeric or character.
+
+  Sequence parameterized derived types may appear in common
+  and equivalence provided that all of the type parameter
+  values are constants.  This follows the existing rules for
+  character.
+

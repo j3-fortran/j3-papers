@@ -1,0 +1,137 @@
+
+                                                     J3/06-366r1
+
+To: J3
+From: R. Bleikamp 
+Subject: interp F03/0048
+Date: 15 November 2006
+
+NUMBER: F03/0048
+TITLE: Control edit descriptors in UDDTIO
+KEYWORDS: Control edit descriptor
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following program:
+
+MODULE m
+
+  TYPE t
+    INTEGER :: i = 0
+  CONTAINS
+    PROCEDURE, PRIVATE :: pwf
+    GENERIC :: WRITE(FORMATTED) => pwf
+  END TYPE
+
+CONTAINS
+
+  RECURSIVE SUBROUTINE pwf(dtv, unit, iotype, vlist, iostat, iomsg)
+    CLASS(t),         INTENT(IN)    :: dtv
+    INTEGER,          INTENT(IN)    :: unit
+    CHARACTER(LEN=*), INTENT(IN)    :: iotype
+    INTEGER,          INTENT(IN)    :: vlist(:)
+    INTEGER,          INTENT(OUT)   :: iostat
+    CHARACTER(LEN=*), INTENT(INOUT) :: iomsg
+    WRITE(unit, '(i1, /)') dtv%i
+    WRITE(unit, '(t1, a2)') 'AB'
+  END SUBROUTINE pwf
+
+END MODULE
+
+PROGRAM foo
+  USE m
+  IMPLICIT NONE
+  TYPE(t) :: a
+  a%i = 3
+  PRINT *, 'xyz', a
+end program
+
+9.5.3.7.2 states:
+  A record positioning edit descriptor, such as TL and TR, used on
+  unit by a child data transfer statement shall not cause the record
+  position to be positioned before the record position at the time the
+  user-defined derived-type input/output procedure was invoked.
+
+The term "record position" is used, but it doesn't appear to be
+defined anywhere.  Depending on the interpretation, the above program
+might be standard-conforming, or it might not be.
+
+If "record position" is taken to mean "the position within the current
+record", regardless of which record is the current record, then the
+record position at the beginning of the UDDTIO procedure is before the
+fourth character of the record.  The first child data transfer
+statement begins a new record, and the second child data transfer
+statement writes to the first character of the new record.  This would
+be before the "record position" at the time the UDDTIO procedure was
+invoked, and the program would not be standard-conforming.
+
+If "record position" is taken to mean a combination of the record and
+the position within that record (essentially making it mean the same
+thing as "file position"), then the above program is standard-
+conforming, since the control edit descriptor doesn't cause the file
+to be positioned before the record position when the UDDTIO procedure
+was invoked.
+
+What is the meaning of "record position", and is the above program
+standard-conforming?
+
+ANSWER:
+
+The term "record position" is not well defined.
+
+The intent of 9.5.3.7.2 was to prohibit a child data transfer statement
+from possibily overwriting or re-reading any characters in the current
+record that an active parent I/O statement had previously written or read.
+9.5.3.7.2 should have used the term "file position" instead of
+"record position". 
+
+Therefore, the program is standard-conforming, and prints
+ xyz.3
+AB
+
+where the first record starts with a space and the "." represents 0 or
+more spaces.
+
+Edits are supplied to clarify the intent of 9.5.3.7.2, 
+add "file position" to the glossary, and remove the phrases
+"record position" and "record positioning" from the standard.
+
+
+EDITS: 
+
+[202:34] In section 9.5.3.7.2, in the paragraph that begins with
+    "Because a child data transfer statement does not position the
+    file prior to data transfer,"
+
+replace
+    "list item or record positioning edit descriptor" 
+with
+    "list item or edit descriptor" 
+
+
+[202:36] In section 9.5.3.7.2, replace the phrase
+    "A record positioning edit descriptor, such as TL and TR,"
+with
+    "The edit descriptors T and TL,"
+
+[463:4]  In section C.6.2, first paragraph, delete "record positioning"
+
+[430:4+] In Annex A, add this definition:
+  "<<file position>> (9.2.3): A connected <<unit>> has a file position.
+  A unit's file position typically affects where the next data transfer
+  operation will begin transferring data into or out of the file.  A
+  file position is usually just before a record, just after a record,
+  within a record, just before the first file storage unit in
+  file, just after the last file storage unit in a file, or
+  bewteen two adjacent file storage units."
+  
+
+
+
+SUBMITTED BY: Rob James
+
+HISTORY: 05-139    m171  F03/0048 Submitted
+         05-139r1  m171  Passed by J3 meeting
+         05-170    m172  Failed J3 letter ballot #11

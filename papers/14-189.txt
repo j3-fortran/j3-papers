@@ -1,0 +1,300 @@
+To:   J3                                             J3/14-189
+From: R. Bader
+Subject: Suggested Fortran features from DIN members
+Date: 2014 June 10
+References: WG5/N1830
+
+With this paper, the German delegation to WG5 submits suggestions for
+functionality that should be considered for inclusion into the next
+Fortran standard.
+(This paper was submitted to WG5 for vote in the joint meeting and is
+ made available to J3 as a reference).
+
+Additional Feature List:
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+(A) SELECT RANK block construct
+
+1. Introduction and Motivation
+
+TS29113:2012 added assumed-rank arrays. While TS29113 defines the
+CFI_cdesc_t struct and CFI_ functions, which make assumed-rank arrays
+accessible from C, assumed-rank variables are essentially inaccessible
+in a pure Fortran program due to the restrictions on this feature.
+(The only exception are contiguous assumed-rank arrays that have the
+TARGET attribute, for which C_LOC and C_F_POINTER can be used.)
+
+This proposal adds SELECT RANK which makes such arrays also accessible
+from Fortran, improving the abstraction features of the language for
+code that need to work for multiple ranks across nested library
+interfaces. The next two subsections provide a preliminary description
+of syntax and semantics that may serve as a starting point for the
+specification.
+
+2. Proposed Syntax
+
+<select-rank-construct> ::=  <select-rank-stmt>
+                             [<rank-select-stmt block>] ...
+                             end-select-stmt
+
+<select-rank-stmt> ::= [<case-construct-name> :] SELECT RANK (<selector>)
+
+<end-select-stmt> ::= END SELECT [<select-construct-name>]
+
+<rank-select-stmt> ::= CASE <rank-selector> [<case-construct-name>]
+
+<rank-selector> ::= ( <scalar-int-constant-expr> )
+                  | DEFAULT
+
+Constraint: The <selector> shall be an assumed-rank variable.
+
+Constraint: For a given <select-rank-construct>, the same <rank-selector>
+shall not be specified in more than one <rank-stmt>.
+
+Constraint: If the <select-rank-stmt> of a <select-rank-construct>
+specifies a <select-construct-name>, the corresponding
+<end-select-rank-stmt> shall specify the same <select-construct-name>.
+If the <select-rank-stmt> of a <select-rank-construct> does not specify
+a <select-construct-name>, the corresponding <end-select-rank-stmt>
+shall not specify a <select-construct-name>. If a <select-rank-stmt>
+specifies a <select-construct-name>, the corresponding
+<select-rank-stmt> shall specify the same <select-construct-name>.
+
+The constraint C535b of TS29113 shall be modified by appending:
+"or as selector in a <select-rank-construct>.
+
+
+3. Semantics
+
+A SELECT RANK construct selects at most one block to be executed. A
+<rank-select-stmt> matches the selector if the dynamic rank of the
+selector is the same as the one specified by the statement.
+
+Within the block following a <rank-select-stmt> which is not
+DEFAULT, the associating entity is an assumed-shape array with the
+specified rank if the selector is a nonpointer, nonallocatable variable,
+otherwise it is a deferred-shape array.
+
+If an assumed-size array is an actual argument to the <selector>
+variable, the associating entry shall not appear in a designator or
+expression except as an actual argument corresponding to a dummy
+argument that is assumed-rank, the argument of the C_LOC function in
+the ISO_C_BINDING intrinsic module, or the first argument in a reference
+to an intrinsic inquiry function.
+
+4. Example
+
+A solver procedure that can be applied to physical scenarios in 2, 3, or
+higher dimensions might be written along the following lines:
+
+SUBROUTINE solve_physics(data, params, result)
+  TYPE(simulation_data), INTENT(in) :: data(..)
+  CLASS(simulation_params), INTENT(in) :: params
+  TYPE(simulation_result), INTENT(out) :: result
+
+  SELECT RANK ( data )
+  CASE (2)
+  ! process two-dimensional case
+      DO i=1, size(data,2)
+        DO j=1, size(data,1)
+           result = ... data(j,i) ...
+        END DO
+      END DO
+  CASE (3)
+  ! process three-dimensional case
+      DO i=1, size(data,3)
+        DO j=1, size(data,2)
+           DO k=1, size(data,1)
+              result = ... data(k,j,i) ...
+           END DO
+        END DO
+      END DO
+  CASE (...) ! and so on for higher dimensions
+  CASE DEFAULT
+  : ! usually used for error handling
+  : ! rank remains assumed here
+  END SELECT
+  : ! outside the block construct, do operations
+  : ! on data that do not require explicit rank information.
+  : ! E.g. invoke procedures that themselves have
+  : ! assumed rank dummy arguments.
+END SUBROUTINE
+
+
+5. Estimated impact
+
+On standard: minor.
+On processors: minor.
+Conformance with Markham resolution:
+   improves internal consistency of the standard by making a feature
+   that already can be used from C available within Fortran.
+------------------------------------------------------------------------
+
+(B) Extension to SELECT TYPE construct
+
+1. Motivation
+
+The following situation may arise in object-oriented
+programming scenarios and leads to quite cumbersome coding:
+
+Assume that a subprogram takes multiple polymorphic arguments
+
+subroutine foo_xyz(a, b, c, ...)
+  class(x) :: a
+  class(y) :: b
+  class(z) :: c
+  :
+end subroutine
+
+Then, performing type resolution inside the subprogram often requires
+multiple nested SELECT TYPE blocks, even though in many cases only a
+small subset of combinations requires resolution.
+
+2. Suggested solution
+
+Add semantics to SELECT TYPE that permits simultaneous resolution of
+multiple objects. For example, generic type-bound operators illustrate
+the usefulness of the feature, since the function result typically will
+have the same type as the most extended type of the two arguments:
+
+function add(s1, s2) result(s)  ! generically bound to base as
+                                ! operator(+) via first argument
+  class(base), intent(in) :: s1
+  type(base), intent(in) :: s2
+  class(base), allocatable :: s
+  allocate(s, mold=s1)
+  select type(s, s1)  ! multiple associations
+  type is (base, base)
+    : ! do addition for base
+  type is (ext, ext)
+    : ! do addition for extension type ext of base
+  class default
+    : ! throw error
+  end select
+end function
+
+In order to keep the impact on the standard as well as implementations
+small, it is suggested to limit the type resolution clauses to the
+non-polymorphic TYPE IS i.e. apart from CLASS DEFAULT no CLASS IS
+blocks are permitted if multiple associations are established in
+a SELECT TYPE.
+------------------------------------------------------------------------
+
+(C) Placement allocation
+
+1. Motivation:
+
+The Fortran standard presently does not provide a facility to decouple
+the allocation of memory from its initialization if objects of a type
+with default initialization are produced; this is of significant
+disadvantage with respect to performance on systems with NUMA memory
+characteristics. Also it is desirable to be able to make explicit use
+of memory with specified access characteristics ("fast memory") if
+supported by a system. This paper therefore suggests, as a working item
+for Fortran 2015, an extension to Fortran memory management facilities
+that permits use of system-provided features. Note that C++ provides
+the concept of "placement allocation" that serves a similar purpose.
+
+2. Informal description of desired functionality
+
+Because Fortran semantics guarantee automatic deallocation if an
+allocatable object goes out of scope, an idea how to provide this
+feature is to allow specification of two optional procedure
+arguments in an ALLOCATE statement: one for a custom allocator, and
+a second one for custom deallocation. These should have the
+following abstract interfaces:
+
+ABSTRACT INTERFACE
+  TYPE(c_ptr) FUNCTION PLACEMENT_ALLOC(bytes, rank, shape)
+    INTEGER(c_size_t), VALUE :: bytes  ! size of an (array) element
+                                       ! in units of bytes
+    INTEGER(c_int), VALUE :: rank      ! zero for a scalar
+    INTEGER(c_size_t), OPTIONAL :: shape(*)  ! NULL for a scalar,
+                                       ! otherwise rank elements
+  END FUNCTION
+  SUBROUTINE PLACEMENT_FREE(ptr)
+    TYPE(c_ptr), value :: ptr
+  END SUBROUTINE
+END INTERFACE
+
+A problem that needs solving is whether allocators for coarrays
+need additional information (perhaps an additional argument?).
+Also, because custom allocators are more likely to be provided
+as C library routines, interoperable procedures with otherwise
+the same interface should be permitted as actual arguments.
+
+Implementations of these two routines that are tailored to some
+desired placement strategy might then be provided by the programmer
+or the processor (the latter are expected to be processor-dependent).
+The processor remains responsible for performing any required
+initializations, which must be done after the customized allocation
+has been performed.
+
+3. Examples:
+
+a) Assuming a type declaration
+
+type :: data
+  real :: x(3) = [ 0.0, 0.0, 0.0 ]
+  integer :: i = 5
+end type
+TYPE(data), ALLOCATABLE :: obj(:,:)
+
+Using the following programmer-provided C function would now permit
+preparing a large object of the default initialized type above to be
+placed appropriately on a system with NUMA characteristics:
+
+void *my_data_placer(size_t bytes, int rank, const size_t shape[]) {
+  size_t i,ie,j;
+  if (rank != 2 || shape == NULL) return NULL;
+  // will cause ALLOCATE to fail
+  char *p = (char *) malloc(bytes * shape[0] * shape[1]);
+  if (p == NULL) return p;
+  char *q = p;
+#pragma omp parallel collapse(2) schedule(runtime)
+  for (j=0; j<shape[1]; j++) {
+    for (i=0; i<shape[0]; i++) {
+      for (ie=0; ie<bytes; ie++) {
+         *q++ = 0;
+      }
+    }
+  }
+  return p;
+}
+
+The statement
+
+m = ...; n = ...
+ALLOCATE(obj(m,n), PLACEMENT_ALLOC=my_data_placer, &
+                   PLACEMENT_FREE=free, STAT=...)
+
+would then perform allocation and placement using the above C function,
+and then default initialize the array elements, given obvious C
+interoperable interface declarations for my_data_placer as well as the
+C library function free().
+
+b) Using special memory
+
+A processor-defined custom allocator for special memory allocation
+might be available: If the procedures are called ALLOCATE_FASTMEM,
+FREE_FASTMEM respectively, the allocation statement
+
+ALLOCATE(obj(m,n), PLACEMENT_ALLOC=allocate_fastmem, &
+                   PLACEMENT_FREE=free_fastmem, STAT=...)
+
+would guarantee (if successful) that the object is placed in the
+special memory area, and also (if applicable) initialized there.
+
+------------------------------------------------------------------------
+(D) Parametrization by type
+
+Earlier attempts at providing a template-like facility in Fortran by
+way of parameterized modules or intelligent macros failed to gain
+consensus. On the other hand, programmer feedback indicates that not
+having this feature is considered the most serious gap in the
+language. It is clear that, due to the significant size and amount
+of work for specification, this cannot be considered for inclusion
+in the next edition. Therefore it is suggested to defer this to
+a Technical Specification to be published after the next standard
+has been released.
+------------------------------------------------------------------------

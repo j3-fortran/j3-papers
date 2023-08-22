@@ -1,0 +1,343 @@
+
+                                                            J3/05-280
+
+To: DATA subgroup
+From: Malcolm Cohen
+Subject: Intelligent Macros
+Date: 2005/11/06
+Reference: J3-014.
+
+1. Introduction
+
+The suggested parameterised modules facility is roughly equivalent to a
+built-in macro facility.  To the extent that it provides things that are
+not macro-like, it is expensive.  It also misses out on many useful things
+one can do with macros.  It would be more cost-effective and potentially
+more useful to provide an intelligent macro facility than the suggested
+module parameterisation.
+
+2. Parameterised Module comments
+
+Some of the differences between the parameterised module facility and an
+intelligent macro facility are:
+
+(1) With parameterised modules, more errors can be detected at definition time;
+    With a macro facility, only lexical errors can be detected.
+
+(2) However, p.m. cannot detect all errors at definition time, nor can it
+    necessarily produce "better" messages than the obvious ones like
+    "KIND=3 is not a valid representation method".
+
+(3) Parameterised modules cannot do macro functions at all.  By "macro
+    functions" I mean macros that act like a function, i.e. an expression is
+    expanded inline.  This is different from being able to inline a procedure.
+
+(4) Parameterised modules cannot vary the number of arguments to a procedure.
+    (Neither can the most basic formulation of macros actually, but it is not
+    so hard to fix that.)
+
+(5) The cost of implementing parameterised modules is higher than that of an
+    intelligent macro facility.
+
+3. Intelligent Macro characteristics
+
+Macros applied by a preprocessor normally don't interoperate with the
+language extension mechanisms (e.g. modules) and have file scope (leading
+to problems with name clashes).
+
+This proposal is for macros to be normal class 1 local entities, i.e. they are
+scoped.  They can be accessed by use association or host association.
+
+4. Requirements
+
+The basic requirement is to be able to use macros to create modules, just as
+conveniently as in the parameterised module facility.
+
+Secondly, we want to be able to use macros to create types and procedures.
+
+Thirdly, we want to be able to use them to create sections of code
+conveniently.
+
+All of the above can be handled by a statement-level macro facility; that is,
+the macro definition expands into a set of statements.  (It *might* be more
+convenient/safer/whatever for "module macro"s to be defined and used
+differently from "type macro"s or "procedure macro"s or "block macro"s.
+That possibility can be considered at syntax design time.)
+
+It would also be convenient to be able to use macros as an inline (expression
+level) replacement facility.  I call these macro functions.  However, this
+could certainly be considered to be a separate (lower priority) requirement,
+and would probably be most easily implemented using slightly different syntax.
+
+It is highly desirable for a macro to be able to count, to loop, and to
+generate names (e.g. by concatenation with a counter).  We can provide this by
+drawing a distinction between a "macro variable" (which only exists during
+macro expansion) and an ordinary variable.
+
+Another desirable feature is handling of variable argument lists.
+
+Since they are scoped, they should be invocable with keyword arguments.
+(Especially if we do macro functions.)
+
+Another desirable feature would be able to create variables local to a macro
+expansion (e.g. as temporary variables).
+
+4. Basic Specifications
+
+(1) The main macro type is the statement macro.  It can be used for creating
+    modules.
+
+(2) A statement macro generates whole statements.  These may be any kind of
+    statement (but see point 3) including specification statements and
+    executable statements.
+
+(3) It may contain an END SUBROUTINE or END FUNCTION statement, but no other
+    END statement.
+    {Comment: This is so a single macro can generate a whole module including
+     the module procedures.}
+
+(3a) OPTIONAL: The number of END SUBROUTINE statements it contains shall be
+     equal to the number of SUBROUTINE statements it contains.  Similarly for
+     FUNCTION/END FUNCTION.
+(3b) EVEN MORE OPTIONAL: Construct beginning/ending stmts shall be matched? 
+     This is certainly feasible (not too expensive) to check, but is it an
+     unwarranted venture into the realms of coding standards?
+
+(4) A statement macro invocation shall not be the first statement of a program
+    unit.
+
+(5) A macro is a local entity whose identifier is a class 1 local name.  It
+    may be accessed by use or host association.
+
+(6) A macro definition is a construct but not a scoping unit.  The macro
+    dummy arguments have the scope of the construct.
+
+(7) An actual argument may be a token or sequence of tokens, and shall follow
+    the syntax (but not constraints) for an expression.
+    Notes: we need to prevent commas and unbalanced parentheses in actual
+           arguments.  Actually we could restrict this a lot more without
+           losing any functionality, since a "macro module" expansion can be
+           preceded by PARAMETER statements and TYPE definitions.
+
+(8) Rules for macro expansion:
+    (a) tokens are replaced as a whole, never in part.
+    (b) tokens may be concatenated after replacement using a special token
+        concatenation "operator" (e.g. %%).  This token concatenation operator
+        shall not appear outside of a macro definition.  The result of a
+        concatenation shall be acceptable as a single token (and the same kind
+        of token as the original).
+    (c) macro control statements (e.g. END MACRO) shall appear on one or more
+        lines by themselves, i.e. not with any other macro control statement
+        nor with any macro body statement.  (The normal rules for continuation
+        apply, thus one or more lines.)
+    (d) breaking tokens across continuation lines does not affect macro
+        expansion - it is as if they were joined together before replacement.
+    (e) the limit on size for a sequence of lines (initial line + continuation
+        lines) applies after expansion, but the individual line limits do not;
+        so it is sort-of equivalent to joining the whole sequence together into
+        a single line, doing the replacements, then breaking into a sequence of
+        individual lines again.  As long as we don't talk about macro expansion
+        as a textual thing, but talk about its effect on the tokens, we don't
+        need to describe that (except for the overall limit).
+
+5. Illustrative Syntax
+
+<macro-definition> <<is>> <macro-stmt>
+                          [ <macro-body-construct> ]...
+                          <end-macro-stmt>
+
+<macro-stmt> <<is>> DEFINE MACRO [ , <macro-attribute-list> ] :: <name>
+                    [ ( <macro-dummy-arg-name-list> ) ]
+
+{Comment: This deliberately requires the double colon, in case anyone has, or
+          ever wants to have, a feature/extension that begins with the keyword
+          DEFINE.}
+
+<macro-attribute> <<is>> <access-spec>
+
+<macro-body-construct> <<is>> <macro-definition>
+                       <<or>> <macro-body-stmt>
+
+<macro-body-stmt> <<is>> <token> [ <token>... ]
+
+Constraint: A macro body statement shall not appear to be a <macro-stmt>, an
+            <end-macro-stmt>, or any END statement other than an END SUBROUTINE
+            or END FUNCTION statement. 
+
+<end-macro-stmt> <<is>> END MACRO
+
+<macro-invocation> <<is>> EXPAND <macro-name> [ ( <macro-actual-arg-list> ) ]
+
+<macro-actual-arg> <<is>> [ <macro-dummy-name> = ] <macro-actual-arg-value>
+
+Constraint: <macro-dummy-name> shall be the name of a macro dummy argument of
+            the macro being expanded.
+Constraint: The <macro-dummy-name>= shall not be omitted unless it has been
+            omitted from each preceding <macro-actual-arg> in the
+            <macro-invocation>.
+
+<macro-actual-arg-value> <<is>> <name>
+                         <<or>> <expr>
+
+{Comment: This could be much weaker, and maybe it should be...}
+
+6. Examples
+
+6.1 Homogenous list macro
+
+MODULE linked_lists
+  DEFINE MACRO :: single_linked_list(type)
+    TYPE type%%_list
+      TYPE(type) value
+      TYPE(type%%_list),POINTER :: next
+    END TYPE
+    CONTAINS
+    SUBROUTINE append(list,element)
+      TYPE(type%%_list),INTENT(INOUT),TARGET :: list,element
+      TYPE(type%%_list),POINTER :: p
+      p => list
+      DO WHILE (associated(p%next))
+        p => p%next
+      END DO
+    END SUBROUTINE
+  END MACRO
+END MODULE
+MODULE real_linked_list
+  USE linked_lists
+  TYPE real_list_element
+    REAL x
+  END TYPE
+  EXPAND single_linked_list(real_list_element)
+END MODULE
+
+Comment: OK, so this example as written doesn't play well with type parameters.
+         You'd want to pass in a type-spec and an explicit name for the new
+         type to make it do that.
+
+6.2. Generic quick-sort
+
+MODULE generic_quick_sort
+  DEFINE MACRO :: quick_sort(type,array_arg_name)
+    RECURSIVE SUBROUTINE quick_sort_%%type(array_arg_name)
+      TYPE(type),INTENT(INOUT) :: array_arg_name(:)
+      ...
+      IF (array_arg_name(i)<array_arg_name(j)) THEN
+      ...
+    END SUBROUTINE
+  END MACRO
+END MODULE
+MODULE mymodule
+  USE generic_quick_sort
+  TYPE mytype
+    ...
+  CONTAINS
+    ...
+    GENERIC :: OPERATOR(<) => myless
+  END TYPE
+CONTAINS
+  EXPAND quick_sort(mytype,array)
+  ...
+END MODULE
+
+Comment: Another one that as written doesn't like type parameters.
+
+
+7. Notes
+
+Unlike parameterised modules, instantiating a macro module doesn't happen "by
+magic" on a USE statement - the user gets to write the boilerplate himself,
+including whatever USE statements, parameter definitions, etc. he needs.  This
+is more flexible, since a USE statement is very limited in where it may appear;
+for example, in the linked-list example, macros don't need an extra module to
+hold the type definitions needed by the instantiation.
+
+8. Beyond the basics - more intelligence
+
+8.1 Constrain expansion
+
+We could have attributes like "MODULE", "PROCEDURE" and "TYPE", to indicate
+that the macro expansion should only occur within a module, where a procedure
+definition may occur or where a type definition may occur.
+
+This is more of documentary value than anything else, but it would enable more
+understandable error messages than the inevitable "sequence error" or "syntax
+error" that one would otherwise usually get.
+
+8.2 Constrain arguments
+
+One could have a <macro-specification-part> before the usual body, containing
+statements that constrain a macro dummy argument to have certain
+characteristics like being a type-spec or a name.  Maybe also a number or an
+initialisation expression.  E.g.
+  DEFINE MACRO fred(type1,type2,procname,n)
+    MACRO TYPESPEC :: type1, type2
+    MACRO NAME :: procname
+    MACRO NUMBER :: n
+Well, I'm not entirely convinced of the goodness of "NUMBER", but TYPESPEC
+seems like a reasonable idea.  That would not be a declaration type-spec BTW,
+but an ordinary typespec i.e. without the TYPE(...) around it - you need that
+if you want to do any polymorphic stuff or use it in allocate etc.
+
+8.3 Macro argument evaluation
+
+Since this stuff is at least moderately well integrated, it is tempting to
+allow an initialisation expression (in the EXPAND statement) turn into the
+actual result of that expression within the expansion - only if the macro
+dummy has the PARAMETER attribute of course, e.g.
+  DEFINE MACRO make_arrays(type,size)
+    MACRO TYPESPEC :: type
+    MACRO PARAMETER :: size
+    TYPE(mytype),SAVE :: array2(size) = [ (mytype(size),i=1,size) ]
+  END MACRO
+Note that textual expansion is not what you want here, since you don't want a
+clash with the ac-implied-do variable.  Still, maybe this is a frill.
+
+9. Beyond the basics - more functionality
+
+9.1 Joining multiple lines
+
+There are situations where you want to write several lines of macro body
+statement in the macro definition, but want it to come out as if they were
+all continued.  Since this is like a continuation but slightly different,
+I'd suggest using a special "make-continuation" marker, e.g. "&&".
+
+One never needs to join tokens together with the operator (if necessary, that
+can be done with the %% operator), we don't need to allow it at the start of
+a line.
+
+9.2 Loops
+
+  DEFINE MACRO loop_over(array,rank,index,traceinfo)
+    MACRO INTEGER,PARAMETER :: rank
+    MACRO NAME :: index
+    MACRO INTEGER :: i
+    MACRO DO i=1,rank
+      DO index%%i=1,size(array,i)
+    MACRO END DO
+      CALL impure_scalar_procedure(array(index%%1 &&
+    MACRO DO i=2,rank
+      ,index%i &&
+    MACRO END DO
+      ),traceinfo)
+    MACRO DO i=1,rank
+      END DO
+    MACRO END DO
+  END MACRO
+
+9.3 Testing
+
+If would be useful to have MACRO IF THEN constructs, and maybe also
+MACRO SELECT CASE constructs.
+
+9.4 Local variables
+
+Using a macro to act like an inlined subroutine, it would be useful to
+be able to create local variables for it to use as temporaries.  This
+could be done by an addition to the language (not the MACRO statements)
+e.g. by adding, as a new executable construct, the block construct:
+  BLOCK
+    <specification-part>
+    <executable-part>
+  END BLOCK
+
+===END===

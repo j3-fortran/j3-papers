@@ -1,0 +1,101 @@
+
+                                                        J3/04-230
+
+Date:      02 February 2004
+To:        J3
+From:      Aleksandar Donev
+Subject:   TYPEDEF facility
+
+
+Title: TYPEDEF facility
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: J3/03-256
+
+Basic Functionality:
+
+Bring back the previously removed TYPEALIAS facility as a TYPEDEF
+facility to be used in C Interop. This facility would allow one to give
+alias names to other types. This facility may be restricted to
+interoperable types only if so desired. A proper and better designed
+Fortran TYPEALIAS facility may then be developed separately, not
+compromising the very urgent C Interop void created by the removal of
+TYPEALIAS.
+
+Rationale: 
+
+C has a typedef facility which allows one to give aliases to existing C
+types. These are used very widely, and therefore we need to provide a
+way to easily interface with libraries that use them. Header files are
+central to "portability" in C, and they usually mainly consist of
+preprocessing directives like #define's, function prototypes and
+typedef's. The first seem outside the scope of Interop and can be
+emulated with PARAMETERs, the second are
+handled already, and now we also need to be able to handle typedef's.
+The goal is to be able to write a Fortran module that emulates a header
+file provided  by the vendor of a library, and that someday it may even
+be possible to do an automatic .h->.f90 conversion (at least an initial
+stage thereof). Here is a short piece of the include file GL/gl.h which
+is the central include file for the OpenGL library:
+
+...
+typedef unsigned int    GLenum;
+typedef unsigned char   GLboolean;
+typedef unsigned int    GLbitfield;
+typedef void            GLvoid;
+...
+#define GL_BYTE                                 0x1400
+#define GL_UNSIGNED_BYTE                        0x1401
+...
+GLAPI void GLAPIENTRY glTexCoord1dv( const GLdouble *v );
+GLAPI void GLAPIENTRY glTexCoord1fv( const GLfloat *v );
+
+for which one should be able to write an equivalent module:
+
+MODULE GL
+   USE ISO_C_INTEROP
+   
+   TYPEDEF :: GLenum=>INTEGER(C_INT), &
+              GLboolean=>CHARACTER(C_CHAR), ...
+   
+   TYPE(GLenum), PARAMETER :: GL_BYTE=...
+   
+   INTERFACE
+      SUBROUTINE glTexCoord1dv(v)
+         TYPE(GLdouble), DIMENSION(*), INTENT(IN) :: v
+      END SUBROUTINE
+      ...
+   END INTERFACE   
+
+END MODULE GL
+
+As another example, consider writing a Fortran interface to the MPICH
+implementation of MPI. Typically, this will be a module that contains
+various constants, type parameters, and interfaces. MPI uses many
+typealiases, which are needed when writing interfaces. For example,
+MPI_Datatype is typically an alias for int. But one cannot assume this,
+nor that it is indeed an integer. One cannot get away with our untyped
+C_PTR, since arguments of type MPI_Datatype are passed by value, not by
+reference. It is necessary for any kind of portability that one be able
+to write:
+
+TYPEDEF :: MPI_Datatype=>INTEGER(KIND=C_INT)
+
+in the module for the interface to MPICH.
+
+Estimated Impact: 
+
+The complication is mostly syntactic. The same issues we had with
+TYPEALIAS remain. If we restrict this facility only to interoperable
+types some of the problems may go away (for example, no more
+parameterized types).
+
+Detailed Specification: 
+
+Same as previous TYPEALIAS, but called TYPEDEF, possibly restricted
+only to interoperable types.
+
+History: 

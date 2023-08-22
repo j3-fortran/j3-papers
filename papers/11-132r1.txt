@@ -1,0 +1,217 @@
+To: J3                                                     11-132r1
+From: R. Bader
+Subject: examples for use of the CFI_associate() function
+Date: 2011 January 29
+References: N1838
+
+INTRODUCTION:
+
+The function CFI_associate() is designed for two usage patterns:
+
+(1) to modify C descriptors for assumed shape entities so as to allow
+    production of array slices / subobjects or create assumed-shape
+    entities inside C,
+(2) to perform something much (but not fully?) like pointer association
+    for C descriptors for Fortran POINTERs.
+
+This paper provides some examples for the use of this function
+(hopefully making the correct assumptions about its semantics).
+
+
+EDITS to N1838:
+
+[21:17+] Add line
+
+"A.2.1 Example for array processing using the C descriptor"
+
+[21:32+] At the end of A.2. add
+
+"A.2.2 Example for creating an array slice in C
+
+Given the Fortran interface for a function which is intended to
+set every second array element, beginning with the first one, to
+some provided value,
+
+interface
+  subroutine set_odd(int_array, val) bind(c)
+    use, intrinsic :: iso_c_binding, only : c_int
+    integer(c_int) :: int_array(:)
+    integer(c_int), value :: val
+  end subroutine
+end interface
+
+the implementation in C reads
+
+#include "ISO_Fortran_binding.h"
+
+void set_odd(CFI_cdesc_t *int_array, int val) {
+   CFI_bounds_t bounds[1];
+   CFI_cdesc_t *array;
+   int status;
+   /* the following is equivalent to saying int_array(1::2) in Fortran */
+   bounds[0]->lower_bound = int_array->dim[0].lower_bound;
+   bounds[0]->upper_bound = int_array->dim[0].lower_bound +
+                            int_array->dim[0].extent;
+   bounds[0]->stride = 2;
+   /* create a copy of descriptor before slicing */
+   array = CFI_create_cdesc(sizeof(int), 1, CFI_type_int,
+                            CFI_attribute_assumed);
+   array->base_addr = int_array->base_addr;
+   array->dim = int_array->dim;
+   status = CFI_associate(array, array->base_addr, bounds);
+
+   set_all(array, val);
+
+   /* here one could make use of int_array and access all its data */
+
+   free(array);
+}
+
+A copy of the incoming descriptor is created because the call
+to CFI_associate() irreversibly modifies the descriptor
+{\footnote At least the extent and sm members of
+int_array->dim[0] will be modified: sm will be doubled, and the
+value of the extent member will be changed to
+(extent + 1)/2. }.
+
+<<COMMENT to J3: Don't you want to discourage manual modification
+  of these members apart from copying them in from another descriptor
+  once they're set up?>>
+
+Without such a copy, it would not be possible to access all
+data of the incoming descriptor after the invocation of CFI_associate(),
+which may be a problem for the remaining part of the implementation, or
+- after the call site - for a C function which invokes set_odd()
+(see below).
+
+The function set_odd() implements its functionality in terms
+of a Fortran subprogram
+
+subroutine set_all(int_array, val) bind(c)
+  integer(c_int) :: int_array(:)
+  integer(c_int), value :: val
+  int_array = val
+end subroutine
+
+Let invocation of set_odd() from a Fortran program be done as follows:
+
+integer(c_int) :: d(5)
+d = (/ 1, 2, 3, 4, 5 /)
+call set_odd(d, -1)
+write(*, *) d
+
+Then, the program will print
+   -1    2   -1    4   -1
+
+During execution of the subprogram set_all(), its dummy object
+int_array would appear to be an array of size 3 with lower bound
+1 and upper bound 3.
+
+It is also possible to invoke set_odd() from C. However, it is
+the C programmer's responsibility to make sure that all members
+of the descriptor have the correct value on entry to the function.
+Inserting additional checking into the function's implementation
+could alleviate this problem.
+
+/* necessary includes omitted */
+#define ARRAY_SIZE 5
+
+CFI_cdesc_t *d;
+CFI_bounds_t bounds[1];
+CFI_index_t subscripts[1];
+void *base;
+int i, status;
+
+d = CFI_create_cdesc(sizeof(int), 1, CFI_int, CFI_attribute_assumed);
+base = malloc(ARRAY_SIZE*sizeof(int));
+bounds[0]->lower_bound = 0;
+bounds[0]->upper_bound = ARRAY_SIZE-1;
+bounds[0]->stride = 1;
+/* different from CFI_allocate, stride must be specified here */
+status = CFI_associate(d, base, bounds);
+
+set_odd(d, -1);
+
+for (i=0; i<ARRAY_SIZE; i++) {
+  subscripts[1] = i;
+  printf("   %d",*((int *)CFI_address(d, subscripts)));
+}
+printf("\n");
+free(d);
+free(base);
+
+This C program will print (apart from formatting) the same
+output as the Fortran program above. It also demonstrates how an
+assumed shape entity is dynamically generated within C.
+
+
+A.2.3 Example for handling objects with the POINTER attribute
+
+The following C function modifies a pointer to an integer variable
+to point at a global variable defined inside C:
+
+
+#include "ISO_Fortran_binding.h"
+
+int y[1] = { 2 };
+
+void change_target(CFI_cdesc_t *ip) {
+  CFI_bounds_t bounds[1];
+  CFI_index_t subscripts[1];
+  if (ip->attribute == CFI_attribute_pointer && ip->rank == 1) {
+    CFI_associate(ip, y, bounds);
+  }
+}
+
+The following Fortran code
+
+use, intrinsic :: iso_c_binding
+
+interface
+  subroutine change_target(ip) bind(c)
+    import :: c_int
+    integer(c_int), pointer :: ip
+  end subroutine
+end interface
+
+integer(c_int), target :: it = 1
+integer(c_int), pointer :: it_ptr
+
+it_ptr => it
+write(*,*) it_ptr
+call change_target(it_ptr)
+write(*,*) it_ptr
+
+will then print
+1
+2"
+
+
+<<COMMENT to J3: It should be made clear whether the Fortran pointer
+  is (A) updated when CFI_associate() is invoked (or the descriptor is
+  manually modified inside C), or (B) when the C routine returns.
+
+  An (admittedly exotic, because OpenMP based) example which shows
+  up the difference: replace the invocation of change_target
+  above by
+
+!$omp parallel
+: ! set mythread appropriately
+if (mythread == 0) then
+  call change_target(it_ptr)
+else if (mythread == 1) then
+!$omp barrier
+  write(*,*) it_ptr
+end if
+!$omp end parallel
+
+  and insert the line
+
+#pragma omp barrier
+
+  into the C function after the CFI_associate() call. Under (A), all is
+  fine, but with (B) there is a race condition. I suspect once J3
+  proceeds to define interoperability of coarrays with UPC, there might
+  be a manifest problem.>>
+
+

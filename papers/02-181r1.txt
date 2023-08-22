@@ -1,0 +1,69 @@
+
+                                                       J3/02-181r1
+
+Date:     May 8, 2002
+To:       J3
+From:     Dick Hendrickson
+Subject:  FLUSH for files
+
+A frequent topic on Comp.Lang.Fortran is "How do I flush a file
+in Fortran?"  The answer is "you can't."
+
+Following discusions on the J3 mailing list, I'll add two more 
+possibilities for discussion.  I originally proposed adding a 
+FLUSH= keyword to the OPEN, INQUIRE, and WRITE statements (but 
+not READ where it makes no sense).  The other two possibilities 
+are adding a FLUSH statement modeled after REWIND/BACKSPACE/ENDFILE 
+and adding an intrinsic subroutine.  The last two options would 
+have an external-file-unit argument and some sort of statues 
+return argument.  For the status return I'd like to keep it simple; 
+just a scalar-default-int-variable which gets set to zero if the 
+processor does a processor-dependent flush action and to a positive 
+value if it doesn't.  If there is no status argument specified,
+the routine should return whether or not it actually does a
+FLUSH.  I'd also remove the restrictions about FLUSH for READ, etc.  
+Let the status result describe what happens.
+
+For OPEN the options would be FLUSH="NO" or FLUSH="YES", with "NO"
+the default.  If "YES" is specified the processor will "flush the
+buffers" (whatever that means) after every output operation.  The
+set of files that is flushable is processor dependent.  The words
+will need to be modeled after VOLATILE.  A processor that is flushing
+must make a good faith effort to do the actual physical output as
+soon as it can.  It should not be an error condition to request
+flushing on a file that can't be flushed.
+
+For INQUIRE the option would be FLUSH=scalar-default-char-variable
+with the responses being either "YES" or "NO".  The processor will
+return "NO" if the file was not opened with FLUSH="YES" or if the
+file isn't in the set of files that can be flushed--regardless of
+the OPEN specifier.
+
+For WRITE add a FLUSH="YES" or "NO" keyword that overrides the
+OPEN specification.  If a file isn't in the set than can be flushed
+the keyword is ignored.  It's a compile time syntax error to
+specify FLUSH for internal files or on READ statements.  I'm not
+sure what to do for derived type or asynchronous write statements;
+ignoring FLUSH= or making it illegal both sound reasonable.
+
+We'd add enough words to the text description to make it clear that
+the processor doesn't really have to do anything, but that it should
+try to do the right thing.
+
+One question is whether or not WRITE(ADVANCE="NO" ...) followed
+by a READ isn't good enough.  I've been told that there are
+different implementations of this sequence and some of them are
+surprising to some users.  Also, I've been told that "advance = 'no'"
+followed by a read to the same unit is what often triggers the output.
+This is OK for output to a screen followed by a read from the terminal,
+but sometimes people want to use advance = 'no' to write a progress
+bar on the screen, and this doesn't work unless the output is
+immediately flushed to the screen.  Flush lets people say what they
+mean and not depend on a quirk of implementation.
+
+Flush is also useful for debugging of a program that crashes.
+Leaving the results of WRITE statements in internal buffers isn't
+much help here.
+
+If we want to do this, I think writing the actual rules and text will
+be relatively simple.

@@ -1,0 +1,293 @@
+To: J3                                                     11-131
+From: R. Bader
+Subject: examples for use of entities of interoperable assumed type
+Date: 2011 January 28
+References: N1838
+
+INTRODUCTION:
+
+Annex A of N1838 contains an example (A.1.2) which demonstrates how
+assumed type dummy arguments can be used. However, there are bugs:
+
+* The argument "n" in the EXAMPLE_send_old invocation is of the wrong
+  type (invocation with c_sizeof requires casting to  c_int, or the
+  dummy argument should be of kind c_size_t).
+
+* One cannot use dimension(*) in a generic interface with rank > 1
+  entities as actual arguments.
+
+Therefore, this paper suggests a rewrite of this example. Furthermore,
+a new example demonstrating the handling of an allocatable interoperable
+unlimited polymorphic entity is added. Since the changes to the existing
+text are extensive, the EDITS section asks for a complete replacement of
+A.1.2. Some modifications to A.1.1 are also suggested.
+
+
+EDITS to N1838:
+
+Make following changes to the example A.1.1 (wording improvements)
+and move it to come after A.1.2+1 (which is described in the following):
+
+[19:7] Replace "the second is an integer" by "the second argument is an
+       integer"
+[19:8-9] Replace "as a solution to ... problem." by
+
+       "as a solution to the problem which occurs for an invocation
+        of the subprogram if a processor's facility to change which
+        integer kind is used as the default kind is used."
+
+[19:10] Replace "In C" by "The C prototype is"
+
+[19:11+] Add line
+        "and it is assumed an implementation exists."
+
+[19:21] Replace "..." by "in its specification part and"
+
+[19:27+] Add line
+        "in its subprogram part."
+
+
+
+Remove the section A.1.2 in N1838, and replace it by
+
+"A.1.1 Using assumed type in the context of interoperation
+ with C
+
+The mechanism for handling unlimited polymorphic entities whose dynamic
+type is interoperable with C is designed to handle the following two
+situations:
+
+(1) An entity corresponding to a C pointer to void. This is a start
+    address, and no further information about the entity is available
+    via the language rules. This situation occurs if the entity is a
+    nonallocatable nonpointer scalar or is an array of assumed size
+    or explicit shape.
+
+For entities in this first category, it is the programmer's
+responsibility to explicitly provide additional information on the
+size (e.g., in units of bytes) and possibly also the type of the
+object pointed to.
+
+(2) An entity of interoperable dynamic type for which additional
+    information on state, type and size is implicitly provided with
+    the entity. All unlimited polymorphic entities with the POINTER
+    or ALLOCATABLE attribute, or of assumed shape or rank, fall
+    into this category.
+
+Within C, entities in the second category require the use of a C
+descriptor. The rules of the language ensure that, within Fortran,
+entities of the first category cannot be used in a context where
+the additional information needed for the second category is required
+but unavailable. However, it is possible to use entities of the second
+category in a context where the Fortran processor simply needs to
+extract the starting address from the entity to convert it to the first
+category. Within C, the programmer must explicitly perform this
+extraction.
+
+The examples A.1.2 - A.1.4 illustrate some uses of assumed type entities.
+
+A.1.2 Example for mapping of interfaces with void * C parameters to
+      Fortran
+
+A C interface for message passing or I/O functionality could be
+provided in the form
+
+int EXAMPLE_send(const void *buffer, size_t buffer_size,
+                 const HANDLE_t *handle);
+
+where the buffer_size argument is given in units of bytes, and the
+handle argument (which is of a type aliased to int) provides
+information about the target the buffer is to be transferred to.
+In this example, type resolution is not required.
+
+The first method provides a thin binding; a call to EXAMPLE_send from
+Fortran directly invokes the C function.
+
+interface
+  integer(c_int) function EXAMPLE_send(buffer, buffer_size,  &
+                    handle) bind(c,name='EXAMPLE_send')
+    type(*), dimension(*), intent(in) :: buffer
+    integer(c_size_t), value :: buffer_size
+    integer(c_int), intent(in) :: handle
+  end subroutine
+end interface
+
+It is assumed that this interface is declared in the specification
+part of a module mod_EXAMPLE_old. Example invocations from Fortran then
+are
+
+use, intrinsic :: iso_c_binding
+use mod_EXAMPLE_old
+
+real(c_float) :: x(100)
+integer(c_int) :: y(10,10)
+real(c_double) :: z
+integer(c_int) :: status, handle
+
+: ! assign values to x, y, z and initialize handle
+status = EXAMPLE_send(x, c_sizeof(x), handle)
+status = EXAMPLE_send(y, c_sizeof(y), handle)
+status = EXAMPLE_send((/ z /), c_sizeof(z), handle)
+
+In these invocations, x and y are passed by address, and for y the
+sequence association rules (section 12.5.2.11 of ISO/IEC 1539-1:2010)
+allow this. For z, it is necessary to explicitly create an array
+expression.
+
+status = EXAMPLE_send(y, c_sizeof(y(:,1), handle)
+
+passes the first column of y (again by address).
+
+status = EXAMPLE_send(y(1,5), c_sizeof(y(:,5), handle)
+
+passes the fifth column of y using the sequence association rules.
+
+The second method provides a Fortran interface which is easier to use,
+but requires writing a separate C wrapper routine; this is commonly
+called a "fat binding". In this implementation, a C descriptor is
+created because the buffer is declared with assumed rank in the
+Fortran interface; the use of an optional argument is also demonstrated.
+
+interface
+  subroutine example_send(buffer, handle, status) &
+             BIND(C, name='EXAMPLE_send_fortran')
+    type(*), dimension(..), contiguous, intent(in) :: buffer
+    integer(c_int), intent(in) :: handle
+    integer(c_int), intent(out), optional :: status
+  end subroutine
+end interface
+
+It is assumed that this interface is declared in the specification part
+of a module mod_EXAMPLE_new. Example invocations from Fortran then are
+
+use, intrinsic :: iso_c_binding
+use mod_EXAMPLE_new
+
+type, bind(c) :: my_derived
+  integer(c_int) :: len_used
+  real(c_float) ::  stuff(100)
+end type
+type(my_derived) :: w(3)
+real(c_float) :: x(100)
+integer(c_int) :: y(10,10)
+real(c_double) :: z
+integer(c_int) :: status, handle
+
+: ! assign values to w, x, y, z and initialize handle
+call EXAMPLE_send(w, handle, status)
+call EXAMPLE_send(x, handle)
+call EXAMPLE_send(y, handle)
+call EXAMPLE_send(z, handle)
+
+call EXAMPLE_send(y(:,5), handle) ! fifth column of y
+call EXAMPLE_send(y(1,5), handle) ! scalar y(1,5) passed by descriptor
+
+However, the following call from Fortran is not allowed
+
+type(*) :: d(*) ! is a dummy argument
+:
+call EXAMPLE_send(d(1:4), handle, status)
+
+and would be rejected during compilation. The wrapper routine implemented
+in C reads
+
+#include "ISO_Fortran_binding.h"
+
+void EXAMPLE_send_fortran(const CFI_cdesc_t *buffer,
+                          const HANDLE_t *handle, int *status) {
+  int status_local;
+  size_t buffer_size;
+  int i;
+
+  buffer_size = 1;
+  for (i=0; i<buffer->rank; i++) {
+    buffer_size *= buffer->dim[i].extent;
+  }
+  buffer_size *= buffer->elem_len;
+  status_local = EXAMPLE_send(buffer->base_addr,
+                              buffer_size, handle);
+  }
+  if (status != NULL) status = status_local;
+}
+
+
+A.1.2+1 A constructor for an interoperable unlimited polymorphic entity"
+
+<<Note to J3: It might be desired to move this (or perhaps the C part
+  of this) to the Clause 5 notes. If this is done, there should at least
+  be a link to the example here.>>
+
+"Given the Fortran interface definition
+
+interface
+  subroutine construct_discriminated_union(this, fname) bind(c)
+    type(*), allocatable, intent(out) :: this
+    character(c_char), intent(in) :: fname(*)
+  end subroutine
+end interface
+
+a C routine can be implemented which performs typed
+allocation of "this" based on information read from a file:
+
+#include "ISO_Fortran_binding.h"
+
+void construct_discriminated_union(CFI_cdesc_t *this,
+                                        const char *fname) {
+  int type_param, this_elem_len;
+  CFI_bounds_t bounds[1];
+  : /* open file fname and read type_param */
+    /* might want to check that
+             this->type has the value CFI_type_unspecified
+             and this->base_addr is NULL   */
+  switch (type_param) {
+    case CFI_type_int:
+        CFI_initialize_cdesc(this, sizeof(int), 0, CFI_type_int,
+                                       CFI_attribute_allocatable);
+        break;
+    : /* case statements for further intrinsic types */
+    case CFI_type_struct:
+        this_elem_len = elem_len(type_info);
+    /* programmer knows how big all used types are */
+        CFI_initialize_cdesc(this, this_elem_len, 0, CFI_type_struct,
+                                      CFI_attribute_allocatable);
+        break;
+  }
+  CFI_allocate(this, bounds);
+  : /* read contents from file into this->base_addr, then close file */
+}
+
+Error conditioning has been omitted from the above code to keep it
+readable. Invocation from Fortran then can be done using the following:
+
+use, intrinsic :: iso_c_binding
+
+class(*), allocatable, target :: this_actual
+character(len=10) :: fname = c_char_'InputFile' // c_null_char
+integer, pointer :: type_info
+
+call construct_discriminated_union(this_actual, fname)
+
+select type (this_actual)
+  type is (integer(c_int))
+    :                        ! further processing of integer quantities
+  type is (...)              ! all further occurring intrinsic types
+    :
+  class default              ! not of intrinsic type
+    type_info => this_actual ! unsafe pointer assignment to beginning
+                             ! of storage area, contains a type tag
+    select case(type_info)
+       :                     ! process various interoperable derived
+       :                     ! types via unsafe pointer assignment
+    end select
+end select
+
+The type compatibility rules disallow using anything but an unlimited
+polymorphic entity as an actual argument to the subprogram
+construct_discriminated_union()."
+
+
+<<Note to J3: if the type field in the C descriptor is removed,
+  the above will not work. In this case additional restrictions
+  on usage of interoperable unlimited polymorphics must probably
+  be introduced, and the example must equally probably be dumped.>>
+

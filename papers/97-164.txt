@@ -1,0 +1,300 @@
+
+                                                             J3/97-164
+
+Date:       April 24, 1997
+To:         J3
+From:       Dick Hendrickson
+Subject:    Preliminary Module Proposal for Interval Arithmetic
+Reference:  x3j3/97-105, x3j3/97-141, x3j3/97-136, x3j3/97-126, x3j3/97-113
+
+This is a proposal to provide Interval Arithmetic as an optional 
+intrinsic module in Fortran 2000.  I believe it includes all of the 
+functionality in the reference papers, although not all of the details are 
+completely spelled out.  I did not intend to leave out anything 
+significant.
+
+The major addition is a new function "accuracy" which has 2 or 3 
+arguments and returns the accuracy when the first argument is applied 
+to the second and third.  For example  accuracy("+",2.0,3.0) gives the 
+machine accuracy when 2 and 3 are added together.  It is obviously 
+hardware specific but I believe we can 
+provide a reasonable overapproximation that is portable.  On specific 
+machines vendors can provide better approximations.
+
+J3 provides both the definitions of the necessary module interfaces and 
+functions as well as a defined source code for the module.  The intent 
+is that a vendor can "support" the module merely by making the user 
+find the defined source code somewhere on the net and compiling it.  
+Vendors have the option to provide direct optimized support in the 
+compiler, effectively ignoring all or some of the defined module code 
+(but not the interface definitions).
+
+Since most new machines are becoming IEEE like, at least in the 
+sense of having directed roundings, many of the proposed functions 
+have an exact IEEE analog.  We probably want to design them to fit 
+very well with an IEEE machine and not too badly on a nonIEEE 
+machine.
+
+Rationale
+
+Some people regard Interval Arithmetic is an important feature, but 
+some do not believe there is enough demand to add the complexity to 
+the language.  It's my belief that an INTRINSIC module lets us have 
+the advantages, for those who believe there is an advantage, without 
+the high costs, for those who believe there is a high cost.  
+
+The mental model I have is based on the way other things are 
+currently implemented in existing practice.  
+
+Consider the SQRT function.  On some machines it executes quickly 
+and accurately as a single inlined instruction, on some it's a few 
+inlined instructions, on some it's implemented as a call to a hand 
+crafted assembly language routine using a special calling sequence 
+with special conventions about register usage, on some it's a call to a 
+hand crafted assembly language routine using normal calling 
+conventions, on some it's a call to an optimized C routine, on some it's 
+a call to an unoptimized routine.  Some processors "execute" 
+SQRT(9.0) in exactly 0 microseconds at "run-time", some don't.  All 
+of these are standard conforming.  The difference is the importance the 
+hardware/software designers attach to speed and accuracy in the SQRT 
+routine.
+
+Consider the BLAS, especially the SAXPY routine.  It's not standard 
+Fortran, but it's a de facto intrinsic routine for vendors who compete in 
+Dongarra's LINPACK derby.  It's available in standard Fortran.  
+Vendors do the same thing with SAXPY that they do with SQRT (at 
+least as far as optimization strategy goes, most of them actually 
+compute different answers).  Some have highly optimized assembly 
+language versions available, others generate perfect inline code, others 
+make the user find the code on the net and compile it along with the 
+rest of his code.  In the official LINPACK test some vendors inline the 
+vanilla Fortran, propagate the arguments (noting that almost all of the 
+interesting ones are 1), eliminate the resulting dead code, recognize 
+the remaining loop as a SAXPY and either generate perfect inline 
+code or call an optimized external assemble language routine.  All 
+standard conforming and all choices that vendors make in response to 
+market place pressure.
+
+Consider the varying string module.  As far as I know it's only been 
+"implemented" as Fortran source code available over the web.  No 
+vendors have felt enough pressure to do an optimized version.  Not 
+surprising since character operations tend to be inefficient on Fortran 
+oriented machines and character operations are usually not the time-
+dominant part of important Fortran programs.  But, let a real character 
+customer with $100,000,000 in his pockets walk in and watch what 
+happens.
+
+I believe Interval Arithmetic as an intrinsic module can fall into this 
+pattern.
+
+Module approach
+
+Interval becomes a defined type with lots of overloaded operators and 
+functions that operate on it.  The type has private components.
+
+J3 standardizes the definition and interfaces for interval arithmetic.  It 
+also provides a module which implements this definition BUT 
+carefully words the standard to say that the module code need not be 
+used in the actual implementation.  It must be clear that a standard 
+conforming implementation can be less sharp or more sharp in the 
+intervals it calculates than it would be if it merely compiled the 
+module.  Vendors must be free to treat the INTERFACES as intrinsic 
+and get different computational results.  Sort of like the definition of 
+ANINT (or whatever it was) that someone from SUN asked about a 
+year or two ago.  This is different from how we normally standardize 
+things, but we are going to have to do something like this even if we 
+make intervals a "first class" member of the standard.  There just isn't 
+enough common language practice to say "go and do intervals", 
+whereas everybody understand what "go and multiply" means.
+
+To be successful as a module we must do this without adding any new 
+syntax to the language.  In effect J3 must agree at the outset to add 
+whatever (with luck, small) syntaxs are needed to make intervals 
+work.  The additions will have to be reasonably general and likely to 
+be useful for other things or the module approach will not work.
+
+The following areas need to be considered.
+
+I/O
+Nothing much needs to be done, the work the I/O group is doing is 
+sufficient.  The drawback is that the interval format conversions will 
+have names like "DT?", rather than "?".  I, personally, don't think that 
+is a major problem, all of the good single letters have already been 
+used for other things anyhow.  This can be integrated with the IEEE 
+I/O inquiry functions for the module implementation.  If the processor 
+rn time library does not do accurate I/O conversions (perhaps in the 
+IEEE sense?) then the module routines will have to generate or read 
+character strings and do the conversions by hand.
+
+Overloaded operators and rank
+The module will define overload functions for all of the operators and 
+functions that make sense.  For the binary operators there are 1 + 7 + 7 
++ 7 = 22 function definitions (to cover all combinations of scalar and 
+array rank).  The functions will all be identical except for rank.  It 
+would be nice to have some syntactic help if specifying them only 
+once.
+
+New (comparison) operators and their precedence
+There are so many new comparison operators needed (to cover partial 
+overlap, complete containment, complete disjointedness...) that I don't 
+think it is reasonable to add a dozen or so new dot operators.  
+Expressions using more than one operator are likely to be so complex 
+that the user will use parenthesis to group things.  In current practice 
+most expressions that have both an .AND. and .OR. operator have 
+parens to separate the terms because humans can't remember which 
+comes first.  No need for new operators and new precedence.  Use 
+functions (ala LLT) for the new comparisons.
+
+Interval function
+
+I believe the INTERVAL function as described in Baker's paper 105 is 
+fine for converting non-interval variables into interval variables.  It 
+also works for constants, but the notation isn't perfect.  A function is a 
+bulky way to express a constant.
+
+In my view there are 2 kinds of numbers.  Those like pi or the speed of 
+light that are know to more than machine precision and those like the 
+probability of rain which are not.  The interval function as currently 
+proposed covers the second class.  The user can specify an uncertainty 
+when he converts from non-interval to interval.  The problem with 
+writing something like INTERVAL(3.141592653) is that the rules of 
+Fortran define the argument as a single precision number and then the 
+precision gets lost.  I propose also allowing a character string as the 
+first argument.  INTERVAL("3.141592653") passes the string intact 
+to the module routine which can decode it to whatever precision is 
+needed.  Naturally, a native mode compiler could do all of the 
+conversion at compile-time.  If the INTERVAL function is invoked 
+with literal real constants accuracy will probably be lost unless the 
+constant is exactly representable.
+
+As an alternative we could consider treating "(<" and ">)" as 
+overloadable intrinsic operators.  The syntax would be to pass their 
+argument(s) AS CHARACTER STRINGS to the resolved function.  
+This would allow (<3.141592653>) or (<1.0, 3.0>) as ways to write an 
+interval constant.  The major drawback seems to be that usually only 
+one overload could be visible in any scoping unit, since all of the 
+useful arguments types are likely to be real.
+
+Other intrinsic functions
+All of the other interval functions from paper 105 can be implemented 
+as module functions.
+
+whats_my_interval
+To let the user be able to find out what's going on I propose an inquiry 
+function that defines the level of processor support, somewhat like the 
+IEEE inquiry functions.  It ranges from "no support", the user must 
+arrange to have the defined Fortran source code compiled and linked 
+to "native support" where the compiler is "truely aware" of just exactly 
+what is going on in interval arithmetic.  My aim would be to return a 
+number that defines the level, not a whole series of logical values that 
+define particular types of support.  Safe portable code would test the 
+return value and abort if it wasn't good enough.  As a first try:
+
+ -1 no direct processor support, everything comes from the defined 
+module.  The module is compiled "as is" with no tuning for the 
+particular processor.  Normal optimizations are performed just as for 
+any other compiled code.
+
+ 0     no direct processor support, everything comes from the defined 
+module but with user supplied ACCURACY and FUZZ functions 
+tuned to the particular machine, otherwise the module is compiled as 
+above.
+
+ 1     minimal processor support, everything comes from the defined 
+module but with processor supplied ACCURACY and FUZZ functions 
+tuned to the hardware.  The module is compiled as above.
+
+For the remaining values the processor has some level of awareness.
+ 2     accurate I/O conversions
+ 3     most math functions are accurate
+ 4     all math functions are accurate
+ 5     native vendor implementation, not using the defined module 
+functions, for almost everything
+ 6     native vendor implementation.
+
+The intent is that higher numbers require the lower ones to be true.
+
+As a refinement we'd return named_constants of some module specific 
+type rather than numbers.  I used numbers now to avoid spelling 
+arguments (we all agree how to spell "4" :-) )
+
+special cases, x**2, etc.
+There seems to be a consensus within the interval group that X**2 is 
+not the same operation as X*X.  We will need to make sure that the 
+chapter 7 rules don't allow the general algebraic operations on interval 
+arguments.  I think this happens by magic because of the parsing 
+overloading rules, but we need to make sure.  Note that the module 
+interface can define allowed transformations and a native mode 
+compiler can perform them, (for example X**3 is the same as 
+X*X*X) it's just that some of them are different from what's allowed 
+with reals.
+
+use, intrinsic  vs use
+I'd like to find a way to allow a knowledgeable user or any system 
+administrator be able to augment the defined module with their own 
+versions of some or all of the routines.  For example on a machine that 
+is known to have an IEEE SQRT instruction the defined SQRT routine 
+could probably be both sped up and sharpened up.  As currently 
+defined I think the USE,.INTRINSIC statement forces use of the 
+intrinsic module and the USE statement first looks for a user supplied 
+version of the module.  To be usefully portable we want the USE to 
+select the INTRINSIC version if it's compiled in native mode, then to 
+look for a user supplied version, then to look for the defined module 
+version.
+
+Round up/down functions
+The module will have to define a whole set of rounding functions.  
+Things like
+round_up_add(x1,x2,x3,...)
+which forms the sum x1 + x2 + x3... using directed rounding away 
+from zero.  On an IEEE machine this would translate into a simple 
+series of adds.  
+
+Accuracy
+We need a function that gives an estimate of the accuracy of an 
+operation.  It is obviously hardware specific.  The module will have to 
+contain a version that does a portable estimate.  The user could 
+compute (probably in a separate run) the accuracy of various 
+operations for various operands (that's what programs like 
+PARANOIA do) and feed that information into the module.  
+Alternatively, a vendor who provides minimal support (level 1) could 
+provide an accuracy function and nothing else.  The function would 
+have a character argument and one or 2 real arguments.  
+
+ACCURACY ("+", 3.0, 4.0)  gives the accuracy of the + when applied 
+to 3 and 4.  A reasonable version might be max (nearest(3.0,1.0)-3.0, 
+nearest(4.0,1.0), nearest(3.0+4.0)-(3.0+4.0), epsilon(1.0)).  On an 
+IEEE machine this function is easier to compute.
+
+ACCURACY ("SQRT", 9.0) gives the accuracy of the SQRT routine 
+for arguments near 9.0.  Vendors probably have some sort of mini-max 
+estimate of this number.
+
+ACCURACY ("F20.10, X) gives the accuracy of an I/O conversion for 
+the value of X.
+
+This might also be a class of numeric inquiry functions we should add 
+to Fortran 2000 as a general aid.
+
+Fuzz
+A safety factor number used in defining results.  Processor dependent 
+and user definable for the pessimist.
+
+Combining all of this the interval addition routine could look like:
+
+function add_two_intervals (x,y) result (z)
+  type (interval), intent(in)  ::  x,y
+  type interval  ::  z
+
+    z%high = round_up_add(x%high, y%high) + accuracy("+",          &
+                                         x%high, y%high)*(1.0+fuzz())
+    z%low  = round_down_add(x%low, y%low) - accuracy("+", x%low,   &
+                                         y%low)*(1.0+fuzz())
+
+!    also need code to detect overflow and do halting if needed.
+!    I don't know of a portable way to detect overflows, this is overkill
+    If (x%high > huge(1.0)/2.1  .or.  y%high > huge(1.0)/2.1)  call 
+interval_overflow_routine()
+
+  end function add_two_intervals
+

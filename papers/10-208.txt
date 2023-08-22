@@ -1,0 +1,83 @@
+To: J3                                                     10-208
+From: R. Bader
+Subject: Executing a type-bound procedure on a coindexed object
+Date: 2010 September 22
+Reference: 08-308r1, 08-301r1
+
+NUMBER: F08/xxxx
+TITLE:  Executing a type-bound procedure on a coindexed object
+KEYWORDS: coarrays, polymorphism
+DEFECT TYPE: Request for interpretation
+STATUS: J3 consideration in progress
+
+Consider the following code:
+
+module m
+  type :: foo
+    integer :: i = 0
+  contains
+    procedure, pass :: op
+  end type
+contains
+  subroutine op(this, i)
+    class(foo) :: this
+    this%i = i
+  end subroutine
+end module m
+program p
+  use m
+  class(foo), allocatable :: o_foo[:]
+  allocate(foo :: o_foo[*])
+  integer :: me
+
+  me = this_image()
+  if (me == 1) call o_foo[2]%op(1)
+  sync all
+  if (me == 2) write(*,*) o_foo%i
+end program p
+
+
+DISCUSSION:
+
+According to section 12.5.2.4, para 2,
+
+"[...]. If the actual argument is a polymorphic coindexed object,
+the dummy argument shall not be polymorphic."
+
+Hence the above code is not standard-conforming. (If enclosed in
+a TYPE IS clause of a SELECT TYPE block, the call would be fine,
+but this appears strange since the point of having TBPs is that
+they perform type resolution dynamically).
+
+Upon consulting the paper 08-308r1 which introduced the restriction
+in 12.5.2.4, it appears that the focus was on disallowing coindexed
+entities with polymorphic subcomponents, inasmuch as
+
+call o[2]%x%foo()
+
+(where x is a polymorphic type component) cannot be resolved
+at run time with locally available information about the dynamic
+type of the invoking subobject.
+
+The rationale given for the second edit in 08-308r1 is a bit unclear.
+In particular, the edit seems to exceed the intended scope as described
+in the rationale, since the above program appears to be harmless.
+
+QUESTION:
+
+Was it not rather intended that the edit should read
+"If the actual argument is a polymorphic subobject of a coindexed
+ object, the dummy argument shall not be polymorphic."?
+
+08-308r1 also mentions that C1229a from 08-301r1 is subsumed by
+the restriction; however in the DIS text it is still there (as C1229).
+
+
+SUBMITTED BY: R. Bader
+
+HISTORY: First draft August 3, 2010
+         Fixed wrong declaration in example August 4, 2010
+         Submitted after further changes on September 22, 2010
+
+
+

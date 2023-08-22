@@ -1,0 +1,102 @@
+
+                                                                        J3/04-372
+
+Date:         12 August 2004
+To:            J3
+From:         Michael Ingrassia
+Subject:     Response to 04-371.
+
+1.  I quibble with the goal.  The case has not been made that pointers, allocatables,
+	and assumed-shape arrays should be interoperable with C. 
+	Even if it is desirable to introduce interoperability, 
+	it is not necessarily a good idea to promote a private implementation
+	detail (dope vectors) to public API status.  
+
+	A better approach:  The abstraction could
+	remain private if C were to introduce its own versions of
+	Fortran-style pointers, allocatables, and assumed-shape arrays
+	(maybe C99 comes closer than C90 to achieving equivalents for some
+	of these? )  Fortran compilers could then share a common allocation
+	table with their companion processor and be sure that the special
+	semantics (e.g. prohibition against deallocating only part of a previously
+	allocated object) are respected.  But, obviously, defining and 
+	making a big change to the C language would probably take years.
+
+Questions:
+1) What is the significance of "@param" 
+
+Challenges:
+
+1) The API should be versioned in some way.  The names chosen
+	FDesc_Alloc_Create
+	FDesc_Alloc_Reset
+	FDesc_Alloc_Destroy etc.
+   describe functionality that is strongly synchronized with the content of
+   dope vectors  adequate to implement Fortran 2003, but the case has not 
+   been made to freeze the content of dope vectors.  I suggest consideration of
+	F2003_Alloc_Create
+	F2003_Alloc_Reset
+	F2003_Alloc_Destroy   etc.
+
+2)   What exactly is the "Alloc" in FDesc_Alloc_Create ?
+       The parallelism in 
+	FDesc_Alloc_Create, 
+	FDesc_Pointer_Create,
+       	FDesc_Assumed_Create 
+       suggests that this may have something to do with
+       allocatable arrays.  But there is no allocatable array in sight!  Is there ANY
+       connection with Fortran allocatable arrays?  What does
+       FDesc_Alloc_Create do that is different from its mates that requires
+       there be three different routines to create and initialize an array descriptor?
+ 
+       Note that while it is entirely true than an implementation may currently
+       use different sorts of descriptors for allocatables, assumed-shape arrays,
+       and pointers (for example one knows that allocatable dope vectors describe
+       contiguous memory but this might be worth storing in a pointer's dope vector),
+       that is not an answer to this question absent more specification of how that
+       affects usage of the C routines.
+
+3)      This creates an array descriptor (well and good) which describes some
+       part of memory as a strided shaped array.  Is the memory managed on the 
+       C side? on the Fortran side? both?  What restrictions are there on the
+       value of the base address?  Must it point to newly malloc'd memory?
+       May it overlap part of existing C or Fortran arrays?  
+
+4)    Is the array descriptor
+       produced supposed to remain valid when the routine which called
+        FDesc_Alloc_Create returns to its caller?  Are there ways it
+        can become invalid after having been valid? What happens if
+        FDesc_Alloc_Reset is called with the address of a not-currently-valid 
+        array descriptor? Is it required to produce an error?   
+        How will it know to do so?
+
+5)   How exactly is FDesc_Allocated supposed to work?
+      Its input argument is an array descriptor.  But the array might have been
+      created on the C side, which means Fortran has no idea about whether it is
+      "allocated" or not;  "allocated" array is a notion that makes sense only on
+       the Fortran side.
+
+       One suspects that there is confusion here; it's true that a Fortran allocatable
+       array might well be described by multiple dope vectors  (e.g.
+       the compiler might maintain one for I and one for P in the below code, but
+       they end up describing the same array).
+		INTEGER, ALLOCATABLE, TARGET :: I(:)
+		INTEGER, POINTER :: P(:)
+		ALLOCATE(I(10))
+		P=>I
+       That doesn't mean that you can create an array descriptor that is 
+       different from but as privileged as 
+       the dope vector the compiler created to describe I and to keep synchronized
+       with its tables.
+       The array descriptor created by FDesc_Alloc_Create can't ever
+       be the vehicle for (say) deallocating and reallocating I because it
+       has no connection to variable I itself.  You could initialize the array
+       descriptor to describe I, but after you use FDesc_Alloc_Reset to
+       reset its elements, by what logic does it remain a description of I?
+       Clearly it doesn't.   Therefore it can't make sense to call
+        FDesc_Allocated which asks about allocation status of something that is
+       not described by the array descriptor which is its only input.
+
+       Please clarify whether there is intended functionality to permit
+       allocatable arrays (on the Fortran side) to be not only described on the C side
+      but also have their allocation status modified.

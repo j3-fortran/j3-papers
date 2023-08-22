@@ -1,0 +1,353 @@
+                                                            10-237r2
+To: J3
+From: Nick Maclaren/Malcolm Cohen
+Subject: Interop TR:  TYPE(*) and MPI Support
+Date: 2010 October 14
+Reference: 10-165r2, N1766, 10-233, 10-234, 10-237
+
+
+1. Introduction
+---------------
+
+This paper attempts to pull together the various requirements of MPI-3 and
+others for C interoperability that have been so far inadequately addressed
+by the draft TR.
+
+There are a number of technical choices in the design.  These could be
+changed, but the edits would need further work in that case.
+
+
+2. Requirements summary
+-----------------------
+
+(1) Support for passing assumed-size arrays to assumed-rank arguments.
+    Due to historical reasons, existing MPI code makes much use of
+    assumed-size arrays, and due to the way generic overloading works,
+    for maximum usefulness with minimal code changes it is required to
+    pass these to assumed-rank dummies.
+
+(2) Support for CHARACTER(*) dummy arguments in BIND(C) routines.
+    Again, the existing facilities (basically passing to CHARACTER(*)
+    arrays and passing the length as a separate explicit argument,
+    or appending a NUL character to each argument - or element in
+    the case of array arguments) would require excessive code changes
+    to MPI code.  It seems to be the desire to have all of TYPE(*) and
+    DIMENSION(..) and CHARACTER(*) in the same interface that is driving
+    this issue.
+
+(3) Actual arguments that are not otherwise interoperable should be
+    considered interoperable with a TYPE(*) argument, except for derived
+    types with type-bound procedures, final procedures, or type
+    parameters.
+
+For further discussion of the background behind these requirements see
+10-237 (omitted from the r1).
+
+
+3. Technical Choices
+--------------------
+
+It is taken as a principle that needs no explanation that permission to
+perform such actions as passing assumed-size to assumed-rank dummies not
+be restricted to BIND(C) procedures with extremely good reasons for such
+an inconsistency.
+
+(1) Assumed-size and assumed-rank.
+
+    It must be possible to discover from C that a CFI_cdesc_t* formal
+    parameter is associated with an assumed-size array.  This COULD be
+    done with a new CFI_attribute_t value.
+
+    As a matter of principle, it should be possible to discover this
+    directly from Fortran without resorting to a C wrapper to enquire
+    the CFI_cdesc_t value.
+
+    Furthermore, in Fortran the LBOUND, UBOUND, SHAPE, and SIZE intrinsics
+    can be applied to assumed-rank arguments.  The semantics of these need
+    to be properly defined when the association is with an assumed-size
+    dummy argument.
+
+    Note that an assumed-size array could be described as having an
+    "undefined" extent in its final dimension.
+
+    Therefore, this proposal specifies:
+    (a) that the UBOUND of the final dimension of an assumed-size array be
+        2 less than its LBOUND.
+
+        Note that for a zero extent dimension, LBOUND=1 and UBOUND=0.
+        It would be perfectly reasonable for an undefined extent dimension
+        to be LBOUND=1 and UBOUND=-1.  It is also be reasonable to pass the
+        actual lower bound.
+
+        Since LBOUND of an assumed-size array returns the actual lower
+        bound, for simplicity we will say the same of an assumed-rank
+        argument that is associated (at some level of argument association
+        with an assumed-size array).
+
+    (b) For the convenience of the C programmer, a new CFI_attribute_t
+        value will also be chosen?
+
+    The alternative to using UBOUND in this was to indicate would be to
+    add a new intrinsic inquiry IS_ASSUMED_SIZE(variable) and to forbid
+    inquiry of the upper bound or size of the final dimension when this
+    returns true; this seems far more intrusive and harder to use than
+    the UBOUND=LBOUND-2 solution.
+
+(2) CHARACTER(*)
+
+    The obvious implementation choices are to pass the length separately,
+    or to include it in CFI_cdesc_t either as an extra member in the
+    struct, or as an extra (first) dimension.
+
+    Passing the length separately might appear to have the advantage that
+    many processors use this method for intra-Fortran calls with
+    CHARACTER(*): this is an illusion though, as different processors vary
+    as to the size and position (and presence!) of this hidden argument.
+
+    We also want to have well-defined results when the user passes a
+    CHARACTER(LEN/=1) actual argument to a TYPE(*) dummy - it is not
+    exactly a surprise that some want to pass CHARACTER data in messages.
+
+    Given the existence of multibyte character sets, the length member of
+    CFI_cdesc_t should indicate not the character length but the size of an
+    individual character.
+
+    The disadvantage of dimension-fiddling is that this reduces the
+    effective maximum rank of a CHARACTER actual argument from 15 to 14.
+    This is not considered to be an actual hardship, but if it were,
+    adding an extra member to CFI_cdesc_t (NOT using "length"!) would be
+    the preferred solution.
+
+(4) CHARACTER(:)
+
+    MPI has not asked for support of deferred-length CHARACTER, however
+    from personal experience with modules interfacing to C libraries
+    that return variable-length character strings I can say that this
+    would be very useful.
+
+    It also comes "for free" with inclusion of character length in
+    CFI_cdesc_t, and is particularly easy with the dimension-fiddling
+    version.
+
+(3) TYPE(*) and interoperability of arguments
+
+    Interoperability of derived types with type-bound procedures or final
+    procedures is probably not technically difficult at all, but might be
+    "philosophically" difficult.  This paper does not propose to address
+    this at this time (one cannot build Rome in a day).
+
+    Derived types with type parameters would however pose difficult
+    implementation issues with CFI_cdesc_t so they should probably not
+    be reconsidered at a future date.
+
+    For other normally-non-interoperable types, this feature is "a mere
+    matter of exposition".  It is, however, slightly tricky, and the
+    wording suggested will probably need careful review, probably at a
+    later date.
+
+(5) I take it as a matter of principle that passing an assumed-size
+    array to a C routine via a DIMENSION(..) argument has identical
+    effect to passing it to a Fortran routine with DIMENSION(..) and
+    then to a C routine with DIMENSION(..).
+
+(6) CHARACTER(LEN=?)
+
+    With allocatable and pointer arguments, and character length/=1 via
+    dimension fiddling we get the C routine being able to change the
+    character length.  The obvious way to cope with that is to require the
+    Fortran one to be changeable too, i.e. CHARACTER(LEN=:).  Note that
+    this is ONLY for ALLOCATABLE and POINTER arguments.
+
+    There is no real objection to allowing CHARACTER(LEN=something else)
+    for ALLOCATABLE or POINTER, but to enable robust code writing we would
+    then want to have some way to enquire whether the CHARACTER length was
+    changeable.  I believe that in general people doing this will either
+    want to have true variable (i.e. deferred) character length, or won't
+    mind doing a single additional pointer assignment if they don't want
+    deferred length in the rest of their program.
+
+
+4. High-level Proposal Summary
+------------------------------
+
+(1) An assumed-size array may be used as an actual argument to an
+    assumed-rank dummy.
+
+(2) The UBOUND of an assumed-rank array is defined to be LBOUND-2.
+    The SIZE of that dimension is defined to be -1, making the SIZE of
+    the whole thing negative unless zero-sized.
+
+(3) A dummy argument of a BIND(C) routine of type CHARACTER may have
+    CHARACTER(LEN=*) iff (if and only if) it is assumed-rank.
+
+(4) A dummy argument of a BIND(C) routine of type CHARACTER may have
+    CHARACTER(LEN=:) iff it is assumed-rank.
+
+(5) Any type/kind/length of actual argument is interoperable with
+    TYPE(*), except for derived types with final procedures, type-bound
+    procedures, or type parameters.
+
+    The interoperability with otherwise non-interoperable types however is
+    limited to copying and use as arguments (and targets).
+
+
+5. Edits to 10-165r2
+--------------------
+
+[2:2] "is" -> "specifies".
+{EDITORIAL: It doesn't describe all the unchanged stuff from 1539-1, so
+ although it specifies an "upwardly compatible" (whatever that means)
+ extension, it is not in itself the extended 1539-1.}
+
+[3:10+] 2.1p2+, insert new text:
+  "An assumed-type object is unlimited polymorphic.
+
+   \begin{UTI}[TR1]
+   Note that "unlimited polymorphic" just means that its dynamic type is
+   not limited.  It does not mean that it is CLASS(*), or can be used
+   everywhere that CLASS(*) can be used, because we already have a rule
+   that limits the places that TYPE(*) can be used.
+
+   It might prove less confusing to use a new term e.g.
+   "unknown polymorphic" but that probably needs even more edits.
+   \end{UTI}"
+{FATAL exposition error: sorry guys, but otherwise you run slap-bang into
+ contradictions.  This is the simplest fix.  It also gets us the "type
+ compatible with everything" feature with no further work.}
+
+[5:11-12] 3.2p2, replace with
+  "An assumed-type dummy argument shall not correspond to an actual
+   argument that is of a derived type that has type parameters, type-bound
+   procedures, or final procedures."
+{This restriction is required.  Here.  The restriction against type-bound
+ and final procedures is probably unnecessary but that should be
+ discussed.}
+
+[5:22+5+] 3.3+, insert new subclause
+  "3.4 Intrinsic procedures
+
+   3.4.1 SHAPE
+
+   The description of SHAPE in ISO/IEC 1539-1:2010 is changed for an
+   assumed-rank array that is associated with an assumed-size array;
+   an assumed-size array has no shape, but in this case the result has
+   a value of
+     [ (SIZE (ARRAY, I), I=1, RANK (ARRAY)) ]
+
+   3.4.2 SIZE
+
+   The description of SIZE in ISO/IEC 1539-1:2010 is changed in the
+   following cases:
+   
+   - for an assumed-rank object that is associated with an assumed-size
+     array, the result has a value of -1 if DIM is present and equal to
+     the rank of ARRAY, and a negative value that is equal to
+        PRODUCT ( [ (SIZE (ARRAY, I), I=1, RANK (ARRAY)) ] )
+     if DIM is not present;
+
+   - for an assumed-rank object that is associated with a scalar, the
+     result has a value of 1.
+
+   3.4.3 UBOUND
+
+   The description of UBOUND in ISO/IEC 1539-1:2010 is changed for an
+   assumed-rank object that is associated with an assumed-size array;
+   the result has a value of LBOUND (ARRAY, RANK (ARRAY)) - 2."
+{NOTE to the EDITOR: "-1" is written "$-1$" in LaTeX, and the minus sign in
+ the expression immediately above is written $-$.  Note also careful
+ spacing of the expressions: if there is a bad line break you can use ~
+ instead of space...}
+{Further note: These could instead be placed in 4 by splitting 4 into
+ 4.1 Changes to intrinsic procedures and 4.2 New intrinsic procedure, or
+ some such, but this placement seems workable for now.}
+
+[7:1] "Intrinsic" -> "New intrinsic".
+{MINOR EDITORIAL: We do want to say stuff about existing intrinsic
+ procedures elsewhere, so this is a bit misleading.}
+
+OPTIONAL?
+[9:33] Replace "or assumed-shape" by ", assumed-shape or assumed-size".
+
+[10:12+] 5.2.3, at the end, append new text:
+  "If the actual argument is of type CHARACTER, or is of assumed type
+   eventually associated with an actual argument of type CHARACTER,
+   the member elem_len shall contain the sizeof() of a variable of
+   character length 1 of that type and kind.  The first element of member
+   dim shall contain a lower bound of 1 with a stride equal to elem_len and
+   upper bound equal to the character length of the actual argument; all
+   other elements shall correspond to a dimension one less than for
+   non-CHARACTER types.
+
+   \begin{UTI}[TR2]
+   This approach has not achieved consensus; people want the rank field
+   to match the RANK intrinsic.
+
+   The other main contenders are:
+   (1) fold the character length into elem_len,
+   (2) add an additional character length member.
+
+   In any case more edits are required.
+   \end{UTI}
+
+   If any actual argument associated with the dummy argument is an
+   assumed-size array, the array shall be simply contiguous, the member
+   attribute shall be CFI_attribute_unknown_size and the member extent of
+   the last dimension of member dim is equal to (CFI_index_t)-2."
+{Actually in this case, since we are providing an "attribute" flag, I don't
+ mind making it undefined.  Note casting probably not needed since we made
+ this a signed integer type, but left for clarify.}
+
+[10:24+5+] 5.2.5, table 5.1, insert new row after CFI_attribute_pointer
+  "CFI_attribute_unknown_size  &  assumed-size \\".
+
+[10:27] 5.2.5p4,
+  Change "or a pointer"
+  To
+    ", a pointer, or associated with an assumed-size argument.
+     CFI_attribute_unknown_size specifies an object that is, or is
+     argument-associated with, an assumed-size dummy argument".
+
+[12:38+] 5.2.7p2+, insert new paragraph
+  "A C descriptor that describes an object of type CHARACTER shall have
+   rank $\geq$ 1, and dim[0].sm = elem_len."
+{The C user will be making up character stuff; require the first dimension
+ to be contiguous so the Fortran doesn't get an unpleasant surprise.}
+
+[13:14+] 5.2.8p2, item (6), insert new subitem after item (a),
+  "(a2) the dummy argument is a nonallocatable, nonpointer variable of
+        type CHARACTER with assumed length, and corresponds to a formal
+        parameter of type CFI_cdesc_t,"
+{Allow the obvious simple use of CHARACTER(*).}
+
+[13:18+] 5.2.8p2+ insert new paragraph
+  "If a dummy argument in an interoperable interface is of type CHARACTER
+   and is allocatable or a pointer, its character length shall be
+   deferred."
+{Note the existing rules in this subclause were SERIOUSLY broken; this
+ repairs the character length hole.  There might be other holes remaining!}
+
+
+6. Outstanding issues
+---------------------
+
+(1) I don't *think* we need to say this, but if we do we should say it with
+    more specificity as to which interoperability requirements we are
+    overriding.
+
+    "Notwithstanding 15.3.2 paragraph 1, if a dummy argument of a procedure
+     with the BIND attribute has type TYPE(*), the actual argument is
+     considered to be interoperable.
+
+     NOTE:
+     This implies that derived types with components of any intrinsic
+     type are also interoperable with TYPE(*) dummy arguments."
+
+(2) If we must have a "type" member, it needs a value something like
+        "CFI_type_non_interoperable    a non-interoperable data type"
+    with some appropriate witter.
+
+    But since this type member has other existing problems that are best
+    handled by deleting it, this paper does not propose adding this entry
+    to the table (or other such fixes) at this time.
+
+===END===

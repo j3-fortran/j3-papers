@@ -1,0 +1,168 @@
+To: J3                                                     J3/18-266r4
+From: Gary Klimowicz
+Subject: Add reductions to DO CONCURRENT
+Date: 2018-October-18
+
+Reference: 18-007r1: 11.1.7 (DO construct) and 16.9.161 (REDUCE)
+
+I Motivation
+------------
+Performing a reduction on the array elements computed
+in DO CONCURRENT can be inefficient for large arrays.
+The naive expression of a reduction is non-conforming:
+
+        real :: a(:)
+        real :: s
+        integer :: i
+
+        ...
+
+        ! With DO CONCURRENT, the use of 's' in the
+        ! loop below is not defined before referenced.
+        s = 0
+        do concurrent (i = 1:size(a))
+          s = s + (2 * a(i) - 1)
+        end do
+
+        print *, s
+        end
+
+Potential solutions using temporary arrays (used to
+accumulate intermediate results) followed by REDUCE are
+inefficient in the use of data and potential data
+management require in highly threaded environments.
+
+When the programmer is interested in performing a simple
+reduction of the data in the DO CONCURRENT, this overhead
+can exceed the gains from the computational parallelism.
+
+Also, with knowledge of the reduction, a processor could optimize
+DO CONCURRENT to be scaled to the number of available threads
+available at runtime (the number of which are not known to the
+programmer), chunking computations.
+
+At meeting 215, J3 approved this item for moving forward.
+
+
+II Use Cases
+------------
+    ! With current semantics, the code below is not
+    ! conformant. 's' is not defined in the iteration
+    ! before it is referenced.
+    s = 1000
+    DO CONCURRENT (i = 1:SIZE(a))
+      s = s + (2 * a(i) - 1)
+    END DO
+    ! s = 1000 + SUM(2*A-1)
+
+    ! Likewise with 'foo', not defined before used.
+    foo = a(1)
+    DO CONCURRENT (i = 2:SIZE(a))
+      foo = MIN(foo, a(i))
+    END DO
+    ! foo = MINVAL(a)
+
+We would like programs with semantics similar to the above to be
+conformant and still be able to exploit all available runtime
+parallelism.
+
+
+III What we have in mind
+------------------------
+The intent is to support an in-Fortran specification of some of the
+features of the OpenMP reduction clause.
+
+We propose a way of specifying scalar and array reduction variables
+and operators that are managed across the DO CONCURRENT body
+executions to accumulate values from each iteration. This would be
+done with processor-specific synchronization.
+
+We propose extending the definition of concurrent-locality to include
+
+    REDUCE (reduce-operator : reduce-variable-name-list)
+
+The reduce-operator is limited to the associative intrinsic operators
+and functions listed in the table below.
+
+Each reduce-variable-name is restricted to be an intrinsic type or
+array of intrinsic type.
+
+The reduce-variable-names shall not have the ALLOCATABLE,
+INTENT (IN), or OPTIONAL attribute.
+
+The reduce-variable-names shall be defined before execution of the
+DO CONCURRENT.
+
+The reduce-variable-name is treated with semantics similar
+to LOCAL_INIT. The initial value before execution of each
+iteration of the DO CONCURRENT body is based on the reduce-operator
+as defined in the table below.
+
+  OPERATOR          INITIAL VALUE
+  --------          -------------
+    +                     0
+    *                     1
+  .AND.                .TRUE.
+  .OR.                 .FALSE.
+  .EQV.                .TRUE.
+  .NEQV.               .FALSE.
+   MIN          Largest representable number
+   MAX         Smallest representable number
+   IAND                 NOT(0)
+   IOR                    0
+   IEOR                   0
+
+The value of the reduce-variable upon completion of the DO CONCURRENT
+is its initial value combined (via the reduce-operator) with the
+values of the reduce-variable at the end of each iteration of the
+loop body, performed in any order.
+
+The processor may make assumptions about how to parallelize the
+reduction to optimize or eliminate synchronized access to each
+reduce-variable-name.
+
+The reduce-variable can only appear on the left-hand-side of
+statements that look like
+        reduce-variable-name = &
+                reduce-variable-name reduce-operator expression
+    or
+        reduce-variable-name = &
+                expression reduce-operator reduce-variable-name
+    or
+        reduce-variable-name = &
+              reduce-operator(reduce-variable-name, expression)
+    or
+        reduce-variable-name = &
+              reduce-operator(expression, reduce-variable-name)
+
+Revisited Use Cases
+-------------------
+    s = 1000
+    DO CONCURRENT (i = 1:size(a)) REDUCE(+:s)
+      s = s + (2 * a(i) - 1)
+    END DO
+
+    foo = a(1)
+    DO CONCURRENT (i = 2:size(a)) REDUCE(MIN:foo)
+      foo = MIN(foo, a(i))
+    END DO
+
+
+Benefits
+--------
+Adding REDUCE will:
+    - Increase the usefulness of DO CONCURRENT
+    - Increase opportunities to exploit SIMD and other parallelism
+    - Increase ability to optimize parallelism according to the
+      available threads
+    - Make it easier to write conforming programs
+    - Make it easier to check the programmer's intent about reductions
+    - Reduce memory allocation needs or explicit data management when
+      offloading to target processors
+    - Eliminate explicit synchronization
+    - Reduce need for explicit temporaries
+
+
+
+
+

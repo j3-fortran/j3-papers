@@ -1,0 +1,179 @@
+To: J3                                                     J3/18-230
+From: Malcolm Cohen
+Subject: Sequence association poorly described
+Date: 2018-June-14
+
+
+1. Introduction
+
+15.5.2.11 paragraph 1 establishes the list of actual arguments that
+    "represent an element sequence".
+That this does not depend on the dummy argument being a class of argument
+that accepts sequence association is peculiar; when the dummy is assumed-
+shape, assumed-rank, allocatable, or a pointer there is no sequence
+association.  There is also no sequence association for a scalar dummy
+argument.
+
+Paragraph 1 goes on to unconditionally define the "element sequence" for
+all such actual arguments that are not scalar.
+
+Paragraph 2 specifies the "element sequence" when the actual argument is
+of type CHARACTER, notwithstanding that it has already been defined by
+paragraph 1.  The definition in paragraph 2 differs from that of paragraph
+1, which is a contradiction.
+
+Furthermore, the definition in p2 says that the element sequence consists
+of the storage units of the actual argument.  This implies that the actual
+argument would be treated as having length 1... which leads to several
+problems with paragraph 4:
+    a) "the number of elements in the dummy argument shall not exceed the
+        number of elements in the element sequence".
+       E.g. when passing a CHARACTER(2) array with 10 elements, the defn
+       of element sequence in p2 means the sequence has 20 elements, then
+       if the dummy is say CHARACTER(5) with 20 elements, the requirment
+       is not violated even though the dummy specifies 100 storage units
+       vs. the 20 of the actual argument.  Elsewhere the semantics assume
+       this requirement is obeyed, so this is a problem.
+    b) "If the dummy argument is assumed-size, the number of elements in
+        the dummy argument is exactly the number of elements in the
+        element sequence." tells us that with 20 storage units in the
+        actual argument, a dummy declared as CHARACTER(1000) dummy(*) has
+        20 elements and thus 20000 storage units.
+
+The only thing in p2 that acknowledges how sequence association is meant
+to work for CHARACTERs is that if the *actual argument* is a substring of
+an array element,
+  "The storage units of an array element substring designator are viewed
+   as array elements consisting of consecutive groups of storage units
+   having the character length of the dummy array."
+This has two problems:
+    1) sequence association with an array element is intended to pass the
+       entire rest of the array; it is very surprising to see from the
+       wording here that in the case of a substring of an array element
+       we are only passing the storage units of that substring of that
+       array element.
+       One might guess that this implication is not intended... and such a
+       conjecture is supported by the text in paragraph 3.
+    2) Grouping by the length of the dummy argument has obvious flaws
+       when the dummy argument has length zero.
+    3) Grouping by the length of a dummy argument with a length other
+       than one directly contradicts the first sentence of this
+       paragraph.
+    4) If it's necessary to group by the dummy argument length in the
+       substring array element designator case, why is it not necessary
+       to group by the dummy argument length in other cases?
+
+Paragraph 3 handles scalar that is not an array element (or substring of
+an array element), but has the same problem as p1 in that the number of
+elements in the sequence is the number of storage units in the argument.
+
+Note that although the array element case is not subject to sequence
+association for subobjects of pointers or assumed-shape arrays, this is
+handled by virtue of a requirement (elsewhere) that such actual args
+only get passed to scalar dummy args.  So that does not need repair.
+
+Some of these considerations may or may not be answered by semantics
+specified elsewhere, but duelling paragraphs are not a good look.
+
+All the CHARACTER stuff does not take the possibility of a TYPE(*) dummy
+argument into account.
+
+
+2. Proposal
+
+It is probably useful to have a paragraph zero that specifies that
+sequence association, and the rest of this subclause, only applies
+for explicit-shape and assumed-size dummy arguments.
+
+Sequence association is available for non-default CHARACTER kinds, but the
+horrible per-char semantics are only available for default/c_char.
+
+Paragraph 1 works for everything except for default/c_char CHARACTER, and
+that is horrible, so paragraph 1 should simply have
+"not of type character with default or C character kind" inserted to
+remove it from consideration.
+
+Paragraph 1 also appears to work for TYPE(*) dummies when the actual is of
+type CHARACTER, so that particular case should be included in paragraph 1.
+This will happen automatically if the exclusion is for dummies of type
+CHARACTER.
+
+Paragraph 2 should be discarded with extreme force and rewritten from
+scratch to say what we expect the element sequence to be, viz dividing
+by the dummy character length; care needs to be taken when the dummy
+argument has a character length that is equal to zero.
+
+When the dummy has character length zero, perhaps the right thing to do
+is to say that the element sequence length is "processor dependent but
+not less than HUGE(0)".
+
+Paragraph 3 should be included in the new paragraph 2 if that is
+reasonably possible, otherwise it needs to be modified to account
+for the dummy argument length, the same as in the new paragraph 2.
+
+After those fixes, paragraph 4 can be simplified by deletion of the
+condition that now appears in paragraph 0.
+
+
+3. Edits to N2146
+
+Page 320, 15.5.2.11 Sequence association, before p1,
+Insert new paragraph
+   "Sequence association only applies when the dummy argument is an
+    explicit-shape or assumed-size array.  The rest of this subclause only
+    applies in that case."
+
+Same subclause, p1,
+  Change "If the actual"
+  to     "If the dummy argument is not of type character with default or
+          C character kind, and the actual"
+  Twice.
+{Restrict the element sequence definition in p1 to exclude the tricky
+ CHARACTER case.}
+
+Same subclause, p2 and p3, delete both paragraphs.
+
+Insert new paragraph in their place:
+   "If the dummy argument is of type character with default or C character
+    kind, and has nonzero character length, the storage unit sequence is
+    as follows:
+    - if the actual argument is an array expression, the storage units of
+      the array;
+    - if the actual argument is an array element or array element
+      substring designator, the storage units starting from the first
+      storage unit of the designator and continuing to the end of the
+      array;
+    - if the actual argument is scalar and not an array element or array
+      element substring designator, the storage units of the scalar
+      object.
+    The element sequence is the sequence of consecutive groups of storage
+    units in the storage unit sequence, grouped by the character length of
+    the dummy array.  The sequence terminates when the number of storage
+    units left is less than the character length of the dummy array."
+{Define the element sequence in two steps; first get the storage unit
+ sequence, then cut it up into dummy-argument-length elements.  This works
+ easily for both array and scalar arguments, but only for nonzero dummy
+ argument length.}
+
+NOTE 15.32 applies to this and is now obviously correct!
+
+After NOTE 15.32, insert new paragraph:
+   "If the dummy argument is of type character with default or C character
+    kind, and has zero character length, the element sequence consists of
+    a sequence of elements each with zero character length, the number of
+    elements being the maximum number that is supported by the processor."
+{Specify what happens with zero character length.  This is not a
+ particularly interesting case, the only interest here is to avoid
+ spuriously specifying a dummy array size that is small, and to avoid
+ the standard inadvertently dividing itself by zero.
+ The processor dependency is not a new one, it is already recognised that
+ a processor may have a limit on the number of elements in an array.}
+
+In paragraph 4, delete
+    "if the dummy argument is an explicit-shape or assumed-size array"
+{because we already said in p0 that this whole subclause only applies in
+ that case.}
+
+===END===
+
+

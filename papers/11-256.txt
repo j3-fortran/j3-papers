@@ -1,0 +1,293 @@
+To: J3                                                       11-256
+Subject: Coarray requirements
+From: John Reid
+Date: 2011 October 12
+References: WG5/N1835, WG5/N1858, WG5/N1883
+
+Discussion:
+This is a first draft of the Requirements Document that WG5 requested
+J3 to write.
+
+PROPOSAL 1: Add collective procedures
+
+Needs
+It is important to be able to perform simple operations across
+images efficiently. The most important example is to sum coarrays
+across images. If built into the processor, advantage of its topology
+can be obtained without special user coding. As well as support for a
+small number of standard operations, there should be support for
+user-defined operations.
+
+Suggestions
+1. A set is proposed in N1858, but they are based on replication of
+transformational intrinsics of Fortran 2008, rather than real needs
+and do not include support for user-defined operations.
+
+2. In N1835, Bill Long suggests the five collective subroutines
+CO_BCAST, CO_MAX, CO_MIN, CO_REDUCE, CO_SUM. They are not image control
+statements (the user is responsible for synchronization).
+
+3. In N1883, the Rice group propose additional collectives and suggest
+that each of the collectives of MPI should be reviewed. They suggest
+the addition of asynchronous variants of the collectives using event
+notification; these versions would differ from the synchronous versions
+only by the addition of a completion event parameter.
+
+Conclusion
+A small set similar to Bill Long's should be adopted.
+
+........................................................................
+
+PROPOSAL 2: Add teams
+
+Needs
+For efficient execution on a large collection of images, it may be
+necessary to subdivide the images into teams that execute independently.
+It is important, for example, that libraries are able to execute
+collective operations and to synchronize across subsets of images
+without delaying uninvolved images. Similarly, allocation of coarray
+data (or other resources) on uninvolved images serves only to aggravate
+the memory footprint on these images.
+
+Additionally, teams are also convenient to organize code for working
+on sub-problems such as for linear algebra applications. It is
+important that code does not need to be rewritten to run on a team.
+
+Suggestions
+1. N1858 contains a detailed proposal using teams based on lists of
+image indices. It requires code to be rewritten to run on a team.
+
+2. The Rice group (N1883) suggest the use of a WITH TEAM construct to
+avoid the need for code to be rewritten. Within the construct, image
+indices are interpreted as positions in the team. They highlight the
+importance of a TEAM_SPLIT command for subdividing a team. They suggest
+adding a object TEAM_DEFAULT of type IMAGE_TEAM whose team consists
+of the closest enclosing WITH TEAM block, or TEAM_WORLD if there is
+none. It is important that each coarray access be able to be specified
+as relative to a particluar team; the WITH TEAM construct is simply
+syntactic sugar surrounding this functionality.
+
+3. Robert Numrich (N1883) suggests the complete removal of teams.
+
+4. The Rice group (N1883) suggest adding a constant TEAM_WORLD of
+type IMAGE_TEAM whose team consists of all images.
+
+5. The Rice group (N1883) suggest adding a TEAM_RANK intrinsic that
+returns the zero-based logical index of an image within a team. They
+additionally suggest extending NUM_IMAGES to accept an argument of
+type IMAGE_TEAM as a mechanism for determining the cardinality of a
+team.
+
+Conclusion
+Develop the WITH TEAM construct before deciding whether to include
+teams.
+
+........................................................................
+
+
+PROPOSAL 3: Add NOTIFY/QUERY synchronization
+
+Needs
+NOTIFY/QUERY will permit more efficient execution by allowing an
+image to perform independent actions while waiting for data from
+another image.
+
+Suggestions
+1. N1858 contains a detailed proposal.
+
+2. In N1883, the Rice group highlight the danger of a QUERY statement
+becoming associated with the wrong NOTIFY statement, for example, when
+code that uses the feature calls a library code that also uses it.
+Their suggestion is to add an event type, objects of which type may be
+used to identify NOTIFY/QUERY associations.
+
+3. In N1835, Reinhold Bader made several suggestions for improvements.
+
+4. In N1883, Uwe Kuester suggests using a different keyword for the
+blocking QUERY since it is so different from the non-blocking QUERY.
+
+5. The Rice group suggests that NOTIFY and QUERY be renamed with a common
+prefix so that they appear together lexically in the standard and in
+references based on it.
+
+Conclusion
+Include NOTIFY/QUERY with changes similar to those suggested by the Rice
+group, Reinhold Bader, and Uwe Kuester, including the addition of an
+event type.
+
+........................................................................
+
+PROPOSAL 4: Add features for parallel I/O
+
+Needs
+In a parallel program, I/O is sometimes needed for data that is
+distributed across images.
+
+Suggestions
+ In N1858, it is suggested that direct-access files be used. Little
+interest has been shown in this idea.
+
+Conclusion
+Add no feature for parallel I/O at this time.
+
+........................................................................
+
+PROPOSAL 5: Add global pointers
+
+Needs
+Global pointers are needed to support distributed linked data structures
+and other references to remote data.
+
+Suggestions
+1. In N1883, the Rice group suggested adding copointers with a given
+rank and corank. When referencing a remote object via a copointer, this
+is made apparent by the notation [], e.g.
+     p8(6)[] = 42
+assigns element 6 of the target remote coarray.
+
+2. In N1835, Reinhold Bader suggests adding coscalars. A coscalar
+exists on a single image and is referenced on any image with
+the empty cosubscript []. It may have the pointer attribute. A
+structure on one image may have a component that is a coscalar
+pointer with its target on another image. For details, see
+N1835.
+
+Discussion
+The new kinds of pointers in the two suggestions are similar.
+Each stores the image index of the target. The Bader proposal is
+significantly more complicated since it also contains the idea of
+any image being able to access a local object that resides on one
+image.
+
+Conclusion
+Since the aim has always been to keep coarrays simple, only the
+Rice proposal should be explored further.
+
+........................................................................
+
+PROPOSAL 6: Allow asymmetric allocatable and pointer objects
+
+Needs
+An asymmetric allocatable array may be constructed via a coarray
+of a type with an allocatable array component, e.g.
+      type parent
+           real, allocatable :: a(:)
+      end type parent
+      type(parent) p[*]
+      ...
+      p[img]%a(:) = 2*p[img]%a(:)
+Users would like to declare and use this object directly, e.g.
+      real, allocatable :: a(:)[*]
+      ...
+      a(:)[img] = 2*a(:)[img]
+
+Suggestions
+Bill Long suggests the syntax of the Needs paragraph, but
+points out that this thing cannot be called an "allocatable coarray"
+without having significant side effects elsewhere in the standard.
+
+Conclusion
+Do not pursue this further since the functionality is already
+available.
+
+........................................................................
+
+PROPOSAL 7: Add more atomic operations
+
+Needs
+Bill Long in N1835 suggested adding atomic compare-and-swap and other
+atomic subroutines, atomic operations should be added. These have
+existed (with different spelling) in the Cray coarray implementation
+from the beginning due to specific customer demands.  All take integer
+arguments.  Having standardized and portable names would be good.
+
+The Rice group make the same request (N1883).
+
+Suggestions
+The basic compare-and-swap operation is:
+   atomic_cas (atom, old, compare, new)
+which performs atomically:
+   old = atom
+   if (old == compare) atom  = new
+
+The following further atomic subroutines are suggested:
+atomic_add
+atomic_fadd
+atomic_and
+atomic_fand
+atomic_or
+atomic_for
+atomic_xor
+atomic_fxor
+where the 'f' versions are the "fetch_and_" versions of the ones with
+out the 'f'.
+
+Conclusion
+To be written.
+
+........................................................................
+
+PROPOSAL 8: Remove restrictions on coarray components
+
+Needs
+Robert Numrich points out (N1835) that many of the restrictions on
+derived type components are unnecessary. In particular, he asks for the
+removal of the restriction that a child type can add a coarray component
+only if its parent has a coarray component. It messes up inheritance by,
+for example, forcing every abstract type to contain a dummy coarray
+component just in case somebody wants to extend it by adding a
+coarray component, which will often be the reason it is being extended.
+
+Suggestions
+
+Conclusion
+Review the restrictions on coarray components.
+
+........................................................................
+
+PROPOSAL 9: this_image(x) be scalar if x has rank one
+
+Needs
+Robert Numrich (N1835) hits this problem every time he writes new code
+and finds it embarrassing to explain it to a new coarray programmer.
+
+Suggestions
+
+Conclusion
+This is not accepted since it would break the Fortran model in which the
+result of a function is determined by its arguments and not the context
+in which it is called. The functionality is available as
+this_image(x,1).
+
+........................................................................
+
+PROPOSAL 10: add a predicated copy_async intrinsic
+
+Needs
+Achieving high performance and maximizing utilization on current
+supercomputers requires strategic overlapping of communication and
+computation.
+
+Suggestions
+The Rice group (N1883) suggests adding a predicated asynchronous
+copy intrinsic for this purpose. Predication allows programmer
+flexibility in scheduling the copy; asynchrony enables communication
+of the data being copied to overlap computation being performed
+meanwhile in the program.
+
+Conclusion
+To be written
+
+........................................................................
+
+PROPOSAL 11: make the TS smaller than N1858
+
+Needs
+
+Suggestions
+
+Conclusion
+To be written
+
+
+

@@ -1,0 +1,514 @@
+To: J3                                                     J3/21-125r1
+From: T. Clune & generics subgroup
+Subject: Summary of Generics Tutorial
+Date: 2021-February-28
+
+1. Introduction
+
+This paper is intended to serve as a proxy/reference for the tutorial
+given by the Generics subgroup at m223.
+
+
+2. Values
+
+At the suggestion of G. Klimowicz, Generics subgroup has had
+substantive discussions regrading the of a value system to guide the
+development of F202Y.  A "value system" is a short list of qualities
+that help deterime the relative goodness of a set of solutions.  By
+identifying what we collectively agreed is "good" we can more
+objectively discuss aspects of a proposal as being "better" or "worse"
+than alternatives.  The approach can be used beyond Generics subgroup,
+and we encourage J3 and WG5 to consider adoption of a value system in
+future meetings.
+
+The benefits of a value system include:
+
+  - Tractability: achieve early alignment on important properties
+
+  - Consistency: Alternatives evaluated against common criteria
+
+  - Communication: Rationale for decisions can be explained at a high level
+
+Each "value" in a value system is a word or short phrase that
+incapsulates a broad ideal, and ideally is indpependent from other
+values.  Each value is also prioritized against other values - not all
+values are of equal importance.  And finally, each value should have a
+rationale.
+
+Possible values for generics subgroup:
+
+  - Utility: How well does a given feature solve real-world problems
+    faced by Fortran pprogrammers.
+
+  - Run-time performance: A features sohuld not negatively impact
+    run-times
+
+  - Fit: How well does a feature mesh with the existing language
+
+  - Longevity: Consider total impacts beyond the compiler while
+    leveraging lessons from other languages
+
+  - Implementability: Can the feature be implemented without major
+    compiler rewrites
+
+  - Marketability: Does the feature help to attract/retain members of
+    the target communities (scientific, engineering, ...)
+
+
+3. Subgroup activities and plans
+
+3.1.  Recent activities
+
+The Generics subgroup has been holding ~90 minute biweekly telecons
+starting just after the October 2020 meeting.  We are interesting in
+including additional members of the Fortran community in these
+meetings provided that the size does not grow to the point of
+preventing efficient discussions.  Those interested in participating
+should contact Tom Clune or any member of the Generics subgroup.
+
+Recent topics that have beeen discussed in depth include:
+
+   - A repeat performance of M. Haveraaen's tutorial form the Tokyo
+     meeting in which he demonstrated a number of powerful results
+     that can be obtained if templates are implemented in a certain
+     manner.  (In particular see the discussion below regarding
+     template "restrictions".)
+
+   - Multiple discussions about how template restricitons are
+     implemented in other languages.  C++ concepts, Rust traits, ...
+     Subgroup consensus is that Fortran templates should support
+     "strong" templates that enforce certain restrictions.  (More on
+     this below.)
+
+   - Several discussions have been had to porpose nominal syntax, just
+     for the purpose af being able to discuss use cases and sketch how
+     they might work in practice.  The most fully formed such syntax
+     was proposed by V. Parkekh and is referred to as KART.  There
+     will be a separate tutorial on KART porvided by V. Parkekh, but
+     this should not be construed as an endorsement of the particular
+     syntax by subgroup.
+
+   - Preliminary collection and categorization of use cases.
+
+3.2 Near term plans
+
+Because of the complexity of template use cases and the somewhat
+amorphous boundary of what should and should not be included in F202Y,
+a heavy emphasis will be placed upon traceability.  In this manner we
+can accurately gauge  consequences of adding or deleting a given
+spec or requirement.
+
+The near term priority is focus intensively on development of a
+comprehensive use cases paper for templates with the goal of
+submitting a draft at m224 in the summer of 2021.  The final version
+of the use cases paper is expected to inclue the results of straw
+votes for each use case.  These straw votes are expected to be used to
+prioritize and defend formal requirement in the next phase.  In many
+cases, use cases will be subdivided into smaller aspects ("micro use
+cases") with separate straw votes for each.  Straw votes can be
+revisited as the priorities and understanding of committee members
+evolve.
+
+
+We  also hope to have a very preliminary requirements document
+available for review at m224.  The intent is for each requirement to
+be directly traceable to one or more use cases.  The paper will be
+revised after straw votes at m224, but will not be ready for voting
+until m225.
+
+
+It would be premature to forecast the timeline for the specs and
+syntax papers with any specificity.  Much will depend upon how quickly
+consensus can be achieved for the requirements.
+
+To maintain traceability across these documents while under
+development, we expect to maintain an interval version that is
+separate from the formal J3 paper numbering.  (Suggestions on how to
+best achieve this are welcome.)
+
+
+4. Fortran Templating Facility - a sketch
+
+4.1 Introduction 
+
+First some rough-and-ready terminology to get us on the same page.  A
+"template" is a reusable entity for which precise specification is
+contingent on one or more "template parameters".  Template parameters
+are generally thought to be types as opposed to values, but other
+entities such as operators and constant expressions may have value for
+some use cases.
+
+Templates are distinguishable from macros in that
+
+   (a) templates are generally restricted to narrow subset of entities
+       (procedure, type, ...) while macros can be used almost anywhere
+       in a code
+   (b) templates are processed by the compiler as opposed to macros
+       which are processed by a preprocessor
+   (c) most importantly, templates are "type aware" and involve more
+       than mere text substitution
+
+A "template instantiation" (or just "instantiation") is a realization
+a template for a specific set of template parameters. 
+
+To speak constructively about templates it is helpful at this point to
+have some sort of notation/syntax.  The syntax used in this paper is
+not in any way intended to suggest syntax that would ultimately be
+included in F2020Y.  Indeed, the minimal syntax here is intentionally
+of the sort that would be rejected on sight if proposed for the
+standard, but hopefully is suggestive enough to allow discussion of
+the examples.
+
+Lists of template parameters will be represented by a comma separated
+list of 1 or more items contained within curly braces.  We will use
+captialized, single character names for dummy parameters associated
+with types and full words in lower case for parameters associated with
+operators.  For templated procedures the parameter list will be placed
+after the procedure name and before the ordinary argument list.  For
+templated types the parameter list will go after the type name of the
+template.
+
+As a first example consider a templated procedure to swap two items of
+the same type.  The template has one dummy parameter T and would be
+written as
+
+     SUBROUTINE SWAP{T}(x,y)    ! 1 template parameter: T
+        TYPE(T), INTENT(INOUT) :: x, y
+        TYPE(T) :: tmp
+
+        tmp = x
+        x = y
+        y = tmp
+
+     END SUBROUTINE SWAP
+
+The code snippet below demonstrates instantiation of this template for
+INTEGER and REAL actual parameters.
+
+     INTEGER :: I, J
+     REAL :: X, Y
+     CALL swap{INTEGER}(I,J) ! INTEGER instantiation
+     CALL swap{REAL}(x,y}    ! REAL instantiation
+
+4.2  Templatable entities
+
+The following Fortran entities are under consideration for templating:
+   - modules  (ala Parameterized Modules)
+   - procedures (including type-bound procedures)
+   - derived types
+
+Nominally parameterized modules obviates the need for parameterized
+procedures and derived types.  However, there are practical reasons
+why finer grained parameterizations may be preferred.  In particular,
+the list of template parameters for parameterized module is the union
+of all template parameters needed by any of the contained entities.
+In practice this list can easily become long, unwieldy, and redundan
+as irrelevant parameters are necessary to use any given entity from
+the module.
+
+
+4.3 Categories of template parameters
+
+Subgroup is considering the following categories of Fortran entities
+as allowed as values for template parameters:
+
+   (a) type-names -  including templated type names!
+   (b) operators - e.g. controlling order in a container or sort algorithm
+   (c) logicals - allow for specialization of template for certain types
+   (d) integers - e.g., define a template that returns the trace of a
+       rank-N array
+   (e) other constant expressions
+
+There is consensus in subgroup that (a) and (b) should be supported.
+Further analysis of use cases is required to see to what value
+categories (c), (d), and (e) bring.
+
+Quite possibly F202Y will intentionally limit support to a subset of
+these categories with an eye toward broader inclusion in subsequent
+revisions.
+
+
+4.4 Representative use cases
+
+This section briefly introduces a variety of use cases that are
+representative of those that are under consideration.  The list here
+is not meant to be comprehensive, but rather to stimulate thought on
+the capabilities necessary to support them.
+
+
+4.4.1  Generalizations of common intrinsic procedures
+
+Many intrinsic procedures FINDLOC, only defined to work with intrinsic
+types, and yet the actual algorithms involved would generally apply to
+many user defined types.  For instance many users have requested to be
+able to use FINDLOC on their own derived type.  The algorithm only
+requires that the type support the "==" operator.
+
+4.4.2 Generic sort
+
+Sort algorithms can generally be applied to any type that supports a
+less-than relation.
+
+4.4.3 Generic containers
+
+Fortran's arrays are an example of a generic container.  Arrays can be
+constructed and manipulated for any type.  But there are other types
+of containers that are useful in certain contexts and have been shown
+to be extremely useful in many other programming languages.  The
+protypical examples of other containers are: vector, set, and map.
+
+4.4.4 Linear algebra
+
+Many of the algorithms in linear algebra, e.g., solving a system of
+linear equations, are directly relevant to any derived types that
+support a narrow set of operations.  Specific examples are sparse
+matrices and block-matrices.  The ideal here would be to implement
+templates that work on all such conforming type but that would still
+default to optimized libraries for relevant intrinsic types.
+
+
+
+5. Restricted templates
+
+5.1 Overview of Template Restrictions
+
+An important feature of templates in some languages is the ability to
+express specific assumptions that a template makes about the actual
+values of the parameters associated with types.  In other languages
+expression of thees assumptions are known as "concepts" (C++) or
+"traits" (Rust).  For the discussino here, we will use the term
+"restrictions", and will introduce suggesting syntax below.
+
+
+If a language has no support for template restrictions, then templates
+suffer some of the disadvantages associated with macros.  In
+particular, compiler errors during instantiation will generally appear
+as syntax errors deep inside the template definition.  The associated
+error message can be quite confusing.
+
+If instead a language does support restrictions, the compiler is able
+to detect when a given instantiation fails to satisfy the restriction
+and should be able to produce a much more informative message along
+the lines of:
+
+    "Template <blah> cannot be instantiated with type LOGICAL because
+     it does not support the + operator."
+
+
+Confusing error messages can still result though, if the implementor
+of the template failed to capture all of the assumptions.  We refer to
+this as support for "weak restrictions" if the language permits
+omission of any necessary restrictions for a template to work.
+
+
+In contrast, with strong restrictions in a language, the compiler is
+required to diagnose use of any operations involving variables that
+are not defined in a restriction.  With such support, a template can
+be separately verified by the implementor and should "work" for any
+actual template parameters that satisfy the restrictions.
+M. Haveraaen's Tokyo presentation (and other papers) demonstrate a
+number of very nice aspects of working with templates that work in
+this fashion.
+
+As mentioned before, Generics subgroup has a strong consensus that
+Fortran should pursue support of strong restrictions for templates.
+
+
+5.2 An illustrative example
+
+We will example a simple example from the perspective of 3 langauge
+scenarios: no template restrictions, weak template restrictions, and
+strong template restrictions.
+
+5.2.1 Without restrictions
+
+Our example is a simple accumulator procedure:
+
+     SUBROUTINE accum {T,U} (s, x) 
+        TYPE(T), INTENT(IN) :: s
+        TYPE(U), INTENT(in) :: x
+
+        s = s + x/2
+
+     END SUBROUTINE accumulate
+
+
+This template can only work if x/2 produces a type that can be added
+with s to produce something of the same type as S Consider the
+following attempts at instantiations:
+
+     REAL :: t, dt, x
+     LOGICAL :: f
+
+     CALL accum{REAL,REAL}(t,dt)  ! WORKS
+     CALL accum{LOGICAL,REAL}(f,x) ! FAILS + not impl. for LOGICAL
+
+The failing case will generally produce a very obsure message such as
+
+   "Incompatible data types for the + operator:
+       s = s + x/2
+             ^
+    in template accum in file ... at line ..."
+
+5.2.2 With weak restrictions
+
+Consider the slightly modified template:
+
+     SUBROUTINE accum {T,U} (s, x) 
+        TYPE(T), INTENT(IN) :: s
+        TYPE(U), INTENT(in) :: x
+        << T = T + U >>  !  Template restriction
+
+        s = s + x/2
+
+     END SUBROUTINE accumulate
+
+
+Here we introduce a minimal notation to indicate template
+restrictions: a relation enclosed by double angle brackets.
+     << T = T + U >>
+implies that the "+" operator acts on arguments of type T and type U
+to produce type T.
+
+Our failing instantiation from above should now produce an error
+message more like:
+
+   "Type LOGICAL does not satisfy restriction
+       LOGICAL = LOGICAL + REAL
+    from templace accum in file ... at line ..."
+
+Unfortunately obscure error messages are still possible.  Consider
+this attempt at instantiation:
+
+     TYPE TimeInterval
+     END TYPE
+
+     TYPE TIME
+     CONTAINS
+        PROCEDURE :: ADD
+        GENERIC :: OPERATOR(+) => ADD
+     END TYPE
+
+     CONTAINS
+
+     FUNCTION ADD(t, dt) result(new_T)
+       TYPE(Time) :: new_T
+       TYPE(Time), INTENT(IN) :: t
+       TYPE(TimeInterval), INTENT(IN) :: dt
+     END FUNCTION ADD
+
+     . . .
+
+     CALL  accum{Time,TimeInterval} (t, dt) ! FAILS
+
+
+The failure is now because the TimeInterval type does not support the
+"/2" operation.  And the obscure error message would be something like:
+
+   "Incompatible data types for the / operator
+    in template accum in file ... at line ..."
+
+
+
+5.2.4 With strong restrictions
+
+The failure in the previous section ultimately arose because the
+template definition itself did not properly capture the second
+assumption about the types.  With support for strong restrictions the
+compiler would be required to diagnose this while processing the
+template _without_ regard to _any_ instantiations.
+
+
+The error message would be something like
+
+   " Operation / not defived for type U
+        s = s + x / 2
+	          ^
+     at line ... in file ..."
+
+
+Once an implementor has correctly specified all necessary
+restricitons, the template can be verified without regard to specific
+types.  Instantiations with conforming types that (with correctly
+implemented operations) can then be guaranteed to "work".
+
+
+The corrected template would be:
+
+     SUBROUTINE accum {T,U} (s, x) 
+        TYPE(T), INTENT(IN) :: s
+        TYPE(U), INTENT(in) :: x
+        << T = T + U >>     !  Template restriction
+	<< T = U/INTEGER >> ! template restriction
+
+        s = s + x/2
+
+     END SUBROUTINE accumulate
+
+Note, in practice, a slight improvement would be to introduce an
+intermediate type parameter V representing the result of x/2 leading
+to the restrictions being expressed as:
+        << T = T + U >>
+	<< V = U/INTEGER >>
+	<< T = V >>
+This allows for cases where the assignment operator can convert
+type V into type T.   A slight generalization that may benefit some
+end users.
+ 
+Once an implementor has correctly specified all necessary
+restricitons, the template can be verified without regard to specific
+types.  Instantiations with conforming types that (with correctly
+implemented operations) can then be guaranteed to "work".
+
+
+6. Some challenges ahead
+
+The desire for generality in templating facilities clashes to varying
+degrees with various legacy aspects of the Fortran language.  These
+aspects will need careful consideration, and some generality may be
+intentionally restricted in F202Y.  The intent of subgroup is to chart
+a path that does not prohibit further generalizations in subsequent
+standards.
+
+6.1 Parameterized derived types
+
+Are templates a generalization of PDT's?  Do they interact with PDT's?
+Should PDT's become deprecated?
+
+6.2 Type vs Type-Kind-Rank (and attributes)
+
+It would be desirable in many cases for type parameters not to be
+restricted to include kind, rank, and possibly other attributes.  For
+example, in the swap template above, could the parameter T somehow be
+used to encapsulate arrays?  For one possible approach to this, see
+the KART tutorial by V. Parkekh.
+
+6.3 Ambiguous operators in template restritions
+
+Consider a template restriction such as
+
+<< T = U + V >>
+
+Conceptuall, the operator "+" could reference an interface that
+overloads the intrinsic "+" operator, or it could be a tpe-bound
+operator associated with type U.  The algorithm expressed in the
+template works well either way.
+
+Can the restriciton mechanism be implemented in such a way as to work
+with either type of operator?
+
+6.4  Duplicate instantiations
+
+If a templated type is instantiated twice with the same actual
+template parameters is it the same actual type in both?  The usual
+rule in Fortran is that (with the exception of SEQUENCE types)
+identical types declared in different module are different types.
+However, it would very useful for developers, if identical
+instantiations were considered to be the same type.
+
+
+===END===
+
+
+
+

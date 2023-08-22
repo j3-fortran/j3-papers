@@ -1,0 +1,148 @@
+To:      J3                                        J3/14-118
+From:    Van Snyder
+Subject: Alternative to teams
+Date: 2014 February 11
+
+There are fundamental problems with the TEAM design currently under
+consideration:
+
+  o It does not coordinate well with coarrays having corank greater than
+    one,
+  o it does not support halos without hacks and kludges that are
+    antithetical to good software engineering practices, and
+  o it bloats the intellectual load of understanding Fortran by
+    unnecessarily introducing additional concepts, and concepts that are
+    parallel to but entirely different from existing concepts for
+    arrays.
+
+Using teams, programs
+
+  o would frequently need to simulate higher coranks using corank-1
+    coarrays (which wasn't necessary for arrays, even in Fortran I!),
+  o would need to use ancestor-team image indices for halo operations,
+    and
+  o could not use familiar concepts from Fortran array processing for
+    coarray processing.
+
+We don't have teams for arrays, and apparently never lamented their
+lack.  Coarrays were intended to be simple.  Let's not make them
+unnecessarily complicated.  This monograph proposes a much simpler
+system, expanding on ideas proposed informally at Delft.
+
+To associate an array identifier with a section of an array, one can
+
+  o pass the section to a procedure as an actual argument, where the
+    corresponding dummy argument has assumed shape,
+  o associate a name to a section of an array using an ASSOCIATE
+    construct, or
+  o associate a pointer to a section of an array.
+
+In all cases, the bounds of the associated array name are well-defined
+and specified by the standard.
+
+Coarrays have no concepts corresponding to these familiar actions.
+
+There is no restriction on team formation that prevents, for example,
+each image from joining team one if its image number is prime, and
+otherwise computing the smallest prime factor of its image number and
+joining that team.  This would correspond to a vector-subscripted
+section of an array.  Therefore, the present design apparently
+contemplates that processors must be prepared to use a descriptor that
+can represent such arbitrarily-complicated mappings.  It would have a
+size proportional to the number of images.  Introducing a restriction in
+the FORM TEAM statement that requires some kind of regularity would be
+complicated and confusing.
+
+If coarray cosections and copointers were provided, and the concept of
+coarray coassociation were introduced, the only restriction necessary
+would be one familiar from the array case:  No vector cosubscripts are
+allowed in these three cases.  Coarray cosections, copointers, and
+associate names coassociated with a coarray selector would all be
+coarrays.  Their image sets would be represented by a descriptor whose
+size is proportional to the corank, and probably very similar to an
+array argument or pointer descriptor.  If it would be useful, an
+additional C interoperability TS could specify how these descriptors are
+represented and used in C.
+
+Everything desired for teams, and other unnecessary complications
+contemplated in the present TS draft, could be accomplished by
+coassociation using the ASSOCIATE construct, coarray argument
+coassociation, copointer coassociation, or by reference to the image set
+corresponding to a coarray.
+
+We find it unnecessary (and maybe harmful) to contemplate cross-image
+coarray pointers, so it would not be unreasonable to prohibit copointers
+to be coarrays or components of coarrays.  If we are careful about our
+fundamental terminology and definitions, it will not be necessary to
+introduce bulky baggage entirely parallel to pointers -- neologisms like
+codisassociated, coundefined, a COASSOCIATED intrinsic, ... would not be
+needed.
+
+One can allocate an allocatable coarray having the same image set as
+another coarray using MOLD= with a coarray in an ALLOCATE statement.
+Whether to allow allocating copointers could be decided in due course.
+
+The image set of a coarray in a SYNC atatement, and other image-control
+statements such as ALLOCATE with MOLD= and DEALLOCATE, would be the set
+of images to synchronize.
+
+It is not necessary to provide a new inquiry "Is my image a member of
+the image set of that coarray?"  THIS_IMAGE would return values less
+than the cobounds in all codimensions if the answer is no.  IMAGE_INDEX
+would return zero if the answer is no.  Justification for the latter is
+that on an image that is not a member of the image set of a coarray,
+there are no valid sequences of cosubscripts.  13.7.79 says IMAGE_INDEX
+already works this way.
+
+The existence of cosections would also eliminate the need for most if
+not all collective and coreduction routines, since existing ones would
+"work" from the programmer's perspective.  Of course, "under the covers"
+they would do what is presently proposed for collectives and
+coreductions.
+
+This concept does not need
+
+  o TEAM_TYPE,
+  o TEAM_ID,
+  o ESTABLISHED,
+  o CURRENT_TEAM,
+  o SYNC TEAM,
+  o NUM_IMAGES,
+  o TEAM arguments to any intrinsic procedures,
+  o the INITIAL_TEAM variable in ISO_FORTRAN_ENV,
+  o the FORM TEAM statement,
+  o the CHANGE TEAM construct,
+  o the concepts of parent and ancestor teams,
+  o few if any reduction collectives, and
+  o maybe some other stuff I missed.
+
+It needs instead only to allow
+
+  o brackets for corank specification as an obvious extension to pointer
+    declarations,
+  o the obvious syntax for coarray cosections in actual arguments,
+    selectors, data targets, and MOLD=,
+  o the obvious syntax for lower cobound specification or corank
+    remapping in pointer association,
+  o an obvious COSIZE intrinsic function and maybe an obvious COSHAPE
+    intrinsic function (or allow a coarray argument to NUM_IMAGES, but
+    that seems a kludge that ought to be spelt COSIZE), and
+  o a COTARGET attribute for coarrays,
+
+along with nearly-obvious descriptions of what these generalizations
+mean, coterminous to existing descriptions of their corresponding array
+facilities.  Descriptions of existing reductions would need to describe
+how they operate on coarray arguments.  A description of the concept of
+the image set corresponding to a coarray is necessary (and simple).  It
+is not useful to introduce the concept of cocontiguity, so the cotarget
+in a corank-remapping pointer assignment statement would necessarily
+have corank one.  Whether to allow cosections in additional contexts,
+for example expressions and assignment, can be decided in due course.
+
+The concepts described here would be familiar to Fortran users, and
+would make the concept of teams, all the complication associated with
+them, and numerous new intrinsic procedures, entirely unnecessary for
+coarrays.
+
+If we had complicated arrays in 1990 as we're proposing to complicate
+coarrays now, nobody would use them.

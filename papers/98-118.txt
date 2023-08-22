@@ -1,0 +1,272 @@
+
+                                                                 J3/98-118
+
+Date:    12th February 1998                                               
+To:      J3
+From:    Malcolm Cohen
+Subject: Polymorphism Design Decisions
+
+This paper provides rationale for some of the design decisions reflected in
+97-230r1 (Polymorphism Specification and Illustrative Syntax), with some
+discussion on various alternatives.  It represents the views of myself only.
+
+1. Nomenclature
+
+   There are two classes of procedure reference to be provided in Fortran 2002
+   that will be dynamically dispatched; the first will be provided by the
+   "procedure pointer" feature, the second by the "polymorphism" (sic) feature.
+
+1.1 Classification by binding
+
+    One can classify dynamically dispatched procedure references by the
+    method used to determine which procedure is called.
+
+    "value-bound" -- the value of an entity determines the procedure invoked.
+                     This applies to dummy procedures and procedure pointers,
+                     which one might consider to have a "procedure value".
+
+    "object-bound" -- these are similar to "value-bound"; the difference is
+                      that in an object-oriented context:
+                         - the "procedure value" is part of a containing object
+                         - the procedure invoked has access to its object,
+                           that is, the object it is contained within.
+
+    [NB: In 97-230r1 and discussions I previously used "object-bound" as a
+         synonym for "value-bound".  This was a little sloppy.]
+
+    "type-bound" -- the type of an entity determines the procedure invoked.
+                    Dynamic dispatch only occurs when entities can have
+                    runtime types that are not statically determined (and
+                    we have this through polymorphic variables with type
+                    extension).  In an object-oriented context:
+                         - the "procedure value" is not part of an object, but
+                           a characteristic of the type of a specific object
+                         - the procedure invoked has access to this specific
+                           object.
+
+2. Goals
+
+   "Dynamic dispatch, where the procedure invoked depends on the runtime type
+    of a single object."
+
+   Sub-goals:
+     - simple to implement
+     - simple to use
+     - allows object-oriented programming
+     - efficient to use
+
+   Single dispatch is the simplest form of dynamic dispatch.
+
+3. Declaration Characteristics
+
+   The proposal has the type-bound procedures listed in the body of the
+   type definition, with the procedures themselves outside the type definition.
+
+   Why list the procedures in the type?
+     - readability and maintenance: so the programmer can look at the type
+       definition and see what type-bound procedures are included.
+     - simplicity: avoids the need for rules to determine what procedures in
+       the defining scoping-unit are type-bound procedures.
+
+   Why not put the procedures themselves into the type?
+     - it would unnecessarily bloat the type definition
+     - it would complicate the situation when several related types were
+       being declared, and a type-bound procedure of one type wished to
+       use the other types.
+
+   Why the renaming ("PROCEDURE tbpname => procname")?
+     - allows a single module to provide both a type and one or more
+       extensions with specific type-bound procedure implementations
+       for each.
+     - will be a place for attaching a set of procedures with different
+       type parameters (i.e. handles the interaction between dynamic
+       dispatch and parameterised derived types).
+
+4. Reference Syntax
+
+   97-230r1 proposes that the procedure be referenced as "variable%procname".
+   Some of the reasons supporting this choice are:
+
+   (a) This is consistent with the two other F2002 uses of the % token, viz
+           - component access
+           - type parameter access
+       In each situation the % is being used to access entities in the scope
+       of the type definition.
+
+   (b) It looks like the invocation of a procedure pointer component
+       (whether "value-bound" or "object-bound" according to my terminology);
+       this is a good thing because there is an implied indirection (viz
+       dynamic dispatch) in these situations, so the cost of the procedure
+       reference (in terms of additional overhead and lost opportunities for
+       optimisation) is similar.
+
+   (c) This syntax is consistent with the "traditional" object-oriented styles
+       of Smalltalk, where the model is one of "sending an object a message".
+       It is also consistent with the Simula style, where the model is that one
+       invokes a procedure that is inside an object.
+
+   (d) It automatically manages the namespaces, preventing the automatic
+       pollution which would occur if the procedure were invoked simply by
+       "procname" and eliminating the opportunity for the user to lose the
+       procedures by PUBLIC/PRIVATE/ONLY/rename mistakes.
+
+5. Access to the Object: Functionality
+
+   As mentioned above, in traditional object-oriented programming the
+   called procedure has access to the object through which it was invoked.
+
+   This is highly desirable, as it avoids unnecessary duplication of
+   argument names; here is a simple example:
+     !
+     ! Suppose we have a user-written "i/o channel" abstraction with
+     ! clever buffering etc.  Then we might have an array of i/o channels
+     ! (to handle multiple streams), e.g.
+     !
+     OBJECT(io_channel_type) io_channel(20)
+     !
+     ! What we want to do is things like:
+     !
+     CALL io_channel(13)%read_real_array(my_array)
+     !
+     ! And we don't want to have to write
+     !
+     CALL io_channel(13)%read_real_array(io_channel(13),my_array)
+     !
+     ! instead.
+
+6. Access to the Object: Form
+
+   Examples in this section are based on the following outline:
+
+   TYPE,EXTENSIBLE :: my_type
+     ...
+   CONTAINS
+     PROCEDURE add_i => my_type_add_i
+   END TYPE
+   ...
+   CHARACTER*20 FUNCTION my_type_add_i(m,i)
+     TYPE(my_type) m
+     INTEGER i
+     ...
+   END FUNCTION
+   ...
+   OBJECT(my_type) x
+
+   97-230r1 proposes that this access be provided by "magically" passing
+   the object through which the procedure is invoked to a type-bound
+   procedure as its first argument; thus the syntactically first actual
+   argument becomes associated with the second dummy argument.
+
+   e.g. PRINT *,x%add_i(27)
+
+   This has raised some objections since if one invoked the same procedure
+   by its name directly (i.e. not through an object via dynamic dispatch)
+   no such magic occurs - the object must be supplied as the first argument
+   directly:
+
+   e.g. PRINT *,my_type_add_i(x,27)
+
+   However, not having all the arguments following the "operator" symbol is
+   not quite as foreign to Fortran as it may first appear, since we could
+   also have done:
+
+   e.g. INTERFACE OPERATOR(+)
+          MODULE PROCEDURE my_type_add_i
+        END INTERFACE
+        ...
+        PRINT *,x + 27
+
+7. Access to the Object: Alternative Forms
+
+   It is worth noting that different object-oriented languages have provided
+   quite different syntactic facilities for access to the object through
+   which the procedure was invoked.  Here are some of the common alternatives
+   converted for F2002:
+
+   (a) via a special name, e.g. ``THIS''.
+       -- this is typical of many OO languages
+       e.g.
+          INTEGER FUNCTION my_type_add_i(i)
+            ... refer to THIS for the object
+   (b) name given by special syntax
+       -- this is used by some other OO languages
+       e.g.
+          INTEGER FUNCTION (x) my_type_add_i(i)
+            ... refer to X for the object
+   (c) name given by special clause
+       -- this is an alternative syntax to (b)
+       e.g.
+          INTEGER FUNCTION my_type_add_i(i), OBJECT_REF(x)
+            ... refer to X for the object
+   (d) Provide a more generalised facility - one that passes the object through
+       which a procedure is invoked whether the procedure is a type-bound
+       procedure or a procedure component (which thus becomes object-bound).
+       e.g.
+          TYPE,EXTENSIBLE :: my_type
+            ...
+          CONTAINS
+            PROCEDURE,MAGIC :: add_i => my_type_add_i
+            ...
+          END TYPE
+       where we can put "MAGIC" onto procedure components as well as
+       type-bound procedures.  [OK, I am not suggesting that the keyword
+       should be "MAGIC"!]
+   (e) omit the functionality altogether
+
+   These all avoid the "argument magic", but have other disadvantages:
+   (a) Since we do not want reserved words in Fortran, this only really works
+       if the procedure text is physically embedded in the type definition.
+       This bloats the type definition (see item 3. above).
+       The procedure is only callable through an object of the type.
+   (b) The syntax is ugly.
+       The procedure is only callable through an object of the type.
+   (c) The procedure is only callable through an object of the type.
+   (d) Additional typing needed for the most common case (viz a type-bound
+       procedure wants access to its invoking object); provision of true
+       "object-bound" procedures goes beyond minimalist OO.
+   (e) Omitting support for the most common paradigm of OO programming is
+       peculiar.
+
+   Naturally my preference is for the proposal as stated rather than for one
+   of these alternatives; of the alternatives I find (d) to be most acceptable,
+   with (c) or (b) being reasonable and finally (e) and (a) being unreasonable.
+
+8. Procedure Signatures
+
+   The proposal states that the signature of a type-bound procedure cannot
+   change (other than the type of the object through which it is invoked).
+   This has the highly desirable characteristic of allowing compile-time
+   type-checking for all non-polymorphic arguments.  If this is not the case,
+   type-bound procedure invocation is not type-safe.
+
+   Note that no functionality is lost by this requirement; the user can
+   program arbitrary polymorphism (covariant, contravariant, whatever)
+   himself by the use of polymorphic dummy arguments, including his own
+   explicit type tests which enable him to handle what would be "type
+   errors" (under more rigid rules) in a safe fashion.
+
+9. Final Procedures
+
+   For optimisation purposes it is desirable to be able to indicate that a
+   type-bound procedure cannot be (further) overridden in a further extension
+   of a type.  We call these "final" procedures (better suggestions for a term
+   here welcome - we probably ought to think of something else to avoid any
+   possible confusion between "final" and "finalization"!).
+
+   The illustrative syntax in the proposal does not work (it suggests that for
+   a non-final procedure the dispatching [i.e. first] argument be TYPE, and
+   for a final procedure it should be OBJECT; in fact our argument association
+   rules force this argument to be OBJECT in all cases (!) and this is not a
+   reasonable or intuitive method to distinguish between them anyway).
+   Instead, I propose that final procedures be declared with the attribute
+   FINAL (or whatever term we decide for this) in the type body, e.g.
+
+      TYPE,EXTENDS(MY_FIRST_TYPE) :: MY_SECOND_TYPE
+        ...
+      CONTAINS
+        FINAL PROCEDURE signal => second_signal
+      END TYPE
+-------------------------------------------------------------------------------
+
+...........................Malcolm Cohen, NAG Ltd., Oxford, U.K.
+                           (malcolm@nag.co.uk)

@@ -1,0 +1,118 @@
+
+                                                       J3/01-221r1
+
+Date:    17-Jun-2001
+To:      J3
+From:    interp/Stan Whitlock
+Subject: Interpretation F90/000196 (Inaccessibility of intrinsic
+         procedures)
+
+----------------------------------------------------------------------
+
+NUMBER: F90/000196
+TITLE: Inaccessibility of intrinsic procedures
+KEYWORDS: intrinsic procedure, INTRINSIC attribute, generic
+          identifier, names class
+DEFECT TYPE: Clarification
+STATUS: Passed by J3 meeting
+
+QUESTION: Note 14.2 states:
+
+  "An intrinsic procedure is inaccessible in a scoping unit containing
+  another local entity of the same class and having the same name. For
+  example, in the program fragment
+
+  SUBROUTINE SUB
+   ...
+   A = SIN (K)
+   ...
+   CONTAINS
+     FUNCTION SIN(X)
+       ...
+     END FUNCTION SIN
+  END SUBROUTINE SUB
+
+  any reference to function SIN in subroutine SUB refers to the
+  internal function SIN, not to the intrinsic function of the same
+  name."
+
+Are the following two comments about this text correct?
+
+(1) The example is not strictly correct because the resolution of the
+procedure reference "SIN" depends on the contents of the first "...":
+
+  (1a) If "..." does not contain an "INTRINSIC SIN" statement, the
+  behavior is as specified: In SUB, the name SIN is established
+  specific due to condition 14.1.2.4 part (2b), it is not established
+  generic, and the internal function SIN is referenced due to
+  14.1.2.4.2 part (3).
+
+  (1b) If "..." does contain an "INTRINSIC SIN" statement, SIN is
+  established specific as above, but also established generic due to
+  condition 14.1.2.4 (1b). So the reference is resolved according to
+  14.1.2.4.1 part (2): the intrinsic function SIN is called.
+  ( At least if there is a suitable specific function for data )
+  ( object K. If not, the reference is resolved according to   )
+  ( 14.1.2.4.1 (4) which also requires a consistent reference. )
+
+(2) The first sentence of the cited text is wrong (incomplete),
+because it does not consider the case of generic identifiers:
+
+ * Intrinsic procedures are local entities of class (1).
+ * Generic identifiers are local entities of class (1).
+ * Various instances in the standard indicate that it is possible
+   to extend the generic interface of intrinsic procedures.
+
+Consequently, in the example
+
+      MODULE my_sin
+       CONTAINS
+        LOGICAL FUNCTION lsin (x)
+          LOGICAL, INTENT(IN) :: x
+          ...
+        END FUNCTION lsin
+      END MODULE my_sin
+
+      SUBROUTINE sub
+        USE my_sin
+        INTERFACE SIN
+          MODULE PROCEDURE lsin
+        END INTERFACE SIN
+        ...
+      END SUBROUTINE sub
+
+the intrinsic procedure SIN remains accessible in SUB although that
+scoping unit contains another local entity of class (1) named SIN.
+
+ANSWER:
+
+Comment 1a is correct.
+
+Comment 1b is incorrect.
+
+SIN is a local name for the internal procedure, which is a specific
+procedure, and adding an "INTRINSIC SIN" statement is prohibited by
+14.1.2, 3rd paragraph.
+
+Comment 2 is correct.
+
+It should be remembered that notes are not normative (see 1.6.1)
+and are written in a less formal way than the text of the standard.
+
+DISCUSSION:
+
+Ordinarily, uses of intrinsic procedures are recognized automatically
+and require no explicit declaration, even if IMPLICIT NONE is in
+effect.  However, if a scoping unit contains another local entity of
+the same class and having the same name as an intrinsic procedure,
+the automatic recognition of the intrinsic procedure is prevented,
+except in the case that the local entity and intrinsic procedure are
+both generic procedures.
+
+SUBMITTED BY: Michael Hennecke
+
+HISTORY: 95-252   m135 submitted
+         95-281   m135 response WG5 approved (N1161)
+         96-      m136 X3J3 ballot failed 16-0, possible error in 2nd
+                       edit, WG5 approval removed. Barber edit applied
+         01-221r1 m157 Passed by J3 meeting

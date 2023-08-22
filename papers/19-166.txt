@@ -1,0 +1,291 @@
+To: J3                                                     J3/19-166
+From: Van Snyder
+Subject: Preliminary specifications for parameterized modules
+Date: 2019-June-14
+References: 04-153 04-383r1
+
+Parameterized modules are one proposed method to support generic
+programming.  Preliminary specifications for a parameterized module
+facility are described herein.
+
+Specifications
+==============
+
+1. A Parameterized module shall declare parameter names in its initial
+statement.  Two obvious syntax possibilities are to use a MODULE
+statment with parenthesized lists of names after the word MODULE or
+after the module name.
+
+2. The category of each parameter shall be declared within the module. 
+Declarations might be within a block so identified, or that a
+declaration applies to a module parameter could be deduced from the
+statement, or the declared name.
+
+Categories include
+
+  A. Types
+       examples:  TYPE, <some-word[-and-attribs]> :: <parameter-name>
+             e.g. TYPE, SPEC, PUBLIC :: <parameter-name>
+              or: TYPE SPEC, PUBLIC :: <parameter-name>
+       or simply: TYPE, PUBLIC :: <parameter-name>
+  B. Constants
+       example: PARAMETER :: <parameter-name>
+                any type of constant actual parameter allowed.
+            or: <declaration-type-spec>, PARAMETER :: <parameter-name>
+                Only specified type of actual parameter allowed;
+                [part of] <declaration-type-spec> might be a module
+                parameter name.
+       The value for a constant parameter cannot be specified within the
+       parameterized module; the syntax is different from an ordinary
+       named constant declaration.
+  C. Variables
+       example: 
+        <declaration-type-spec> :: <parameter-name> [ ( <array-spec> ) ]
+  D. Procedures
+       The PROCEDURE statement is probably adequate for this
+       declaration.  Although a PROCEDURE statement without a type spec
+       or interface is ambiguous whether the declared procedure is a
+       subroutine or a function, this might be the desired effect. 
+       Although it cannot specify that a procedure is a function without
+       specifying at least its result type, it could specify a type that
+       depends upon a module parameter, or specify an interface having
+       details that depend upon module parameters.
+  E. Modules (parameterized or otherwise)
+       example: MODULE :: <parameter-name>
+            or: MODULE NAME :: <parameter-name>
+
+3. Whether and how submodules can be parameterized can be decided in due
+course.
+
+4. Whether a parameterized module can only be an independent program
+unit, or can be defined within another program unit, can be decided in
+due course.
+
+5. Parameterized modules are explicitly instantiated, and can only be
+instantiated within some other program unit.  As is the case for
+accessing a non-parameterized module by use association, the instance
+does not access the module in which it is instantiated by host
+association.  The processor's internal representation of an
+instantiation ought to bear a strong resemblance to the result of
+reading an ordinary (non-parameterized) module from a .mod file.  The
+result can be considered to be an "internal module" from which entities
+can then be accessed by use association.  Whether instantiation and
+access are performed by the same statement, or instantiation is
+performed by one statement and access is performed by other statements,
+can be decided in due course.
+
+If a parameterized module is instantiated within the specification part
+of a module, the resulting internal module ought to be accessible by use
+association from the module in which it is instantiated, and then
+entities within it can be accessed by use association, from within the
+scoping unit wherein the instance is accessed.
+
+6. It is necessary to allow a parameterized module to instantiate other
+parameterized modules during its instantiation.  This allows to
+construct composite objects.  Instantiation cycles must, of course, be
+forbidden.
+
+Observations concerning parameterized modules
+=============================================
+
+As Malcolm pointed out at meeting 218, complete semantic checking of
+parameterized modules, templates, or macros cannot be carried out until
+instantiation.
+
+With the appropriate scheme of parameter declaration, however, some
+semantic checking of parameterized modules can be done before
+instantiation.  This checking is sharp in one direction only.  It could
+discover that there is no way to instantiate the module, but it cannot
+guarantee that an instantiation will be semantically correct.  For
+example, if a module parameter is declared to be a type and its name
+appears within an expression, the module cannot be instantiated.  If it
+is declared to be a constant and it appears in a variable-definition
+context, the module cannot be instantiated.  The processor need not wait
+until an attempt to instantiate the module to announce these kinds of
+errors.
+
+Difference from macros
+======================
+
+If the categories of macro arguments are not declared, the rudimentary
+semantic checking possible for parameterized modules cannot be done. 
+The processor cannot announce that there is no way to expand the macro
+to produce a semantically correct result.
+
+Difference from templates
+=========================
+
+Templates in C++ are automatically instantiated, and the processor keeps
+a database to eliminate duplicates.  The frequent complaint about a
+request for a new feature is that it imposes a cost on implementers. 
+The C++ way of doing templates would impose a much larger cost than
+macros or parameterized modules.
+
+Examples
+========
+
+These are not extended edits for Annex C!  Only one simple example.
+
+  module Sorts ( TheType )
+    type, spec :: theType ! When instantiated, actual parameter shall be
+                          ! a type name or type name with parameters
+    generic :: Sort => TheSort
+  contains
+    subroutine TheSort ( A )
+      type(theType), intent(inout) :: A(:)
+      ! Assumes theType is integer, real, character, or a derived type
+      ! with a type-bound <= operator.
+      !...
+    end subroutine TheSort
+    ! The following is an error that would prevent the module from being
+    ! instantiated: This could be detected when this program unit is
+    ! analyzed, before any instantiations.
+!   subroutine Junk ( X, Y )
+!     real, intent(in) :: X, Y
+!     print *, 42 * theType + cos(x) - sqrt(y) ! OOPS!  TheType is not
+!                                              ! a data object!
+!   end subroutine Junk
+  end module Sorts
+
+  module MyData
+    type, public :: Data_t
+      ! ...
+    contains
+      procedure :: LEQ
+      generic :: operator(<=) => LEQ
+      procedure :: Sort ! accessed from Sorts or MySort
+    end type Data_t
+    ! Notice USE statements after a type definition.  Statement
+    ! ordering rules need to be modified, or different statements
+    ! invented to instantiate, and access instantiations.
+
+    ! Instantiate the module, creating an internal module named MySort...:
+    use mySort => sorts ( data_t ) ! Instantiate only, instance named
+                                   ! MySort
+    ... and access the created internal module by use association:
+    use mySort, only: Data_t_Sort => Sort
+
+    ! Alternative that instantiates the module and accesses every public
+    ! entity:
+!   use Sorts ( data_t ) ! Instantiates and accesses the module
+!   use Sorts ( 42 ) ! an error because 42 is not a type spec
+  end module MyData
+
+  module CharacterStuff
+    use CharacterSort => sorts ( character(len=*) )
+  end module CharacterStuff
+
+  program Foo
+    use MyData, only: Data_t, Sort
+    ! Access character instantiation of Sorts parameterized module:
+    use CharacterStuff, only: CharacterSort
+    ! Access character sort routine from instantiation of Sorts that
+    ! previous USE statement accessed from CharacterStuff module
+    use CharacterSort, only: Sort
+    ! Or Sorts could be instantiated twice here if MyData and
+    ! CharacterStuff aren't needed in any other program unit
+    type ( Data_t ), allocatable :: TheData(:)
+    character(len=127), allocatable :: OtherStuff(:)
+    ! Read TheData and OtherStuff
+    ! ...
+    call sort ( theData )
+    call sort ( otherStuff )
+    ! blah blah blah
+  end program Foo
+
+Example illustrating alternative to kind-parameterized type
+===========================================================
+
+  module Interpolation ( RK )
+    integer, parameter :: RK ! Actual parameter shall be named constant
+    private
+    public :: RK
+
+    type, public :: Coefficients
+      real(rk), allocatable :: A(:), B(:) ! Linear interpolation
+      real(rk), allocatable :: C(:), D(:) ! additional for splines
+    contains
+      procedure :: Setup_Coefficients
+      procedure :: Interpolate_Using_Setup
+      procedure :: Teardown_Coefficients
+    end type Coefficients
+
+    public :: Interpolate_One_Kind ! In case somebody wants to use it
+                                   ! as an actual argument
+
+    generic, public :: Interpolate => Interpolate_One_Kind
+
+!   type(rk) :: Junk ! OOPS: RK is not a type spec
+
+  contains
+
+    subroutine Setup_Coefficients ( Coeffs, Old_X, New_X, Method )
+      class(coefficients), intent(out) :: Coeffs
+      real(rk), intent(in) :: Old_X(:), New_X(:)
+      character, intent(in) :: Method ! Begs for enumeration type
+      ! Calculate coefficients for linear interpolation
+      allocate ( a(size(new_x)), b(size(new_x)) )
+      ! ...
+      ! Calculate coefficients for spline interpolation
+      if ( method == 's' .or. method == 'S' ) &
+        & allocate ( c(size(new_x)), d(size(new_x)) )
+      ! ...
+    end subroutine Setup_Coefficients
+
+    subroutine Interpolate_One_Kind ( Old_X, Old_Y, New_X, New_Y )
+      real(rk), intent(in) :: Old_X(:), Old_Y(:), New_X(:)
+      real(rk), intent(out) :: New_Y(:)
+      type(coefficients) :: Coeffs
+      call coeffs%setup_coefficients ( old_x, new_x )
+      call coeffs%interpolate_using_setup ( old_y, new_y )
+      call coeffs%teardown_coefficients ! Not really necessary
+    end subroutine Interpolate_One_Kind
+
+    subroutine Interpolate_Using_Setup ( Coeffs, Old_Y, New_Y )
+      class(coefficients), intent(in) :: Coeffs
+      real(rk), intent(in) :: Old_Y(:)
+      real(rk), intent(in) :: New_Y(:)
+      ! ...
+      if ( allocated ( coeffs%c) ) then
+        ! Additional stuff for spline interpolation
+      end if
+    end subroutine Interpolate_Using_Setup
+ 
+    subroutine Teardown_Coefficients ( Coeffs )
+      class(coefficients), intent(out) :: Coeffs ! deallocates everything
+    end subroutine Teardown_Coefficients
+
+  end module Interpolation
+
+  module Model_Interpolators
+    use Interpolation(kind(0.0e0)), only: Coeffs_s => Coefficients
+    use Interpolation(kind(0.0d0)), only: Coeffs_d => Coefficients
+  end module Model_Interpolators
+
+or use something like a Macro DO to iterate over all real kinds
+specified in ISO_Fortran_ENV:
+
+  module Model_Interpolators
+    use, intrinsic :: ISO_Fortran_Env, only: Real_Kinds
+    @@DO @I = 1, size(real_kinds)
+      use Interpolation(real_kinds(@i)), only: Coeffs_@string(@i) => &
+        & Coefficients, Interpolate
+    @@END DO
+  end module Model_Interpolators
+
+If Coefficients were a kind-parameterized derived type, it would be
+necessary to create type-bound procedures for each expected kind.  If
+one then declared an object of type(coefficients(...)) with an
+unexpected kind, for which no type-bound procedures had been created,
+and a type-bound procedure were referenced using that object, the
+program would not compile.  This might occur long after a "library" had
+been distributed.
+
+Using a parameterized module, properly written, guarantees that there
+will always be type bound procedures that correspond to the type.
+
+Richard Maine remarked about this failure to integrate type-bound
+procedures and parameterized types approximately twenty years ago.  That
+remark was one reason why 04-153 and 04-383r1 were proposed.
+
+

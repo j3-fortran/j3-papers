@@ -1,0 +1,134 @@
+                                                                09-236r1
+To: J3
+From: Malcolm Cohen
+Subject: Procedure(), pointer: subroutine vs. function and implicit typing
+Date: 2009 August 13
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0134
+TITLE: Implicit typing of procedure pointers
+KEYWORDS: procedure pointer, implicit type
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Q1. Are procedure pointer components implicitly typed?
+
+That is, considering
+
+  PROGRAM implicitppc
+    EXTERNAL proc
+    TYPE t
+      PROCEDURE(),POINTER,NOPASS :: ptr
+    END TYPE t
+    TYPE(t) :: i
+    i%ptr => proc
+    PRINT *,i%ptr()
+  END PROGRAM
+
+is this program standard-conforming and if so, what is the type of the
+procedure pointer component PTR?
+
+In J3/04-007 one finds (p. 93, ll. 8-11)
+5.3 "Any data entity that is not explicitly declared by a type
+     declaration statement, is not an intrinsic function, and is not
+     made accessible by use association or host association is
+     declared implicitly to be of the type (and type parameters)
+     mapped from the first letter of its name, provided the mapping is
+     not null."
+
+Q2. Are ambiguous procedure pointers allowed?
+
+That is, considering
+
+  SUBROUTINE ppOne(do_the_subroutine)
+    LOGICAL :: do_the_subroutine
+    EXTERNAL some_subroutine, some_function
+    PROCEDURE(), POINTER :: proc_pointer
+
+    IF (do_the_subroutine) THEN
+      proc_pointer => some_subroutine
+      CALL proc_pointer(5)
+    ELSE
+      proc_pointer => some_function
+      y = proc_pointer(7)
+    END IF
+  END SUBROUTINE
+
+(a) Does the subroutine ppOne conform to the Fortran standard?
+(b) If yes, does a subroutine with the "if"/"else"/"end if" lines
+    removed conforms to the standard?
+
+In J3/04-007 one finds (p. 145, ll. 2-4)
+
+7.4.2.2 "If proc-pointer-object has an implicit interface and
+   is explicitly typed or referenced as a function, proc-target shall
+   be a function. If proc-pointer-object has an implicit interface
+   and is referenced as a subroutine, proc-target shall be a subroutine."
+
+
+Q3. If ambiguously-typed procedure pointers are allowed, are they
+    still allowed with IMPLICIT NONE?  That is, considering
+
+    IMPLICIT NONE ! p is not implicitly typeable
+    REAL, EXTERNAL :: func
+    PROCEDURE(), POINTER :: p1
+    PROCEDURE(REAL),POINTER :: p2
+    REAL y
+
+    p1 => func  ! A
+    p2 => p1    ! B
+    y = p2()
+    END PROGRAM
+
+are the procedure pointer assignments A and B standard-conforming?
+
+In J3/04-007 one finds (p.146, ll. 36-38; p. 145, ll. 2-6)
+
+7.4.2.2 Procedure pointer assignment
+  "If the proc-target is not a pointer, proc-pointer-object becomes
+   pointer associated with proc-target. Otherwise, the pointer
+   association status of proc-pointer-object becomes that of
+   proc-target; if proc-target is associated with a procedure,
+   proc-pointer-object becomes associated with the same procedure.
+   [...]
+   If proc-pointer-object has an implicit interface and is explicitly
+   typed or referenced as a function, proc-target shall be a
+   function. If proc-pointer-object has an implicit interface and is
+   referenced as a subroutine, proc-target shall be a subroutine.
+
+   If proc-target and proc-pointer-object are functions, they shall
+   have the same type; corresponding type parameters shall either both
+   be deferred or both have the same value."
+
+ANSWER:
+
+(1) No, procedure pointer components are never implicitly typed.  The
+    quoted text from the standard does not apply to components; if it
+    did apply to components, data components would also be implicitly
+    typed and that would be a contradiction.  A clarifying edit is
+    provided.
+
+(2) Yes, ambiguous procedure pointers are allowed.  However, a
+    procedure pointer is only ambiguous if it is neither referenced as
+    a subroutine nor as a function.  Therefore, as the quoted text
+    from the standard indicates, the example is not conforming.
+
+(3) No, a procedure pointer with no type can only be ambiguous if
+    there is a valid implicit type mapping for the initial letter of
+    its name.  Therefore, with IMPLICIT NONE, PROCEDURE() declares
+    a subroutine with an implicit interface, the same as EXTERNAL.
+
+EDITS:
+
+[93:9] After "function," insert "is not a component,".
+{Components are never implicitly typed.}
+
+SUBMITTED BY: Tobias Burnus
+
+HISTORY: 09-236    m189  Submitted
+         09-236r1  m189  Revised with draft answer
+
+----------------------------------------------------------------------

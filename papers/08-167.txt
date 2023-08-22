@@ -1,0 +1,329 @@
+To: J3                                                        08-167
+From: Bill Long
+Subject: Reply to J3/08-126
+Date: 2008 April 28
+References: J3/08-126
+
+At the beginnning of J3 meeting 183 (joint with WG5), a research group
+from Rice University submitted a paper with comments on
+coarrays. Given the timing, it was not practical to form a complete
+reply at the meeting. A subgroup was tasked with forming a reply after
+the meeting ended.  Below is that Reply, written primarily by Bill
+Long, John Reid, and Aleks Donev.  It was sent to the authors of
+08-126 by email on March 12, 2008.
+
+===============================================================
+
+Response to paper J3/08-126.  12-Mar-2008.
+
+The HPC subgroup of J3 appreciates the support of coarrays and
+critical commentary of the feature in paper J3/08-126, "A Critique of
+Co-array Features in Fortran 2008". We encourage continued
+participation by the Rice group in the Fortran standards process.
+
+At J3 meeting 183, and the concurrent and collocated WG5 meeting, held
+February 11-15, 2008 in Las Vegas, the coarray feature in the Fortran
+2008 draft was split into two parts. The basic syntax and coarray
+variable declarations, the SPMD execution model, the memory model
+based on segments, the SYNC ALL, SYNC IMAGES, and SYNC MEMORY
+statements, the ALL STOP statement and program termination semantics,
+and the CRITICAL construct were retained in the base Fortran 2008
+proposal.  These features represent a minimal coarray facility and
+correspond, for the most part, to features that have been available
+and proven in existing implementations.  The remaining features,
+mainly related to TEAMs and collective intrinsic subroutines, were
+moved to a proposed Technical Report (TR). The current schedule calls
+for the TR to be published one year after the main standard.  This
+allows more time to develop these features, and allows vendors more
+time for implementation.
+
+At the meeting an editorial proposal was approved that removes the
+hyphen from the word "co-array" and related terms beginning with
+"co-". This reply uses this new naming convention.
+
+In the context of the revised strategy, following are responses to the
+comments made in J3 paper 08-126.
+
+Locks
+-----
+
+We found the proposal to add a lock / unlock facility to the standard
+very compelling, and feel that this functionality is sufficiently
+useful that it should be added to the base language, rather than being
+deferred to the TR.
+
+We believe two new statements, LOCK and UNLOCK, would provide the
+needed capability.  Statements are preferred to intrinsic subroutines
+because the semantics for coindexed actual arguments would not apply
+to a statement. Statements also avoid conflicts with existing user
+subroutine names, and obviate the need to include the "CALL " syntax.
+
+A LOCK statement would require specification of a lock variable of an
+opaque derived type, and optionally SUCCESS, STAT, and ERRMSG
+specifiers.  If a SUCCESS specifier appears, the LOCK statement could
+complete even if acquisition of the lock was not successful.  If the
+SUCCESS specifier does not appear, the statement would not complete
+until the specified lock was acquired.  The STATUS and ERRMSG
+specifiers provide the same functionality as in the SYNC ALL
+statement.
+
+An UNLOCK statement would require specification of a lock variable, and
+optionally STAT and ERRMSG specifiers. Execution of the UNLOCK
+statement would release the specified lock.
+
+Because of the timing of paper J3/08-126, it was not possible to
+submit a paper to add LOCK and UNLOCK to the standard at meeting 183.
+Instead, we ask that your group submit a request for a lock/unlock
+feature when the window for submitting public comment on the standard
+opens in the near future.  The nature of how comments are processed
+strongly favors narrowly focused comments in cases where a change is
+requested to the text of the standard.  You are, of course, welcome to
+submit other comments separately.
+
+
+General reductions
+------------------
+
+We found the argument for a generalized facility for performing
+reductions across images to be compelling.  Because this would be
+implemented as a collective subroutine, it would be proposed as part
+of the TR.
+
+We believe this capability is provided by a CO_REDUCE collective
+subroutine, with coarray, result, and procedure arguments. The
+procedure argument would specify a user-supplied function with two
+arguments, both of the same type and type parameters as the coarray
+argument, and returning a result with the same type and type
+parameters as the result argument.
+
+If a CO_REDUCE function is added, it is possible that some of the
+currently documented collective subroutine could be removed as
+redundant.  The current feeling is that the need for CO_SUM is
+widespread, so the ability to optimize that operation justifies a
+separate subroutine. The other cases are less clear, and suggestions
+are welcome as part of a public comment on this issue.
+
+
+Atomic memory operations
+------------------------
+
+Some vendors already support atomic memory operations through added
+intrinsic procedures, so this area is a reasonable candidate for
+standardization.  The common candidates are atomic compare and swap,
+fetch and integer add, and integer add.  In cases where a separate
+hardware increment instruction is available, the compiler can detect a
+1 in the add versions and generate the correct instruction.
+
+We also discussed, as a possible feature for f08, an ATOMIC construct
+that would provide a syntax for atomic operations.  That proposal did
+not make the feature cut for this revision.
+
+We feel that the urgency for this feature is somewhat reduced if the
+lock/unlock statements are available. It is also the case that
+constructs like
+
+  critical
+    a[1] = a[1] + 1
+  end critical
+
+can be compiled as atomic memory operations already. Access to the
+functionality of the fetch and add operation is less obvious, and
+would benefit from standardization. As with the lock case, the current
+rules for coindexed arguments are problematic. We might consider
+exempting certain intrinsic procedures, given that the atomic
+operations are most naturally represented as procedure references.
+
+Atomic memory operations are not necessarily tied to coarrays.  For
+example, they might be used in a DO CONCURRENT construct acting on
+variables local to the executing image.  Therefore, it is not clear
+that they should be candidates for the TR, or better suited for the
+base language in this or the next revision.
+
+
+Critical constructs
+-------------------
+
+Critical constructs protect a code sequence from concurrent execution
+by more than one image. Examples include the update of a shared
+variable (see above), or coordinating output to a shared file. They
+are not necessarily designed as ways to protect data objects. However,
+they could be extended through the addition of a lock variable on the
+CRITICAL statement, as in
+
+    critical (lock_var)
+
+    end critical
+
+that would specify a lock specific to this critical construct, and
+hence provide locking local to a team of images.  The END CRITICAL
+statement would implicitly release the lock. This is effectively the
+same as starting the block with a LOCK statement and ending it with an
+UNLOCK statement, but adds the facilities of a block construct and
+automatic release of the lock. Assuming that the lock/unlock
+statements are already present in the language, there should be no
+extra implementation effort with the above enhancement.
+
+If you think this is a useful addition, requesting it through a public
+comment is appropriate. Since the critical construct is intended to be
+part of the base language, it would be reasonable to include this
+enhancement there.
+
+
+Split-phase barriers
+--------------------
+
+The NOTIFY and QUERY statements were moved to the TR as part of the
+reorganization described above.  As originally designed, these can be
+used to provide a split barrier. In addition, the SYNC IMAGES
+statement can be used with a similar effect, particularly for
+wave-front type computations.  In all cases, the barriers identify
+image numbers.
+
+We are open to redesigning the syntax and semantics of NOTIFY and
+QUERY (and even changing the names) to better accomplish the goals of
+splitting a barrier operation between a 'signal' and 'wait' phase. For
+simplicity, we would prefer to have only one set of such statements.
+
+
+SYNC ALL
+--------
+
+While SYNC ALL could be considered redundant with a special form of
+SYNC TEAM, we need this capability in the base standard, from which
+teams are initially excluded.  In addition, in existing practice, the
+use of SYNC ALL is significantly higher than all the other
+synchronization primitives, so a separate statement seems appropriate.
+
+
+Formation of teams
+------------------
+
+The FORM_TEAM intrinsic is allowed (even expected) to perform timings
+to determine optimal remote reference patterns for subsequent team
+synchronizations or collective operations.  It does not tell you which
+images are "close" in advance. A new intrinsic function could return
+an array of the distances, in time, to some or all the other images,
+or, alternatively, an array of the N closest images. Suggetions on the
+specific definition of such an intrinsic would be welcome. The result
+value might be used to form a locally fast team.  This could be
+implemented using some of the same technology as in FORM_TEAM, and
+would not require changing the simple image number identification
+scheme.
+
+
+Multiple codimensions
+---------------------
+
+We discussed the issue of multiple codimensions at meeting 183 and
+voted to keep them.  While they are not applicable in every problem,
+in the fairly common cases of 2 or 3 dimension decomposition of a
+large array across a grid of images, they provide a natural accessing
+mechanism that simplifies code development and maintenance. The
+collection of cosubscripts directly reduces to an image number, so
+implementation of multiple codimensions is trivial.  Thus, there seems
+to be little justification to deny availability to users for whom
+multiple codimensions are useful.
+
+
+Global pointers
+---------------
+
+Global pointers (in the sense of UPC) or arrays (in the sense of HPF)
+could be added to Fortran with the addition of a GLOBAL attribute. We
+see some issues with this direction.  One of the basic concepts in the
+coarray model, that remote references are graphically visible to the
+programmer through the [] notation, would be lost. The memory model
+would have to assume that any reference or definition of such an
+object involves remote data.  In the case of global arrays, the
+question of how the data is distributed arises, though "processor
+dependent" is probably the simplest option.  Given the departure from
+the current model, we think global pointers and arrays are not
+appropriate for either the base Fortran 2008 language or the associated
+TR.  If usage experience exposes a justification for this feature, it
+could be a proposal for the next revision of the standard.
+
+
+Team memory allocations
+-----------------------
+
+A coarray that is allocated on only a subset of the images (or,
+equivalently, with a different size on each image) has been discussed in
+the past, and syntax proposed.  However, this capability is already
+available through allocatable (or pointer) components of coarray
+structures, so the idea was dropped in the interest of simplicity.
+
+The existing allocatable coarrays are required to be the same size on
+all images to allow their allocation on a symmetric heap.  This is a
+performance advantage since the remote address of a reference can be
+deduced from locally available data.  Allocatable coarrays that do not
+meet this constraint, including the allocatable components mentioned
+above, generally require access information from the remote
+image. This performance hit might be small in cases where large
+amounts of data are transferred, but could be significant (2x) for
+scalar references.
+
+One could contemplate an environment with multiple symmetric heaps,
+but we suspect the implementation difficulties of this would result in
+significant vendor resistance, and might not result in the desired
+performance.
+
+If you feel there is a need for the syntax of top-level asymmetric
+coarrays, we encourage you to submit a public comment.  Given that
+this capability is related to teams of images, action on this comment
+would be taken with respect to the TR rather than the base language
+document.
+
+
+Remote procedure execution
+--------------------------
+
+The ability for one image to directly initiate execution of a code
+sequence on a different image was intentionally omitted from the
+design of Fortran with coarrays. This capability dramatically
+complicates the memory consistency model and implementation of the
+language.  With the current design, compilers know that the code
+execution sequence is visible, and hence the usual optimization
+techniques are available. It is expected that at least some
+implementations would execute multiple threads per image, but those
+would be for local automatic parallelism and OpenMP, under local
+execution control, and hence optimizable. Given Fortran's target
+audience, the ability to generate optimized code is an overriding
+concern.
+
+With the lock/unlock facility and Fortran's object oriented
+capabilities, a user could construct a work queue system that would
+allow an image to post a work request that a remote image could
+execute after checking the queue. Such a scheme might be reasonable if
+the alternative is large volumes of data transferred among images.
+
+
+Remote data allocation
+----------------------
+
+The ability for one image to execute a memory allocation operation on
+a different image was intentionally omitted from the design of
+Fortran with coarrays. The reasons are essentially the same as why
+remote procedure execution is not supported.
+
+The current design does provide a very flexible mechanism, through
+pointer components of coarrays, that provides access to memory on a
+different image.  The allocation of the memory is always local, as is
+the pointer association.  This significantly simplifies the memory
+model as well as the implementation.
+
+
+Multi-version variables
+-----------------------
+
+Variables with specific producer / consumer capabilities make most
+sense on a hardware platform with many threads per computation core
+(so some other computation occurs during the wait period) and
+full/empty bits in the memory hardware (so the synchronization time is
+minimal). Adding a SYNC attribute to a variable's declaration seems
+sufficient to support this capability. Such an extension already
+exists in at least one compiler.  While hardware of this nature
+exists, it is very uncommon.  If that were to change in the future,
+modifying the language to incorporate this capability is
+straightforward.  Without hardware support, software-only
+implementations would be likely result in disappointing performance.
+

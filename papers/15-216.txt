@@ -1,0 +1,114 @@
+                                                    J3/15-216
+To:        J3 Members
+From:      Steve Lionel
+Subject:   F2008 interp: Can initial-data-target be coindexed?
+Date: 2015 August 14
+
+----------------------------------------------------------------------
+
+NUMBER: F08/00145
+TITLE: Can initial-data-target be coindexed?
+KEYWORDS: initialization, pointers, coarrays
+DEFECT TYPE: ! /interp assigns
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+In pointer assignment, the standard is quite clear that data-target
+cannot be coindexed:
+
+C725 (R737) A data-target shall not be a coindexed object.
+
+And there are a couple of notes related to this:
+
+NOTE 7.45
+A data pointer and its target are always on the same image. A coarray
+may be of a derived type with pointer or allocatable subcomponents. For
+example, if PTR is a pointer component, Z[P]%PTR is a reference to the
+target of component PTR of Z on image P. This target is on image P and
+its association with Z[P]%PTR must have been established by the
+execution of an ALLOCATE statement or a pointer assignment on image P.
+
+NOTE 7.46
+A pointer assignment statement is not permitted to involve a coindexed
+pointer or target, see C723 and C725. This prevents a pointer
+assignment statement from associating a pointer with a target on
+another image. If such an association would otherwise be implied, the
+association status of the pointer becomes undefined. For example, a
+derived-type intrinsic assignment where the variable and expr are on
+different images and the variable has an ultimate pointer component.
+
+Fortran 2008 added the ability to specify an initial-data-target in
+pointer initialization:
+
+R505 initialization is = constant-expr
+                    or => null-init
+                    or => initial-data-target
+R506 null-init      is function-reference
+
+C510 (R503) If => appears in initialization, the entity shall have the
+POINTER attribute. If = appears in initialization, the entity shall not
+have the POINTER attribute.
+
+C511 (R503) If initial-data-target appears, object-name shall be
+data-pointer-initialization compatible with it (4.5.4.6).
+
+Initial-data-target is defined in 4.5.4.6 and the only relevant
+constraint for it is:
+
+C461 (R443) The designator shall designate a nonallocatable variable
+that has the TARGET and SAVE attributes and does not have a vector
+subscript. Every subscript, section subscript, substring starting
+point, and substring ending point in designator shall be a constant
+expression.
+
+The definition of "data-pointer-initialization compatible" is:
+
+"A pointer variable or component is data-pointer-initialization
+compatible with a target if the pointer is type compatible with the
+target, they have the same rank, all nondeferred type parameters of the
+pointer have the same values as the corresponding type parameters of
+the target, and the target is contiguous if the pointer has the
+CONTIGUOUS attribute."
+
+Given this, is initializing a pointer to a coindexed object permitted?
+
+For example:
+
+program test
+integer, save, target :: C[*]
+integer, pointer :: P => C[3] ! Permitted?
+end
+
+While ordinary pointer assignment to a coindexed object is prohibited
+by C725, there is no corresponding constraint prohibiting such
+association by way of data pointer initialization.
+
+Note that 16.5.2.5p1(2) says that pointer-assigning to a target on a
+different image causes the pointer to become undefined. Since the
+initialization occurs on all images, and it's not possible to restrict
+the target to only the same image, the effect would be to make a
+program that does this nonconforming.
+
+ANSWER:
+
+No, this was not intended to be permitted. A clarifying edit is
+provided.
+
+EDITS to 10-007r1:
+
+[70:3] 4.5.4.6
+
+In the first sentence of C461, insert ", noncoindexed" after
+"nonallocatable" so that the sentence reads:
+
+C461 (R443) The designator shall designate a nonallocatable,
+noncoindexed variable that has the TARGET and SAVE attributes and
+does not have a vector subscript.
+
+SUBMITTED BY: Steve Lionel
+
+HISTORY: yy-nnn    m208  F08/nnnn submitted
+
+
+----------------------------------------------------------------------

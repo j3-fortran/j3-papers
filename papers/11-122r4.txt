@@ -1,0 +1,61 @@
+iTo: J3                                                     11-122r4
+From: John Reid/Toon Moene/Bill Long
+Subject: Interop: Example re changing attributes
+Date: 2011 February 18
+References: N1838, N1844, ISO/IEC 1539-1:2010
+
+DISCUSSION
+
+The Fortran programmer might pass an array with one attribute, say
+allocatable, to an array with another, say assumed-shape. The Fortran
+system takes care of this. From C, the C programmer needs to do a bit
+of work.
+
+Edits are provided to show an example.
+
+
+EDITS to N1838:
+
+[21:17+] At the start of A.2 Clause 5 notes, add the subsection title
+"A.2.1 Dummy arguments of any type and rank"
+
+[22:33+] Add
+
+
+A.2.2 Changing the attributes of an array
+
+A C programmer might want to call more than one Fortran procedure and
+the attributes of an array involved might differ between the procedures.
+In this case, it is desirable to set up more than one C descriptor for
+the array.  For example, this code fragment initializes two C
+descriptors of rank 2, calls a procedure that allocates the array
+described by the first descriptor, copies the base_addr pointer and dim
+array to the second descriptor, then calls a procedure that expects an
+assumed-shape array.
+
+  CFI_DESC_T(2) loc_alloc, loc_assum;
+  CFI_cdest_t * desc_alloc = (CFI_cdest_t *)&loc_alloc,
+              * desc_assum = (CFI_cdest_t *)&loc_assum;
+  CFI_dim_t dims[2];
+  int rank = 2, flag;
+
+  flag = CFI_establish_cdesc(desc_alloc,
+                             NULL,
+                             CFI_attribute_allocatable,
+                             CFI_type_double,
+                             sizeof(double),
+                             rank,
+                             dims[]);
+
+  Fortran_factor (desc_alloc, ...); /* Allocates array described by desc_alloc */
+
+  /* Use dim information from the allocated array in the assumed shape one */
+  flag = CFI_establish_cdesc(desc_assum,
+                             desc_alloc->base_addr,
+                             CFI_attribute_assumed,
+                             CFI_type_double,
+                             sizeof(double),
+                             rank,
+                             dims[]);
+
+  Fortran_solve (desc_assum, ...); /* Uses array allocated in Fortran_factor */

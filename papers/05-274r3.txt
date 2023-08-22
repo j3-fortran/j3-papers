@@ -1,0 +1,644 @@
+
+                                                    J3/05-274r3
+
+Date:    10-Nov-2005
+To:      J3
+From:    Bill Long
+Subject: BITS feature J3-047, Specs and Syntax.
+References: J3/03-278r1, J3/04-244, J3/05-150r1, J3/05-188
+-----------------------------------------------------------------
+
+Note: This paper incorporates the change to the BITS proposal decided
+at J3 meeting 173 to make the KIND of a BITS literal constant be
+determined by the form of the constant.
+
+Summary:
+========
+
+A new data type, BITS, is added. Variables and constants of type BITS
+are ordered sequences of bits. They simplify and enhance the use of
+Fortran for several types of non-numeric problems, such as pattern
+matching, searching and sorting, and low level bit manipulation, as
+well as allowing for more clarity in the text of the standard. A BITS
+intrinsic data type also provides a way to standardize several common
+Fortran language extensions, and provides a rational method for
+dealing with BOZ constants. A method for declaring objects of type
+BITS is provided as well as rules on how such objects interact with
+existing Fortran objects. Associated intrinsic procedures are also
+provided.  The BITS proposal introduces two incompatibilities with the
+Fortran 2003 standard. The new type name could conflict with the name
+of an existing user defined type, and the new operator, .xor., with a
+priority just above that of a user defined operator, could conflict
+with an existing user defined operator.
+
+Specification and Syntax:
+=========================
+
+Discussion of objects of type BITS requires a concept of the size of
+an object in number of bits. The term "bit size" is used to denote the
+number of bits in an object.  The named constant NUMERIC_STORAGE_SIZE
+is defined in the ISO_FORTRAN_ENV intrinsic module.
+
+
+Declarations and constants 
+--------------------------
+
+The bits type has values that are contiguous, ordered sequences of
+bits. The <<bit size>> of an object of type bits is the number of bits
+in the sequence, which shall be greater than or equal to zero. A
+processor shall provide bits kinds with bit size values of zero
+through at least four times NUMERIC_STORAGE_SIZE. Each provided bit
+size is characterized by a value for a type parameter called the KIND
+type parameter. The value of the KIND parameter is the bit size of the
+object. The KIND type parameter is of type default integer. The KIND
+type parameter value of a bits object is returned by the intrinsic
+inquiry function KIND.
+
+The type specifier for the bits type uses the keyword BITS.
+
+If the kind parameter is not specified for a BITS variable, the
+default kind value is NUMERIC_STORAGE_SIZE, and the type specified is
+default bits.
+
+If the kind parameter is not specified for a BITS literal constant,
+the kind value is assumed from the form of the constant.  If the
+constant is a <binary-constant> the kind value is the number of
+<digit> characters. If the constant is an <octal-constant> the kind
+value is three times the number of <digit> characters. If the constant
+is a <hex-constant> the kind value is four times the number of
+<hex-digit> characters.
+
+Any bits value may be represented as a <boz-literal-constant>, or a
+concatenation of multiple <boz-literal-constant>s.
+
+(The f03 description of BOZ constants, [37:1-18], would be moved
+to the bits subsection of 4.4, and constraint C410 deleted.)
+
+The digits of octal constants represent triples of bits, and the
+digits of hexadecimal constants represent quartets of bits, according
+to their numerical representations as binary integers, with leading
+zero bits where needed. 
+
+A trailing <kind-param> is allowed for a BOZ constant. If the
+<kind-param> specified has a value greater than the kind assumed from
+the number of <digit>s or <hex-digit>s in the constant, the constant
+is padded on the left with enough 0 bits to create a constant of kind
+<kind-param>.  If the <kind-param> specified has a value smaller than
+the kind assumed from the number of <digit>s or <hex-digit>s in the
+constant, bits on the left are removed to create a constant of kind
+<kind-param>.
+
+Note: Though the processor is required to provide bit sizes up to four
+times NUMERIC_STORAGE_SIZE, it is expected that the actual size limit
+is much larger, based on system capacity constraints. Use of BITS
+objects with KIND values equal to small integer multiples of
+NUMERIC_STORAGE_SIZE should result in more aggressive optimization.
+[end note]
+
+Bits compatible types
+---------------------
+
+The category of nonnumeric types is expanded to include bits and
+numeric sequence types are expanded to include components of type
+default bits. A <<bits compatible type>> is BITS, LOGICAL, a numeric
+type, or a numeric sequence type. The bit size of an object is
+provided by the intrinsic function COMPATIBLE_BITS_KIND. A reference
+to this function is an initialization expression that may be used as a
+kind value in a declaration statement.
+
+A nonpointer nonallocatable scalar object of type default BITS
+occupies a single numeric storage unit.  A nonpointer nonallocatable
+scalar object of type BITS with a kind value that is an integer
+multiple of the kind value of default bits occupies that multiple of
+consecutive numeric storage units. The ordering of these consecutive
+numeric storage units is processor dependent. A nonpointer
+nonallocatable scalar BITS object with nondefault KIND occupies an
+unspecified storage unit as described in item (6) of the list in
+16.4.3.1.
+
+Two objects with the same bit size occupy the same amount of storage.
+
+Note: A nonpointer nonallocatable scalar BITS object with a KIND value
+that is not an integer multiple of the bit size of a numeric storage
+unit may be stored in a memory region larger than the minimum required
+to represent the value. This allows for data alignments that may be
+needed for efficient execution. Each element of a BITS array has the
+same padding in memory as a scalar BITS object of the same
+kind. Padding is not allowed for BITS objects with a KIND value that
+is an integer multiple of the bit size of a numeric storage unit.
+
+As an example, an integer kind might be provided with a range of -128
+through +127, requiring 8 bits to represent values on a system using
+an integer radix of 2. The bit size of an such an integer would be
+8. The compatible bits kind would be BITS(8).  If the implementation
+uses 32 bits of storage for this kind of integer (including 24 bits of
+pad) then the implementation shall also use 32 bits of storage for a
+BITS(8) object. In that case, an array of type BITS(8) and size 10
+would occupy 40 bytes of memory.
+[end note]
+
+
+Assignment
+----------
+
+A bits intrinsic assignment statement is an intrinsic assignment
+statement for which the variable or the expression is of type BITS.
+Intrinsic assignment of a bits expression to a bits compatible type
+variable of the same bit size moves the bits from the expression value
+to the variable without data conversions. Intrinsic assignment of a
+bits compatible type expression to a bits variable of the same
+bit size transfers the bits from the expression value to the variable
+without data conversion. If the expression value has a smaller
+bit size than that of the variable, the expression value is padded
+with bits of zero on the left so that the bit sizes are equal. If the
+expression value has a larger bit size than that of the variable, the
+expression value is truncated on the left to the bit size of the
+variable.
+
+The bits intrinsic assignment rules apply to data initializations
+in declaration statements, DATA statements, and default component
+initializations.
+
+Note: Bits assignment is not always the same as the result of the
+TRANSFER intrinsic. The TRANSFER operation is based on the memory
+image of the data, while bits assignment is based on the data
+values.  For example, if S is a 32-bit integer array of size 8, and R
+is a 64-bit bits array of size 8, R = TRANSFER(S,R) will result in
+the values of S packed into the first 4 elements of R.  The way in
+which this packing is done will be different on little endian and big
+endian machines.  The bits assignment, R = S, will result in all 8
+elements of R being defined, where R(i) contains the bits from S(i) in
+the right 32 bits, and 0 in the left 32 bits.  Bits assignment
+does not depend on which endian the processor's memory system uses.
+[end note]
+
+Intrinsic operations 
+--------------------
+
+The .and., .or., .xor., .eqv., .neqv., and .not. operators are defined
+for bits operands. .xor. is the exclusive or operation, and is a
+synonym for .neqv.  The computations are bitwise operations. The
+result of the expression evaluation is bits.  If the operands are of
+unequal bit size, the one with the smaller bit size is padded on the
+left with zero bits before the operation is performed. The result bit
+size is that of the larger operand.
+
+The .and., .or., .xor., .eqv., and .neqv. operators are defined for
+one bits and one integer operand. The integer operand value is
+interpreted as a bits value of the same bit size and the operation is
+performed for the two bits values.
+
+The .xor. operator is defined for LOGICAL operands. The result is of
+type LOGICAL and has the value .false. if both operand are .false. or
+both operands are .true. and has the value .true. otherwise.
+
+The .eq., .ne., .lt., .le., .gt., .ge., ==, /=, <, <=, >, and >=
+operators are defined for bits operands.  If the operands are of
+unequal bit size, the one with the smaller bit size is padded on the
+left with zero bits before the operation is performed. Operands A and
+B are equal if their corresponding bits are the same, and are unequal
+otherwise. If A and B are unequal, and the leftmost unequal
+corresponding bit of A is 1 and of B is 0, then A > B, otherwise A <
+B.
+
+The .eq., .ne., .lt., .le., .gt., .ge., ==, /=, <, <=, >, and >=
+operators are defined for one bits operand and one non-bits operand of
+a bit compatible type. The non-bits operand value is interpreted as a
+bits value of the same bit size and the operation is performed for the
+two bits values.
+
+The // intrinsic operator is defined for bits operands. The result is
+a bits object with a bit size equal to the sum of the bit sizes of the
+operands, and with a value of the concatenation of the bits in the
+left and right operands.
+
+The numeric intrinsic operations are not defined for bits objects to
+avoid the need to provide arbitrary precision arithmetic
+operations. To use a bits object as an operand of a numeric intrinsic
+operator, it must first be converted to an appropriate type with a
+type conversion intrinsic function.
+
+
+Formatted Input and Output 
+--------------------------
+
+The format specifiers for bits objects are I, B, O, and Z. For
+output, if the .d part of the Bw.d, Ow.d, or Zw.d specifier is
+omitted, the value assumed for d is >= 1 and large enough to represent
+the bits in the io list item excluding leading 0 bits.  For the I
+format specifier, the object value is interpreted as an unsigned base
+10 integer.  For input using the B, O, and Z edit descriptors, the
+character string shall consist of binary, octal, or hexadecimal digits
+in the respective input field. For input using the I format, the input
+character string shall consist of an unsigned decimal integer.
+
+For list directed output, the format used is Zw.d where w and d have
+reasonable processor-dependent values. At least one character shall be
+output. For list directed input, hexadecimal constants are used for
+bits io list items. The number of bits required to represent the input
+value shall be less than or equal to the bit size of the corresponding
+io list item. If it is less, the io list item is padded with zero bits
+on the left.
+
+Integration Note: The final description for the G0 edit descriptor
+will need to account for BITS i/o list items.
+
+Procedure actual and dummy arguments and pointers
+-------------------------------------------------
+
+BITS pointers may be associated with bits compatible type targets that
+have the same bit sizes and compatible rank.
+
+A BITS object is TKR compatible with a bits compatible type object
+with the same bit size and the same rank.  Thus, BITS dummy arguments
+of non-intrinsic procedures may be associated with bits compatible
+type actual arguments having the same rank and bit size. BITS actual
+arguments to non-intrinsic procedures may be associated with bits
+compatible type dummy arguments having the same rank and bit size.  A
+BITS dummy argument and a bits compatible dummy argument with the same
+rank and bit size cannot be used for generic disambiguation.
+
+A generic reference with a BITS actual argument will resolve only to a
+specific that has the corresponding argument of type BITS.
+
+A generic reference may resolve to a specific with a BITS dummy
+argument if the corresponding actual argument is of bits compatible
+type and has the same bit size and rank.
+
+The generic resolution rules for BITS arguments are intended to
+preserve the current Fortran philosophy that there is only one
+non-intrinsic non-elemental specific to which a generic reference can
+resolve.
+
+Note: This feature can significantly simplify the interfaces for
+procedures that move data in memory, but do not perform any operations
+on the data. Classic examples include dusty-deck codes containing MOVE
+or COPY routines, as well as some MPI library routines written in C with
+dummy arguments of type void.
+[end note]
+
+Modification of existing language intrinsics:
+---------------------------------------------
+
+Section 13.3 of the standard, describing Bit Models, is modified to
+apply to bits quantities. The model parameter <z> is the bit size of
+the scalar bits object. A bits object consists of <z> bits in sequence
+numbered from right to left from 0 to <z>-1. The specifications for
+several intrinsic procedures are modified to allow bits actual
+arguments. 
+
+The I argument of ACHAR shall be of type integer or bits. If I is
+bits, it is interpreted as an unsigned integer value.
+
+The I argument of BIT_SIZE shall be of type integer or bits.  If I
+is bits, the result value is KIND(I).
+
+The I argument of CHAR shall be of type integer or bits. If I is
+bits, it is interpreted as an unsigned integer value.
+
+The X and Y arguments of CMPLX shall be of type integer, real,
+complex, or bits. Note that bits is a generalization and
+replacement for the current "or a <boz-literal-constant>".
+
+The A arguments of DBLE shall be of type integer, real, complex, or
+bits. Note that bits is a generalization and replacement for
+the current "or a <boz-literal-constant>".
+
+The X argument of HUGE shall be of type integer, real, or bits.
+If X is bits, the result value has all bits set to 1.
+
+The I and J arguments of IAND, IEOR, and IOR shall be of type integer
+or bits, and have the same bit size. The result is of type integer
+if one of the arguments is integer, and bits otherwise.
+
+The I argument of BTEST, IBCLR, IBITS, and IBSET shall be of type
+integer or bits.
+
+The A argument of INT shall be of type integer, real, complex, or
+bits. Note that bits is a generalization and replacement for
+the current "or a <boz-literal-constant>". If A is bits, the
+result value is that of an intrinsic assignment of A to an integer
+variable of the specified KIND.
+
+The I arguments of ISHFT and ISHFTC shall be of type integer or
+bits.
+
+The X argument of KIND is specified as "any intrinsic type", so no
+change is needed.
+
+The A* arguments of MAX and MIN shall be of type integer, real,
+character, or bits. If the arguments are bits, the meaning of
+"largest" in the result value description is as specified by the >
+operator for bits values.
+
+The ARRAY arguments of MAXLOC, MINLOC, MAXVAL, MINVAL, CO_MAXLOC,
+CO_MINLOC, CO_MAXVAL, and CO_MINVAL shall be of type integer, real,
+character, or bits.
+
+The FROM and TO arguments of MVBITS shall be of type integer or
+bits.
+
+The I argument of NOT shall be of type integer or bits.
+
+The HARVEST argument of RANDOM_NUMBER shall be of type real or bits.
+If the argument is of type bits, the result value consists of a
+pattern of KIND(HARVEST) bits, with each bit having a 0.5 probability
+of being 1.
+
+The A argument of REAL shall be of type integer, real, complex, or
+bits. Note that bits is a generalization and replacement for
+the current "or a <boz-literal-constant>". If A is bits, the
+result value is that of an intrinsic assignment of A to a real
+variable of the specified KIND.
+
+New intrinsic procedures from HPF added at the Delft meeting:
+-------------------------------------------------------------
+
+The IALL, IANY, IPARITY, and PARITY intrinsics from HPF were moved
+from the HPF intrinsics proposal (RU-005, see spec paper 05-185 and
+edits paper 05-246r1) to the BITS proposal.  They are the same as
+described in the HPF 2.0 document except that for IALL, IANY, and
+IPARITY, the ARRAY argument may be of type bits as well as type
+integer.
+
+IALL is a bitwise analog of the ALL intrinsic, and returns a bitwise
+.and. reduction of the elements of the ARRAY argument selected by the
+DIM and MASK arguments.
+
+IANY is a bitwise analog of the ANY intrinsic, and returns a bitwise
+.or. reduction of the elements of the ARRAY argument selected by the
+DIM and MASK arguments.
+
+The PARITY intrinsic has a logical MASK argument and an optional DIM
+argument. The result is a .neqv. reduction of the elements of the MASK
+argument selected by the DIM argument. Note that this intrinsic is not
+related to bits, but is included because the IPARTIY intrinsic is bits
+related.
+
+IPARITY is a bitwise analog of the PARITY intrinsic, and returns a
+bitwise .xor. reduction of the elements of the ARRAY argument selected
+by the DIM and MASK arguments.
+
+Parallel to the extensions added for other reduction intrinsics by the
+co-array proposal (UK-001), the functions CO_IALL, CO_IANY, CO_PARITY,
+and CO_IPARITY are also added.
+
+
+Additional new intrinsic functions:
+-----------------------------------
+
+COMPATIBLE_BITS_KIND(X) :  Result: default scalar integer
+                               X : object of a bits compatible type
+
+
+The result value is the bit size of a non-pointer scalar object with
+the same type and kind as X.
+
+If X is of type bits, the result value is KIND(X).
+
+If X is of type default integer, default real, or default logical the
+result value is NUMERIC_STORAGE_SIZE, which is defined in the
+ISO_FORTRAN_ENV intrinsic module.  IF X is of type double precision or
+default complex the result value is 2*NUMERIC_STORAGE_SIZE. If X is of
+type complex with the same KIND value as that of double precision the
+result value is 4*NUMERIC_STORAGE_SIZE.
+
+If X is of a non-default INTEGER type, the result value is
+BIT_SIZE(X).
+
+If X is of a non-default non-integer numeric or LOGICAL type, the
+result value is the number of bits of storage used by the processor to
+represent scalar objects of that type and kind.
+
+If X is of a numeric sequence type, the result value is the sum of the
+bit sizes of the scalar components plus the size of each array
+component times the bit size of the corresponding array elements.
+  
+
+SELECTED_BITS_KIND(Z) :   Result: default scalar integer 
+                             Z  : scalar integer
+
+Z is a number of bits. The result value is Z if the processor supports
+bits objects of Z bits, and -1 otherwise.
+
+Note: The default bits kind is
+SELECTED_BITS_KIND(NUMERIC_STORAGE_SIZE)
+[end note]
+
+BITS(A[,KIND]) :   Result: bits 
+                   A     : object of a bits compatible type
+                   KIND  : integer initialization expression
+
+The result is a bits value with the same bit pattern as the argument
+A, possibly padded with zero bits on the left, or truncated on the
+left if the bit sizes of A and the result are not equal.  BITS is an
+elemental function, and it cannot be an actual argument.  If KIND is
+present, the kind type parameter of the result is that specified by
+the value of KIND; otherwise the kind type parameter of the result is
+that of default bits.
+
+
+POPCNT(I[,KIND]) : Result: integer
+                   I     : bits or integer
+                   KIND  : integer initialization expression
+
+The result is the number of bits set to 1 in the argument. This
+function is adopted from HPF and extended to allow bits
+arguments. POPCNT is an elemental function, and it cannot be an actual
+argument.  If KIND is present, the kind type parameter of the result
+is that specified by the value of KIND; otherwise the kind type
+parameter of the result is that of default integer.
+
+
+POPPAR(I[,KIND]) : Result: integer, 0 or 1 
+                   I     : bits or integer
+                   KIND  : integer initialization expression
+
+The result is 0 if the number of bits set to 1 in the argument is
+even, and 1 if the number of bits set to 1 in the argument is odd.
+This function is adopted from HPF and extended to allow bits
+arguments. POPPAR is an elemental function, and it cannot be an actual
+argument.  If KIND is present, the kind type parameter of the result
+is that specified by the value of KIND; otherwise the kind type
+parameter of the result is that of default integer.
+
+
+LEADZ(I[,KIND])  : Result: integer
+                   I     : bits or integer
+                   KIND  : integer initialization expression
+              
+The result is the number of leading 0 bits in the argument.  This
+function is adopted from HPF and extended to allow bits
+arguments. LEADZ is an elemental function, and it cannot be an actual
+argument. If KIND is present, the kind type parameter of the result is
+that specified by the value of KIND; otherwise the kind type parameter
+of the result is that of default integer.
+
+
+TRAILZ(I[,KIND]) : Result: integer
+                   I     : bits or integer
+                   KIND  : integer initialization expression
+
+The result is the number of trailing 0 bits in the argument.  TRAILZ
+is an elemental function, and it cannot be an actual argument. If KIND
+is present, the kind type parameter of the result is that specified by
+the value of KIND; otherwise the kind type parameter of the result is
+that of default integer.
+
+
+SHIFTL(I,SHIFT) : Result: bits 
+                  I     : bits or integer 
+                  SHIFT : integer, >= 0
+
+The result is the value I shifted left by SHIFT bits, with 0 bits
+filled on the right. If SHIFT is greater than the storage size of I in
+bits, the result value bits are all 0. SHIFTL is an elemental
+function, and it cannot be an actual argument. If I is bits, the
+result KIND is the same as that of I. If I is integer, the result KIND
+is the bit size of I.
+
+
+SHIFTR(I,SHIFT) : Result: bits 
+                  I     : bits or integer 
+                  SHIFT : integer, >= 0
+
+The result is the value I shifted right by SHIFT bits, with 0 bits
+filled on the left. If SHIFT is greater than the storage size of I in
+bits, the result value bits are all 0. SHIFTR is an elemental
+function, and it cannot be an actual argument. If I is bits, the
+result KIND is the same as that of I. If I is integer, the result KIND
+is the bit size of I.
+
+
+SHIFTA(I,SHIFT) : Result: bits 
+                  I     : bits or integer 
+                  SHIFT : integer, >= 0
+
+The result is the value I shifted right by SHIFT bits, with copies of
+the leftmost bit filled on the left. If SHIFT is greater than the
+storage size of I in bits, the result value bits are all 0 if the
+leftmost bit of I is 0, or the result value bits are all 1 if the
+leftmost bit of I is 1. SHIFTA is an elemental function, and it cannot
+be an actual argument. If I is bits, the result KIND is the same as
+that of I. If I is integer, the result KIND is the bit size of I.
+
+
+DSHIFTL(I,J,SHIFT) : Result: bits 
+                     I     : bits or integer 
+                     J     : same type and kind as I 
+                     SHIFT : integer, 0 <= SHIFT <= bit size of I
+
+The result is the value of I shifted left by SHIFT bits, with the
+rightmost SHIFT bits of I replaced by the leftmost SHIFT bits of
+J. This is equivalent to concatenating I and J, shifting the combined
+value left SHIFT bits, and keeping the left half.  If I and J are the
+same, the result is the same as a left circular shift. DSHIFTL is an
+elemental function, and it cannot be an actual argument. If I is bits,
+the result KIND is the same as that of I.  If I is integer, the result
+KIND is the bit size of I.
+
+
+DSHIFTR(I,J,SHIFT) : Result: bits 
+                     I     : bits or integer 
+                     J     : same type and kind as I 
+                     SHIFT : integer, 0 <= SHIFT <= bit size of I
+
+The result is the value of J shifted right by SHIFT bits, and the
+leftmost SHIFT bits of J replaced by the rightmost SHIFT bits of
+I. This is equivalent to concatenating I and J, shifting the combined
+value right SHIFT bits, and keeping the right half.  If I and J are
+the same, the result is the same as a right circular shift. DSHIFTR is
+an elemental function, and it cannot be an actual argument. If I is
+bits, the result KIND is the same as that of I.  If I is integer, the
+result KIND is the bit size of I.
+
+
+MASKL(I[,KIND])  : Result: bits 
+                   I     : integer, in range [0..KIND(result)]
+                   KIND  : integer initialization expression
+
+
+The result is a bits value with the leftmost I bits set to 1 and the
+remaining bits set to 0. The value of I shall be >= 0 and <= the bit
+size of the result.  MASKL is an elemental function, and it cannot be
+an actual argument.  If KIND is present, the kind type parameter of
+the result is that specified by the value of KIND; otherwise the kind
+type parameter of the result is that of default bits.
+
+
+MASKR(I[,KIND] ) : Result: bits 
+                   I     : integer, in range [0..KIND(result)]
+                   KIND  : integer initialization expression
+
+
+The result is a bits value with the rightmost I bits set to 1 and the
+remaining bits set to 0. The value of I shall be >= 0 and <= the bit
+size of the result.  MASKL is an elemental function, and it cannot be
+an actual argument.  If KIND is present, the kind type parameter of
+the result is that specified by the value of KIND; otherwise the kind
+type parameter of the result is that of default bits.
+
+
+MERGE_BITS(I,J,MASK) : Result: bits 
+                       I     : bits 
+                       J     : bits, same kind as I 
+                       MASK  : bits, same kind as I 
+                       
+The result is a bits value with bits from I if the corresponding bits
+in MASK are 1 and the bits from J if the corresponding bits in MASK
+are 0.  Equivalent to (I .and. MASK) .or. (J .and. (.not. MASK))
+MERGE_BITS is an elemental function, and it cannot be an actual
+argument. The kind type parameter of the result is the same as the
+kind type parameter of I.
+
+
+Interoperation with C:
+----------------------
+
+Bits objects interoperate with C objects of the same bit size,
+including C unsigned integer objects. If a bits object is the
+actual argument corresponding to an unsigned integer parameter of
+a C function, or the unsigned integer result of a C function is
+assigned to a bits variable, the I format can be used to output
+the correct form of the C value.
+
+Example:
+--------
+
+program bits_example
+implicit none
+
+integer,parameter       :: byte = selected_int_kind(1) 
+integer(byte)           :: i
+integer(byte),target    :: it
+integer,parameter       :: cbk_byte = compatible_bits_kind(i)
+bits(cbk_byte),pointer  :: bp
+bits(cbk_byte)          :: b
+
+i = z"ff"
+it = i
+bp => it
+
+b = ishft(ishft(i,4),-4)
+print *, b
+b = shiftr(shiftl(bp,4),4)
+print *, b
+b = i
+b = shiftr(shiftl(b,4),4)
+print *, b
+
+end program bits_example
+
+Execution of this program will produce three lines of output:
+ 0F
+ 0F
+ 0F
+
+
+History:
+========
+
+   J3/03-278r1 (initial proposal, meeting 166)
+   J3/04-244   (updated proposal, meeting 167)
+   J3/05-150r1 (updated proposal, meeting 171)
+   J3/05-188   (updated proposal, meeting 172)

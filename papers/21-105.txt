@@ -1,0 +1,181 @@
+To: J3                                                     J3/21-105
+From:    John Reid
+Subject: Interpretation F18/015
+Date: 2021-February-10
+Reference: 18-007r1, 20-130.txt, 20-132.txt
+
+INTRODUCTION
+
+Nathan Weeks has pointed out to me that there are three problems with 
+the new code for C.6.8 in 20-130.txt, as (slightly) amended in 
+20-132.txt, viz
+
+1. The variable images_used is incremented only on image 1 but is 
+referenced by other images near the beginning and end of DO outer. 
+
+2. The intention is that on each cycle of the DO iter loop, a 
+calculation is performed on the worker images and if any of them fail 
+during this, the calculation is resumed from a checkpoint with the
+failed images replaced by spares. On resumption, the variable 
+read_checkpoint should have the value true on all the worker images
+so that they access the checkpoint data. On a replacement image,
+this variable will still have its initial value of false. 
+
+3. The code for choosing the number of spares does not correspond to 
+the comment for it. 
+
+SUGGESTED CHANGES
+  
+1.  The statement 
+    IF (THIS_IMAGE () > images_used) done = done[1]  
+near the end of DO outer may be replaced by
+    IF (team_number == 2) done = done[1] 
+which avoids problem 1 here and I think it is an improvement anyway. 
+A simple solution for the use of images_used near the beginning
+of DO outer is to make it a coarray and use images_used[1]. This
+will need the addition of a SYNC ALL statement just before the 
+statement 
+    outer : DO
+to ensure that the correct value is used on all images on the
+first iteration of the loop. 
+
+2. The variables start and read_checkpoint are not needed. The initial 
+entry is just the special case of the checkpoint data being null so 
+that the calculation needs to be started. Removing these variables 
+will also make the code easier to understand. I suggest the following 
+changes:
+   Change the statement
+           CALL simulation_procedure (read_checkpoint, status, done)
+   to
+           CALL simulation_procedure (status, done)
+   Remove all the other statements that contain "read_checkpoint".
+   Remove all the statements that contain "start".
+
+   In the iter DO loop change this comment
+           !  - resets to the last checkpoint if requested;
+   to
+           !  - resumes from checkpoint data if available;
+           !  - stores checkpoint data for all images from time to 
+           !  - time and always before successful return;
+
+3. In the line
+  images_spare = MAX(NUM_IMAGES()/100,0,MIN(NUM_IMAGES()-10,1))
+change "10" to "9".   
+
+
+REVISED CODE
+
+Here is the code with these changes made. Each changed line is flagged
+with "!!" at the line end. Omitted lines are not flagged. 
+
+PROGRAM possibly_recoverable_simulation
+  USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY:TEAM_TYPE, STAT_FAILED_IMAGE
+  IMPLICIT NONE
+  INTEGER, ALLOCATABLE :: failures (:) ! Indices of the failed images.
+  INTEGER, ALLOCATABLE :: old_failures(:) ! Previous failures.
+  INTEGER, ALLOCATABLE :: map(:) ! For each spare image k in use, 
+             ! map(k) holds the index of the failed image it replaces.
+  INTEGER :: images_spare ! No. spare images.
+                          ! Not altered in main loop.
+  INTEGER :: images_used [*] ! On image 1, max index of image in use.!!
+  INTEGER :: failed ! Index of a failed image.
+  INTEGER :: i, j, k ! Temporaries
+  INTEGER :: status ! stat= value
+  INTEGER :: team_number [*] ! 1 if in working team; 2 otherwise.  
+  INTEGER :: local_index [*] ! Index of the image in the team.
+  TYPE (TEAM_TYPE) :: simulation_team
+  LOGICAL :: done [*] ! True if computation finished on the image.
+
+  ! Keep 1% spare images if we have a lot, just 1 if 10-199 images,
+  !                                             0 if <10.
+  images_spare = MAX(NUM_IMAGES()/100,0,MIN(NUM_IMAGES()-9,1))       !!
+  images_used = NUM_IMAGES () - images_spare
+  ALLOCATE ( old_failures(0), map(images_used+1:NUM_IMAGES()) )
+  SYNC ALL (STAT=status)                                             !!
+
+  outer : DO
+    local_index = THIS_IMAGE ()
+    team_number = MERGE (1, 2, local_index<=images_used[1])          !!
+    SYNC ALL (STAT = status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+    IF (IMAGE_STATUS (1) == STAT_FAILED_IMAGE) &
+        ERROR STOP "cannot recover"
+    IF (THIS_IMAGE () == 1) THEN
+    ! For each newly failed image in team 1, move into team 1 a
+    ! non-failed image of team 2.
+       failures = FAILED_IMAGES () ! Note that the values
+                   ! returned by FAILED_IMAGES increase monotonically.
+       k = images_used
+       j = 1
+       DO i = 1, SIZE (failures)
+          IF (failures(i) > images_used) EXIT ! This failed image and
+          ! all further failed images are in team 2 and do not matter.
+          failed = failures(i)
+          ! Check whether this is an old failed image.
+          IF (j <= SIZE (old_failures)) THEN
+             IF (failed == old_failures(j)) THEN
+                j = j+1
+                CYCLE ! No action needed for old failed image.
+             END IF
+          END IF
+          ! Allow for the failed image being a replacement image.
+          IF (failed > NUM_IMAGES()-images_spare) failed = map(failed)
+          ! Seek a non-failed image
+          DO k = k+1, NUM_IMAGES ()
+            IF (IMAGE_STATUS (k) == 0) EXIT
+          END DO
+          IF (k > NUM_IMAGES ()) ERROR STOP "cannot recover"
+          local_index [k] = failed
+          team_number [k] = 1
+          map(k) = failed
+       END DO
+       old_failures = failures
+       images_used = k 
+       ! Find the local indices of team 2
+       j = 0
+       DO k = k+1, NUM_IMAGES ()
+            IF (IMAGE_STATUS (k) == 0) THEN
+            j = j+1 
+            local_index[k] = j
+          END IF
+       END DO
+    END IF
+    SYNC ALL (STAT = status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+    !
+    ! Set up a simulation team of constant size.
+    ! Team 2 is the set of spares, so does not participate.
+    FORM TEAM (team_number, simulation_team, NEW_INDEX=local_index, &
+               STAT=status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+
+    simulation : CHANGE TEAM (simulation_team, STAT=status)
+      IF (status == STAT_FAILED_IMAGE) EXIT simulation
+      IF (team_number == 1) THEN
+         iter : DO
+           CALL simulation_procedure (status, done)                  !!
+           ! The simulation_procedure:
+           !  - sets up and performs some part of the simulation;
+           !  - starts from checkpoint data if these are available;  !!
+           !  - stores checkpoint data for all images from time to   !!
+           !  - time and always before return;                       !!
+           !  - sets status from its internal synchronizations;
+           !  - sets done to .TRUE. when the simulation has completed.
+           IF (status == STAT_FAILED_IMAGE) THEN
+              EXIT simulation
+           ELSE IF (done) THEN
+              EXIT iter
+           END IF
+         END DO iter
+      END IF
+    END TEAM (STAT=status) simulation 
+
+    SYNC ALL (STAT=status)
+    IF (team_number == 2) done = done[1]                             !!
+    IF (done) EXIT outer
+  END DO outer
+  IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) &
+    PRINT *,'Unexpected failure',status
+END PROGRAM possibly_recoverable_simulation
+
+

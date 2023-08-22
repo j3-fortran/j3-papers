@@ -1,0 +1,139 @@
+To: J3                                                     J3/18-255
+From: Dan Nagle
+Subject: new types from old
+Date: 2018-October-01
+
+
+I Introduction
+
+In modern, complex analysis programs, many physical variables
+will be required.  In many instances, these different quantities
+will be represented by the same computational forms.  However,
+the underlying physical quantities are semantically distinct.
+Thus, the type system does not, in the most straight-forward
+manner possible, support expression of the simulation.
+
+For example, an atmospheric analysis program may use
+rank 3 arrays of 64-bit real to store densities of various gasses,
+such as CO2, CH4, and H2O.  These gasses are very different,
+and likely should be processed as different types.  But the density
+of each is described adequately by a single real quantity
+at each point in space.
+
+If a derived type is invented for each gas, each invented derived
+type will have a single component, to wit, the real density value.
+The result is that every reference to the array must be replaced
+by the array name qualified by the component name.  In a substantial-
+sized program, this conversion is tedious and error-prone.
+
+
+II Use-cases
+
+Consider
+
+real, dimension( :, :, :) :: h2o
+real, dimension( :, :, :) :: co2
+real, dimension( :, :, :) :: ch4
+
+If each gas is to be processed separately, procedures will be written
+to compute the analysis for each gas.
+
+So
+
+real function analyze_water( water_array)
+
+real function analyze_cardondioxide( carbondioxide_array)
+
+real function analyze_methane( methane_array)
+
+will be defined.
+
+However, as written, the type system provides no help in assuring
+that the water array is passed to the analyze water procedure,
+rather than, for example, to the methane procedure.  This is because
+all three analysis routines take TKR = real, real64, rank-3 arguments,
+and so appear identical to the compiler.
+
+If one tried to define derived types with a single component,
+say
+
+type :: water
+   real :: density
+end type water
+
+type( water), dimension( :, :, :) :: h2o
+
+then all occurrences of h2o( i, j, k) must be replaced
+by h2o( i, j, k)% density
+
+The value added by this decoration is unclear.
+
+If, however, a new type may be made without the current derived type
+decoration, it will help resolve the issue.
+
+So
+
+type, new :: water => real( real64)
+
+then one may code
+
+type( water), dimension( :, :, :) :: h2o
+
+and subsequent references to h2o need not be disturbed.
+
+If the new type participates in generic resolution, then the type system
+can help assure that the water array is passed only to the water routine,
+and so on.
+
+So
+
+type, new :: water => real( real64)
+type, new :: carbondioxide => real( real64)
+type, new :: methane => real( real64)
+
+and then
+
+type( water), dimension( :, :, :) :: h2o
+type( carbondioxide), dimension( :, :, :) :: co2
+type( methane), dimension( :, :, :) :: ch4
+
+and the type system prevents calling the analyze_water procedure
+with a co2 or ch4 argument because the type is wrong.
+
+But all the rest of the services available to real( real64) quantities
+are available to arrays h2o, co2, ch4.
+
+
+
+III What I have in mind
+
+I propose that a way be defined to allow a new type to be defined
+that would associate a new name with an existing type, perhaps
+qualified by a kind parameter.
+
+Thus, as above,
+
+type, new :: name => old-type
+
+where old-type is a type name and a possible set of kind parameters.
+It does not include rank.
+
+The new type has all the operations, assignment, i/o formats, and
+intrinsic procedures as the original.  But the new name is treated
+as a different type for generic resolution.  Entities of these new types
+may appear in any standard-specified context as entities
+of the original type.
+
+
+
+IV (Rough) Requirements
+
+A means be made to make a name refer to a type and possibly type
+parameters that has all the assignments, operations, intrinsic procedures,
+and i/o formats of the original type (or type/kind) but
+is treated as distinct for purposes of disambiguation
+of generic references.
+
+
+
+

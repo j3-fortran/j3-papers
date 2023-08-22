@@ -1,0 +1,203 @@
+To: J3                                                     J3/20-105
+From: John Reid
+Subject: Interpretation F18/015 (Example in C.6.8)
+Date: 2020-February-21
+References: 18-007r1, 19-228
+
+----------------------------------------------------------------------
+
+1. Introduction
+Interpretation F18/015 failed its ballot. Here is a summary of the 
+reasons:
+
+Steve Lionel: 
+History is missing - paper was 19-182 (passed as 19-182r3).
+
+John Reid:
+    This example is rather hard to understand. I would like to
+    suggest adding and changing comments.
+
+Malcolm Cohen:
+    I agree with John Reid that the example remains hard to understand.
+    However, the changes he proposes are very extensive, and I disagree
+    with at least the first one: "me" is a coarray so does not have the
+    image index of the "executing image" when viewed from other images.
+    The comment also made me question why "me" does not have a more
+    descriptive name in the first place. Finally, and more seriously,
+    it seems to me that the FORM TEAM statement is not conforming for
+    images in team 2, as it appears that they will be specifying NEW_INDEX
+    values that are out of range.
+
+    Stylistically, I also question why the CHANGE TEAM construct is not
+    inside "IF (id==1) THEN" instead of putting its body within
+    "IF (TEAM_NUMBER()==1) THEN".
+
+  Daniel Chen:
+    I agree with John and Malcolm that the example needs more work.
+
+  Ondrej Certik:
+    I agree with John and Malcolm that the example needs more work.
+
+  Jon Steidel:
+    Agree with others this example needs work;
+    As Steve noted, history is missing paper number 19-182.
+
+  Srinath Vadlamani:
+    The edits appear to address the concerns with the example,
+    though I have not executed the code itself.
+
+  Bill Long:
+    One of the purposes of the examples in the Annex is
+    clarification of a language feature. While the changes
+    proposed correct some errors, the goal of clarification seems
+    not quite achieved. I agree with others that more work might
+    be helpful here, rather than going through a bunch of edits
+    in an interp only to have to redo many of them in the future.
+
+  Reuben Budiardja:
+    The provided edits corrected some errors on the example, but
+    more issues have been raised by other J3 members such that it would be
+    better to work on the example more thoroughly.
+
+  Dan Nagle:
+    I agree with the comments Bill Long made on F18/015.
+
+In working on it, I noticed a new error: add "THEN" to the ELSE IF 
+statement at line 6 of page 545.  
+
+Addressing all these points seems to require a rewrite of the whole 
+example with correction of errors, better choice of names, and more 
+comments. The changes are too extensive to make it worthwhile to 
+provide a list of edits. I suggest that the edit consist of the 
+replacement of the whole example. Here is a suggestion for that 
+replacement. 
+
+The changes in the code from that in 19-228 are as follows:
+
+1. Declarations separated out and many comments added or changed.
+
+2. Logical variable start added to distinguish the first execution of
+the outer do loop when read_checkpoint should be false.
+
+3. Renamings: me->local_index, id->team_number
+
+4. Code added to calculate the local indices of team 2.
+
+5. THEN add to ELSE IF (done) statement. 
+
+PROGRAM possibly_recoverable_simulation
+  USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY:TEAM_TYPE, STAT_FAILED_IMAGE
+  IMPLICIT NONE
+  INTEGER, ALLOCATABLE :: failures (:) ! Indices of the failed images. 
+  INTEGER, ALLOCATABLE :: old_failures(:) ! Previous failures.
+  INTEGER, ALLOCATABLE :: map(:) ! For each spare image k in use, 
+             ! map(k) holds the index of the failed image it replaces.
+  INTEGER :: images_spare ! No. spare images. Not altered in main loop. 
+  INTEGER :: images_used ! Max index of image in use
+  INTEGER :: failed ! Index of a failed image
+  INTEGER :: i, j, k ! Temporaries
+  INTEGER :: status ! stat= value
+  INTEGER :: team_number [*] ! 1 if in working team; 2 otherwise.  
+  INTEGER :: local_index [*] ! Index of the image in the team
+  TYPE (TEAM_TYPE) :: simulation_team
+  LOGICAL :: read_checkpoint ! If read_checkpoint true on 
+     ! entering simulation_procedure, go back to previous check point. 
+  LOGICAL :: done [*] ! True if computation finished on the image
+  LOGICAL :: start ! True initially.
+
+  ! Keep 1% spare images if we have a lot, just 1 if 10-199 images, 
+  !                                                      0 if <10.
+  images_spare = MAX(INT(0.01*NUM_IMAGES()),0,MIN(NUM_IMAGES()-10,1))
+  images_used = NUM_IMAGES () - images_spare
+  ALLOCATE ( old_failures(0), map(images_used+1:NUM_IMAGES()) )
+  start = .true.
+  
+  outer : DO
+    local_index = THIS_IMAGE ()
+    team_number = MERGE (1, 2, local_index<=images_used)
+    SYNC ALL (STAT = status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+    IF (IMAGE_STATUS (1) == STAT_FAILED_IMAGE) &
+        ERROR STOP "cannot recover"
+    IF (THIS_IMAGE () == 1) THEN
+    ! For each newly failed image in team 1, move into team 1 a 
+    ! non-failed image of team 2.
+       failures = FAILED_IMAGES () ! Note that the values 
+                   ! returned by FAILED_IMAGES increase monotonically.
+       k = images_used
+       j = 1
+       DO i = 1, SIZE (failures)
+          IF (failures(i) > images_used) EXIT ! This failed image and 
+          ! all further failed images are in team 2 and do not matter. 
+          failed = failures(i)
+          ! Check whether this is an old failed image.
+          IF (j <= SIZE (old_failures)) THEN
+             IF (failed == old_failures(j) ) THEN
+                j = j+1
+                CYCLE ! No action needed for old failed image. 
+             END IF
+          END IF
+          ! Allow for the failed image being a replacement image
+          IF( failed > NUM_IMAGES()-images_spare ) failed = map(failed)
+          ! Seek a non-failed image
+          DO k = k+1, NUM_IMAGES ()
+            IF (IMAGE_STATUS (k) == 0) EXIT
+          END DO
+          IF (k > NUM_IMAGES ()) ERROR STOP "cannot recover"
+          local_index [k] = failed
+          team_number [k] = 1
+          map(k) = failed
+       END DO
+       old_failures = failures
+       images_used = k 
+       ! Find the local indices of team 2
+       j = 0
+       DO k = k+1, NUM_IMAGES ()
+            IF (IMAGE_STATUS (k) == 0) THEN
+            j = j+1 
+            local_index[k] = j
+          END IF
+       END DO
+    END IF
+    SYNC ALL (STAT = status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+    !
+    ! Set up a simulation team of constant size.
+    ! Team 2 is the set of spares, so does not participate.
+    FORM TEAM (team_number, simulation_team, NEW_INDEX=local_index, &
+               STAT=status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+    
+    simulation : CHANGE TEAM (simulation_team, STAT=status)
+      IF (status == STAT_FAILED_IMAGE) EXIT simulation
+      IF (start) read_checkpoint = .FALSE.
+      start = .FALSE.
+      IF (team_number == 1) THEN
+         iter : DO
+           CALL simulation_procedure (read_checkpoint, status, done)
+           ! The simulation_procedure:
+           !  - sets up and performs some part of the simulation;
+           !  - resets to the last checkpoint if requested;
+           !  - sets status from its internal synchronizations;
+           !  - sets done to .TRUE. when the simulation has completed.
+           IF (status == STAT_FAILED_IMAGE) THEN
+              read_checkpoint = .TRUE.
+              EXIT simulation
+           ELSE IF (done) THEN
+              EXIT iter
+           END IF
+           read_checkpoint = .FALSE.
+         END DO iter
+      END IF
+    END TEAM (STAT=status) simulation 
+
+    SYNC ALL (STAT=status)
+    IF (THIS_IMAGE () > images_used) done = done[1]
+    IF (done) EXIT outer
+  END DO outer
+  IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) &
+    PRINT *,'Unexpected failure',status
+END PROGRAM possibly_recoverable_simulation
+
+
+ 

@@ -1,0 +1,333 @@
+
+                                                        J3/03-154r2
+
+To: J3
+From: Dan Nagle
+Subject: Edits for UK comment TC1 (More support for ISO 10646)
+Date: 2003 Apr 03
+
+>
+>Additions to 154r1 are marked thus.
+>These chnages add internal files of ASCII type.
+>
+
+1. Comment TC1
+
+   Provide more support for ISO 10646.  
+
+    ISO 10646 support is incomplete in that there is no support for:
+    - any of the file formats defined by ISO 10646; different file
+      format choices will inhibit portability,
+    - reading/writing numeric data to/from 10646 variables, and
+    - mixing ASCII and 10646 data, despite 10646 being a superset of ASCII.
+    Additionally, there are restrictions on reading/writing ASCII
+    characters in a 10646 environment which appear to be impossible to
+    check.
+
+    The following features should be added to the standard to correct this:
+    - allow the file format to be specified (to be UTF-8).
+    - reading/writing numeric data to 10646 variables.
+    - reading default character or ASCII data into 10646 variables.
+    - assignment of default character or ASCII variables to 10646 variables.
+    These requirements only to apply to processors which support ISO 10646.
+
+    Edits will be needed to sections 4.4.4, 7.4.1, 9.4.5.8 and 10.6
+    (pages 38, 139-140, 183 and 224).
+
+2. The effect of ISO 10646
+
+The nondefault character features of F95 were designed in the 1980s and
+were based on experience of handling extended character sets in byte-based
+systems with the help of escape characters. The number of bytes needed for
+a character varied so there was no hope of standardizing position editing
+when a nondefault character was skipped (see [232:8-9]).
+
+ISO 10646 changes this significantly. Every character has a standardized
+4-byte representation and there are standardized methods for compressing a
+string of 4-byte characters into strings of octets (UTF-8) or 16-bit values
+(UTF-16). If the file is known to be UTF-8 formatted, the system can decode
+each record read into a buffer of 4-byte characters, and can encode each
+record written from such a buffer (or base its processing on this
+model). Position editing becomes possible.
+
+3. Discussion
+
+- (7-bit) ASCII is a 1-byte-coded proper subset of ISO 10646.  It is not
+  possible to detect, by examining the file contents, the difference between
+  an ASCII formatted file and a UTF-8 formatted file with all characters <=127,
+  because they are bit-for-bit identical.
+
+- People who are doing internationalised i/o using our facilities deserve
+  similar support to those doing plain ASCII.  They should certainly be able to
+  read whole records into 10646 variables for parsing, and be able to use the
+  numeric conversion facilities on substrings thereof, without having to
+  manually convert, character by character using ACHAR and IACHAR substrings,
+  to default character.
+
+- From F90 to F95, due to typesetting difficulties, we lost the international
+  characters in what is now 4.4.4, note 4.14.  It's trivial to do Greek letters
+  and maths symbols in LaTeX, so this should be improved.  Preferably the F90
+  example could be reinstated.  (There were examples of Cyrillic, Hindi,
+  Magyar and Nihongo characters in section 4.3.2.1).
+
+- Converting 7-bit ASCII to ISO 10646 is trivial, as it is a proper subset.
+  The only vendor we know to have EBCDIC for default character does not
+  consider this extra wrinkle to be problematic, as the necessary conversion
+  tables are already present for the ACHAR and IACHAR intrinsics.
+
+- There are at least two obvious ways of specifying a file format of UTF-8: the
+  simplest is to allow FORM="UTF-8" as specifying not only that the file is
+  formatted but also that its encoding form is UTF-8; the other is to add a new
+  i/o specifier, e.g. ENCODING="UTF-8".  In either case, for backward
+  compatibility with existing programs the INQUIRE statement should continue to
+  return the same values for a FORM= enquiry and have a new ENCODING= enquiry
+  to detect the encoding form.  For consistency, this paper recommends that
+  ENCODING= be used on the OPEN statement as well.
+
+4. Specification
+
+4.1. Basic requirements:
+
+UTF-8 file support:
+- That a specifier of ENCODING="UTF-8" be permitted on the OPEN statement; this
+  is only for formatted files, and specifies that the encoding form is UTF-8.
+  It is only allowed if the processor supports ISO 10646.
+- That an ENCODING= enquiry be added to INQUIRE.  This should be permitted but
+  not required to detect the encoding form of files that are not connected;
+  for connected files, it just returns the encoding form of the connection.
+- Any data written to a UTF-8 file may be read back into an ISO 10646 character
+  variable.
+- Allow numeric/logical data to be written to/read from a UTF-8 file.
+- Allow ASCII/default/10646 character data to be written to/read from a UTF-8
+  file.
+
+ISO 10646 internal files:
+- That internal i/o be permitted to/from ISO 10646 character variables.
+- Allow numeric/logical data to be written to/read from a 10646 character
+  variable.
+- Allow default/ASCII/10646 character data to be written to/read from a 10646
+  character variable.
+
+Character assignment:
+- That ASCII/default characters be assignable to ISO 10646 character variables.
+
+4.2. Optional requirements:
+- That ISO 10646 characters be assignable to ASCII character variables.
+  {For symmetry.  This is safe when the ISO 10646 character variables contain
+   characters up to CHAR(127,10646); otherwise information is lost.}
+
+5. Technical Flaw in ACHAR intrinsic
+
+The ACHAR intrinsic has a technical flaw and is excessively limited.
+
+The technical flaw is that it says that it returns the
+  "character in position I of the ASCII collating sequence, provided the
+   processor is capable of representing that character"
+Since the return type of ACHAR is default character, the question is not
+whether the processor can represent the ASCII char in one of its supported
+character sets, but whether it can represent it in its default character set.
+
+The excessive limitation is that it only returns default character.  If the
+processor has any non-ASCII non-default character set, ACHAR is pretty useless.
+The limitation on IACHAR that it can only be used on default character is
+similarly excessive.
+
+We recommend that a KIND argument be added to ACHAR and that IACHAR should
+accept any character type.  Edits are included.
+
+6. Edits to 02-007r3
+
+[24:17] Before "nondefault" insert
+  "ASCII and ISO 10646 character sets are specified by the relevant standard;
+   the characters available in other".
+[24:17] After "not specified" insert "by this standard".
+{UNRELATED: This edit is not related to UK comment TC1, but the text does not
+appear to be correct as it stands.}
+
+[40:13+]
+"The collating sequence for the ASCII character type
+is the ASCII collating sequence.
+The collating sequence for the ISO 10646 character type
+is as defined by ISO/IEC 10646-1:2000."
+
+[139:9+5-] Insert
+  "ISO 10646, ASCII, or                ISO 10646, ASCII, or default character
+    default character"
+[139:9+5] Change first "character" to "other character".
+{Allow ASCII and default chars to be assigned to UCS4 chars and vice versa.}
+
+[140:11-12] Delete "shall ... but".
+[141:4+] Insert new paragraph:
+  "If the <variable> and <expr> have different kind type parameters, each
+   character <c> in the <expr> is converted to the kind type parameter of
+   <variable> by ACHAR(IACHAR(<c>),KIND(<variable>))."
+[141:4+2+] Append to note
+  "When assigning a character expression to a variable of a different kind,
+   each character of the expression that is not representable in the kind of
+   the variable is replaced by a processor-dependent character."
+{Semantics for assignment of ASCII/default chars to UCS4 and vice versa.}
+
+[142:16] After "." insert
+  "If <x1> is of type default character, ASCII character, or ISO 10646
+   character, <x2> shall not be of type default character, ASCII character, or
+   ISO 10646 character."
+{Actually, [142:15-16] appears to be wrong, in that it takes no account of
+ rank mismatches.  This will be discussed in a separate paper.}
+
+>The edit was
+> [177:21] After "default" add "or ISO 10646".
+>The new edit is
+> [177:21] After "default" add ", ASCII, or ISO 10646".
+
+[178:21,22] Delete italicised "default-", twice.
+
+>The edit was
+>[178:22+] Insert new constraint
+>"C901a (R903) The <char-variable> shall be of type default character or of
+>the ISO 10646 character type."
+>{Allow internal i/o to ISO 10646 variables.}
+>The new edit is
+>[178:22+] Insert new constraint
+>    "C901a (R903) The <char-variable> shall be of type default character,
+>     ASCII character, or ISO 10646 character."
+>{Allow internal i/o to ASCII or ISO 10646 variables.}
+
+[181:15+] Insert "<<or>> ENCODING = <scalar-default-char-expr>"
+{New ENCODING= specifier.}
+
+[182:36+] Insert new section
+  "9.4.5.6a ENCODING= specifier in the OPEN statement
+
+   The <scalar-default-char-expr> shall evaluate to UTF-8 or DEFAULT.  The
+   ENCODING= specifier is permitted only for a connection for formatted
+   input/output.  The value UTF-8 specifies that the encoding form of the file
+   is UTF-8 as specified by ISO/IEC 10646-1:2000.  Such a file is called a
+   <<Unicode>> file, and all characters therein are of ISO 10646 character
+   type.  The value UTF-8 shall not be specified if the processor does not
+   support the ISO 10646 character type.  The value DEFAULT specifies that the
+   encoding form of the file is processor-dependent.  If this specifier is
+   omitted in an OPEN statement that initiates a connection, the default value
+   is DEFAULT."
+{New ENCODING="UTF-8" specifier to select UTF-8 encoded files.  We define the
+ term "Unicode" partly to ease later edits, partly leaving the door open for
+ extension to UTF-16 should that prove popular.}
+
+>The edit was
+>[193:14] After "file" insert "of default character type", and append
+>  "An input/output list shall not contain an item of nondefault character type
+>   other than ISO 10646 or ASCII character type if the input/output statement
+>   specifies an internal file of ISO 10646 character type.
+>   An input/output list shall not contain an item of nondefault character type
+>   other than ISO 10646 or ASCII character type if the input/output statement
+>   specifies an internal file of ISO 10646 character type."
+>{Allow default, ASCII and ISO 10646 chars to be written to an ISO 10646
+> internal file.}
+>
+>The new edit is
+>[193:14] After "file" insert "of default character type", and append
+>  "An input/output list shall not contain an item of nondefault character type
+>   other than ISO 10646 or ASCII character type if the input/output statement
+>   specifies an internal file of ISO 10646 character type.
+>   An input/output list shall not contain an item of nondefault character type
+>   other than ISO 10646 or ASCII character type if the input/output statement
+>   specifies an internal file of ISO 10646 character type.
+>   An input/output list shall not contain a character item of any character
+>   type other than ASCII character type if the input/output statement
+>   specifies an internal file of ASCII character type."
+
+[208:14+] Insert
+  " <<or>> ENCODING = <scalar-default-char-variable>"
+{New enquiry for INQUIRE.}
+
+[210:12+] Insert new section
+  "9.9.1.8a ENCODING= specifier in the INQUIRE statement
+
+   The <scalar-default-char-variable> in the ENCODING= specifier is assigned
+   the value UTF-8 if the file is connected for formatted input/output with an
+   encoding form of UTF-8, and is assigned the value UNDEFINED if the file is
+   connected for unformatted input/output.  If there is no connection, it is
+   assigned the value UTF-8 if the processor is able to determine that the
+   encoding form of the file is UTF-8.  If the processor is unable to
+   determine the encoding form of the file, the variable is assigned the value
+   UNKNOWN.
+
+   Note 9.60a
+   The value assigned may be something other than UTF-8, UNDEFINED, or UNKNOWN
+   if the processor supports other specific encoding forms (e.g. UTF-16BE)."
+{New enquiry for INQUIRE.  The return value for a formatted file that is not
+ UTF-8 is deliberately left unspecified to facilitate support of other - past
+ or future - encoding forms such as ASCII and EBCDIC.  We also wish to allow
+ a processor to use UTF-8 by default, therefore there is no return value of
+ DEFAULT (we want it to get UTF-8 in that case).}
+
+[224:8-12] Delete "Characters ...kind.".
+[224:14+] Insert new paragraphs:
+  "During input from a Unicode file,
+   (a) characters in the record that correspond to an ASCII character variable
+       shall have a position in the ISO 10646 character type collating sequence
+       of 127 or less, and
+   (b) characters in the record that correspond to a default character variable
+       shall be representable in the default character type.
+   During input from a non-Unicode file,
+   (a) characters in the record that correspond to a character variable shall
+       have the kind of the character variable, and
+   (b) characters in the record that correspond to a numeric or logical
+       variable shall be of default character type.
+
+   During output to a Unicode file, all characters transmitted to the record
+   are of ISO 10646 character type.  If a character input/output list item or
+   character string edit descriptor contains a character that is not
+   representable in the ISO 10646 character type, the result is processor-
+   dependent.
+   During output to a non-Unicode file, characters transmitted to the record as
+   a result of processing a character string edit descriptor or as a result of
+   evaluating a numeric, logical, or default character data entity, are of type
+   default character."
+{Specify what is required for input, and what happens with output.  Separate
+ paragraphs are provided for input and output.  The "not representable in ...
+ 10646 ... processor-dependent" sentence is probably unnecessary.}
+
+[232:9] After "," insert
+  "and the unit is an internal file of type default character or an external
+   non-Unicode file,"
+{T, TL, TR and X can all work properly in a 10646 char string or Unicode file.}
+
+[236:7,31,32] After "default" insert ", ASCII, or ISO 10646".
+{Extend list-directed input for character to ASCII and 10646.}
+
+[291:6] Before ")" insert "[, KIND]".
+{Add an optional KIND arg to ACHAR.}
+
+[296:22] After "<<I>>" add "<<[, KIND]>>".
+[296:26] Change "<<Argument.>>" to "<<Arguments.>>" and break line afterwards.
+[296:26+] Insert
+  "KIND (optional)   shall be a scalar integer initialization expression."
+[296:27] Replace with a copy of [303:5-7].
+[296:29] Before ";" insert "in the character type of the result".
+[296:31] Change "processor" to "default character type".
+{Add an optional KIND arg to ACHAR, and fix infelicities in the exposition.}
+
+[315:18] Delete "default".
+{Allow IACHAR on any character kind.
+ NOTE: This is line 17 of the pdf file... page 315 is formatted differently
+ between the ps and the pdf.}
+
+[343:13+] Insert example
+  "The following subroutine produces a Japanese date stamp.
+
+   SUBROUTINE create_date_string(string)
+     INTRINSIC date_and_time,selected_char_kind
+     INTEGER,PARAMETER :: ucs4 = selected_char_kind("ISO_10646")
+     CHARACTER(len= *, kind= ucs4) string
+     INTEGER values(8)
+     CALL date_and_time(values=values)
+     WRITE(string,1) values(1),ucs4_"nen",values(2),ucs4_"gatsu", &
+                     values(3),ucs4_"nichi"
+   1 FORMAT(I0,A,I0,A,I0,A)
+   END SUBROUTINE"
+{EDITOR: The 10646 characters in the example are intended to be real
+characters, not the names which I've written out!  They could be replaced by
+CHAR(no.,UCS4) if it's really impossible to get this right in a non-Japanised
+LaTeX.}
+
+===END===

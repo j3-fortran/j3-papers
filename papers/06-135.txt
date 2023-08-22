@@ -1,0 +1,111 @@
+
+                                                          J3/06-135
+
+Date:        05-February-2006
+To:          J3
+From:        Bob Numrich
+Subject:     Ragged allocatable/pointer co-arrays
+References:  Feature UK-001, J3/05-208, J3/05-272r2, J3/06-122, J3/06-129
+
+The proposal (J3/06-129) to outlaw co-array derived types with allocatable or pointer
+components is ill-advised.  These structures are in fact the most important, the
+most powerful, and the most useful features of the entire co-array model (Numrich,
+Parallel Computing, 31:588-607, 2005).
+
+The proposal for ragged allocatable and pointer co-arrays (J3/06-129) is also
+ill-advised.  It violates the fundamental principles of the co-array model.
+
+The first principle is simplicity.
+The underlying philosophy of the co-array programming model is that it is
+simple to understand and simple to implement.  It is designed so that existing
+compilers and run-time systems can implement it with only minimal new technology.
+New types of objects are not added to the language unless there is a compelling
+reason for them.  A ragged array is a new type of allocatable object.
+They provide no functionality that does not already exist.
+
+The second principle is that the
+rules for co-dimensions are the same as the rules for normal dimesnions unless
+there is a compelling reason to change them.  The ALLOCATE statement for
+these objects violates this principle because it requires the co-dimensions to
+be specified in the declaration rather than being defined dynamically when
+the allocate statement executes.  This has the major disadvantage that the
+program is hard-wired to a specific co-shape and must be recompiled to change
+the co-shape for each run when the total number of images changes. 
+
+The third principle is that the compiler knows how to locate co-arrays from purely
+local information.  A ragged array most likely will be placed on the local
+heap and the dope vector describing the array will be stored somewhere in
+local memory.  When the array is used with co-array syntax, the compiler will
+have to retrieve the remote dope vector from another image.  How does the
+compiler keep track of where these dope vectors
+are located using purely local information?  It would need to build a large
+table for every ragged array and there would have to be a global update of
+all these tables, on all images, every time any image allocates or
+deallocates one of these ragged arrays.  The ALLOCATE statement becomes a
+complicated statement with global communication required across images.
+But the proposal does not even require an implicit synchronization when one
+of these objects is allocated or when a pointer is associated with local objects.
+Might the local assignment of a ragged pointer generate global communication
+across images?  Does such an assignment need to be a segment boundary statement?
+Furthermore, suppose one of these ragged arrays is passed to a subroutine
+where it is used as a co-array.  Across the subroutine call, all information
+that this is a ragged array is lost.  How would the compiler know that it
+needs to read up the remote dope vector?  In fact, the dummy argument
+doesn't even have the same name.  Are we suggesting a whole new calling
+sequence for ragged arrays?  In addition, the programmer must keep track of
+lower bounds and upperbounds on remote images.  The LBOUND and UBOUND
+intrinisic functions will need to access remote dope vectors to get this information.
+Using this information will be error-prone and bugs wiil be difficult to find.
+
+The proposal would allow assignment of a ragged pointer to a local target.  This
+destroys the whole logic of the proposal.  Unless the implementation knows how
+to handle references to local heaps, a reference to this local target from another
+image will fail.  But this is the problem that the proposal was supposed to solve.
+The memory for that local target has not been registered with the communication protocol.
+Even if the local pointer assignment triggers global communication to update tables,
+it will not work.  Even if the compiler reads up the local dope vector, it will not work.
+It has all the same "problems" the proposal was trying to solve.
+
+This proposal seems to be asking the language to make up for poor hardware design
+and poor communication protocols.  Rather than indulging their
+inability to design, or at least emulate, a global address space, we should
+pressure them to learn how to handle the co-array model.
+
+The situation is quite different from using allocatable components of
+co-array derived types.  Co-arrays of derived type follow all the design
+principles of the co-array model.  These objects are the same on all images,
+and the compiler always knows how to find them from puerly local information.
+The fact that these are co-arrays does not get lost across procedure calls
+because they are always passed as co-array structures.
+The compiler knows it needs to read up the dope vector for the
+component because it is a component of a co-array structure.  It knows how to
+find the dope vector from purely local information because it knows how
+to find the co-array structure on any image and the dope vector for
+each component will be located in the same place on each image.
+If just the component of the co-array structure is passed to a
+procedure, it can only be used as a local variable.
+
+"Ragged" data structures are important.  Co-array structures with allocatable components
+are the logical way to define them within the logical design of Fortran 90.  What is
+"awkward" about using the normal Fortran syntax for type components?  The syntax
+RAGGED_ALLOC[1]%ARRAY(3) is no more awkward than UNRAGGED_ALLOC(1)%ARRAY(3).  Is the
+proposal suggesting that we change this syntax for references to components of an array
+of derived types even for those that are not co-arrays?
+
+Furthermore, derived type co-array structures encourage the use of
+object-oriented techniaues.  An allocated array with the name RaggedArray may or
+may not actually be a ragged array.  A derived type with the name RaggedArray, on
+the other hand, can be guaranteed to be a ragged array by designing a constructor
+that creates the data components correctly and records information about what
+"ragged" means.  The derived type can contain as much or as little information as
+one wishes including the relationship between RaggedArrays across images and
+methods that perform communication among RaggedArrays across images.
+
+There is a very simple, straightforward solution to the problem of supporting allocatables
+that may or may not be associated with a co-array.  Just register ALL memory allocation
+with the communication protocol if you have to.  With a little thought, there are
+probably better solutions.  Let's get the cart before the horse.  Fortran was not
+designed to support Seymour's vector architecture.  Seymour designed his machine to
+support the Fortran.  I dare say, were he still with us, his parallel
+machine would support a global address space and would be a perfect machine for
+Co-Array Fortran. 

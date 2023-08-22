@@ -1,0 +1,161 @@
+To: J3                                                     J3/22-179r2
+From: Malcolm Cohen
+Subject: Apparent errors in BLOCK construct with DATA statement
+Date: 2022-July-21
+
+
+1. Introduction
+
+There appear to be remaining problems with the DATA statement in a BLOCK
+construct. This paper describes the problems and proposes edits to fix.
+
+
+2. The problems
+
+First, consider the non-problematic example
+
+    Program ok
+        x = 1
+        Block
+            Data x/2/
+            Real y
+            y = x
+            Print *,y ! Prints 2.0
+        End Block
+        Print *,x ! Prints 1.0
+    End Program
+
+The DATA statement "specifies explicit initialization". Furthermore, this
+statement explicitly specifies explicit initialization for X, because the
+identifier X appears in the statement. Thus we know that the X in the BLOCK
+construct is not the X in the main program. Subclauses 11.1.4 and 19.4 are
+in agreement on this.
+
+    Program dubious
+        x = 1
+        Block
+            Real y
+            y = 1
+            Data x/2/
+            y = x
+            Print *,y ! We expect 2.0
+        End Block
+    End Program
+
+Here, the standard is less clear. 11.1.4 BLOCK construct says
+    "specifications in a BLOCK construct declare construct entities whose
+     scope is that of the BLOCK construct (19.4)"
+so just like in the "ok" example, we think that X in the BLOCK construct is
+a construct entity... but 19.4 is more misleading; it says
+    "An entity that is explicitly declared in the specification part of a
+     BLOCK construct, ... is a construct entity".
+However, the DATA statement does not appear in the specification part, so
+that statement does not say that X is a construct entity. It also does not
+say that it is *not* a construct entity, but it is very bad form to have
+incomplete semantics in 19.4, the very place one would look to find the
+details of construct entities.
+
+    Program you_must_be_kidding_me
+        Double Precision :: x = 1
+        Block
+            Real(Kind(x)) :: y
+            Data x/2/
+            Print *,'Kind(y) must equal Kind(x)',Kind(x),Kind(y)
+        End Block
+    End Program
+
+Here, we have a reference to the kind of X before the statement that
+establishes that it is a construct entity. We do not generally allow
+this.
+
+    Program bad
+        x = 2
+        Block
+            Real y
+            y = x**2
+            Data x/0.0/
+            Print *,y ! Prints 0.0 or 4.0?
+        End Block
+    End Program
+
+Here, there is a reference to the value of X before the DATA statement.
+This is not allowed for the case of host association, but the corresponding
+prohibition is missing for the BLOCK construct.
+
+It seems very undesirable to force compilers to make sense of this bad
+program.
+
+There is also an issue with
+
+    Program why_is_this_not_ok
+        x = 1
+        Block
+            Import,Only:x
+            x = 2
+            Print *,x ! Prints 2.0
+        End Block
+        Print *,x ! Prints 1.0 !!?
+    End Program
+
+In this case, X is explicitly declared in the specification part of the
+BLOCK construct, but by 19.4 that means it is a construct entity!
+
+Finally, the statement in 19.4 that a USE statement in a BLOCK construct
+causes the entities made accessible to be "explicitly declared" in the
+BLOCK construct (19.4) seems to be a misuse of the word "explicitly".
+
+
+3. The solutions
+
+We should clarify that the first two examples are valid, with X being a
+construct entity. We should prohibit the second two examples, as this is
+an unreasonable burden on the compiler (especially the fourth one as it
+is an obsolescent feature). We should correct the interpretation of the
+fifth example so that X is not a construct entity.
+
+
+4. Edits to 22-007r1
+
+[27:28+] 4.3.3 Fortran 2018 compatibility, p2+,
+         After the paragraph on SYSTEM_CLOCK, insert new paragraph:
+   "Fortran 2018 permitted a variable in a BLOCK construct that was
+    declared only by a DATA statement to be used before the DATA statement.
+    This document does not permit such usage."
+{Technically not backwards compatible, even if few to no processors
+ actually supported it.}
+
+[28:44+] 4.3.4 Fortran 2008 compatibility, p12+,
+         After the paragraph on SYSTEM_CLOCK, insert new paragraph
+   "Fortran 2008 permitted a variable in a BLOCK construct that was
+    declared only by a DATA statement to be used before the DATA statement.
+    This document does not permit such usage."
+
+[187:18] 11.1.4 BLOCK construct, p2, first sentence,
+         Change "ASYNCHRONOUS and VOLATILE"
+         to "ASYNCHRONOUS, IMPORT, and VOLATILE",
+         making that sentence read
+    "Except for the ASYNCHRONOUS, IMPORT, and VOLATILE statements,
+     specifications in a BLOCK construct declare construct entities whose
+     scope is that of the BLOCK construct (19.4)."
+
+[532:15-18] 19.4 Statement and construct entities, p3,
+    Change "explicitly declared in the specification part of"
+    to "declared in a specification in",
+    and change "ASYNCHRONOUS and VOLATILE"
+    to "ASYNCHRONOUS, IMPORT, or VOLATILE",
+    making that sentence read
+       "An entity that is declared in a specification in a BLOCK construct,
+        other than only in ASYNCHRONOUS, IMPORT, or VOLATILE statements,
+        is a construct entity."
+    Replace the final sentence "A USE ... entities" with
+        "A USE statement in a BLOCK construct specifies that all the
+         entities it accesses by use association are construct entities."
+    Append new sentence at the end of the paragraph
+        "If an entity is a construct entity instead of a host entity only
+         because it is wholly or partially initialized in a DATA statement,
+         the construct entity shall not be used prior to the DATA
+         statement."
+
+===END===
+
+

@@ -1,0 +1,35 @@
+
+                                                      X3J3/97-143
+                                                      Page 1 of 1
+
+To:		  WG5 and X3J3
+From:		  /hpc, Dick Hendrickson
+Subject:	Mixed mode interval calulations prohibited
+Date:		  Feb 13, 1997
+
+After discussion within the subgroup, /hpc has decided that mixed mode calculations between real and interval entities and automatic type coercion from real to interval will be prohibited.  Mixed mode between integer and interval will be allowed since integers have a natural interpretation.
+
+The reason for disallowing mixed mode is not that it can't be defined; but, rather that any definition would involve arbitrary choices, surprise many people, and not be in the spirit of the goals of interval arithmetic.  Basically, interval arithmetic guarantees that the result of a calculation contains the "correct" result.  Mixed mode arithmetic removes that guarantee.
+
+Rational:
+
+In what follows X and Y are mixed mode variables and R is a real variable.
+
+The question is, what does a person mean if he writes
+	X = 0.1 * Y  !?
+If he's converting millimeters to centimeters the 0.1 is an exact number, if he's computing his expected winnings on slot machines it's an approximation.  We could make a good argument that the operation should be performed by taking the nearest machine representable number to 0.1 and using that to multiply both the lower and upper value of Y, or we could take a "two bit" interval that brackets 0.1 and use that, or we could take (<0.095, 0.105>) as the interval.  In the latter two cases we'd use interval multiplies.  All three interpretations are reasonable, all would surprise someone.
+
+The problem is worse with expressions involving non-literal entities.  Consider
+	X = R * Y
+If R comes from a complicated expression then the only reasonable intervals the compiler could deduce are that it is a point interval (<R,R>) or that it is a two-bit interval; neither is likely to be a good interval and the containment guarantee is lost!
+
+Also, there is no agreeable way to promote everything in an expression to intervals before doing the computations.  Given an expression like:
+	X = 1.1 + F(2.1) + (<3.3>)
+where F is an overloaded function.  Should the compiler promote both 1.1 and F(2.1) to interval before doing the first add or should it do the first add as a real add and then promote to interval?  Would the answer be different if the "+ (<3.3>)" were missing?  If the decision is to promote F(2.1) to interval should it do it by looking for an overload of F that has a real argument and produces an interval result or should it look for one that has an interval argument and produces an interval result?  The same question applies to
+	X =( 1.1  .DEFOP.  F(2.1) ) + (<3.3>)
+should .DEFOP. accept 2 reals or 2 intervals? 
+
+Promoting things to interval as soon as possible in an expression (a variation of "widest need") is likely to give better (but not perfect) containment.  But it violates the current parsing rules of Fortran where mixed mode is resolved locally on an operator by operator basis.
+
+Specifing the promotion rules is very difficult.  It's not that we can't pick a consistent set of rules for doing mixed mode calculations.  It's that whatever rules we pick will surprise someone.  People who are doing mixed mode calculations are either being very smart or very dumb.  In neither case can we arbitrarily define a set of rules that will help them.
+

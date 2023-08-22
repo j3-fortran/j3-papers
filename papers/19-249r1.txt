@@ -1,0 +1,130 @@
+To: J3                                                     J3/19-249r1
+From: Van Snyder
+Subject: Syntax for True Enumeration types
+Date: 2019-October-17
+Reference: 19-231r2, 19-232
+
+1. Syntax to define an enumeration type
+=======================================
+
+1.1 General idea
+
+  <begin type definition>
+    [ PRIVATE ]
+    <list enumerators>
+  <end type definition>
+
+1.2 Begin and end type definition
+
+Based on ENUM in subclause 7.6
+
+  ENUM [[, INITIAL ( <enumerator-name ),  <access-spec> ] ::] <type-name>
+    ...
+  END ENUM [ <type-name> ]
+
+1.3 Declare enumerators
+
+A statement to specify enumerator names
+
+  ENUMERATOR [ [, <access-spec> ] :: ] <enumerator-name-list>
+
+{Simply listing the names without a keyword does not work. In fixed
+form, or if the optional space in END TYPE is omitted, the ENDTYPE
+statement looks like just another enumerator. And then the next statement
+causes a syntax error because it doesn't look like an enumerator.}
+
+1.4 Declare default initial value
+
+On the statement that introduces the type definition
+
+  ENUM [, INITIAL ( <enumerator-name> ), <access-spec> ] :: <type-name>
+
+2. Syntax to declare an object of enumeration type
+==================================================
+
+  TYPE ( <type-name> ) [[ , <attr-list> ] :: ] <entity-decl> [ = &
+    & <initialization> ]
+
+  Constraint: <initialization> shall be of type <type-name>.
+
+3. Syntax to reference an enumerator
+====================================
+
+Straw vote on 19-231 was that enumerators are class (2) names.
+
+Therefore, the type name must always appear.
+
+Vauguely reminiscent of component selection
+
+  <type-name> % <enumerator-name>
+
+{We do not ever use "<type-name> %" for anything.}
+
+4. FIRST, LAST inquiry
+======================
+
+Vaguely reminiscent of type parameter inquiry
+
+  <enumeration-type-object> % FIRST
+  <enumeration-type-object> % LAST
+
+5. NEXT, PREV as type-bound functions
+===========================================
+
+NEXT and PREV are considered to be type-bound functions that are
+defined by the type definition, without bindings being declared.  There
+is no syntax provided to declare procedure bindings.
+
+  <enumeration-type-object> % NEXT ( [ [ STAT= ] <stat-variable> ] )
+  <enumeration-type-object> % PREV ( [ [ STAT= ] <stat-variable> ] )
+
+6. Use case for private enumerators
+===================================
+
+No code example here, just an explanation.
+
+A code that really is a coroutine, but can't actually be a coroutine
+because Fortran doesn't provide coroutines, uses "reverse communication." 
+I.e., whenever it needs the client to do some work, it returns to the
+client.
+
+In a fake coroutine, realized using reverse communication, the internal
+state is usually kept in a dummy argument of derived type.
+
+To tell the client what to do, one of the components of the internal state
+encodes "What should the client to do?"  Internally, this is interpreted
+as "What do I do next?"  An object of enumeration type is perfect for
+this.
+
+The code is organized as a "state machine."  These are typically realized
+as a DO construct with a SELECT CASE construct inside.  Before a case
+completes execution, it assigns a value to "What should the client do,"
+which is, as remarked above, internally interpreted as "What do I do
+next?"
+
+Usually, it returns to the client, who performs the requested action and
+calls again, whereupon the DO construct restarts, and the SELECT CASE
+construct takes the code to the next step of the process.
+
+The client would be expected to handle requests like "evaluate the
+function," "evaluate the Jacobian,", "factor the Jacobian," "Compute the
+gradient"..., but would have no idea what "compute Aitken acceleration"
+or "compute Levenberg-Marquardt parameter" or "compute the angle between
+the gradient and the Newton move" would mean.
+
+If there are internal state transitions that are difficult to represent
+using the usual control constructs, they are represented by different
+values of the "What should the client do" component of the internal state,
+which are purely "what do I do next" values because the client never sees
+them.  These values have no meaning to the client, and there is no reason
+to expose their names to the client.  It would just be confusing. In these
+cases, instead of RETURN, the code does CYCLE (or simply finishes the
+SELECT CASE construct).
+
+In the old days, the enumeration type would be faked with integer named
+constants. The ones that have no meaning to the client would be PRIVATE.
+When the code uses an enumeration type instead, it would be desirable that
+it be possible to declare that enumerators that have the same purpose
+as the private named constants would have, are private.
+
+

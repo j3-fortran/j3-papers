@@ -1,0 +1,179 @@
+To: J3                                                     J3/19-245r1
+From: Dan Nagle & Rich Bleikamp
+Subject: specs and syntax for ISO_FORTRAN_STRINGS US03
+Date: 2019-October-16
+
+Reference: 18-007r1, 19-160, 19-196r3
+
+NOTE for whoever produces the paper for edits: in case (i),
+in the description for WORD, we say
+  "When WORD is present"
+but we shouldn't say that since WORD is not optional for case i. 
+
+Introduction
+
+SPLIT takes an input string (STRING) and breaks it into tokens 
+(returned in WORD, or identified by substring bounds returned in
+FIRST/LAST), delimited by any of a set of user specified 
+characters (SET). See 19-196r3 for a brief history of this proposal.
+And from the minutes for meeting 219,
+"19-196r3 "edits for ISO_FORTRAN_STRINGS US03" discussion;
+ returning indices is better than array of strings.
+ There will be a new proposal."
+
+The design presented here supports three use-cases.
+
+One is where more flexibility is desired, potentially less 
+memory allocation, and the tokens are to be found one at a time.  
+
+The other use-cases allow the string to be split all-at-once using 
+the same set of separators.  This allows a high-level object-in
+(the string) and object-out (an array of tokens).  One use-case 
+returns an array of tokens, and the other use-case returns two arrays
+of indices indicating the starting and ending location of each token 
+found within STRING. 
+
+There are 3 different ways of invoking SPLIT:
+
+CALL SPLIT (STRING, SET, WORD[, SEPARATOR, BACK])
+  or
+CALL SPLIT (STRING, SET, FIRST, LAST[, SEPARATOR, BACK])
+  or
+CALL SPLIT (STRING, SET, POS[, SEPARATOR, BACK])
+
+STRING   shall be a scalar of type CHARACTER. It is an INTENT(IN)
+         argument.
+
+SET      shall be a scalar of type CHARACTER of the same kind as
+         STRING. It is an INTENT(IN) argument.  
+
+WORD     shall be of type CHARACTER of the same kind as STRING.
+         It is an INTENT(OUT) argument.  It shall be an allocatable 
+         array with deferred length.
+
+SEPARATOR (optional) shall be of type CHARACTER of the same kind
+         as STRING. It is an INTENT(OUT) argument.  When WORD or
+         FIRST and LAST are present,
+         SEPARATOR shall be an allocatable array with deferred 
+         length.  When POS is present, SEPARATOR shall be a scalar. 
+
+FIRST    shall be an allocatable array of type integer
+         It is an INTENT(OUT) argument.
+
+LAST     shall be an allocatable array of type integer
+         It is an INTENT(OUT) argument.
+
+POS      shall be a scalar of type INTEGER. It is an
+         INTENT(INOUT) argument.
+
+BACK     (optional) shall be a scalar of type LOGICAL. It is an
+         INTENT(IN) argument.
+
+<Case (i):> When WORD is present, the effect of the procedure is
+to divide STRING into tokens at every occurrence of a character that
+is in SET, and assign those tokens, in the order found, to WORD.
+Every element of WORD has the length of the longest token found,
+and SIZE(WORD) is the number of tokens found.
+
+The STRING is searched in the forward direction unless BACK is
+present with the value true, in which case the search is in the 
+backward direction.  If the argument SEPARATOR is present, the 
+character which separated WORD(i) from WORD(i+1)is returned
+in SEPARATOR(i).  Note that when BACK is present and TRUE, 
+SEPARATOR(i) is the separator character that appeared immediately 
+before the token stored in WORD(i).
+
+If no character from SET is found or SET is of zero length,
+the whole STRING is returned in the first element of WORD,
+and SEPARATOR (if present) is returned as zero length. Otherwise,
+SIZE(SEPARATOR) will be SIZE(WORD)-1.
+
+<Case (ii):> When FIRST and LAST are present, they are assigned the 
+offsets in STRING such that STRING(FIRST(i):LAST(i))is the ith 
+token found.  SEPARATOR, if present, is assigned values as described
+in case (i) above.  When the ith token is a zero length token,
+LAST(i) will be FIRST(i)-1.
+
+<Case (iii):> When POS is present, the token beginning at 
+STRING(POS+1:POS+1) is identified, and if that token was not the 
+last token in STRING, POS is set to the position of the separator 
+character that appeared immediately after the identified token.  
+When the identified token was the last token in STRING, POS is set 
+to LEN(STRING)+1. When SPLIT is invoked with POS<LEN(STRING), the 
+identified token is STRING(IPOS+1:OPOS-1) where IPOS is the value of 
+POS passed into SPLIT and OPOS is the value of POS after SPLIT 
+returns. So when SPLIT is being used to find all tokens in STRING, 
+POS should be set to zero for the first call to SPLIT, and when the 
+value returned in POS is > LEN(STRING), the last token in STRING has 
+been found. SEPARATOR is assigned values as described in case (i) 
+above.
+
+Edge cases:
+
+  1) if the first character in STRING is a separator character, or
+      There are two separator characters, a null (zero length) token
+      is found.
+
+  2) if a blank (space) character appears in SET, consecutive spaces
+     in STRING will result in a null token.
+
+  3) If LEN(STRING) is zero,
+     WORD, FIRST and LAST, if present, will have zero elements.
+
+<<Examples>>
+
+
+Example 1:
+  CHARACTER( LEN= :), ALLOCATABLE :: STRING
+  CHARACTER( LEN= :), ALLOCATABLE, DIMENSION(:) :: WORD
+  CHARACTER( LEN= 2) :: SET = ',;'
+
+  STRING = 'first,second,third'
+
+  CALL SPLIT( STRING, WORD, SET)
+
+  PRINT *, STRING, WORD, SET
+
+will print
+  first,second,third first  second third  ,;
+
+
+Example 2:
+  CHARACTER( LEN= :), ALLOCATABLE :: STRING
+  CHARACTER( LEN= 2) :: SET = ',;'
+  INTEGER, DIMENSION(:):: FIRST, LAST
+
+  STRING = 'first,second,,forth'
+
+  CALL SPLIT( STRING, SET, FIRST, LAST)
+
+  PRINT *, FIRST
+  PRINT *, LAST
+
+prints
+  1 7 14 15
+  5 12 13 19
+
+Example 3:
+  CHARACTER( LEN= :), ALLOCATABLE :: INPUT
+  CHARACTER( LEN= 2) :: SET = ', '
+  INTEGER P
+
+  INPUT = "one,last example"
+  P = 0
+  
+  DO
+     IF( P > LEN( INPUT) ) EXIT
+     ISTART = P + 1
+     CALL SPLIT(INPUT, SET, P)
+     IEND = P - 1
+     PRINT *, INPUT( ISTART: IEND)
+  END DO
+
+prints
+  one
+  last
+  example
+
+
+

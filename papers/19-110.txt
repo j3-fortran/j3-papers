@@ -1,0 +1,237 @@
+To: J3                                                     J3/19-110
+From:    Van Snyder
+Subject: Supporting rank genericity -- NOT VECTOR SUBSCRIPTS!
+Date: 2019-January-16
+References: 04-195, 18-247
+
+Introduction
+============
+
+MAXLOC(A) returns a rank-1 array whose extent is equal to the rank of A.
+It cannot be used directly as a subscript for A.  One must assign it to
+a variable of the appropriate rank, and use elements of that array as
+subscripts.  For example
+
+  integer :: S(3)
+  real :: A(10,10,10)
+  ...
+  s = maxloc(a)
+  print *, 'Maximum value in A is ', a(s(1),s(2),s(3))
+
+LBOUND(A) and UBOUND(A) return rank-1 arrays whose extents are equal to
+the rank of A. They cannot be used directly as bounds for an automatic
+or allocatable variable.  For example
+
+  real, intent(in) :: A(:,:,:)
+  real :: X(ubound(a,1),ubound(a,2),ubound(a,3))
+
+or
+
+  real, allocatable :: X(:,:,:)
+  ...
+  allocate ( x(ubound(a,1),ubound(a,2),ubound(a,3)) )
+
+or, if you need a halo around all dimensions of X
+
+  allocate ( x(lbound(a,1)-1:ubound(a,1)+1, &
+           &   lbound(a,2)-1:ubound(a,2)+1, &
+           &   lbound(a,3)-1:ubound(a,3)+1) )
+
+These are tedious if you know the rank, and impossible if we develop
+facilities for rank-generic programming, except perhaps by using a MACRO
+DO, which results in unreadable code.
+
+History
+=======
+
+At meeting 217 on Monday 15 October /JOR announced without plenary
+discussion that there would be no further discussion of 18-247.  Meeting
+217 minutes state "Some features interesting; essentially vector
+subscripts."  The proposal is NOT ESSENTIALLY VECTOR SUBSCRIPTS.  This
+is EXPLICITLY STATED in 18-247, notwithstanding that the specifications
+concerning the relationship of vector subscripts to component
+initialization, association, finalization, contiguity, and I/O, would
+also apply.  Read this paper all the way to the end, and read the
+referenced paper 04-195 for more details.
+
+Proposal
+========
+
+1. Array bounds use case
+------------------------
+
+Allow a single array B of rank one and extent R to specify the upper or
+lower bounds of a rank R array A.  The extent of B shall be a constant,
+except maybe for the A(..) case.  For example
+
+  real, intent(in) :: A(:,:,:)
+  real :: X(ubound(a))
+
+or
+
+  real, rank(A), allocatable :: X
+  ...
+  allocate ( x(ubound(a)) )
+
+or (for the halo case)
+
+  allocate ( x(lbound(a)-1:ubound(a)+1) )
+
+The case of one bound being a scalar and the other not is obvious:
+
+  allocate ( x(0:ubound(a)) )
+
+is the same as
+
+  allocate ( x([(0,i=1,rank(a))]:ubound(a)) )
+
+Indeed, the default case (above) of lower bounds being all 1
+
+  allocate ( x(ubound(a)) )
+
+is the same as
+
+  allocate ( x(1:ubound(a)) )
+
+The halo case above becomes
+
+  allocate ( x(lbound(a)-1:ubound(a)+1) )
+
+If rank genericity is provided by the generic programming facility,
+there is no other way to specify bounds for a generic-rank array, except
+by something equivalent to a MACRO DO.  This results in unreadable code.
+
+This would also be useful within a BLOCK within a SELECT RANK construct.
+
+2. Subscripts
+-------------
+
+Allow a single array of rank one and extent R as the subscript of a
+rank R array.  For example
+
+  real :: A(10,10,10)
+  ...
+  print *, 'Maximum value in A is ', a(maxloc(a))
+
+If S = [ 3, 4, 5 ], A(S) is a scalar, the same as A(3,4,5), not
+A(3:3,4:4,5:5).
+
+The obvious generalization here is to allow a single subscript S of rank
+K+1 and extents (R,N1, ..., NK) as a subscript for a rank-R array A. 
+The elements of the rank-one sections in the first dimension of S are
+used consecutively as subscripts for A, as in the rank one case,
+resulting in a rank K object with shape [ N1, ..., NK ].  If K == 0, the
+result is a scalar.
+
+This provides a MORE GENERAL SCATTER/GATHER FACILITY THAN THE PRESENT
+VECTOR SUBSCRIPT FACILITY.  This is NOT THE SAME AS USING THE ELEMENTS
+OF THE RANK-ONE SECTIONS IN S AS VECTOR SUBSCRIPTS FOR A, which would
+result in a rectangular section of shape [n,n] (in the case A is
+of rank 2 and S is of shape [2,n]).
+
+Example:
+
+Suppose we have arrays A3 with dimensions (10,10,10) and S3 with
+dimensions (3,2).  If we assume
+
+                                            [ 3 6 ]
+S3 = reshape( [3, 4, 5, 6, 7, 8], [3,2] ) = [ 4 7 ]
+                                            [ 5 8 ]
+
+then A3(S3) is a rank-1 extent-2 array that can appear in a variable-
+definition context (except as an actual argument associated with a dummy
+argument having INTENT(OUT) or INTENT(INOUT)); it specifies the same
+array as [ A3(3,4,5), A3(6,7,8) ], which cannot appear in a
+variable-definition context because it is not a variable.  This is
+different from A3(S3(1,:),S3(2,:),S3(3,:)), which can appear in a
+variable-definition context, but is an object with shape [2,2,2], not
+[2].  The former is an arbitrary collection of elements of A3, while the
+latter is a rectangular section of A3.
+
+The degenerate case (same as above) is
+
+  real :: A(10,10,10)
+  integer :: S(3) = [ 3, 4, 5 ]
+
+Then A(S) is the same as A(3,4,5), not A(3:3,4:4,5:5).  This illustrates
+that a rank K+1 subscript with first extent R for a rank R array
+produces a rank K result.  In this example, K = 0, so A(S) is a scalar,
+not a rank-3 array with shape [1,1,1].  I.e., S is NOT A VECTOR
+SUBSCRIPT.  But many of the same restrictions for vector subscripts
+remain, e.g. not being an actual argument corresponding to an
+INTENT(OUT) dummy argument.
+
+This can probably be made to work with DIMENSION(..) arrays.  A run-time
+check is probably required to make sure that in A(S), the first extent
+of S is the same as the (dynamic) rank of A.  This might be especially
+useful to create automatic variables with the same shape as
+DIMENSION(..) arrays.
+
+If rank genericity is provided by the generic programming facility,
+there is no other way to specify subscripts for a generic-rank array,
+except by something equivalent to a MACRO DO, which would appear
+ubiquitously, in every reference, not only in declarations.  This
+results in unreadable code.
+
+Let's not do kludges and half measures, which is how we got nonpointer
+optional arguments corresponding to disassociated pointers being
+absent.  The original solution proposed for the combinatorial-explosion
+problem was a special case of the conditional expression proposal, with
+an empty ELSE part meaning "if the logical expression is true, the
+argument is the consequent (not its value), else the argument is
+absent."
+
+Use Case
+========
+
+Compute a list of sets of subscripts where an array has nonzero values.
+
+Here is an elegant rank-generic parallel solution that also depends upon
+generalizing the CRITICAL construct to apply to the relationship between
+iterations of a DO CONCURRENT construct (or provide a MONITOR procedure
+for the same purpose).
+
+  integer :: Subs(rank(a),size(a))
+  integer :: Num_NZ
+  num_nz = 0
+  ! The <index-variable> I below is an array having the same extent as
+  ! the rank of A.  It takes on all values of sets of subscripts of A.
+  do concurrent ( integer :: I(rank(a)) = lbound(a) : ubound(a) ) &
+    & shared ( num_nz )
+    if ( a(i) /= 0 ) then
+      critical
+        num_nz = num_nz + 1 ! Presently prohibited
+        subs(:,num_nz) = i
+      end critical
+    end if
+  end do
+
+  print '(a/1p5g15.8)', 'Nonzero elements of A:', a(subs(:,:num_nz))
+
+or
+
+  write ( *, '(a)' ) 'Nonzero elements of A:'
+  do i = 1, num_nz
+    write ( *, '(a,i0,*(",",i0:))', advance='no' ) "(", subs(:,i)
+    write ( *, '(a, 1pg15.8)' ) ") ", a(subs(:,i))
+  end do
+
+Here is an equivalent rank-generic but not parallel solution using an
+extension of non-concurrent DO.  The extension allows the <do-variable>
+to be an array with the same extent as the loop bounds.
+
+  ! The <do-variable> I below is an array having the same extent as the
+  ! rank of A.  It takes on all values of sets of subscripts of A, in
+  ! array-element order.
+  do ( integer :: I(rank(a)) = lbound(a), ubound(a) )
+    if ( a(i) /= 0 ) then
+      num_nz = num_nz + 1
+      subs(:,num_nz) = i
+    end if
+  end do
+
+If these could be generated by a MACRO DO, the result would be truly
+unreadable, and fragile.  The DO nesting depth would depend upon the
+rank of the array.
+
+

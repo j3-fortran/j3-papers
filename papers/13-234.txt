@@ -1,0 +1,204 @@
+                                                            J3/12-nnn
+To: J3
+Subject: If-then or else
+From: Malcolm Cohen
+Date: 2013 February 06
+
+
+1. Introduction
+
+Various proposed features for "conditional and" functionality and similar
+were proposed for Fortran 2008, but failed due to lack of consensus as to
+whether these should be functions or operators.
+
+This paper suggests reconsideration; for syntax we should avoid either
+function or operator syntax in favour of keywords, since these are not
+really functions.
+
+
+2. Motivation
+
+People have wanted to write things like
+  IF (I<N .AND. A(I)==0) ...
+for decades.  So far, we have fobbed them off and they have to write
+  IF (I<N) THEN
+    IF (A(I)) ...
+  END IF
+which is not just verbose but less convenient when wishing to test a series
+of conditions.
+
+Similarly, writing
+  IF (PRESENT(D)) THEN
+    CALL SUB(A,B,C,D)
+  ELSE IF (X<1) THEN
+    CALL SUB(A,B,C,EPSILON(X))
+  ELSE
+    CALL SUB(A,B,C,SPACING(X))
+  END IF
+is verbose but usable when only one argument is conditional, but rapidly
+degenerates when there are several arguments requiring similar handling.
+
+
+3. Requirements
+
+(1) Conditional expressions: based on one or more conditions, a
+    sub-expression is selected for evaluation and the other sub-expressions
+    are not evaluated.  This encompasses the functionality of "conditional
+    and" and "conditional not" operations.
+
+(2) Conditional arguments: using similar syntax, selecting an actual
+    argument from two or more data objects.  This should allow for an
+    object not to be selected in the case of passing to an optional
+    dummy argument.
+
+The expression form should be nestable.
+
+
+4. Not requirements
+
+The actual argument form could be nestable, but doing that would take some
+complicated wording, and is likely to read to unleadable user code, so this
+is not a requirement.
+
+Procedure pointers are adequate for conditionally passing procedures (or
+not), and alternate returns are obsolescent, therefore the conditional
+argument form need only handle data objects.  Similar considerations imply
+that the conditional expression form also need only handle data objects.
+
+
+5. Syntax
+
+<conditional-expr> ::= IF ( <logical-expr>  ) THEN ( <expr> )
+                       [ ELSE IF ( <logical-expr> ) THEN ( <expr> ) ]...
+                       ELSE ( <expr> ) END IF
+
+A <conditional-expr> is a primary.  The syntax can be disambiguated from
+that of a function reference as soon as the "THEN" keyword has been seen.
+
+Constraint: Each <expr> in a <conditional-expr> shall have the same
+            declared type, kind type parameters, and rank.
+
+<conditional-arg> ::=
+      IF ( <logical-expr> ) THEN ( <consequent-arg> )
+      [ ELSE IF ( <logical-expr> ) THEN ( <consequent-arg> ) ]...
+      [ ELSE ( <consequent-arg> ) ]
+      END IF
+<consequent-arg> ::= <expr> | <variable>
+
+A <conditional-arg> is an actual argument (<actual-arg>).
+
+Constraint: In a <conditional-arg>, each <expr> or <variable> that is a
+            <consequent-arg> shall have the same declared type, kind type
+            parameters, and rank.
+
+Constraint: If the corresponding dummy argument is not optional, the
+            ELSE clause shall appear in the <conditional-arg>.
+
+Constraint: In a <conditional-arg>, if any <consequent-arg> is a
+            <variable>, all other <consequent-arg>s in that
+            <conditional-arg> shall be a <variable>.
+
+This is to make it easier for humans as well as computers to understand
+what is being done.  No reasonable functionality is lost as passing the
+value of a variable is available by using parentheses (having the actual
+argument being a variable depending on the logical expressions is not
+reasonable).
+
+Constraint: If the corresponding dummy argument is allocatable, a pointer,
+            or a coarray, the attributes of each <consequent-arg> shall
+            satisfy the requirements of that dummy argument.
+
+This is to eliminate the possibility of an argument mismatch error at
+runtime depending on the results of the <logical-expr>s.  The wording
+permits a consequent argument to be a pointer, allocatable, or have corank
+indepently of the other consequent arguments but not independently of the
+dummy argument.
+
+Constraint: In a reference to a generic procedure, each <consequent-arg> in
+            a <conditional-arg> shall have the same corank, and if any
+            <expr> in a <conditional-arg> has the allocatable or pointer
+            attribute, each <expr> shall have that attribute.
+
+This retains generic resolution at compile time.
+
+
+6. Alternative syntax discussion
+
+Firstly, some design principles:
+
+(a) it should be visibly different from function syntax,
+    because it is not a function;
+(b) it should be visibly different from operator syntax,
+    because it is not an operation;
+(c) the difference should be "near the front" of the conditional
+    expression so as to simplify parsing by computers as
+    well as humans;
+(d) it should nest unambigously, and any parentheses needed
+    should be part of the syntax (otherwise the "variable" case
+    cannot be nested);
+(e) it should be readable & Fortran-like and not like line noise,
+    -- readability is self-evidently desirable.
+
+Both (a) and (b) are desirable because
+(i) this does not follow the usual "evaluate the arguments/operands and
+    call the function/do the operation",
+(ii) we do not want to affect operator priorities, and
+(iii) we do not want to invade the user namespace unnecessarily.
+
+Some possible (and some have actually been proposed) examples:
+
+(1) <logical-expr> ? <expr> : <expr>
+   satisfies (a)-(c), but not (d) or (e);
+
+(2) (? <logical-expr> : <expr> : <expr> ?)
+    satisfies (a)-(d), but not (e);
+
+(3) ( <logical-expr> | <expr> : <expr> )
+    satisfies (a)-(d), but is even worse on (e);
+
+(4) <logical-expr> .ANDTHEN. <logical-expr>
+    <logical-expr> .ORELSE. <logical-expr>
+    satisfies (a),(c),(e) but not (b) or (d),
+    and only provides short-cut logical conditions, not general selection;
+
+(5) .IF. <logical-expr> .THEN. <expr> .ELSE. <expr> .ENDIF.
+    satisfies (a), (b), (d), but not (c) and is weak on (e).
+
+The ordinary keyword form suggested in section 5, while more verbose than
+some of the above, best satisfies the design principles.
+
+
+7. Semantics
+
+Evaluating a <conditional-expr> or <conditional-arg> selects an <expr> or
+<variable> by evaluating each <logical-expr> in turn until one of them is
+true, or the ELSE or ENDIF clause is reached; the corresponding <expr> or
+<variable>, if any, is the one selected.
+
+The declared type, type parameters, and rank of a <conditional-arg> or
+<conditional-expr> is that of the <expr>s or <actual-arg>s that it
+contains.
+
+The value of a <conditional-expr> is the value of the selected <expr>.
+
+If evaluating a <conditional-arg> selects no <expr> or <variable>, there is
+no effective argument associated with the dummy argument.  Otherwise, the
+selected <expr> or <variable> is the effective argument.
+
+All static requirements from a dummy argument on effective arguments apply
+to any <consequent-arg>, for example if coindexed objects are prohibited as
+an actual argument they are also prohibited as a consequent argument.  This
+will need additional wording in the standard.
+
+
+8. Estimated impact
+
+The impact on the standard is relatively minor, but more than a simple
+intrinsic function.
+
+The impact on implementations is probably minor, but certainly not trivial.
+
+This is a completely new feature.  It does not satisfy the Markham
+resolution; however it might still be worthy of consideration.
+
+===END===

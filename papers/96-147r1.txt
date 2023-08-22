@@ -1,0 +1,200 @@
+								X3J3/96-147r1
+								page 1 of 4
+To: X3J3 From: /io (bleikamp)
+Subject: ASYNC I/O Functional Specification
+
+This document describes the functionality which will be provided in Fortran 2000
+for asynchronous I/O.  This document will drive the next step, developing
+concrete syntax and edits against the Fortran 95 standard.  Note: the straw vote
+on reconsidering "simplifying" async i/o, possibly requiring i/o lists to be one
+contiguous memory block, greatly surprised me.  Rather than charging forward and
+making the simplifications, I've left the more general proposal intact, and
+indicated where the simplifications would be made.  If we decide later to pursue
+the simplification, the changes to the spec and any edits to the standard are
+fairly small.
+
+Guidelines
+  - must be possible to be standard conforming on a processor/OS which does not
+    support async i/o
+    
+  - must be readily implementable on a wide variety of OS's 
+								
+  - should use existing OPEN, READ, and WRITE statements, extended with some new
+    keyword arguments.  We may possibly add a new WAIT statement or extend
+    READ/WRITE to do a WAIT.
+
+Terminology
+
+  READ/START - the READ statement which initiates an async READ.
+  similarily for WRITE/START
+  
+  WAIT - the WAIT or READ/WRITE statement which waits for async I/O completion
+         this statement can alternatively "check" the completion status
+         of a previous READ/START without necessarily waiting for completion.
+  
+   
+  "handle" - a value returned by READ/START and WRITE/START I/O statements.
+      	       This handle is passed to a WAIT statement to identify the
+	     particular async I/O statement to wait for completion of.
+	     Might be of type default integer, or possibly an implictly
+	     supplied derived type.
+
+   active handle - a particular handle value is "active" if that value was
+                 returned by a READ/WRITE START statement, and has not yet
+		 been specified in a WAIT statement that indicated the I/O
+		 operation for that record was complete.  All other handle
+		 values are either inactive (a WAIT has occured for that
+		 handle value), or invalid (a handle value which never was
+		 returned by a READ or WRITE statement), and may not be
+		 specified in a WAIT statement.
+
+								X3J3/96-147r1
+								page 2 of 4
+Specific features, restrictions, requirements
+
+  - The user must request ASYNC I/O via the OPEN statement.
+    Only a unit OPENed for async I/O may be referenced with a
+    READ or WRITE  statement containing an async i/o keyword
+    (such as WAIT="NO", or whatever we finally pick).
+
+    Note: a unit OPENed for async I/O may still be used with "normal"
+          READ/WRITE statements (non-async).  No waiting is required
+          in this case.  Previously initiated async I/O requests may or may not
+	  complete, and the user is still expected to wait for those
+	  previously initiated requests before using the affected storage
+	  locations. 
+
+  - The READ/START and WRITE/START statements will return a "handle value",
+    which uniquely identifies a particular I/O request.
+
+  - After executing a READ/START on a unit OPENed for async i/o,
+    the user shall WAIT for completion of the I/O (via a matching WAIT, that
+    is, a WAIT which specifes the same handle value as the READ/START statement
+    returned) before referencing or defining the storage units described by
+    the list items or namelist group in the READ statement.  
+     
+  - After executing a WRITE/START on a unit OPENed for async i/o,
+    the storage units described by the I/O list or namelist group can be
+    referenced, but not defined, until a matching WAIT is executed.  
+    After the matching WAIT, the storage units can be referenced and
+    defined (assuming no errors occured).
+    
+  - The WAIT statement will provide a mechanism for "checking" on the completion
+    status of a pending I/O request, without actually waiting for completion.
+    If such a WAIT/check statement indicates the I/O is not yet complete, the
+    specified handle is still active; otherwise, the handle value becomes
+    inactive.
+    
+    Note that an implementation is free to actually wait for
+    completion even when the user does a WAIT/check.  This allows
+    OS's which can only wait for completion to easily support async i/o.
+
+  - Specifying an inactive or invalid handle value on a WAIT is prohibited.
+
+  - Both START and WAIT statements can include END and ERR specifiers.
+    When an error occurs, it is processor dependent as to whether the
+    READ/WRITE START or the WAIT statement processes the ERR/END condition.
+    A branch to an END or ERR label will only occur while executing a START
+    or WAIT statement (no asynchronous branches to those labels).
+    
+  - A START or WAIT statement may "trigger" an error, even if it was some other
+    request on that same unit that actually caused the error to occur.  This is
+    needed since the user is not required to WAIT for all I/O operations.
+    A CLOSE statement may also "trigger" such an error.
+
+						X3J3/96-147r1
+						page 3 of 4
+  - The user may issue multiple I/O requests on a single or many units,
+    without waiting for any of the previously issued requests to finish.  
+    
+    Note: An implementation might wait for a previously issued
+    request on a unit, or on all units, to finish before proceeding.
+
+  - The program may "WAIT" for pending requests in ANY order, even for
+    requests on the same unit.  The processor may implicitly wait for
+    earlier requests to complete, but is not required to do so.
+
+  - A unit may be closed without WAITing for active I/O requests.  In
+    this case, the processor will WAIT for all outstanding WRITE requests
+    to complete.  READ requests may or may not complete.  Any error
+    condition which would have occurred if a WAIT had been executed for any
+    outstanding READ requests may or may not occur (processor dependent).
+
+    Note to implementors: although the user is free to issue 2**30
+    consecutive async WRITEs to the same unit, and then WAIT for the first
+    such WRITE, the runtime library is NOT required to keep track of all
+    the active handles.  Since no error detection is required for invalid or
+    inactive handles, the I/O library is free to "forget" active handle
+    values for records which have been "completed".  If the user later
+    WAITs for that record, the library should simply return with a
+    "success" status, and not raise any errors.
+
+  - An OPEN statement which specifies async i/o may open a file for FORMATTED
+    or UNFORMATTED I/O, and for SEQUENTIAL or DIRECT ACCESS I/O.
+
+    Note that formatted I/O potentially reads/writes several records,
+    and is less likely to be optimized by all implementations.  This is
+    particularily true for non-advancing, list directed and namelist i/o.
+
+  - Async I/O to internal files is prohibited.
+
+  - The READ/START and WRITE/START statements may have any valid list items.
+    The semantics of list item processing is the same for async i/o as
+    for "normal" i/o, within a single READ or WRITE statement.
+    Note that for some complicated READ I/O item lists, such as
+        READ(...) N, A ( F(N) )
+    the first value read, "N", determines where to assign the second value
+    read.  This, or other item lists which aren't sufficiently simple, may
+    cause some implementions to use regular synchronous I/O for that
+    I/O statement.
+
+    SIMPLIFICATION NOTE: if we decide to only allow very simple I/O item
+    lists, this previous paragraph would be replaced with an appropriate
+    description, possibly limiting the i/o list to only 1 contiguous
+    memory block, likely specified via a simple variable name (no sections,
+    etc).
+
+
+						X3J3/96-147r1
+						page 4 of 4
+  - Optimization and async i/o considerations
+
+    Either
+      1) A READ/WRITE START statement and its matching WAIT statement must
+         be in the same procedures scope, and executed during the same
+	 invocation of that procedure, OR
+
+      2) All entities specified, either explicitly or implictly (consider
+         NAMELIST and pointer targets), in a READ/WRITE START statement,
+	 must be declared/given the "ASYNC" attribute in the scopes
+	 containing the START and WAIT statements.  These entities may
+	 also be given the ASYNC attribute elsewhere.
+
+  - Interaction of copyin/copyout argument passing mechanism and async I/O
+
+    The user is permitted to execute procedure calls between a START and
+    its matching WAIT statement, which pass affected entities as an actual
+    argument.  The possible use of a "copyin/copyout"  argument passing
+    mechanism would potentially overwrite otherwise unmodified portions
+    of the affected entites, including those storage locations specifed
+    in the I/O list.  The processor is required to perform such
+    argument processing in a manner that does not interfere with
+    the active async I/O requests. 
+    
+      - one possible solution to the potential problem is for the I/O
+        library to use an internal/hidden buffer for async READs, and
+	to only copy the hidden buffer to the users storage locations
+	when the matching WAIT is executed.
+	
+      - A different possible solution is for the compiler to always wait for
+        pending async READs to complete before doing a copyin or a
+	copyout operation.  A WAIT might be needed only if any of the
+	variables passed as actual args are "global", or dummy args.
+
+      This information (on copyin/out) will likely be included in appendix
+      C, and an informative note to the user may be included, warning of
+      possible performance degradation in the presence of certain argument
+      passing conventions, such as passing an array section in the absence
+      of an interface where the matching dummy arg is assumed shape.
+    
+end of specification

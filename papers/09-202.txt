@@ -1,0 +1,129 @@
+To: J3                                                 09-202
+From: Nick Maclaren
+Subject: Atomic Semantics (Proposal B)
+Date: 2009 April 21
+References:
+
+
+There has been an inconclusive Email debate about the parallel semantics
+of ATOMIC variables, which has asked two questions: (a) what semantics
+should they have, and (b) what the current intent is.  There seems to be
+no consensus on the former and little on the latter.
+
+The debate has centred around Note 8.39.  There is no disagreement that
+it will work on any system that can support any useful form of
+synchronisation using atomic operations.  The problem is that it relies
+on semantics that are not explicitly specified by the normative text,
+but does not say so, and there is no agreement over whether they are an
+implication of the normative text.
+
+The purpose of this document (and its alternative one, "Atomic Semantics
+(Proposal A)") is to reach the state that the example relies solely on
+defined semantics.
+
+
+
+Note 8.39 implicitly assumes that access to an atomic variable on its
+own image is synchronised (in some sense).  In the past, we have agreed
+many times that the only way in which the owning image is 'privileged'
+is syntactically: i.e. by the licence to use a coarray name where other
+images need to use a coindexed variable.  This paper proposes that the
+owning image be given semantic privileges as well.
+
+Please note that I do not actually LIKE this idea, for many reasons:
+
+    it reduces scalability very considerably
+
+    it makes atomic variables less suitable for tracing purposes
+
+    it introduces another implied implementation into the actual
+specification
+
+    there is no particular reason to choose these semantics over ones
+that are slightly stronger or slightly weaker
+
+    it prevents atomics from being used in some places where some people
+will want to use them (e.g. in DO CONCURRENT)
+
+    it uses a semantic model that is, as far as I know, unique to
+Fortran
+
+The last point is possibly the most serious, because I really do not
+have a feel for the consequences.  It's clearly implementable, but its
+implications on what is defined and what is processor dependent are most
+unclear.
+
+However, if it is the only way that we can break out of our impasse, it
+needs to be considered.
+
+
+
+Edits to N1776 (J3/09-007r1)
+----------------------------
+
+[190:23-*] In 8.5.2, change Note 8.31 by replacing "volatile variables"
+by "volatile variables and atomic actions".  Note 8.32 also needs fixing
+to match this.
+
+
+[319:15-16] In 13.1, in paragraph 3, replace sentence 4:
+
+    "How sequences of atomic actions in unordered segments interleave
+    with each other is processor dependent."
+
+by:
+
+    "In unordered segments, the sequence of atomic actions in an image P
+    on an object owned by image Q is consistent with the execution
+    sequence of image Q; how other sequences of atomic actions
+    interleave with each other is processor dependent.  A call to an
+    atomic subroutine with an ATOM argument shall be used only where an
+    image control statement is permitted."
+
+[319:16-17] In 13.1, after paragraph 3, add a Note:
+
+
+    "NOTE 13.x
+    The sequences for different variables or by two images on an object
+    neither of them owns may not appear to be consistent.  The only
+    specified consistency for unordered segments is pairwise between
+    images on a single object, which is owned by one of the pair of
+    images.  A single segment is necessarily ordered with respect to
+    itself, and so is always self-consistent."
+
+
+
+Discussion
+----------
+
+This specification is not compatible with any of C++'s atomic models.
+That will displease some vendors.
+
+I believe that this makes Note 8.39 defined behaviour.
+
+The constraints help to make the implementation easier, when the
+underlying mechanism is hostile.  For example, TCP/IP is consistent
+within a single connexion, but not between connexions.
+
+It would be possible to weaken the requirement by requiring SYNC MEMORY
+on all images except the owning one, or by restricting non-owner
+accesses to stores, or both, but I couldn't think of how to specify any
+of those cleanly.
+
+One could require consistency for all accesses to a particular variable,
+but that is essentially as hard to implement as sequential consistency,
+so why not go there, be compatible with C++, do what users expect, and
+get all the advantages of the established analysis?
+
+It still does not require Note 8.39 to complete in finite time (i.e. at
+all).  That is only a difference in degree from existing timing issues,
+which are outside the scope of the standard.
+
+The implementation issues I raised in N1754 remain.  I remain very
+doubtful about the portability and reliability of synchronised atomics.
+
+The restriction on where actions can be performed is needed to maintain
+consistency with the rest of the standard; I don't like its wording, but
+don't know how to do better.  Problematic areas include functions that
+are not evaluated, WHERE, FORALL and DO CONCURRENT, but there may be
+others.

@@ -1,0 +1,160 @@
+To: J3                                                     J3/18-205r3
+From: Steve Lionel & Dan Nagle & John Reid
+Subject: Response to DIS comments GB043, 044, 045 (RANDOM_INIT)
+Date: 2018-June-15
+
+Reference: 18-007,14-184r4
+
+Discussion
+----------
+
+DIS comment GB043 says:
+
+"Subclause 16.7, para 4 says "It is processor
+dependent whether each image uses a separate
+random number generator, or if some or all images
+use common random number generators." We
+believe that the reason for this wording is to allow
+implementations to use a separate seed on each
+image, a single seed on each set of images
+(perhaps those on single nodes) or a single seed
+on all images (perhaps on a shared-memory
+machine with a modest number of images).
+
+The present wording for IMAGE_DISTINCT makes
+sense only for the case of a separate seed on
+each image - which image of a set sharing a seed
+calls RANDOM_INIT has no bearing. Does a single
+call of RANDOM_INIT initialize all the seeds? The a
+current wording suggests that only one seed is
+initialized. Subclause 16.7, para 4 also says "If
+RANDOM_INIT or RANDOM_SEED is called in a
+segment A, and RANDOM_INIT,
+RANDOM_SEED, or RANDOM_NUMBER is called
+in segment B, then segments A and B shall be
+ordered." If only one seed is initialized, the calls
+must be in a CRITICAL construct or its equivalent,
+which would be very inefficient. It would be much
+better to say that a single call initializes all the
+seeds and that it does not matter which image
+makes the call."
+
+After extensive discussion, JOR recognizes that the current definition
+of RANDOM_INIT is unworkable. Edits are supplied that provide the 
+following:
+
+- Each image in a team that wishes to "participate" in a shared behavior
+of RANDOM_NUMBER must call RANDOM_INIT with the same values for its
+arguments. In this sense it is similar to a collective subroutine.
+- All words that relate to implementation details ("seed" or "common
+generator" are removed. Instead the text describes the sequences 
+obtained by calls to RANDOM_NUMBER after RANDOM_INIT is called. A
+processor may choose to use a common generator in the cases where
+REPEATABLE is false, but a program has no way of detecting this.
+- The text in 16.7 about image segment ordering is removed, as it is
+no longer relevant.
+
+Comment GB044 says:
+
+"In the definition of argument REPEATABLE, the last sentence says "If 
+it has the value false, the seed is set to a processor-dependent,
+unpredictably different value on each call." The inclusion of the word 
+"unpredictably" has the effect of forbidding a vendor from documenting 
+how their pseudorandom number generator works. We believe that this 
+was not intended. "
+
+JoR agrees this was not intended, and has removed the easily-misunderstood
+term.
+
+Comment GB045 says:
+
+"In the current definition [of the argument REPEATABLE], it is unclear 
+whether the value of the  seed is the same only for the current 
+execution or is repeatable over different runs on the same processor 
+with the same number of images. We think the latter was intended, 
+which is very useful when testing or verifying code."
+
+We agree that this was the intention, but there remains the possibility
+that changes in the execution environment can affect the sequence. An edit
+and a note are added to address this.
+
+Edits
+-----
+
+16.7p4, page 348 Standard Generic Intrinsic procedures
+
+Replace the paragraph "If RANDOM_INIT ... generators" with:
+
+"The pseudorandom number generator on each image has a state independent
+of the state of that on any other image.  References to RANDOM_INIT,
+RANDOM_NUMBER, and RANDOM_SEED can update this state and no other image's
+pseudorandom number generator's state.  This state determines
+the sequence of pseudorandom numbers generated."
+
+16.9.155p3, page 416, RANDOM_INIT (Arguments)
+
+In the description of REPEATABLE, delete the text "If it has the value
+... on each call." 
+
+In the description of IMAGE_DISTINCT, delete the text "If it has the 
+value true ... calls RANDOM_INIT."
+
+After the argument descriptions, add the following paragraph:
+
+The effect of calling RANDOM_INIT depends on the values of the
+REPEATABLE and IMAGE_DISTINCT arguments:
+
+"Case(i): RANDOM_INIT(REPEATABLE=true, IMAGE_DISTINCT=true) is
+equivalent to a call of RANDOM_SEED with a processor-dependent 
+value for PUT that is different on every invoking image. In each 
+execution of the program with the same execution environment, if 
+the invoking image index value in the initial team is the same, 
+the value for PUT shall be the same.
+ 
+Case(ii): RANDOM_INIT(REPEATABLE=true, IMAGE_DISTINCT=false) is 
+equivalent to a call of RANDOM_SEED with a processor-dependent 
+value for PUT that is the same on every invoking image. In each 
+execution of the program with the same execution environment, the 
+value for PUT shall be the same.
+ 
+Case(iii): RANDOM_INIT(REPEATABLE=false, IMAGE_DISTINCT=true) is 
+equivalent to a call of RANDOM_SEED with a processor-dependent 
+value for PUT that is different on every invoking image. Different 
+values for PUT shall be used for each execution of the program.
+ 
+Case(iv): RANDOM_INIT(REPEATABLE=false, IMAGE_DISTINCT=false) is
+equivalent to a call of RANDOM_SEED with a processor-dependent value 
+for PUT that is the same on every invoking image. A different value 
+for PUT shall be used for each execution of the program.
+ 
+In each of these cases, a different processor-dependent value for PUT 
+shall result in a different sequence of pseudorandom numbers."
+
+16.9.155p4, page 416, RANDOM_INIT (Example)
+
+In paragraph 4 (Example) replace the sentence by "The following statement
+initializes the pseudorandom number generator of the current image so 
+that the pseudorandom number sequence is different from that on other
+executions of the program and is different from that on other invoking 
+images."
+
+16.9.156p3, page 416, RANDOM_NUMBER (Arguments)
+
+In the description of HARVEST delete the last sentence
+"If images use . . . processor dependent."
+
+16.9.157p5, page 417, RANDOM_SEED
+
+In the first sentence, replace "or changed by RANDOM_SEED" to "or changed
+by RANDOM_INIT or RANDOM_SEED".
+
+A.2p1, page 535, Processor Dependencies
+
+Delete the bullet "whether each image uses a separate random number 
+generator..."
+
+Delete the bullet "on images that use . . . unordered segments (16.7)."
+
+==END==
+
+

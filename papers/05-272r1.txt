@@ -1,0 +1,1815 @@
+
+                                                J3/05-272r1
+
+Date: 7-November-2005
+To:   J3
+From: Bill Long and John Reid
+Subject: Edits for co-arrays
+References: Feature UK-001, J3/05-208
+--------------------------------------------------------------
+
+Following are the edits to implement the UK-001 feature, 
+co-arrays, as amended by paper J3/05-208.
+
+
+Note 1. < and > are used to delimit italic font. << and >> are 
+used to delimit bold font.
+
+Note 2. Instead of overloading the array reduction functions with 
+collective versions, we have add new functions called CO_ALL, etc. 
+This is because the overloaded functions would no longer be pure.
+The new functions have an optional argument TEAM, whose absence 
+indicates that the team consists of all the images. We have 
+introduced a new category of intrinsic function: collective function. 
+
+Note 3. For consistency with the ALLOCATE statement, we now require 
+all images of the connect team to execute the same OPEN statement. 
+
+Note 4. We have added CO_MAXLOC and CO_MINLOC, which we believe were 
+omitted in error in Delft.
+
+Note 5. All page and line numbers refer to j3/04-007.
+
+
+EDITS
+
+.....................................................................
+[xiii] Introduction, the list of new Fortran 2008 features should 
+include
+
+  Parallel programming support: SPMD parallel programming, co-arrays
+  for data exchange between images, synchronization procedures, and 
+  collective procedures.
+
+.....................................................................
+In section 1.6 Compatibility, retain paragraph 3:5-9 regarding new 
+intrinsic procedure names. There are new intrinsics introduced in 
+this proposal. There are no other compatibility issues introduced in
+the proposal.
+
+.....................................................................
+[1:18+] Add new section after 1.2
+
+1.2a Images
+
+A Fortran program executes as if it were replicated a number of 
+times (which may be one), the number of replications remaining fixed
+during execution of the program and available from the intrinsic 
+function NUM_IMAGES().  
+
+Each copy is called an <<image>> and has its own set of data objects.
+The images execute asynchronously. The programmer controls the 
+progress of execution in each image through explicit use of Fortran 
+control constructs and through explicit use of intrinsic 
+synchronization procedures. Co-arrays provide a mechanism for 
+accessing data on one image from another image.
+
+Each image is indexed by an <<image index>>. These form a sequence 
+of integers running from one to NUM_IMAGES(). The programmer may 
+retrieve the index of the invoking image from the intrinsic 
+function THIS_IMAGE().
+
+NOTE 1.0. 
+A particular implementation may permit the number of images to 
+be chosen at compile time, at link time, or at execute time. The 
+number of images may be the same as the number of physical 
+processors, or it may be more, or it may be less. 
+[end NOTE]
+ 
+NOTE 1.0a.  It is usual for the program to be written for any number
+of images and the actual number for a specific run to be specified
+when the program is executed. This allows the program to be developed
+with fewer images than will be used in the eventual production runs.
+If the system is a uniprocessor, the processor knows that the number
+of images is 1 and can take advantage of this. Thus the early testing
+of the program can be performed on a uniprocessor.  For compilation
+for a multiprocessor, the vendor could supply a switch to specify that
+the number of images is 1, which would permit the optimizer to
+eliminate overhead associated with parallel execution.  [end NOTE]
+
+A <<team>> of images is a set of images that are collaborating in a 
+computation. The members of the team are specified by a rank-one 
+default integer array that holds the image indices, with no 
+duplications.
+
+.....................................................................
+[11:1-] Add to R213
+
+      <<or>> <critical-construct>
+
+.....................................................................
+[15:20] Replace the first sentence of the last paragraph of 2.3.4 by
+
+Normal termination of execution of the program occurs on all images 
+if a STOP statement or <end-program-stmt> is executed on an image.
+
+......................................................................
+[15:25+] Add at the end of 2.3.4
+
+NOTE 2.2a 
+If synchronization is required before all images complete execution, a
+synchronization statement (8.5) should be employed ahead of the STOP
+statement or <end-program-stmt>.
+[end NOTE]
+
+......................................................................
+[18:20+] Add new subsection to 2.4.5
+
+2.4.5a Co-array
+
+A <<co-array>> is a data entity declared with a <co-array-spec> in 
+square brackets. Within an image, it is normally accessed without use 
+of co-subscripts in square brackets and its properties are exactly 
+those that it would have had without the <co-array-spec> except that 
+its value may be referenced or defined by other images. For example, 
+the rank, bounds, extents, size, and shape are given by the data in 
+parentheses in its declaration or allocation. 
+
+The part of a co-array stored in the memory of a specified image may
+be addressed by using co-subscripts in square brackets. Each
+co-subscript shall be a scalar integer expression.
+
+An object whose designator includes square brackets is a <<co-array 
+subobject>>. For each co-array, subscripts in square brackets are 
+known as <<co-subscripts>> and are mapped to image indices in the 
+same way as Fortran array subscripts are mapped to the position of 
+the array element in array element order.
+
+NOTE 2.4a
+The use of square brackets for array constructors does not conflict
+with their use for co-arrays because the square left bracket of the 
+co-array syntax is immediately preceded by a variable.
+[end NOTE]
+
+On each image, the image index is available from the intrinsic
+function THIS_IMAGE with no arguments, the set of subscript values for
+a co- array A that correspond to the image are available as
+THIS_IMAGE(A), and the image index that corresponds to a set of
+subscript values SUB for a co-array A is available as
+IMAGE_INDEX(A,SUB).
+
+NOTE 2.4b
+For example, on image 5, for the co-array declared as
+        REAL :: A(10,20)[10,0:9,0:*]  
+THIS_IMAGE() has the value 5 and THIS_IMAGE(A) has the value 
+(/ 5,0,0 /). For the same example on image 213, THIS_IMAGE(A) 
+has the value (/ 3,1,2 /). 
+[end NOTE]
+
+NOTE 2.4c
+On a shared-memory machine, we expect a co-array to be 
+implemented as if it were an array of higher rank. On a 
+distributed-memory machine with separate physical memory for each 
+image, a co-array may be stored at the same virtual address in 
+each physical processor. On any machine, a co-array may be 
+implemented in such a way that each image can calculate the 
+virtual address of an element on another image relative to the 
+array start address on that other image. An implementation might 
+arrange for each co-array to be stored at the same virtual 
+address in each image, but this is not required. 
+[end NOTE]
+
+The <<co-rank>> of a co-array is the number of co-subscripts. The 
+<<co-bounds>> and <<co-extents>> are given within square 
+brackets in the co-array's declaration or allocation. The <<co-size>> 
+of a co-array is always equal to the number of images.
+
+......................................................................
+[19:5] In the last line of the first paragraph of 2.5.1, after 
+'array element selectors,' add 'image selectors,'.
+
+......................................................................
+[28:4+] Insert 'END CRITICAL' in the table in 3.3.1
+
+......................................................................
+[50:6+] After the second line of R441, add 
+          <<or>> DIMENSION [(<deferred-shape-spec-list>)] 
+          <left-square-bracket> <co-array-spec> <right-square-bracket>
+
+......................................................................
+[50:9+] After the first line of R442, add 
+      [<left-square-bracket><co-array-spec><right-square-bracket>] 
+
+......................................................................
+[50:25+] After C440, add
+
+C440a (R440) Each <co-array-spec> shall be a 
+<deferred-shape-spec-list> and the component shall be specified 
+with the ALLOCATABLE attribute.
+
+......................................................................
+[51:20+] Before NOTE 4.28, add new paragraph:
+
+A data component is a co-array if its <component-decl> contains 
+a <co-array-spec> or its <data-component-def-stmt> contains a 
+DIMENSION <component-attr-spec> with a <co-array-spec>. If the 
+<component-decl> contains a <co-array-spec>, it specifies the 
+co-rank; otherwise, the <co-array-spec> in the DIMENSION 
+<component-attr-spec> specifies the co-rank.
+
+......................................................................
+[71:21+] In R503, after the DIMENSION line, add 
+
+    <<or>> DIMENSION [(<array-spec>)] 
+          <left-square-bracket><co-array-spec><right-square-bracket>
+
+......................................................................
+[72:9] Separate R504 into two lines after '[(<array-spec>)]' and 
+insert line:
+       [<left-square-bracket><co-array-spec><right-square-bracket>]
+
+......................................................................
+[72:25+] After C510, add
+
+C510a (R501) A co-array that has the ALLOCATABLE attribute shall 
+be specified with a <co-array-spec> that is a <deferred-shape-
+spec-list>.
+
+......................................................................
+[72:33] In the second line of C514, after 'an allocatable entity,' add 
+'a co-array'.
+
+......................................................................
+[73:1+] After C517, add
+
+C517a (R501) The SAVE attribute shall be specified for a co-array 
+unless it is allocatable, a dummy argument, or declared in the main 
+program.
+
+NOTE 5.2a
+An allocatable co-array is not required to have the SAVE attribute 
+because a recursive procedure may need separate allocatable 
+co-arrays at each level of recursion. 
+[end NOTE]
+
+C517b (R501). If an object of derived type has a co-array component 
+at any level of component selection, each ancestor of the co-array 
+component shall be a non-allocatable non-pointer scalar.
+
+C517c (R501). The POINTER attribute shall not be specified for a co-
+array. 
+
+NOTE 5.2b.
+A co-array may be of a derived type with pointer or allocatable 
+components. The targets of such components always reside on the
+same image as the structure containing the component.
+
+If a large array is needed on a subset of images, it is wasteful
+of memory to specify it directly as a co-array.  Instead, it 
+should be specified as an allocatable component of a co-array 
+and allocated only on the images on which it is needed. 
+[end NOTE]
+
+......................................................................
+[74:19+] After the definition of an automatic data object, add a new
+constraint:
+
+C538a (R501) An automatic data object shall not be a co-array.
+
+......................................................................
+[74:20-] After NOTE 5.3, add a new note:
+
+
+NOTE 5.3a
+Automatic co-arrays are not permitted; for example, the co-array 
+WORK in the following code fragment is not permitted to be declared 
+thus
+       SUBROUTINE SOLVE3(N,A,B)
+       INTEGER :: N
+       REAL :: A(N)[*], B(N)
+       REAL :: WORK(N)[*]  ! Not permitted
+[end NOTE]
+
+......................................................................
+[78:3-9] Replace the first paragraph of 5.1.2.5 by
+
+The <<DIMENSION attribute>> specifies that an entity is an array, a 
+co-array, or both. The appearance of an <array-spec> or a <co-array-
+spec> in an <entity-decl> specifies the DIMENSION attribute for the 
+entity. Such an entity is an array if an <array-spec> appears and is 
+a co-array if a <co-array-spec> appears. The DIMENSION attribute 
+alternatively may be specified in the specification statements 
+DIMENSION, ALLOCATABLE, POINTER, TARGET, or COMMON.
+
+For an array, the rank or rank and shape is specified by the <array-
+spec>, if there is one, in the <entity-decl>, or by the <array-spec> 
+in the DIMENSION <attr-spec> otherwise. For a co-array, the co-rank 
+or co-rank and co-shape are specified by the <co-array-spec>, if there
+is one, in the <entity-decl>, or by the <co-array-spec> in the 
+DIMENSION <attr-spec> otherwise. 
+
+......................................................................
+***Note to Editor: This edit replaces the one for this line from 
+05-234r2
+
+[78:14] Replace C541 by
+
+R510a <co-array-spec> <<is>> <deferred-shape-spec-list>
+                      <<or>> <assumed-size-spec>
+
+C541 (R510 and R510a) The sum of the rank and co-rank shall not 
+exceed fifteen.
+
+......................................................................
+[85:6] Replace the last word, "program." of the first sentence of
+5.1.2.16 Volatile, with
+
+program, or by execution of statements on another image.
+
+......................................................................
+[87:34+] After R529, add
+
+C552a (R525). A <data-stmt-set> shall not contain any image 
+              selectors (6.2a). 
+
+......................................................................
+[90:2-5] Replace the contents of 5.2.6 by
+
+R535  <dimension-stmt> <<is>> DIMENSION [::] <dimension-decl-list>
+
+R535a <dimension-decl> <<is>> <array-name>(<array-spec>) 
+                       <<or>> <co-array-name>[(<array-spec>)] 
+            <left-square-bracket><co-array-spec><right-square-bracket>
+
+This statement specifies the DIMENSION attribute (5.1.2.5) and 
+the array and co-array properties for each object named.
+
+......................................................................
+[91:19+] After C570, add
+
+C570a (R544). A common block that contains a co-array shall be 
+specified to have the SAVE attribute in every scoping 
+unit in which it appears. 
+
+......................................................................
+[92:4-5] Replace R546 by
+
+R546  <target-stmt> <<is>> TARGET [::] <target-decl-list>
+
+R546a <target-decl> <<is>> <object-name>[(<array-spec>)] 
+          [<left-square-bracket><co-array-spec><right-square-bracket>]
+
+......................................................................
+[96:12+] After C577, add
+
+C577a (R556). An <equivalence-object> shall not contain an image 
+selector (6.2a). 
+
+......................................................................
+[98:22+] After C588, add
+
+C588a (R558). A <common-block-object> shall not contain an image 
+selector (6.2a). 
+
+C588b (R558). Blank common shall not contain a co-array. 
+
+......................................................................
+[105:2] Append to the end of R613 '[<image-selector>]'
+
+......................................................................
+[110:2-] Add new section at the end of 6.2. 
+
+6.2a Image selectors
+
+An <<image selector>> specifies the image whose data are referenced or 
+defined.
+
+R622a <image-selector> <<is>> 
+          <left-square-bracket><subscript-list><right-square-bracket>
+
+The value of a subscript in an image selector shall be within the 
+bounds for its co-dimension. An image selector shall select an image 
+with index in the range 1, ..., NUM_IMAGES().
+
+NOTE 6.15a
+For example, if there are 16 images and the co-array A is 
+declared
+    REAL :: A(10)[5,*]
+A(:)[1,4] is valid since it has co-subscript order value 16, but
+A(:)[2,4] is invalid.
+[end NOTE]
+
+......................................................................
+[110:20] In R628, after '[(<allocate-shape-spec-list>)]' add the
+new line '[<left-square-bracket><allocate-co-array-spec>
+<right-square-bracket>]'.
+
+......................................................................
+[111:5+] After R632, add 'R632a <allocate-co-array-spec> <<is>> 
+[<allocate-shape-spec-list>,] [<lower-bound-expr>:]* '.
+
+......................................................................
+[111:17] Add at the end of C628 'An <allocate-co-array-spec> shall 
+appear if and only if the <allocate-object> is a co-array.'
+
+......................................................................
+[111:19] Add at the end of C629 'The number of <allocate-shape-spec>s 
+in an <allocate-co-array-spec> shall be one less than the co-rank of 
+the <allocate-object>.'
+
+......................................................................
+[111:25+] After C633, add
+
+C633a (R629) An <allocate-object> shall not be co-array subobject.
+NOTE 6.15a
+If a co-array is of a derived type that has an allocatable component, 
+the component shall be allocated only on the local image:
+
+      TYPE(SOMETHING), ALLOCATABLE ::  T[:]
+        ...
+      ALLOCATE(T[*])          !  Allowed - implies synchronization
+      ALLOCATE(T%PTR(N))      !  Allowed - local allocation
+      ALLOCATE(T[Q]%PTR(N))   !  Not allowed 
+[end NOTE]
+
+......................................................................
+[113:21+] At the end of 6.3.1.1, add
+
+The value of each <lower-bound-expr> and each <upper-bound-expr> in 
+an <allocate-co-array-spec> shall not differ between images. 
+
+If a <type-spec> appears in an ALLOCATE statement and any <allocation>
+specifies a co-array, the values of each length type parameter shall
+not differ between images.
+
+If SOURCE= appears in an ALLOCATE statement and the <allocation>
+specifies a co-array, the values of each length type parameter of the
+<source-expr> shall not differ between images.
+
+The dynamic type of an <allocate-object> that is a co-array shall not
+differ between images. 
+
+There is implicit synchronization of all images in association 
+with each ALLOCATE statement that involves one or more co-
+arrays. Images do not commence executing subsequent statements 
+until all images finish executing the ALLOCATE statement. This 
+synchronization is independent of those obtained by calling 
+SYNC_ALL or SYNC_TEAM.
+
+NOTE 6.19a
+When an image executes an ALLOCATE statement, communication is not
+necessarily involved apart from any required for synchronization.  The
+image allocates the local part and records how the corresponding parts
+on other images are to be addressed.  The processor, except perhaps in
+debug mode, is not required to enforce the rule that the bounds are
+the same on all images, nor is it responsible for detecting
+or resolving deadlock problems.
+[end NOTE]
+
+......................................................................
+[116:19-] At the end of 6.3.3.1, add
+
+There is implicit synchronization of all images in association 
+with each DEALLOCATE statement that involves one or more co-
+arrays. All images delay making the deallocations until they are 
+all about to execute the DEALLOCATE statement. This 
+synchronization is independent of those obtained by calling 
+SYNC_ALL or SYNC_TEAM.
+
+If an object that has a co-array component at any level of component 
+selection is declared in a procedure and does not have the SAVE
+attribute, there is an implicit deallocation (and associated 
+synchronization) before the procedure in which it is declared is 
+exited by execution of a RETURN or END statement.
+
+NOTE 6.25a
+An allocatable co-array without the SAVE attribute may be required if 
+separate arrays are needed at each level of recursion in a recursive 
+procedure. For allocation of such a co-array, each image must descend 
+to the same level of recursion or deadlock may occur.
+[end NOTE]
+
+......................................................................
+[139:1+] Add to the end of the first paragraph of 7.4.1.2:
+
+If <variable> is an allocatable co-arrayi, it shall be allocated and
+the shapes of <variable> and <expr> shall conform. If <variable> is a
+co-array subobject of a type that has an allocatable component at any
+level of component selection, the shapes of the corresponding
+components of <variable> and <expr> shall conform.
+
+C715a (R734) The <variable> in an intrinsic assignment statement shall
+not be a co-array subobject of a derived type that has a pointer
+component.
+
+NOTE 7.34a
+The restriction in C715a is needed to avoid a disallowed pointer 
+assignment for the component, such as
+       Z[I] = Z ! Not allowed if Z has a pointer component 
+       Z = Z[I] ! Not allowed if Z has a pointer component 
+[end NOTE]
+
+......................................................................
+[143:31+] After C723, add 
+
+C723a (R739) A <data-target> shall not be a co-array subobject. 
+
+NOTE 7.42a
+A pointer and its target always reside on the same image. A co-array 
+may be of a derived type with pointer or allocatable components. For 
+example, if P is a pointer component, Z[I]%P is a reference to the 
+target of component P of Z on image I. This target must reside on 
+image I and must have been established by an allocate statement 
+executed on image I or a pointer assignment executed on image I.
+[end NOTE]
+
+......................................................................
+[143:37+] After C725, add 
+
+C725a (R741) The <variable> in a <proc-component-ref> shall not be a 
+co-array subobject. 
+
+NOTE 7.42b
+A co-array is permitted to be of a type that has a procedure pointer
+component or a type bound procedure. Such a procedure shall not be 
+invoked remotely; for example, the statement
+      CALL A[I]%PROC(X) ! Remote reference not allowed
+is not permitted. 
+[end NOTE]
+
+......................................................................
+[155:2] At the start of 8, after 'The execution sequence' add 
+'of a single image'. 
+
+[155:3] In the second line of 8, after 'execution sequence.' add 
+'This is the subject of 8.1, 8.2, 8.3, and 8.4; image synchronization 
+for exchange of data between images is the subject of 8.5.'
+
+......................................................................
+[170:25-26] Change the first two sentences of 8.4 to
+
+Execution of a STOP statement on an image causes normal termination 
+(2.3.4) of execution of the program on all images. At the time of
+termination, the stop code from the image executing the STOP 
+statement, if any, is available in a processor dependent manner. At 
+most one image shall make a stop code available.
+
+......................................................................
+***Note to Editor: This edit should be applied following the edit for
+[170:29+] from 05-231r4
+
+[170:29+] After 8.4, add new section:
+
+8.5 Image synchronization for exchange of data between images
+
+All images are synchronized before executing the first executable
+statement of the program.
+
+Most of the time, each image executes on its own without regard to 
+the execution of other images. Whenever an image
+ (1) defines a co-array datum, no other image shall be in the process
+     of defining it, 
+ (2) defines a co-array datum, no other image shall still need the 
+     old value, and
+ (3) references a co-array datum, it shall not be an old value that 
+     needs to be defined by another image. 
+The program may use invocations of the intrinsic synchronization 
+procedures or a CRITICAL construct to do this, and the program should 
+make no assumptions about the execution timing on different images.
+
+NOTE 8.22
+This obligation on the program provides the processor with scope 
+for optimization. When constructing code for execution on an image, 
+it may assume that it is the only image in execution until the next 
+invocation of one of the intrinsic synchronization procedures and 
+thus it may use all the optimization techniques available on a single 
+image. 
+[end NOTE]
+
+8.5.1 Flushing temporary memory
+
+If the processor employs temporary memory such as cache or registers
+(or even packets in transit between images) to hold co-array data,
+such data is visible to another image only after it has been copied to
+memory that can be accessed by the other image. If another image
+defines local co-array data, that data may need to be copied into the
+temporary memory of the executing image before it is referenced.  The
+intrinsic procedure FLUSH_MEMORY (13.7.39a) is provided for both
+purposes. It is concerned only with data held in temporary memory on
+the executing image for co-arrays in the local scope. Given this
+fundamental intrinsic procedure, the other synchronization procedures
+can be programmed in Fortran (see Annex C.9a.1), but the intrinsic
+versions are likely to be more efficient. In addition, the program
+may use it to express customized synchronization operations in
+Fortran.
+
+If data calculated on one image are to be accessed on another, the
+first image shall call FLUSH_MEMORY after the calculation is complete
+and the second shall call FLUSH_MEMORY before accessing the data.
+Synchronization is needed to ensure that FLUSH_MEMORY is called on the
+first before FLUSH_MEMORY is called on the second.
+
+NOTE 8.23
+A processor can hold co-arrays in temporary storage, such as cache or 
+registers, between calls to FLUSH_MEMORY.
+[end NOTE]
+
+NOTE 8.24
+If the local part of a co-array or a subobject of it is an actual 
+argument corresponding to a dummy argument that is not a co-array, a 
+copy may be passed to the procedure. To avoid the possibility of the 
+original being altered by another image after the copy has been made, 
+a synchronization may be needed ahead of the procedure invocation. 
+Similarly, a synchronization is needed after return before any other 
+image accesses the result.
+[end NOTE]
+
+8.5.2 Synchronizing images
+
+The intrinsic subroutine SYNC_TEAM (13.7.116b) provides
+synchronization for a team of images. The intrinsic subroutine
+SYNC_ALL (13.7.116a) provides a shortened call for the important case
+where the team consists of all the images. Each invocation of
+SYNC_TEAM or SYNC_ALL also has the effect of FLUSH_MEMORY.  The
+subroutine SYNC_ALL is not discussed further in this section.
+
+NOTE 8.25
+
+No information is available about whether an action on one image
+occurs before or after an action on another image unless one action is
+executed ahead of a synchronization call on one image and the other
+action is executed behind the corresponding synchronization call on
+the other image.  For example, while one image executes the statements
+between two invocations of SYNC_ALL, another image might be waiting to
+return from the second SYNC_ALL. Here is a example that imposes the
+fixed order 1, 2, ... on images:
+      ME = THIS_IMAGE()
+      NE = NUM_IMAGES()
+      IF(ME>1)  CALL SYNC_TEAM( ME-1 )
+        P = P[ME-1] + 1
+      IF(ME<NE) CALL SYNC_TEAM( ME+1 )
+[end NOTE]
+
+Teams are permitted to overlap, but for synchronizations to correspond
+correctly, if a synchronization call for one team is made ahead of a
+synchronization call for another team on a single image, the
+corresponding calls shall be in the same order on all images in common
+to the two teams.
+
+NOTE 8.25 
+The presence of the optional argument WAIT in a call to the intrinsic
+procedures SYNC_ALL or SYNC_TEAM allows the invoking image to continue
+execution without waiting for all the others in cases where it does
+not need data from all the others. Judicious use of this optional
+argument may improve the overall efficiency substantially. The
+processor is not, however, required to cause immediate continued
+execution.  The processor may choose to wait for the whole team, which
+certainly more than satisfies the requirement that the members of WAIT
+have arrived.
+[end NOTE]
+
+The FLUSH statement plays a similar role for file data to that of
+FLUSH_MEMORY for co-array data. Because of the high overheads
+associated with file operations, SYNC_TEAM does not also have the
+effect of a FLUSH statement. If data written by one image to a file
+are to be read by another image without closing the connection and re-
+opening it on the other image, FLUSH statements are needed on both
+images (details in 9.8).
+
+8.5.3 Critical sections
+
+Exceptionally, it may be necessary to limit execution of a <block>
+to one image at a time. Such a <block> is called a critical section.
+
+R851 <critical-construct> <<is>> <critical-stmt>
+                                 <block> 
+                                 <end-critical-stmt>
+R852 <critical-stmt>      <<is>> [<critical-construct-name>:] CRITICAL    
+R853 <end-critical-stmt>  <<is>> END CRITICAL 
+                                 [<critical-construct-name>]   
+C835 (R851) If the <critical-stmt> of a <critical-construct> specifies
+a <critical-construct-name>, the corresponding <end-critical-stmt> 
+shall specify the same <critical-construct-name>. If the 
+<critical-stmt> of a <critical-construct> does not specify a 
+<critical-construct-name>, the corresponding <end-critical-stmt> 
+shall not specify a <critical-construct-name>. 
+
+The effect of the construct is to limit the execution of <block> to a
+single image at any time. Once an image has commenced executing
+<block>, no other image shall commence executing it until the image
+that first commenced its execution has completed executing it. There
+is an implicit FLUSH_MEMORY at the beginning and end of <block>.
+
+.....................................................................
+[171:21+] At the end of 9, add new paragraph
+
+All images reference a single file system.
+
+.....................................................................
+[173:29] At the end of 9.2.2.1, after 'statements.', add 
+'Each record shall be read or written by a single image.'. 
+
+.....................................................................
+[178:36] At the end of the second paragraph of 9.4, after the second 
+'program', add 'and on all images'. 
+
+.....................................................................
+[179:33] In the second line of 9.4.3, after 'external file', add 
+', and the connection is for a team of images'. 
+
+.....................................................................
+[181:39+] At the end of R905, add
+
+      <<or>> TEAM = <connect-team> 
+
+.....................................................................
+[181:41+] After R907, add
+
+ R907a <connect-team> <<is>> <rank-one-int-expr> 
+
+.....................................................................
+[181:46+] After C905, add
+
+ C905a A <rank-one-int-expr> is an <int-expr> that is of rank 
+       one and type integer. 
+
+.....................................................................
+[185:4+] Add new subsection at the end of 9.4.5:
+
+ 9.4.5.16 TEAM= specifier in the OPEN statement
+
+The <rank-one-int-expr> shall evaluate to a set of integers
+that have values between 1 and NUM_IMAGES() and there shall be no 
+repeated values. One element shall have the value THIS_IMAGE(). This 
+specifies the <<connect team>> for the unit, which is the set of 
+images that are associated with the unit. If there is no TEAM= 
+specifier, the connect team is (/THIS_IMAGE()/).
+
+All images in the connect team, and no others, shall invoke the same 
+OPEN statement with identical values for the <connect-spec>s. The 
+unit shall not be open on other images. There is an implied call to
+SYNC_TEAM with TEAM=<connect-team> before and after the OPEN 
+statement.  
+
+The OPEN statement connects the file on the invoking images only, and 
+the unit becomes unavailable on all other images.  If the OPEN 
+statement is associated with a processor dependent file, the file is 
+the same for all images in the connect team.
+
+If the connect team contains more than one image, the OPEN statement 
+shall have an ACCESS= specifier that evaluates to DIRECT or an ACTION=
+specifier that evaluates to WRITE.
+
+An OPEN statement on a unit already connected to a file shall have the 
+same connect team as currently in effect.
+
+A file shall not be connected to more than one unit, even if the
+connect teams for the units have no images in common.
+
+Pre-connected units that allow sequential input shall be accessible 
+only on the image with index one. All other pre-connected units have a
+connect team containing all the images.
+
+NOTE 9.16a
+The input unit identified by * is therefore only available on
+the image with index one.
+[end NOTE]
+
+.....................................................................
+[185:19+] Add new paragraph at the end of 9.4.6:
+
+At the start of execution of a CLOSE statement, there is an implied 
+FLUSH operation for the unit.  There are implied calls to SYNC_TEAM 
+for the connect team before and after the CLOSE.
+
+.....................................................................
+[208:4+] Add new paragraph at the end of 9.7.1:
+
+At the start of execution of a BACKSPACE statement, there is an 
+implied FLUSH operation for the unit.  There are implied calls to 
+SYNC_TEAM for the connect team before and after the BACKSPACE.
+
+.....................................................................
+[208:19+] Add new paragraph at the end of 9.7.2:
+
+At the start of execution of an ENDFILE statement, there is an implied 
+FLUSH operation for the unit.  There are implied calls to SYNC_TEAM 
+for the connect team before and after the ENDFILE.
+
+.....................................................................
+[208:23+] Add new paragraph at the end of 9.7.3:
+
+At the start of execution of a REWIND statement, there is an implied 
+FLUSH operation for the unit.  There are implied calls to SYNC_TEAM 
+for the connect team before and after the REWIND.
+
+.....................................................................
+[209:18-19] In the second paragraph of 9.8, change 
+'to other processes, or causes data placed in an 
+external file' to 'to other images of the same team or to other 
+processes, or causes data placed in an external file by other images 
+of the same team or'. 
+
+......................................................................
+[256:26] In the first line of 12.2.1.1, after 'its shape,' add 
+'its co-shape,'.
+
+......................................................................
+[257:25+] In the first list of 12.3.1.1, add
+     (a1) With an argument that is a co-array subobject (2.4.5a),
+
+......................................................................
+[257:33+] In the second list of 12.3.1.1, add 
+     (b1) is a co-array,
+
+......................................................................
+[269:13+] In 12.4.1.2, Actual arguments associated with dummy data 
+objects, add a new paragraph and note:
+
+If the actual argument is a co-array subobject, the 
+dummy argument shall not be a co-array and shall have the INTENT(IN) 
+or the VALUE attribute.
+
+NOTE 12.21a
+If the actual argument is a co-array subobject and the corresponding
+dummy argument is not a co-array, it is expected that implementations
+will make a local copy of the actual argument before execution of the
+procedure starts.
+[end NOTE]
+
+......................................................................
+[269:17+] After the sixth paragraph of 12.4.1.2, add new paragraphs:
+
+If a dummy argument is an allocatable co-array, the actual argument 
+shall be an allocatable co-array of the same rank and co-rank.
+
+If a dummy argument is a co-array that is not allocatable, the co-rank
+and co-bounds are specified by the local declaration and are
+completely independent of those of the actual argument. The actual
+argument shall be the name of a co-array or a subobject of a co-array
+without any co-subscripts, vector-valued subscripts, allocatable
+component selection, or pointer component selection.
+
+NOTE 12.22a
+Only the local part of the co-array actual argument is specified and 
+this is associated with the local part of the dummy co-array. It is 
+assumed that the rest of the actual co-array consists of the 
+corresponding parts on the other images. Here is an example
+    INTERFACE
+      SUBROUTINE SUB(X,Y)
+        REAL :: X(:)[*], Y(:)[*]
+      END SUBROUTINE SUB
+    END INTERFACE
+       :
+    REAL, ALLOCATABLE :: A(:)[:], B(:,:)[:]
+     :
+    CALL SUB(A(:),B(1,:)) 
+[end NOTE]
+
+Each image independently associates each non-allocatable co-array
+dummy argument with a co-array that is not a dummy argument (perhaps
+through several layers of procedure calls). Any reference to a
+co-array subobject of the dummy argument uses the local co-bounds and
+co-rank.
+
+
+NOTE 12.21b
+A procedure with a co-array dummy argument might be called
+simultaneously on all the images of a team with the same actual
+co-array and the same bounds and co-bounds. However, there are other
+possibilities; for example, a procedure might be called on a single
+image to perform a calculation that needs data from other images.
+[end NOTE]
+
+If an assumed-shape array or a subobject of an assumed-shape array
+appears as an actual argument corresponding to a dummy co-array, the
+dummy co-array shall be of assumed shape. 
+
+A pointer component, an allocatable component that is not a co-array, 
+or a subobject of such a component shall not be an actual argument 
+that corresponds to a co-array dummy argument.
+
+If an array section appears as an actual argument corresponding to a 
+dummy co-array that is not of assumed shape, the section shall be 
+contiguous [term will be defined by another proposal].
+
+NOTE 12.21c
+It is intended to ensure that copy-in or copy-out does not take
+place for a dummy co-array. 
+[end NOTE]
+
+......................................................................
+[270:6] In thhe first full paragraph on page 270, replace 
+"corresponding actual argument has the TARGET attribute" with
+
+corresponding actual argument that is not a co-array sub-object and
+has the TARGET attribute
+
+......................................................................
+[271:6] In constraint C1232, replace the beginning of the first 
+sentence: "If an actual argument is an array section or an 
+assumed-shape array," with
+
+If an actual argument is an array section or an assumed-shape array 
+that is not a co-array subobject
+
+......................................................................
+[279:21+] After R1224, add
+
+C1233a (R1223) A function result shall not be a co-array.
+
+......................................................................
+***Note to Editor: This text should be added before the Note edited by 
+05-237r3
+
+[287:7+] After C1276, add
+
+C1276a A pure subprogram shall not contain a reference or definition 
+of any part of a co-array. 
+
+......................................................................
+[291:12] In the fifth line of 13.1, after 'described in 12.7' add 
+'A <<collective function>> is one that has a co-array argument and, on 
+each image of a team, returns a result of the same shape, each element 
+of which is calculated from the values of the corresponding elements 
+on all the images of the team. It shall be invoked on all images of
+the team with its co-array argument having the same shape. 
+Synchronization of the images of the team occurs before and after 
+execution.'
+
+......................................................................
+[291:14] In the seventh line of 13.1, change 'standard intrinsic' to 
+'inquiry, elemental, and transformational intrinsic'.
+
+......................................................................
+[297:25+] After 13.5.14, add new subsection:
+
+13.5.14a Collective functions
+
+CO_ALL(MASK[,TEAM])        True if all values are true
+CO_ANY(MASK[,TEAM])        True if any value is true
+CO_COUNT(MASK[,TEAM,KIND]) Numbers of true elements 
+CO_MAXLOC(ARRAY[,TEAM])    Image indices of maximum values 
+CO_MAXVAL(ARRAY[,TEAM])    Maximum values 
+CO_MINLOC(ARRAY[,TEAM])    Image indices of minimum values 
+CO_MINVAL(ARRAY[,TEAM])    Minimum values
+CO_PRODUCT(ARRAY[,TEAM])   Products of elements
+CO_SUM(ARRAY[,TEAM])       Sums of elements
+
+NOTE 13.6a
+These functions return an array of the same shape as the given co-
+array after having applied an operation across the images involved.
+The simple case of wanting the operation to be applied to all the 
+elements of the co-array can easily be programmed, for example
+    REAL FUNCTION GLOBAL_SUM(ARRAY)
+       REAL      :: ARRAY(:,:)[*]
+       REAL,SAVE :: TEMP[*]
+       TEMP = SUM(ARRAY) ! Local sum
+       GLOBAL_SUM = CO_SUM(TEMP)
+    END FUNCTION GLOBAL_SUM
+Versions with other arguments can be programmed similarly, see C.9a.3.
+[end NOTE]
+
+......................................................................
+[298:9+] Add to 13.5.18
+
+    IMAGE_INDEX(ARRAY, SUB) Index of an image 
+
+......................................................................
+[298:11+] Add to 13.5.18
+
+    NUM_IMAGES()    Number of images 
+
+......................................................................
+[298:12+] Add to 13.5.18
+
+    THIS_IMAGE([ARRAY [,DIM]]) Index of the invoking image
+
+......................................................................
+[298:12++] Add new section at the end of 13.5:
+
+13.5.19  Synchronization procedures 
+
+  FLUSH_MEMORY()          Move data to main memory and access data 
+                          from main memory
+  NOTIFY_TEAM(TEAM)       Notify team members that it has been
+                          called on this image  
+  READY_TEAM(TEAM)        Test the readiness of other team members
+  SYNC_ALL([WAIT])        Synchronize all images 
+  SYNC_TEAM(TEAM [,WAIT]) Synchronize images of the team
+  WAIT_TEAM(TEAM)         Wait for other team members
+
+......................................................................
+[309:32+] After 13.7.25, add new subsections
+
+13.7.25a CO_ALL(MASK[,TEAM])        
+
+<<Description.>> Determine whether all values are true across a team 
+of images. 
+
+<<Class.>> Collective function.
+
+<<Arguments.>>
+
+MASK shall be a co-array of type logical. 
+
+TEAM (optional) shall be of rank one and type integer with all 
+     elements having values in the range 1<=TEAM(I)<=NUM_IMAGES();
+     there shall be no repeated values and one element of TEAM shall 
+     have the value THIS_IMAGE(). The case with TEAM absent is treated
+     as if it were present with the value (/ (I,I=1,NUM_IMAGES()) /).
+  
+<<Result Characteristics.>> Type logical with the same kind type
+parameter as MASK. It has the shape of MASK.
+                 
+<<Result Value.>> An element of the result has the value true if all
+the corresponding elements of MASK are true on all the images of TEAM
+or if MASK has size zero, and the value false otherwise.
+
+<<Example.>> If NUM_IMAGES() has the value 2 and MASK has the values 
+(/.TRUE.,.FALSE.,.TRUE./) and (/.TRUE.,.TRUE.,.TRUE./) on the two 
+images, the value of CO_ALL(MASK) is [true, false, true].
+
+
+13.7.25b CO_ANY(MASK[,TEAM])        
+
+<<Description.>> Determine whether any value is true across a team of 
+images. 
+
+<<Class.>> Collective function.
+
+<<Arguments.>>
+
+MASK shall be a co-array of type logical. 
+
+TEAM (optional) shall be of rank one and type integer with all 
+     elements having values in the range 1<=TEAM(I)<=NUM_IMAGES();
+     there shall be no repeated values and one element of TEAM shall 
+     have the value THIS_IMAGE(). The case with TEAM absent is treated
+     as if it were present with the value (/ (I,I=1,NUM_IMAGES()) /).
+  
+<<Result Characteristics.>> Type logical with the same kind type
+parameter as MASK. It has the shape of MASK.
+                 
+<<Result Value.>> An element of the result has the value true if MASK
+does not have size zero and any of the corresponding elements of MASK
+are true on the images of TEAM, and the value false otherwise.
+
+<<Example.>> If NUM_IMAGES() has the value 2 and MASK has the values 
+(/.TRUE.,.FALSE.,. FALSE./) and (/.TRUE.,.TRUE.,.FALSE./) on the two 
+images, the value of CO_ANY(MASK) is [true, true, false].
+
+
+13.7.25c CO_COUNT(MASK[,TEAM,KIND]) 
+
+<<Description.>> Count the numbers of true elements across a team of 
+images. 
+
+<<Class.>> Collective function.
+
+<<Arguments.>>
+
+MASK shall be a co-array of type logical. 
+
+TEAM (optional) shall be of rank one and type integer with all 
+     elements having values in the range 1<=TEAM(I)<=NUM_IMAGES();
+     there shall be no repeated values and one element of TEAM shall 
+     have the value THIS_IMAGE(). The case with TEAM absent is treated
+     as if it were present with the value (/ (I,I=1,NUM_IMAGES()) /).
+  
+KIND (optional) shall be a scalar integer initialization expression.
+
+<<Result Characteristics.>> Integer. If KIND is present, the kind type
+parameter is that specified by the value of KIND; otherwise the kind
+type parameter is that of default integer type. The result has the
+shape of MASK.
+                 
+<<Result Value.>> An element of the result has a value equal to the
+number of corresponding elements of MASK on the images of TEAM that
+have the value true, or has the value zero if MASK has size zero.
+
+<<Example.>> If NUM_IMAGES() has the value 2 and MASK has the values 
+(/.TRUE.,.FALSE.,. FALSE./) and (/.TRUE.,.TRUE.,.FALSE./) on the two 
+images, the value of CO_COUNT(MASK) is [2, 1, 0].
+
+
+13.7.25d CO_MAXLOC(ARRAY[,TEAM])   
+
+<<Description.>> Image indices of maximum values of the elements 
+across a team of images. 
+
+<<Class.>> Collective function.
+
+<<Arguments.>>
+
+ARRAY shall be a co-array of type integer, real, or character. 
+   
+TEAM (optional) shall be of rank one and type integer with all 
+     elements having values in the range 1<=TEAM(I)<=NUM_IMAGES();
+     there shall be no repeated values and one element of TEAM shall 
+     have the value THIS_IMAGE(). The case with TEAM absent is treated
+     as if it were present with the value (/ (I,I=1,NUM_IMAGES()) /).
+  
+<<Result Characteristics.>> Type default 
+integer, of the same shape as ARRAY.
+                 
+<<Result Value.>> If the size of ARRAY is not zero, an element of the 
+result has a value equal to the smallest image index of a maximum 
+value of all the corresponding elements of ARRAY on the images of the 
+team. If ARRAY has size zero, all elements of the result have the 
+value zero. 
+
+<<Example.>> If NUM_IMAGES() has the value 2 and ARRAY has the values 
+(/1,5,6/) and (/4,1,6/) on the two images, the value of the result is
+(/2,1,1/).
+
+13.7.25e CO_MAXVAL(ARRAY[,TEAM])    
+
+<<Description.>> Maximum values of the elements across a team of 
+images. 
+
+<<Class.>> Collective function.
+
+<<Arguments.>>
+
+ARRAY shall be a co-array of type integer, real, or character. 
+    
+TEAM (optional) shall be of rank one and type integer with all 
+     elements having values in the range 1<=TEAM(I)<=NUM_IMAGES();
+     there shall be no repeated values and one element of TEAM shall 
+     have the value THIS_IMAGE(). The case with TEAM absent is treated
+     as if it were present with the value (/ (I,I=1,NUM_IMAGES()) /).
+  
+<<Result Characteristics.>> The same type, type parameters, and shape
+as ARRAY.
+                 
+<<Result Value.>> If the size of ARRAY is not zero, an element of the 
+result has a value equal to the maximum value of all the 
+corresponding elements of ARRAY on the images of the team. If ARRAY 
+has size zero and type integer or real, the result has the value of 
+the negative number of the largest magnitude supported by the 
+processor for numbers of the type and kind type parameter of ARRAY. 
+If ARRAY has size zero and type character, the result has the value 
+of a string of characters of length LEN(ARRAY), with each character 
+equal to CHAR(0,KIND=KIND(ARRAY)).
+
+<<Example.>> If NUM_IMAGES() has the value 2 and ARRAY has the values 
+(/1,5,3/) and (/4,1,6/) on the two images, the value of the result is
+(/4,5,6/).
+
+
+13.7.25f CO_MINLOC(ARRAY[,TEAM])   
+
+<<Description.>> Image indices of minimum values of the elements 
+across a team of images. 
+
+<<Class.>> Collective function.
+
+<<Arguments.>>
+
+ARRAY shall be a co-array of type integer, real, or character. 
+  
+TEAM (optional) shall be of rank one and type integer with all 
+     elements having values in the range 1<=TEAM(I)<=NUM_IMAGES();
+     there shall be no repeated values and one element of TEAM shall 
+     have the value THIS_IMAGE(). The case with TEAM absent is treated
+     as if it were present with the value (/ (I,I=1,NUM_IMAGES()) /).
+  
+<<Result Characteristics.>> Type default integer and of the same shape
+as ARRAY.
+                 
+<<Result Value.>> If the size of ARRAY is not zero, an element of the 
+result has a value equal to the smallest image index of a minimum 
+value of all the corresponding elements of ARRAY on the images of the 
+team. If ARRAY has size zero, all elements of the result have the 
+value zero. 
+
+<<Example.>> If NUM_IMAGES() has the value 2 and ARRAY has the values 
+(/1,5,6/) and (/4,1,6/) on the two images, the value of the result is
+(/1,2,1/).
+
+
+13.7.25g CO_MINVAL(ARRAY[,TEAM])    
+
+<<Description.>> Minimum values of the elements across a team of 
+images. 
+
+<<Class.>> Collective function.
+
+<<Arguments.>>
+
+ARRAY shall be a co-array of type integer, real, or character. 
+  
+TEAM (optional) shall be of rank one and type integer with all 
+     elements having values in the range 1<=TEAM(I)<=NUM_IMAGES();
+     there shall be no repeated values and one element of TEAM shall 
+     have the value THIS_IMAGE(). The case with TEAM absent is treated
+     as if it were present with the value (/ (I,I=1,NUM_IMAGES()) /).
+  
+<<Result Characteristics.>> The same type, type parameters, and shape
+as ARRAY.
+                 
+<<Result Value.>> If the size of ARRAY is not zero, an element of the 
+result has a value equal to the minimum value of all the 
+corresponding elements of ARRAY on the images of the team. If ARRAY 
+has size zero and type integer or real, the result has the value of 
+the positive number of the largest magnitude supported by the 
+processor for numbers of the type and kind type parameter of ARRAY. 
+If ARRAY has size zero and type character, the result has the value 
+of a string of characters of length LEN(ARRAY), with each character 
+equal to CHAR(n-1, KIND=KIND(ARRAY)), where n is the number of 
+characters in the collating sequence for characters with the kind 
+type parameter of ARRAY.
+
+<<Example.>> If NUM_IMAGES() has the value 2 and ARRAY has the values 
+(/1,5,3/) and (/4,1,6/) on the two images, the value of the result is
+(/1,1,3/).
+
+
+13.7.25h CO_PRODUCT(ARRAY[,TEAM]) 
+
+<<Description.>> Products of elements across a team of images. 
+
+<<Class.>> Collective function.
+
+<<Arguments.>>
+
+ARRAY shall be a co-array of type integer, real, or complex. 
+ 
+TEAM (optional) shall be of rank one and type integer with all 
+     elements having values in the range 1<=TEAM(I)<=NUM_IMAGES();
+     there shall be no repeated values and one element of TEAM shall 
+     have the value THIS_IMAGE(). The case with TEAM absent is treated
+     as if it were present with the value (/ (I,I=1,NUM_IMAGES()) /).
+  
+<<Result Characteristics.>> The same type, kind type parameter, and
+shape as ARRAY.
+                 
+<<Result Value.>> If the size of ARRAY is not zero, an element of the 
+result has a value equal to a processor-
+dependent approximation to the product of all the corresponding 
+elements of ARRAY on the images of the team. If ARRAY has size zero, 
+the result has the value one.
+
+<<Example.>> If NUM_IMAGES() has the value 2 and ARRAY has the values 
+(/1,5,3/) and (/4,1,6/) on the two images, the value of the result is
+(/4,5,18/).
+
+
+13.7.25i CO_SUM(ARRAY[,TEAM])       
+
+<<Description.>> Sums of elements across a team of images. 
+
+<<Class.>> Collective function.
+
+<<Arguments.>>
+
+ARRAY shall be a co-array of type integer, real, or complex. 
+ 
+TEAM (optional) shall be of rank one and type integer with all 
+     elements having values in the range 1<=TEAM(I)<=NUM_IMAGES();
+     there shall be no repeated values and one element of TEAM shall 
+     have the value THIS_IMAGE(). The case with TEAM absent is treated
+     as if it were present with the value (/ (I,I=1,NUM_IMAGES()) /).
+  
+<<Result Characteristics.>> The same type, kind type parameter, and
+shape as ARRAY.
+                 
+<<Result Value.>> If the size of ARRAY is not zero, an element of the 
+result has a value equal to a processor-
+dependent approximation to the sum of all the corresponding elements 
+of ARRAY on the images of the team. If ARRAY has size zero, the 
+result has the value zero.
+
+<<Example.>> If NUM_IMAGES() has the value 2 and ARRAY has the values 
+(/1,5,3/) and (/4,1,6/) on the two images, the value of the result is
+(/5,6,9/).
+
+......................................................................
+[317:1+] Insert new subsection
+
+13.7.39a FLUSH_MEMORY()
+
+<<Description.>> Before return from FLUSH_MEMORY, any co-array data 
+that are accessible in the scoping unit of the invocation and are held 
+by the image in temporary storage are placed in the storage that 
+other images access. The first subsequent access by the image to co-
+array data in this temporary storage shall be preceded by data 
+recovery from the storage that other images access.
+
+NOTE 13.16a
+Temporary storage includes registers and cache, but could also 
+include network packets in transit between nodes of a distributed 
+memory machine.
+[end NOTE]
+
+<<Class.>> Subroutine.
+
+<<Arguments.>> None.
+
+<<Example>> C.9a.1 shows how this procedure allows the other 
+synchronization procedures to be programmed in Fortran.
+
+......................................................................
+[322:23+] After 13.7.51, insert new subsection
+
+13.7.51a IMAGE_INDEX(ARRAY, SUB) 
+
+<<Description.>> Return the index of the image corresponding         
+   to the set of co-subscripts SUB for ARRAY.
+
+<<Class.>> Inquiry function.
+
+<<Arguments.>> 
+
+ARRAY shall be a co-array of any type.
+
+SUB shall be a rank-one array of size equal to the co-rank of ARRAY 
+and type integer. 
+
+<<Result Characteristics.>> Scalar of type default integer.
+
+<<Result Value.>> The index of the image corresponding to the set of 
+co-subscripts SUB for ARRAY.
+
+<<Example>> If A is declared A[0:*], IMAGE_INDEX(A,(/0/)) has the 
+value 1.
+
+
+NOTE 13.16a
+A module containing an implementation of this function with a slightly
+changed argument list is available in C9a.2
+[end NOTE]
+
+......................................................................
+[340:26+] After 13.7.87, insert new subsection
+
+13.7.87a NOTIFY_TEAM(TEAM) 
+
+<<Description.>> Notify all team members that it has been called on 
+this image. 
+
+<<Class.>> Subroutine.
+
+<<Arguments.>> 
+
+TEAM shall be of type integer and rank one.  All  elements of TEAM 
+   shall have values in the range 1 <= TEAM(I) <= NUM_IMAGES() and 
+   there shall be no repeated values.  
+
+<<Example>> This function, in combination with READY_TEAM, allows 
+images to synchronize yet perform other computations while waiting:
+      CALL NOTIFY_TEAM(TEAM) ! Tell the others that this point has   
+                             ! been reached
+      DO 
+        IF (READY_TEAM(TEAM)) EXIT
+         ... ! Perform secondary calculation instead of waiting
+      END DO      
+
+......................................................................
+[341:30+] After 13.7.88, insert new subsection
+
+13.7.88a NUM_IMAGES()
+
+<<Description.>> Return the number of images.
+
+<<Class.>> Inquiry function.
+
+<<Arguments.>> None.
+
+<<Result Characteristics.>> Scalar of type default integer.
+
+<<Result Value.>> The number of images.
+
+<<Example>> 
+To employ image 1 to read data and broadcast it to other images: 
+      REAL :: P[*]
+        ...
+      IF (THIS_IMAGE()==1) THEN
+         READ(6,*)P
+         DO I = 2, NUM_IMAGES()
+            P[I] = P
+         END DO
+      END IF
+      CALL SYNC_ALL()
+
+NOTE 13.16a
+These two functions are useful in connection with NUM_IMAGES.
+
+   INTEGER FUNCTION LOG2_IMAGES()
+   ! Returns the base-2 logarithm of the number of images,
+   ! truncated to an integer. 
+      LOG2_IMAGES = LOG(NUM_IMAGES()+0.5)/LOG(2.0)
+   END FUNCTION LOG2_IMAGES
+
+   INTEGER FUNCTION REM_IMAGES()
+   ! Returns MOD(NUM_IMAGES(),2**LOG2_IMAGES()).  
+      REM_IMAGES = MOD(NUM_IMAGES(),2**LOG2_IMAGES())
+   END FUNCTION REM_IMAGES
+[end NOTE]
+
+......................................................................
+[345:31+] After 13.7.96, insert new subsection
+
+13.7.96a READY_TEAM(TEAM) 
+
+<<Description.>> Returns the value true if and only if, for every team
+member, the team  member has called NOTIFY_TEAM with the image in its 
+team at least as many times as the image has called NOTIFY_TEAM with 
+the team member in its team. 
+
+<<Class.>> Function.
+
+<<Argument.>> 
+
+TEAM shall be of type integer and rank one.  All  elements of TEAM 
+   shall have values in the range 1 <= TEAM(I) <= NUM_IMAGES() and 
+   there shall be no repeated values.  
+
+<<Result Characteristics.>> Scalar of type default logical.
+
+<<Result Value.>> Returns the value true if and only if, for every
+team member, the team member has called NOTIFY_TEAM with the image in
+its team at least as many times as the image has called NOTIFY_TEAM
+with the team member in its team.
+
+<<Example>> This function, in combination with NOTIFY_TEAM, allows 
+images to synchronize yet perform other computations while waiting:
+      CALL NOTIFY_TEAM(TEAM) ! Tell the others that this point has   
+                             ! been reached
+      DO 
+        IF (READY_TEAM(TEAM)) EXIT
+         ... ! Perform secondary calculation instead of waiting
+      END DO      
+
+......................................................................
+[355:1-] After 13.7.116, insert new subsections
+
+13.7.116a SYNC_ALL([WAIT])
+
+<<Description.>> Synchronizes all the images. The effect is that of 
+SYNC_TEAM(ALL,[WAIT]) where ALL has the value 
+(/ (I,I=1,NUM_IMAGES()) /).
+
+<<Class.>> Subroutine.
+
+<<Argument.>> 
+
+WAIT (optional) shall be of type integer; it shall be scalar or of 
+    rank one. The scalar case is treated as if the argument were the 
+    array (/WAIT/). If WAIT is absent, the effect is as if WAIT were 
+    present and equal to (/ (I,I=1,NUM_IMAGES) /).
+
+<<Example>> The following code employs the first image to read data. 
+The other images then copy the data.
+      IF (THIS_IMAGE()==1) READ(*,*)P
+      CALL SYNC_ALL()
+      P = P[1]
+Synchronization is needed to ensure that the other images do not copy 
+the data before it has been read.
+
+
+13.7.116b SYNC_TEAM(TEAM [,WAIT])
+
+<<Description.>> Synchronizes the images of a team. The effect of 
+SYNC_TEAM(TEAM,WAIT) with both arguments of rank one is as if the 
+statements
+         CALL NOTIFY_TEAM(TEAM)
+         CALL WAIT_TEAM(WAIT)
+were executed. 
+
+<<Class.>> Subroutine.
+
+<<Arguments.>> 
+
+TEAM shall be of type integer; it shall be scalar or of rank one. The
+   scalar case is treated as if the argument were the array (/
+   THIS_IMAGE(),TEAM /); in this case, TEAM shall not have the value
+   THIS_IMAGE(). If TEAM is an array all elements of TEAM shall have
+   values in the range 1 <= TEAM(I) <= NUM_IMAGES() and there shall be
+   no repeated values. One element of TEAM shall have the value
+   THIS_IMAGE().
+
+WAIT (optional) shall be of type integer; it shall be scalar or of 
+   rank one. The scalar case is treated as if the argument were the  
+   array (/WAIT/). If WAIT is absent, the effect is as if WAIT were 
+   present and equal to TEAM.
+
+<<Example>> The following code is executed only on the images indexed 
+by TEAM. It employs the first image to read data. The other images of 
+the team then copy the data.
+      IF (THIS_IMAGE()==TEAM(1)) READ(*,*)P
+      CALL SYNC_TEAM(TEAM)
+      P = P[1]
+Synchronization is needed to ensure that the other images do not copy 
+the data before it has been read.
+
+......................................................................
+[356:1+] After 13.7.119, insert new subsection
+
+13.7.119a THIS_IMAGE([ARRAY [,DIM]]) 
+
+<<Description.>> Return the index of the invoking image.
+
+<<Class.>> Inquiry function.
+
+<<Arguments.>> 
+
+ARRAY (optional) shall be a co-array of any type.
+
+DIM (optional) shall be scalar and of type default integer. Its value 
+     shall be in the range 1<=DIM<=n where n is the co-rank of ARRAY. 
+
+<<Result Characteristics.>> Type default integer, scalar or of rank one.
+
+<<Result Value.>>   
+
+Case (i): If ARRAY is absent, the result is a scalar with value equal
+      to the index of the invoking image. It is in the range 1, ...,
+      NUM_IMAGES().
+
+Case (ii): If ARRAY is present and DIM is absent, the result is an
+      array of size equal to the co-rank of ARRAY. Element K of the
+      result has value equal to co-subscript K of ARRAY on the
+      invoking image.
+
+Case (iii): If ARRAY and DIM are present, the result is a scalar with
+      value equal to co-subscript DIM of of ARRAY on the invoking
+      image.
+
+<<Example>> The following employs the first image to read data. 
+The other images then copy the data.
+      IF (THIS_IMAGE()==1) READ(*,*)P
+      CALL SYNC_ALL()
+      P = P[1]
+
+NOTE 13.17a
+A module containing an implementation of this function
+with a slightly changed argument list is available in C.9a.2.
+[end NOTE]
+
+......................................................................
+[359:26+] After 13.7.126, insert new subsection
+
+13.7.126a WAIT_TEAM(TEAM) 
+
+<<Description.>> Cause the image to wait until, for every team 
+member, the team member has called NOTIFY_TEAM with the image in its 
+team at least as many times as the image has called NOTIFY_TEAM with 
+the team member in its team.
+
+<<Class.>> Subroutine.
+
+<<Argument.>> 
+
+TEAM shall be of type integer and rank one.  All  elements of TEAM 
+   shall have values in the range 1 <= TEAM(I) <= NUM_IMAGES() and
+   there shall be no repeated values.  
+
+<<Example>> This function, in combination with NOTIFY_TEAM, allows 
+images to synchronize yet perform other computations while waiting:
+      CALL NOTIFY_TEAM(TEAM) ! Tell the others that this point has   
+                             ! been reached
+         ... ! Perform secondary calculation
+      CALL WAIT_TEAM(TEAM) ! Wait for all images of the team to have
+                           ! reached the CALL NOTIFY_TEAM statement.
+
+......................................................................
+Add to glossary:
+
+[427:1-]
+
+<<co-array>> (2.4.5a) : A data entity declared with a <co-array-spec> 
+in square brackets. The part of a co-array that resides on another 
+image may be addressed by using co-subscripts in square brackets. 
+
+<<co-array subobject>> (2.4.5a) : An object whose designator includes 
+square brackets.
+
+<<co-bounds>> (2.4.5a) : The bounds given by the data in square 
+brackets in a co-array's declaration or allocation.
+
+<<co-rank>> (2.4.5a) : The number of co-subscripts of a co-array.
+
+[427:2+]
+
+<<collective function>> (13.1) : An intrinsic function that has a co-
+array argument and, on each image of a team, returns a result that 
+depends on data on all the images of the team. 
+
+[427:18+]
+
+<<connect team>> (9.4.5) : The set of images that are associated with 
+an input-output unit. 
+
+[430:26+]
+
+<<image>> (1.2.1) : A Fortran program executes as if it were 
+replicated a number of times, the number of replications remaining 
+fixed during execution of the program. Each copy is called an 
+<<image>> and each image executes asynchronously. 
+
+<<image index>> (1.2.1) An integer in the range 1, ..., NUM_IMAGES() 
+that indexes an image. 
+
+[436:1-]
+
+<<team>> (1.2.1) A set of images that are collaborating in a 
+computation and specified by an rank-one default integer array that 
+holds the image indices, with no duplications.
+
+......................................................................
+[484:9+] After C.9, add new section
+
+C.9a Section 13 notes
+
+C.9a.1 The synchronization intrinsics in Fortran   
+
+The simple module shown below uses FLUSH_MEMORY to implement the other
+synchronization intrinsics. Its purpose is illustrative. Actual
+implementations should provide intrinsic procedures that would be more
+efficient than these and provide extra checks, at least in debug mode,
+of correct usage.
+
+We identify corresponding calls of SYNC_TEAM by counting, for
+each pair P and Q, the number of invocations C(P,Q) for a team
+including image P on image Q.  If P and Q belong to more than one
+team, their calls for each team are required to be in the same order,
+so the calls correspond if and only if C(P,Q) and C(Q,P) have the
+same value.
+
+In a long run on a powerful machine, the counts C(P,Q) may get 
+very large. We therefore use long integers to hold these counts.
+
+The basic mechanism we use to force an image to wait for another image
+is to make it execute a tight loop until co-array data are altered by
+the other image.
+
+MODULE SYNC
+   IMPLICIT NONE
+   SAVE
+   INTEGER, INTRINSIC:: THIS_IMAGE, NUM_IMAGES
+   INTRINSIC :: FLUSH_MEMORY
+   INTEGER, PARAMETER :: LONG=SELECTED_INT_KIND(18)
+   INTEGER(LONG), ALLOCATABLE, PRIVATE :: C(:)[:]
+   INTEGER, PRIVATE :: K,ME,NIMG,Q
+   INTEGER, ALLOCATABLE, PRIVATE :: ALL(:)
+   INTERFACE SYNC_ALL
+      MODULE PROCEDURE SYNC_ALL, SYNC_ALL1, SYNC_ALL0
+   END INTERFACE
+   INTERFACE SYNC_TEAM
+      MODULE PROCEDURE SYNC_TEAM11, SYNC_TEAM0, SYNC_TEAM1,  &
+                       SYNC_TEAM01, SYNC_TEAM10, SYNC_TEAM11
+   END INTERFACE
+CONTAINS
+   SUBROUTINE SYNC_START ! This must be called initially on all images
+      ME   = THIS_IMAGE()
+      NIMG = NUM_IMAGES()
+      ALLOCATE (ALL(NIMG))
+      ALL = (/ (K,K=1,NIMG) /)
+      ALLOCATE ( C(NIMG)[*], SOURCE=0 )
+   END SUBROUTINE SYNC_START
+
+   SUBROUTINE NOTIFY_TEAM(TEAM)
+      INTEGER, INTENT(IN) :: TEAM(:) 
+      CALL FLUSH_MEMORY
+      DO K= 1,SIZE(TEAM)
+         C(ME)[TEAM(K)] = C(ME)[TEAM(K)] + 1
+      END DO
+      CALL FLUSH_MEMORY 
+   END SUBROUTINE NOTIFY_TEAM
+
+   SUBROUTINE WAIT_TEAM(TEAM)
+      INTEGER, INTENT(IN) :: TEAM(:) 
+      INTEGER :: CMEQ 
+      CALL FLUSH_MEMORY
+      DO K= 1,SIZE(TEAM)
+         Q = TEAM(K)
+         CALL FLUSH_MEMORY 
+         CMEQ = C(ME)[Q]
+         DO  ! spin waiting for image Q
+            CALL FLUSH_MEMORY
+            IF( C(Q) >= CMEQ ) EXIT
+         END DO
+      END DO
+   END SUBROUTINE WAIT_TEAM
+
+   LOGICAL FUNCTION READY_TEAM(TEAM)
+      INTEGER, INTENT(IN) :: TEAM(:) 
+      CALL FLUSH_MEMORY
+      DO K= 1,SIZE(TEAM)
+         Q = TEAM(K)
+         IF( C(Q) < C(ME)[Q]) EXIT
+       END DO
+       READY = K>SIZE(TEAM)
+   END FUNCTION READY_TEAM
+
+   SUBROUTINE SYNC_TEAM11(TEAM,WAIT)
+        INTEGER, INTENT(IN) :: TEAM(:),WAIT(:) 
+        CALL NOTIFY_TEAM(TEAM)
+        CALL WAIT_TEAM(WAIT)
+   END SUBROUTINE SYNC_TEAM11
+
+   SUBROUTINE SYNC_TEAM1(TEAM)
+      INTEGER, INTENT(IN) :: TEAM(:)
+      CALL SYNC_TEAM11(TEAM,TEAM)
+   END SUBROUTINE SYNC_TEAM1
+
+   SUBROUTINE SYNC_TEAM0(TEAM)
+      INTEGER, INTENT(IN) :: TEAM
+      CALL SYNC_TEAM1((/ME,TEAM/))
+   END SUBROUTINE SYNC_TEAM0
+
+   SUBROUTINE SYNC_TEAM10(TEAM,WAIT)
+      INTEGER, INTENT(IN) :: TEAM(:)
+      INTEGER, INTENT(IN) :: WAIT
+      CALL SYNC_TEAM11(TEAM,(/WAIT/))
+   END SUBROUTINE SYNC_TEAM10
+
+   SUBROUTINE SYNC_TEAM00(TEAM,WAIT)
+      INTEGER, INTENT(IN) :: TEAM
+      INTEGER, INTENT(IN) :: WAIT
+      CALL SYNC_TEAM11((/ME,TEAM/),(/WAIT/))
+   END SUBROUTINE SYNC_TEAM00
+
+   SUBROUTINE SYNC_TEAM01(TEAM,WAIT)
+      INTEGER, INTENT(IN) :: TEAM
+      INTEGER, INTENT(IN) :: WAIT(:)
+      CALL SYNC_TEAM ((/ME,TEAM/),WAIT)
+   END SUBROUTINE SYNC_TEAM01
+
+   SUBROUTINE SYNC_ALL
+      CALL SYNC_TEAM (ALL,ALL)
+   END SUBROUTINE SYNC_ALL
+
+   SUBROUTINE SYNC_ALL1(WAIT)
+      INTEGER, INTENT(IN) :: WAIT(:)
+      CALL SYNC_TEAM(ALL,WAIT)
+   END SUBROUTINE SYNC_ALL1
+
+   SUBROUTINE SYNC_ALL0(WAIT)
+      INTEGER, INTENT(IN) :: WAIT
+      CALL SYNC_TEAM(ALL,(/WAIT/))
+   END SUBROUTINE SYNC_ALL0
+
+END MODULE SYNC
+
+
+C.9a.2 Module for THIS_IMAGE and IMAGE_INDEX 
+
+The intrinsics THIS_IMAGE(ARRAY) and IMAGE_INDEX(ARRAY,SUB) cannot be 
+coded in Fortran since ARRAY may be of any type and THIS_IMAGE(ARRAY) 
+needs to know the index of the image on which the code is running. 
+
+We therefore require the bounds to be specified as integer arrays and 
+we require the image index for THIS_IMAGE(ARRAY).
+
+MODULE INDEX
+
+CONTAINS
+
+INTEGER FUNCTION IMAGE_INDEX(LBOUND,UBOUND,SUB)
+    INTEGER,INTENT(IN) :: LBOUND(:),UBOUND(:),SUB(:)
+    INTEGER :: I,N
+    N = SIZE(SUB)
+    IMAGE_INDEX = SUB(N) - LBOUND(N) 
+    DO I = N-1,1,-1
+       IMAGE_INDEX = IMAGE_INDEX*(UBOUND(I)-LBOUND(I)+1) + &
+           SUB(I) - LBOUND(I) 
+    END DO
+    IMAGE_INDEX = IMAGE_INDEX + 1 
+  END FUNCTION IMAGE_INDEX
+
+INTEGER FUNCTION THIS_IMAGE(LBOUND,UBOUND,ME) RESULT(SUB)
+    INTEGER,INTENT(IN) :: LBOUND(:),UBOUND(:),ME
+    INTEGER :: SUB(SIZE(LBOUND))
+    INTEGER :: EXTENT,I,M,ML,N
+    N = SIZE(SUB)
+    M = ME - 1
+    DO I = 1,N-1
+       EXTENT = UBOUND(I)-LBOUND(I)+1
+       ML = M
+       M = M/EXTENT 
+       SUB(I) = ML - M*EXTENT + LBOUND(I) 
+    END DO
+    SUB(N) = M + LBOUND(N) 
+  END FUNCTION THIS_IMAGE
+
+END MODULE INDEX
+
+
+C.9a.3 Collective co-array functions
+
+The functions of 13.5.14a return an array of the same shape as the 
+given co-array after having applied an operation across the images 
+involved. A note there shows how to program the operation being 
+applied to all the elements of the co-array to produce a scalar 
+result. Versions with other arguments can similarly be programmed, 
+for example
+
+    REAL FUNCTION GLOBAL_SUM_MASK(ARRAY,MASK)
+       REAL :: ARRAY(:,:)[*],MASK(:,:)
+       TEMP = SUM(ARRAY,MASK=MASK) ! Local sum
+       GLOBAL_SUM = CO_SUM(TEMP)
+    END FUNCTION GLOBAL_SUM
+
+    FUNCTION GLOBAL_SUM(ARRAY,DIM)
+       REAL :: ARRAY(:,:)[*]
+       INTEGER :: DIM
+       REAL,ALLOCATABLE :: GLOBAL_SUM(:)
+       REAL,ALLOCATABLE :: TEMP(:)[*]
+       ALLOCATE(GLOBAL_SUM(SIZE(ARRAY,3-DIM)) )
+       ALLOCATE(      TEMP(SIZE(ARRAY,3-DIM))[*] )
+       TEMP = SUM(ARRAY,DIM) ! Local sum
+       GLOBAL_SUM = CO_SUM(TEMP)
+    END FUNCTION GLOBAL_SUM

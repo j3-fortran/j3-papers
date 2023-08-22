@@ -1,0 +1,156 @@
+
+                                                     J3/06-129
+
+To: J3/WG5
+Date: 1/30/2006
+From: Aleksandar Donev
+Subject: Ragged allocatable/pointer co-arrays
+
+________________________
+Background:
+________________________
+
+The current CAF specification is written so that co-arrays have the
+same size on all images---I call these symmetric co-arrays. This
+makes co-arrays behave in some ways as if they were arrays of rank
+which is the sum of the rank and co-rank, and they can actually be
+implemented that way on true shared-memory systems. In particular,
+this property also holds for allocatable co-arrays, whose allocation
+is a collective operation and the same allocation statement must be
+executed on all images:
+
+REAL, ALLOCATABLE, DIMENSION(:)[*] :: symm_alloc
+ALLOCATE(symm_alloc(100)) ! Collective synchronizing operation
+
+It is clear that user codes also have need for ragged allocatable
+co-arrays having different size on different images. For this purpose,
+the current CAF specification suggests using the same technique used
+in serial Fortran: Allocatable/pointer array components of derived
+types, and in particular, co-arrays of such a derived-type:
+
+TYPE :: RALLOCATABLE
+   REAL, ALLOCATABLE, DIMENSION(:) :: array
+END TYPE
+TYPE(RALLOCATABLE) :: ragged_alloc[*]
+
+The justification used for this choice has been that it
+simplifies the proposal and that it provides all the needed
+functionality, at the minor cost of requiring somewhat ackward
+component-selection syntax such as ragged_alloc[1]%array(3)
+instead of ragged_alloc(3)[1]. However, the "simplification"
+comes at the cost of other complications, especially when pointer
+components are involved. Namely, it is not desirable to allow one
+image to allocate/deallocate memory on another image, and, for
+pointer components, these components must point to local memory and
+therefore another image cannot manipulate their pointer association
+status. This leads to a host of special restrictions, for example,
+intrinsic assignment of such derived types is forbidden or restricted:
+
+ragged_alloc[3]=ragged_alloc ! No reallocation or pointer components
+allowed
+
+Additionally, it was decided not to allow co-array subobjects to appear
+as actual argument corresponding to INTENT(OUT) or INTENT(INOUT) dummy
+arguments in part because of the possibility of pointer/allocatable
+components and the ensuing complications.
+
+There are also implementation issues with such pointer/allocatable
+components. On certain cluster architectures, very efficient
+(low-latency, low-CPU-overhead) one-sided communication is achieved via
+Remote Direct Memory Access (RDMA) operations. These often require that
+the memory involved in this transfer be registered with the Network
+Interface Card (NIC) so that the virtual-to-physical memory translation
+can be registered in the NIC tables and also so that the pages involved
+can be pinned (frozen) with the OS. Using local allocatable/pointer
+arrays, even though they may be components of a co-array, does not
+allow the compiler to do proper memory registration/allocation and thus
+maximize performance. Instead, memory for such ragged co-arrays could
+be allocated inside procedures where the co-array parent is not visible
+and thus there are no hints that co-arrays are involved. Furthermore,
+pointer components can be pointed to any local object and later
+used to perform data transfer on it, without any hint during the
+pointer-assignment statement that coarrays are involved, thus not
+allowing proper memory registration. Even on shared-memory systems,
+and in particular mixed SMP cluster machines, shared memory segments
+(memory shared among the different processes/images on one SMP)
+should be allocated via special OS calls.
+
+I believe that the complications described above far outweigh
+the claimed benefits of the proposed CAF specification for ragged
+co-arrays. I believe allocatable/pointer components should simply
+not be allowed as sub-objects of co-arrays:
+
+TYPE(T), DIMENSION(?)[?], ? :: coarray
+   ! Not allowed if T has pointer/allocatable components
+
+This automatically avoids all the problems with such components.
+
+However, the problem of how to provide for ragged co-arrays still
+remains. I propose to revert back to previously discussed alternatives,
+namely, using an <assumed-shape-spec> for the <co-array-spec> to
+declare a new type of co-array, a ragged pointer/allocatable co-array:
+
+REAL, ALLOCATABLE, DIMENSION(:,:)[3,*] :: ragged_alloc
+REAL, POINTER, DIMENSION(:,:)[3,*] :: ragged_pointer
+
+These are different from and not interchangeable with symmetric
+(non-ragged) allocatable (or pointer, in the future revisions)
+co-arrays. It is expected that they will be implemented using
+arrays [of size num_images()] of (local) array descriptors, rather
+than as co-array descriptors as would symmetric arrays. Additional
+shared/global data-structures, such as address-translation tables,
+might be associated with each of these arrays on some architectures.
+
+As an in the current proposal, one cannot declare a symmetric pointer
+co-array, even though this has obvious meaning (see Appendix 2 in
+Numrich/Reid), as this can be left for future extensions and is not
+as important/useful:
+
+REAL, POINTER, DIMENSION(:)[:] :: coarray_ptr ! Not allowed
+
+We of course already allow the ALLOCATABLE equivalent in the current
+CAF spec, leading to a symmetric allocatable co-array.
+
+________________________
+Specification:
+________________________
+
+A <co-array-spec> that is an <assumed-shape-spec> is used to declare
+ragged/asymmetric allocatable co-arrays:
+
+REAL, ALLOCATABLE, DIMENSION(:)[*] :: ragged_alloc
+
+In the ALLOCATE statement, no co-dimension is given, and the shape
+can be different on different images. Furthermore, no synchronization
+is implied, i.e., the allocation is a local process (however, the
+processor may allocate special memory):
+
+IF(this_image()<10) ALLOCATE(ragged_alloc(10*this_image()))
+
+A ragged allocatable co-array may not be an actual argument
+corresponding to an allocatable dummy, unless the dummy is also a
+ragged allocatable co-array. That is, one cannot disguise it as a
+local allocatable array or as a (symmetric, non-ragged) allocatable
+co-array. For ragged allocatable co-arrays this guarantees that memory
+will always be allocated/deallocated via a special allocator.
+
+Identical rules apply to ragged pointer co-arrays:
+
+REAL, POINTER, DIMENSION(:)[*] :: ragged_ptr
+
+Additionally, one needs rules for pointer assignment: Ragged
+co-array pointers may be pointed to local arrays, without any
+<co-dimension-spec>:
+
+ragged_ptr=>local_target ! Note: This is of questionable value?
+
+In all other respects, ragged co-arrays act like symmetric
+alloctable/pointer co-arrays. In particular, if a ragged co-array is
+a component of a derived type, it acts just like symmetric co-arrays,
+namely, all parent objects must be scalar.
+
+________________________
+Edits:
+________________________
+
+TBD.

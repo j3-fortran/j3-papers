@@ -1,0 +1,401 @@
+								    J3/98-145r1
+Date: 26th May 1998
+To:   J3
+From: /DATA
+Subject: Edits for R.6a -- Inheritance
+
+Edits refer to 98-007r1.  Remarks for the editor are in {}.
+Some minor changes to the syntax in 97-196r2 are:
+   (1) OBJECT -> CLASS
+   (2) The run-time type of a disassociated polymorphic pointer is the same
+       as its declared type (previously undefined).  This seems more useful,
+       and it would have been difficult to describe a NULL() intrinsic
+       returning a pointer with no type.
+   (3) The intrinsic enquiry functions no longer require polymorphic actual
+       arguments (they are not interesting if both arguments are not
+       polymorphic, but it seems unnecessary to restrict them).  Because of
+       this the argument keywords are also changed.
+
+Replace [39:3-4] with
+      [ <component-def-stmt> ... ]
+
+Replace [39:6] with
+      TYPE [ [ , <type-attr-spec-list> ] :: ] <type-name>
+
+Add [39:9+]
+"R424a <type-attr-spec> <<is>> <access-spec>
+                        <<or>> EXTENSIBLE
+                        <<or>> EXTENDS ( <parent-type-name> )"
+
+Add [39:13+]
+"Constraint: A derived type shall not have both the EXTENSIBLE and EXTENDS
+             attributes.
+Constraint: <parent-type-name> shall be the name of an accessible extensible
+            type ([new section] 4.5.3)."
+
+Add [39:17+]
+"Constraint: If <derived-type-def> defines an extensible type ([new section]
+             4.5.3), SEQUENCE shall not be present."
+
+Add [39:30+]
+"Constraint: A component declared with the CLASS keyword ([new section]
+             5.1.1.8) shall have the POINTER attribute.
+
+Add new section [46:36+]
+{Add new terms "base type", "extensible type" and "extension type" to the
+index and glossary.}
+"4.5.3 Extensible types
+
+A derived type that has the EXTENSIBLE or EXTENDS attributes is an
+<<extensible type>>.
+
+A type that has the EXTENSIBLE attribute is a <<base type>>.
+A type that has the EXTENDS attribute is an <<extended type>>.
+The <<parent type>> of an extended type is the type named in the EXTENDS
+attribute specification.
+
+{Insert note:}Note: A base type is not required to have any components, and
+an extended type is not required to have more components than its parent type.
+
+A type is an <<extension type>> of another type if it is the same type, or is
+extended from an extension type of it.
+
+An extended type includes all of the components of its parent type. The 
+components of the parent type are said to be <<inherited>> by the 
+extended type.  Additional components may be declared.  For purposes of 
+intrinsic input/output (9.4.2) and value construction ([existing section] 
+4.5.4), the order of the components of an extended type is the components 
+inherited from its parent type, followed by the components of the 
+extended type, in the order declared.
+
+An extended type has a component name that is the same name and has the
+same type as its parent type.  This is not an additional component; it
+denotes a subobject that has the parent type, and that consists of all of
+the components inherited from the parent type.
+
+Note: The subobject denoted by the parent type name has the same
+accessibility as the additional components of the extended type, even if
+the components of the parent type are not accessible.
+
+A component declared in an extended type shall have neither the same name
+as any accessible component of its parent type nor the same name as the
+parent type name.
+
+{begin note}Note 4.5.3a
+Examples:
+  TYPE, EXTENSIBLE :: POINT            ! A base type
+    REAL :: X, Y
+  END TYPE POINT
+  TYPE, EXTENDS(POINT) :: COLOR_POINT  ! An extension of TYPE(POINT)
+    ! Components X and Y, and component name POINT, inherited from parent
+    INTEGER :: COLOR
+  END TYPE COLOR_POINT"
+
+Replace [47:24] with
+"R436 <structure-constructor> <<is>> <derived-type-spec>
+                                    ( [ <component-spec-list} ] )"
+
+Add [47:42+]
+"A <structure-constructor> for an extended type may use a nested form or a
+list form.  In the <<nested form>> a single value is provided for the component
+that has the same name as the parent type.
+
+In the <<list form>> a separate value is provided for each component of
+the parent type.  The list form shall not be used if any components of the
+parent type are inaccessible in the scoping unit in which the
+<structure-constructor> appears (4.5.1).
+
+{Begin note}Note 4.4.4a
+Examples of equivalent values (see note 4.5.3a):
+  ! Create values with components x == 1.0, y == 2.0, color == 3:
+  TYPE(POINT) :: PV = POINT(1.0, 2.0) ! Assume components of TYPE(POINT)
+                                      ! are accessible here
+  ...
+  COLOR_POINT( PV, 3 )                ! Nested form, available even if
+                                      ! TYPE(POINT) has PRIVATE
+                                      ! components.
+  COLOR_POINT( POINT(1.0, 2.0), 3 )   ! Nested form, components of
+                                      ! TYPE(POINT) must be accessible.
+  COLOR_POINT( 1.0, 2.0, 3 )          ! List form, components of
+                                      ! TYPE(POINT) must be accessible.
+"
+
+Add [51:25+]
+"      <<or>> CLASS ( <extensible-type-name> )
+
+Constraint: <extensible-type-name> shall be the name of an extensible type."
+
+Add [52:1+]
+"Constraint: An entity declared with the CLASS keyword shall be a dummy
+             argument or have the POINTER attribute."
+
+Add new section [56:16+]
+{Add to index and glossary: "declared type", "dynamic type", "polymorphic"}
+"5.1.1.8 Polymorphic objects
+
+The CLASS type specifier is used to declare <<polymorphic>> objects.  The type
+in the CLASS type specifier is the <<declared type>> of the polymorphic object.
+
+A polymorphic object can, during program execution, assume any derived type
+that is in the class of types consisting of the declared type and all its
+extension types.  The type assumed at any instant during program execution is
+the <<dynamic type>> at that instant.  The dynamic type of a object that is not
+polymorphic is the same as its declared type.
+
+Note: Only components of the declared type of a polymorphic object may be 
+referenced by component selection (6.1.2).
+
+Polymorphic objects assume their dynamic type via argument association
+(12.4.1.2), pointer assignment (7.5.2), NULLIFY (6.3.2), or successful
+execution  of an ALLOCATE (6.3.1) or DEALLOCATE (6.3.3) statement.
+
+The type of a polymorphic pointer with a pointer association status of 
+disassociated is the declared type."
+
+Replace at [82:42] "type" with "declared type".
+
+Add [88:22+]
+"Allocation of a polymorphic pointer allocates a target whose dynamic type is
+the declared type of the pointer."
+
+Add note [91:8+]
+"Note: When a NULLIFY statement is applied to a polymorphic pointer ([new
+section] 5.1.1.8) its dynamic type becomes the declared type."
+
+Replace [118:32-33] with
+   "(2) The dynamic types of <variable> and <expr> are the same derived type,
+        <variable> is not polymorphic, and no defined assignment exists for
+        objects of this type."
+
+Replace [118:39] "<variable> and <expr> are of the same derived type" with
+"<variable> is not polymorphic, the dynamic type of <expr> is the same as the
+declared type of <variable>"
+
+Replace [121:25] "types" with "declared types"
+and "are the same as" with "are the same as or extension types of".
+
+Replace [122:14-15]
+"
+Constraint: If <pointer-object> is a data object or a function procedure
+            pointer, and neither <pointer-object> nor <target> are 
+            polymorphic, the <target> shall have the same type as the
+            <pointer-object>.
+
+Constraint: If <pointer-object> is polymorphic and <target> is not 
+            polymorphic, the type of <target> shall be an extension type ([new
+            section] 4.5.3) of the declared type of <pointer-object>.
+
+Constraint: If <pointer-object> is a data object or a function procedure
+            pointer, the rank and kind type parameters of <target> shall be the
+            same as the rank and corresponding kind type parameters of
+            <pointer-object>."
+
+Add [122:33+]
+"If <pointer-object> is not polymorphic (5.1.1.8), or it is a polymorphic dummy
+argument and the associated actual argument is not polymorphic, <target> shall
+have the same dynamic type as <pointer-object>.
+
+If <pointer-object> or <target> is polymorphic, the dynamic type of <target>
+shall be an extension type ([new section] 4.5.3) of the declared type of
+<pointer-object>.
+
+If the <pointer-object> is polymorphic, the <pointer-object> assumes the
+dynamic type of the <target>."
+
+Add [217:27+]
+"(g) A dummy argument that is polymorphic, or"
+
+Replace "If ... object" [225:41] with
+"If a dummy argument is a dummy data object that is not polymorphic and the
+associated actual argument is not polymorphic,"
+
+Insert the following before ``The kind'' [225:42] and then start a new
+paragraph with ``The kind.''
+
+"If a dummy argument or its associated actual argument, or both, are
+polymorphic, the dynamic type of the actual argument shall be an extension type
+([new section] 4.5.3) of the declared type of the dummy argument.  If the dummy
+argument is polymorphic it assumes the dynamic type of the corresponding actual
+argument."
+
+Add to the end of the paragraph at [226:10]
+"If the dummy argument is a polymorphic pointer, the actual argument shall be
+a polymorphic pointer."
+
+Add [227:24+]
+"Note: If the dummy argument is not polymorphic and the type of the actual
+argument is a extension type of the dummy argument, only the part of the actual
+argument that is of the same type as the dummy argument becomes undefined."
+
+Add new section [248:15+]
+"13.10 Type inquiry functions
+
+The function SAME_TYPE_AS inquires whether two objects of extensible type ([new
+section] 4.5.3) have the same dynamic type. The function EXTENDS_TYPE_OF
+inquires whether the dynamic type of one object of extensible type is an
+extension type ([new section] 4.5.3) of the dynamic type of another object of
+extensible type."
+
+Add new section [252:29+]
+"13.11.21 Type inquiry functions
+
+EXTENDS_TYPE_OF(A, MOLD)              Same dynamic type or an extension
+
+SAME_TYPE_AS(A, B)                    Same dynamic type
+
+Add new section [268:33+]
+13.13.37 EXTENDS_TYPE_OF(A, MOLD)
+
+<<Description.>>  Inquires whether the dynamic type of A is 
+an extension type ([new section] 4.5.3) of the dynamic type of MOLD.
+
+<<Class.>> Inquiry function.
+
+<<Arguments.>>
+
+A            shall be an object of extensible type.
+
+MOLD         shall be an object of extensible type.
+
+<<Result Characteristics.>>  The result is of type default logical scalar.
+
+<<Result Value.>> The result is true if and only if the dynamic type
+of A is an extension type ([new section] 4.5.3) of the dynamic type of MOLD.
+Note: if either A or MOLD is a disassociated pointer, the dynamic type is the
+same as the declared type."
+
+Add new section [291:37+]
+"13.14.92 SAME_TYPE_AS(A, B)
+
+<<Description.>>  Inquires whether the dynamic type of A is the same as 
+the dynamic type of B.
+
+<<Class.>> Inquiry function.
+
+<<Arguments.>>
+
+A         shall be an object of extensible type.
+
+B         shall be an object of extensible type.
+
+<<Result Characteristics.>>  The result is of type default logical scalar.
+
+<<Result Value.>> The result is true if and only if the dynamic type 
+of A is the same as the dynamic type of B.  Note: if either A or B is a 
+disassociated pointer, the declared type is the dynamic type.
+
+Replace "different type" [305:26,30] twice with "distinguishable type".
+
+Add new paragraph [305:33+]
+"Data types are distinguishable if they are different types and, if they are
+both extensible types, have different base types."
+
+Add glossary entry [341:37+]
+<<base type>> ([new section] 4.5.3): An extensible type that is not an
+extension of another type.  A type that is declared with the EXTENSIBLE
+attribute."
+
+Add glossary entry [343:19+]
+"<<declared type>> (5.1.1.8): The data type that an object is declared to
+have.  May differ from the data type during execution (the dynamic type) for
+polymorphic objects."
+
+Add glossary entry [344:8+]
+<<dynamic type>> (5.1.1.8): The actual type of a polymorphic object during
+execution of a program.  The dynamic type of an object that is not polymorphic
+is the same as its declared type."
+
+Add glossary entries [342:38+]
+"<<extended type>> ([new section] 4.5.3): An extensible that is an extension
+of another type.  A type that is declared with the EXTENDS attribute.
+
+<<extensible type>> ([new section] 4.5.3): A type from which new types may
+be derived using the EXTENDS attribute.  A type that is declared with either
+the EXTENSIBLE attribute or the EXTENDS attribute.
+
+<<extension type>> ([new section] 4.5.3): A base type is an extension type of
+itself only.  An extended type is an extension type of itself, its parent type,
+and of all types for which its parent is an extension."
+
+Add new glossary entry [345:13+]
+"<<inherit>> ([new section] 4.5.3): Components of an extended type are
+automatically acquired from its parent type, with no explicit declaration in
+the extended type."
+
+Add new glossary entry [346:37+]
+"<<parent type>> ([new section] 4.5.3): The extensible type from which an
+extended type is derived."
+
+Add new glossary entry [347:7+]
+<<polymorphic>> (5.1.1.8): Denotes the ability to assume differing types
+during program execution.  An object declared with the CLASS keyword is
+polymorphic."
+
+Add [361:43+]
+"Components of an object of extensible type that are inherited from the parent
+type may be accessed, as a whole, by using the component name that is the same
+as the parent type name, or individually, either with or without qualifying
+them by the component name that is the same as the parent type name.
+For example:
+
+  TYPE, EXTENSIBLE :: POINT            ! A base type
+    REAL :: X, Y
+  END TYPE POINT
+  TYPE, EXTENDS(POINT) :: COLOR_POINT  ! An extension of TYPE(POINT)
+    ! Components X and Y, and component name POINT, inherited from parent
+    INTEGER :: COLOR
+  END TYPE COLOR_POINT
+
+  TYPE(POINT) :: PV = POINT(1.0, 2.0)
+  TYPE(COLOR_POINT) :: CPV = COLOR_POINT(PV, 3) ! Nested form constructor
+
+  PRINT *, CPV%POINT                   ! Prints 1.0 and 2.0
+  PRINT *, CPV%POINT%X, CPV%POINT%Y    ! And this does, too
+  PRINT *, CPV%X, CPV%Y                ! And this does, too
+"
+
+Add [386:23+]
+"C.9.6 Polymorphic Argument Association (12.4.1.2)
+
+Examples: Given 
+  TYPE(POINT) :: T2  ! See note 4.5.3a
+  TYPE(COLOR_POINT) :: T3
+  OBJECT(POINT) :: P2
+  OBJECT(COLOR_POINT) :: P3
+  ! Dummy argument is polymorphic and actual argument is of fixed type
+  SUBROUTINE SUB2 ( X2 ); OBJECT(POINT) :: X2; ...
+  SUBROUTINE SUB3 ( X3 ); OBJECT(COLOR_POINT) :: X3; ...
+
+  CALL SUB2 ( T2 ) ! Valid -- The declared type of T2 is the same as the
+                   !          declared type of X2.
+  CALL SUB2 ( T3 ) ! Valid -- The declared type of T3 is extended from
+                   !          the declared type of X2.
+  CALL SUB3 ( T2 ) ! Invalid -- The declared type of T2 is neither the
+                   !          same as nor extended from the declared type
+                   !          type of X3.
+  CALL SUB3 ( T3 ) ! Valid -- The declared type of T3 is the same as the
+                   !          declared type of X3.
+  ! Actual argument is polymorphic and dummy argument is of fixed type
+  SUBROUTINE TUB2 ( D2 ); TYPE(POINT) :: D2
+  SUBROUTINE TUB3 ( D3 ); TYPE(COLOR_POINT) :: D3
+
+  CALL TUB2 ( P2 ) ! Valid -- The declared type of P2 is the same as the
+                   !          declared type of D2.
+  CALL TUB2 ( P3 ) ! Valid -- The declared type of P3 is extended from
+                   !          the declared type of D2.
+  CALL TUB2 ( P2 ) ! is valid only if the dynamic type of P2 is the same
+                   !          as the declared type of D2, or a type
+                   !          extended therefrom.
+  CALL TUB3 ( P3 ) ! Valid -- The declared type of P3 is the same as the
+                   !          declared type of D3.
+  ! Both the actual and dummy arguments are of polymorphic type.
+  CALL SUB2 ( P2 ) ! Valid -- The declared type of P2 is the same as the
+                   !          declared type of X2.
+  CALL TUB2 ( P3 ) ! Valid -- The declared type of P3 is extended from
+                   !          the declared type of X2.
+  CALL TUB2 ( P2 ) ! is valid only if the dynamic type of P2 is the same
+                   !          as the declared type of X2, or a type
+                   !          extended therefrom.
+  CALL TUB3 ( P3 ) ! Valid -- The declared type of P3 is the same as the
+                   !          declared type of X3.
+"

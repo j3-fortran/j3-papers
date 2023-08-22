@@ -1,0 +1,102 @@
+                                                            11-104
+To: J3
+From: Nick Maclaren
+Subject: Interop TR: bounds revisited
+Date: 2011 January 19
+Reference: 10-251.pdf, 10-228
+
+
+
+The minutes state that no action was to be taken on 10-228 at meeting
+193, which is just as well, because I am afraid that it was erroneous.
+The situation is significantly worse than it stated.
+
+10-251 is complete enough to see how CFI_bounds_t is used, and so this
+proposes a more radical solution.  In summary, the stride member should
+be removed, as it achieves little useful purpose and would need a lot of
+work to specify.
+
+
+Problem 1:
+----------
+
+CFI_cdesc_to_bounds cannot return a useful value for the stride in many
+cases.  Consider the following Fortran program:
+
+    PROGRAM Main
+        TYPE :: Coney
+            COMPLEX(KIND=KIND(0.0D0)) :: x
+            REAL :: y
+        END TYPE Coney
+        TYPE(Coney), TARGET :: rabbit(21,20)
+        CALL Hyrax(rabbit(3:18:5,5:19:7)%x)
+    CONTAINS
+        SUBROUTINE Hyrax (kit)
+            USE ISO_C_BINDING
+            COMPLEX(KIND=KIND(0.0D0)), TARGET :: kit(:,:), kat(2)
+            INTERFACE
+                SUBROUTINE pika (x, y) BIND(C)
+                    USE ISO_C_BINDING
+                    TYPE(C_PTR) :: x, y
+                END SUBROUTINE pika
+            END INTERFACE
+            PRINT *, SHAPE(kit)
+            CALL pika(C_LOC(kit(1,1)),C_LOC(kit(2,1)))
+            CALL pika(C_LOC(kit(1,1)),C_LOC(kit(1,2)))
+            CALL pika(C_LOC(kat(1)),C_LOC(kat(2)))
+        END SUBROUTINE Hyrax
+    END PROGRAM Main
+
+together with the following C code:
+
+    #include <stdio.h>
+
+    void pika (void **a, void **b) {
+        fprintf(stderr,"%ld\n",(long)(*b-*a));
+    }
+
+Under NAG 5.2, this prints what I would expect, which is:
+
+     3 4
+    100
+    2940
+    16
+
+The result from the Intel compiler is similar, though the alignment of
+derived types is 8 and not 4.  It is therefore clear that the stride
+multiplier is not a multiple of the element length in either case,
+nor is the second stride a multiple of the first.
+
+What should CFI_desc to bounds return?
+
+Related to this is, if the stride result isn't reliably definable, then
+what is the purpose of CFI_desc to bounds?
+
+
+Problem 2:
+----------
+
+CFI_associate also uses a bounds array, and needs to say that the stride
+member is ignored.
+
+
+Solution:
+---------
+
+The simplest solution is to drop the stride member in its entirety.
+
+A consequence of this would that it would be possible to rename the sm
+field as stride, which would be clearer, but no edits are provided.
+
+Edits to 10-251:
+
+[11:9-10] Delete the definition of stride in CFI_bounds_t.
+
+[13:9+] Delete the definition of CFI_INVALID_STRIDE in table 5.3.
+
+[15:12] Delete "The stride values are ignored and assumed to be one."
+
+[15:27-32] Delete the definition of CFI_desc to bounds.
+
+
+

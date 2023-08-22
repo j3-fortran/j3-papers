@@ -1,0 +1,160 @@
+                                                            11-177
+To: J3
+From: Nick Maclaren
+Subject: Interop TR: establishment and descriptor restrictions
+Date: 2011 June 10
+Reference: N1854, 11-168, 11-175
+
+
+This paper proposes nothing, but attempts to give some of the reasoning
+behind 11-168 and 11-175.
+
+N1854 [17:21-23] takes the hard line for CFI_section but punts in
+CFI_establish.  11-128 converts the latter to also following the hard
+line, and 11-175 makes it clearer that it is being taken.  The question
+here is whether this is the correct decision.  I.e. should CFI_establish
+be allowed to break the rules?
+
+A meta-point is that saying that C can do only things that are possible
+in Fortran is not going to be comprehensible to the vast majority of
+people reading this TR.  Not merely will some of them not be Fortran
+programmers, being able to translate what is possible in Fortran terms
+to C terms requires a knowledge of BOTH languages AND some knowledge
+of implementation techniques.
+
+
+Serious Defects in N1854
+------------------------
+
+There are a few things specified by N1854 that simply cannot work, but
+are not currently excluded or where the existing wording is extremely
+unclear and arguably ambiguous, such as:
+
+    1) Creating an allocatable descriptor ab initio is impossible using
+CFI_allocate, but it is very easy to misread the specification.
+
+    CFI_DESC_T(3) object;
+    CFI_index_t lower(3) = {1,1,1}, upper(3) = {5,5,5};
+    ... = CFI_allocate(&object,lower,upper,8);
+
+CFI_DESC_T allocates the space, but does not set the rank, type or
+elem_len, so that both the rank and type will be unset.
+
+    2) Creating a pointer descriptor ab initio is impossible using
+CFI_setpointer, but it is very easy to misread the specification.
+
+    CFI_DESC_T(3) object;
+    ... = CFI_setpointer(&object,NULL,NULL);
+
+CFI_DESC_T allocates the space, but does not set the rank, type or
+elem_len, so that all of those will be unset.
+
+    3) Changing the rank or type and (except for character objects)
+elem_len of an existing pointer will cause chaos, but is not forbidden
+by CFI_setpointer.  Worse, it is not clear that it SHOULD be forbidden
+for descriptors created in C.  There is an error code, but it is not
+stated that it must be or even may be returned.
+
+    4) See the next section.
+
+in the cases of (1) and (2), the term "C descriptor" means "established
+C descriptor".  I do not regard this as likely to be understood by
+people who were not involved in developing this TR.  If that is solved
+by a definition of the term, the question still remains over whether the
+rules on descriptor creation in CFI_establish, CFI_allocate and
+CFI_setpointer are all similar, or different.
+
+All of these can be solved by the proposals in 11-168; if that is not
+accepted, they must be solved some other way.
+
+
+Ambiguously Aliasing Descriptors
+------------------------------
+
+There are descriptors that cause illegal aliasing in the Fortran
+standard, but do not do so in the C one.  People not familiar with
+implementation techniques, and especially the 99% of programmers who
+believe that Fortran mandates call-by-reference, WILL misunderstand.
+
+Currently, CFI_establish allows these to be created.  These will cause
+havoc, especially in combination with coarrays, OpenMP or MPI, and will
+simply not work as soon as the Fortran compiler does anything outside
+the call-by-reference model.
+
+On this matter, Fortran 90 and successors are clear that an array is an
+object, and aliasing occurs at the whole object level.  Fortran 77 was
+much less clear, and the situation is still murky to do with
+assumed-size arrays (I believe that an interpretation is needed, now
+that we have coarrays).
+
+However, C and C++ are very, very different; aliasing occurs at the
+lvalue level.  Except where there are non-lvalue accesses :-(  Without
+restrict, updating overlapping 'arrays' with no synchronisation is
+defined, provided that the same element (and THAT is a murky concept, in
+itself) is not updated.  With restrict, the situation is similar to
+Fortran assumed-size, though not identical.
+
+As an example, consider flattening an array.  C and C++ arrays are
+always contiguous, as are Fortran arrays of 'simple' types when they are
+declared or allocated, and the following is legal in C, if only the
+correctly associated elements are accessed via the new descriptor.  It
+is assuredly not legal in Fortran and will at least sometimes cause
+chaos if passed to Fortran.
+
+    void flatten (CFI_desc_t *arg) {
+        CFI_DESC_T(1) flat;
+        CFI_dim_t dim[1] = {0,0,1};
+        int i;
+        for (i = 0; i < arg->rank; ++i)
+            dim[0].extent += arg->dim[i].extent*arg->dim[i].sm;
+        dim[0].extent /= arg->dim[i].elem_len;
+        (void)CFI_establish((CFI_desc_t *)&flat,arg->base_addr,
+            CFI_attribute_assumed,arg->type,arg->elem_len,1,dim);
+        operate(&flat);
+    }
+
+Unfortunately, CFI_establish is defined in terms of being a C function,
+and so it is ambiguous as to which rules should be used.  This
+critically needs fixing.
+
+
+Fancy Descriptors
+-----------------
+
+11-175 was written following various cross-purpose discussions on using
+CFI_section to create diagonal vectors.  This paper will not repeat the
+discussion in that, but attempts to summarise the situation.
+
+At some of the J3 meetings I have been at, we have had discussions over
+whether the TR should allow the creation of descriptors that cannot be
+created by Fortran mechanisms.  In no case did we reach a consensus, not
+even among vendors or among consumers.
+
+    5) There are some things that will almost certainly work and do not
+break any Fortran rules, but are impossible in Fortran without using
+sequence association and implicit copying, and without assuming
+contiguity and using bounds remapping in pointer assignment.  These
+include passing the diagonal of a square matrix and the sort of
+reshaping that FFTs are so fond of.
+
+    6) And there are some things that break some Fortran rules, but in a
+way that is essentially required to work by other wording in the Fortran
+standard.  In most cases, these are more definitely (if even less
+clearly) required to work by the C standard.  These include treating the
+real parts of a complex array as a real array, and the use of space
+allocated as one type as another type (subject to various provisos).
+
+My position is that I don't care where the boundaries are drawn,
+provided that there ARE clear boundaries between defined, undefined and
+processor dependent behaviour.  But I tried and failed to specify them
+based on N1854, which is why I contributed to 11-168 and wrote 11-175.
+
+If someone else can define such boundaries, then that proposal can
+be discussed.
+
+
+Edits to N1854
+--------------
+
+If 11-168 or 11-175 are rejected, all of problems (1)-(6) must be
+resolved in some other way.

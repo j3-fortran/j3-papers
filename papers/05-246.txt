@@ -1,0 +1,1070 @@
+                                                                         
+                                             J3/05-246
+
+To: J3
+From: Dan Nagle
+Subject: Adding some HPF Intrinsics
+Date 2005 August 4
+
+At Delft (N1637), it was decided to add some HPF intrinsics,
+specifically, a subset of the *_prefix() and *_suffix() ones.
+This paper is an attempt to do so.
+
+The functions are placed in Section 13 in alphabetical order.
+
+N1637 omits the COPY_*(), COUNT_*(), MINVAL_*() and MAXVAL_*(),
+this paper includes them because it is easy to do
+and we may decide to include them.  They easily may be omitted
+if desired.
+
+IALL(), IANY(), IPARITY(), PARITY() were agreed at Delft
+to be part of the BITS proposal so they are not included here.
+However, they may be included here or in a separate paper
+if that measure fails.
+
+It will help the reader's understanding of these procedures
+to understand Section 7.4.5 starting on page 93 of the HPF 2.0
+standard document.  That language is largely, but not completely,
+reproduced here as the edit at [282:18+].
+
+The edits following are largely based upon Section 7.7
+of the HPF 2.0 standard document, with some changes to fit
+the language and format of 04-007.  I omit some HPF examples.
+
+I listed these intrinsics in a new 13.5.19, because no existing
+category seemed to be a very good fit.  Otherwise, perhaps 
+13.5.12 or 13.5.13 are good places.  In the descriptions,
+they are listed as Transformational functions.
+
+Edits:
+
+[292:18+] Add section 
+
+"13.2.3 Array Prefix and Suffix Procedures
+
+In a scan of a vector each element of the result is a function
+of the elements of the vector that precede it (for a prex scan)
+or that follow it (for a suffix scan).  These functions
+provide scan operations on arrays and subarrays.
+The functions have the general form
+XXX_PREFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+XXX_SUFFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+except in the special cases noted below.
+
+The allowed values of XXX are ALL, ANY, COPY, COUNT, IALL, IANY,
+IPARITY, MAXVAL, MINVAL, PARITY, PRODUCT, and SUM.
+
+When comments below apply to both prexfix and suffix forms
+of the routines, we will refer to them as YYYFIX functions.
+
+The arguments DIM, MASK, SEGMENT, and EXCLUSIVE are optional
+The COPY_YYYFIX functions do not have MASK or EXCLUSIVE arguments
+The ALL_YYYFIX, ANY_YYYFIX, COUNT_YYYFIX, and PARITY_YYYFIX functions
+do not have MASK arguments.  Their ARRAY argument shall be
+of type logical, it is denoted MASK in their specications in Section.
+
+The arguments MASK and SEGMENT shall be of type logical.  SEGMENT shall
+have the same shape as ARRAY.  MASK shall be conformable with ARRAY.
+EXCLUSIVE is a logical scalar.
+
+DIM is a scalar integer between one and the rank of ARRAY.
+
+Result Value
+The result has the same shape as ARRAY, and, with the exception
+of COUNT_YYYFIX, the same type and kind type parameter as ARRAY.
+The result of COUNT_YYYFIX is default integer.  In every case,
+every element of the result is determined by the values
+of certain selected elements of ARRAY in a way that is specific
+to the particular function and is described in its specication.
+The optional arguments affect the selection of elements
+of ARRAY for each element of the result, the selected elements
+of ARRAY are said to contribute to the result element.  This
+section describes fully which elements of ARRAY contribute
+to a given element of the result.
+
+If no elements of ARRAY are selected for a given element
+of the result, that result element is set to a default value that
+is specific to the particular function and is described
+in its specication
+
+For any given element r of the result,
+let a be the corresponding element of ARRAY.
+
+Every element of ARRAY contributes to r unless disqualied
+by one of the following rules.
+
+If the function is XXX_PREFIX, no element that follows a
+in the array element ordering of ARRAY contributes to r.
+If the function is XXX_SUFFIX, no element
+that precedes a in the array element ordering
+of ARRAY contributes to r
+
+If the DIM argument is provided, an element z of ARRAY
+does not contribute to r unless all its indices, excepting only
+the index for dimension DIM, are the
+same as the corresponding indices of a.
+It follows that if the DIM argument is omitted,
+then ARRAY, MASK, and SEGMENT are processed in array element
+order as if temporarily regarded as rank-one arrays.
+If the DIM argument is present, then a family of completely
+independent scan operations are carried out along
+the selected dimension of ARRAY.
+	
+If the MASK argument is provided, an element z of ARRAY
+contributes to r only if the element of MASK corresponding
+to z is true.  It follows that array elements corresponding
+to positions where the MASK is false do not contribute anywhere
+to the result.  However, the result is nevertheless defined
+at all positions, even positions where the MASK is false.
+
+If the SEGMENT argument is provided, an element z of ARRAY
+does not contribute if there is some intermediate element w
+of ARRAY, possibly z itself, with all of the following properties:
+
+ (A) If the function is XXX_PREFIX, w does not precede z but
+     does precede a in the array element ordering; if the function
+     is XXX_SUFFIX, w does not follow z but does follow a
+     in the array element ordering,
+
+ (B) If the DIM argument is present, all the indices of w, excepting
+     only the index for dimension DIM, are the same
+     as the corresponding indices of (A) and,
+
+ (C) The element of SEGMENT corresponding to w does not have
+     the same value as the element of SEGMENT corresponding to a.
+
+In other words, z can contribute only if there is
+an unbroken string of SEGMENT values, all alike,
+extending from z through a.
+
+If the EXCLUSIVE argument is provided and is true,
+then a itself does not contribute to r.
+
+These general rules lead to the following important cases:
+
+Case (i) If ARRAY has rank one, element i of the result
+         of XXX_PREFIX( ARRAY) is
+         determined by the first i elements of ARRAY,
+         element SIZE( ARRAY) - i + 1
+         of the result of XXX_SUFFIX( ARRAY) is determined
+         by the last i elements of ARRAY
+
+Case (ii) If ARRAY has rank greater than one, then each element
+          of the result of XXX_PREFIX( ARRAY) has a value
+          determined by the corresponding element
+          a of the ARRAY and all elements of ARRAY that precede a
+          in array element order. For XXX_SUFFIX, a is determined
+          by the elements of ARRAY that
+          correspond to or follow a in array element order.
+
+Case (iii) Each element of the result of XXX_PREFIX( ARRAY, MASK=MASK)
+           is determined by selected elements of ARRAY,
+           namely the corresponding element
+           a of the ARRAY and all elements of ARRAY
+           that precede a in array element order,
+           but an element of ARRAY may contribute
+           to the result only if the corresponding element
+           of MASK is true.  If this restriction results in
+           selecting no array elements to contribute to some element
+           of the result, then that element of the result is
+           set to the default value for the given function.
+
+Case (iv) Each element of the result of XXX_PREFIX( ARRAY, DIM=DIM)
+          is determined by selected elements of ARRAY,
+          namely the corresponding element a of
+          the ARRAY and all elements of ARRAY that precede
+          a along dimension DIM; for example,
+          in SUM_PREFIX( A( 1: N, 1: N), DIM= 2), the result element
+          ( i_1, i_2) could be computed as SUM( A( i_1, 1: i_2).
+          More generally, in SUM_PREFIX( ARRAY, DIM),
+          result element ( i_1, i_2, ... i_DIM, ... i_n) in could be
+          computed as SUM( ARRAY( i_1, i_2, :i_DIM, i_n).  (Note
+          the colon before i_DIM in that last expression.)
+
+Case (v) If ARRAY has rank one, then element i
+         of the result of XXX_PREFIX( ARRAY, EXCLUSIVE= .TRUE.)         is determined by the first i - 1 elements of ARRAY.
+
+Case (vi) The options may be used in any combination."
+
+[298:12+} Add a new section
+
+"13.5.19 Array Scanning Functions
+
+ALL_PREFIX( MASK, DIM, SEGMENT, EXCLUSIVE)
+ALL_SUFFIX( MASK, DIM, SEGMENT, EXCLUSIVE)
+ANY_PREFIX( MASK, DIM, SEGMENT, EXCLUSIVE)
+ANY_SUFFIX( MASK, DIM, SEGMENT, EXCLUSIVE)
+COPY_PREFIX( ARRAY, DIM, SEGMENT)
+COPY_SUFFIX( ARRAY, DIM, SEGMENT)
+COUNT_PREFIX( MASK, DIM, SEGMENT, EXCLUSIVE)
+COUNT_SUFFIX( MASK, DIM, SEGMENT, EXCLUSIVE)
+IALL_PREFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+IALL_SUFFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+IANY_PREFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+IANY_SUFFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+IPARITY_PREFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+IPARITY_SUFFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+MAXVAL_PREFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+MAXVAL_SUFFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+MINVAL_PREFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+MINVAL_SUFFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+PARITY_PREFIX( MASK, DIM, SEGMENT, EXCLUSIVE)
+PARITY_SUFFIX( MASK, DIM, SEGMENT, EXCLUSIVE)
+PRODUCT_PREFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+PRODUCT_SUFFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+SUM_PREFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)
+SUM_SUFFIX( ARRAY, DIM, MASK, SEGMENT, EXCLUSIVE)"
+
+Note to Editor:  these functions are paired, with XXX_PREFIX()
+and XXX_SUFFIX() versions.  Editing placement instructions
+are between the pairs.  Hopefully, the quotes so indicate.
+Please add section numbers as appropriate.
+
+[303:2+] Add
+
+"ALL_PREFIX( MASK, [ DIM, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented logical AND scan
+                along dimension DIM of MASK.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+MASK is INTENT( IN) and shall be of type logical.
+     It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and
+               of type integer with a value
+               in the range 1 <= DIM <= n,
+               where n is the rank of MASK.
+ 
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as MASK.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type Type, Type Kind Value and Shape>> Same as MASK.
+
+<<Result Value>> Element r of the result has the value
+                 ALL( [ a_1, ... , a_m ]) where ( a_1, ... , a_m) is
+                 the (possibly empty) set of elements of MASK selected
+                 to contribute to r by the rules
+                 stated in Section 13.2.3.
+
+<<Example>> ALL_PREFIX( [ T, F, T, T, T ], SEGMENT= [ F, F, F, T, T ] )
+            is [ T, F, F, T, T ].
+
+ALL_SUFFIX( MASK, [ DIM, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented logical AND scan along
+                dimension DIM of MASK.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+
+MASK is INTENT( IN) and shall be of type logical.
+     It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and of type integer
+               with a value in the range 1 <= DIM <= n, where n is
+               the rank of MASK.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical and
+                   shall have the same shape as MASK.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical and
+                     shall be scalar
+
+<<Result Type, Type Parameter, and Shape>> Same as MASK.
+
+<<Result Value>> Element r of the result has
+                 the value ALL( [ a_1, ..., a_m ] ) where (a_1, ... a_m)
+                 is the (possibly empty) set of elements
+                 of MASK selected to contribute to r by the rules stated
+                 in Section 13.2.3.
+
+<<Example>> ALL_SUFFIX( [ T, F, T, T, T ], SEGMENT= [ F, F, F, T,T ] )
+            is [ F, F, T, T, T ]."
+
+[304:10+] Add
+
+"ANY_PREFIX( MASK, [ DIM, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented logical OR scan
+                along dimension DIM of MASK.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+MASK is INTENT( IN) and shall be of type logical.
+     It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and of type integer
+               with a value in the range 1 <= DIM <= n, where n is
+               the rank of MASK.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical and
+                   shall have the same shape as MASK.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as MASK.
+
+<<Result Value>> Element r of the result has the value
+                 ANY( [ a_1, ..., a_m ] ) where ( a_1, ... a_m) is
+                 the (possibly empty) set of elements of MASK
+                 selected to contribute to r by the rules stated
+                 in Section 13.2.3.
+
+<<Example>> ANY_PREFIX( [ F, T, F, F, F ], SEGMENT= [ F, F, F, T, T ] )
+            is [ F, T, T, F, F ].
+
+ANY_SUFFIX( MASK, [ DIM, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented logical OR scan
+                along dimension DIM of MASK.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+MASK is INTENT( IN) and shall be of type logical.
+     It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and
+               of type integer with a value
+               in the range 1 <= DIM <= n,
+               where n is the rank of MASK.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as MASK.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as MASK.
+
+<<Result Value>> Element r of the result has the value
+                 ANY( [ a_1, ..., a_m ] ) where ( a_1, ..., a_m ) is
+                 the (possibly empty) set of elements of MASK
+                 selected to contribute to r by the rules
+                 stated in Section 13.2.3.
+
+<<Example>> ANY_SUFFIX( [ F, T, F, F, F ], SEGMENT= [ F, F, F, T, T ] )
+            is [ T, T, F, F, F ]."
+
+[308:27+] Add
+
+"COPY_PREFIX( ARRAY, [ DIM, SEGMENT ] )
+
+<<Description>> Computes a segmented copy scan along dimension DIM
+                of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of any type. It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and of type integer
+               with a value in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has the value a_1
+                 where  ( a_1, ..., a_m ) is the set,
+                 in array element order, of elements of ARRAY selected
+                 to contribute to r by the rules stated in Section 13.2.3.
+                 Note that this set is never empty.
+
+<<Example>> COPY_PREFIX( [ 1, 2, 3, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 1, 1, 1, 4, 4 ].
+
+COPY_SUFFIX( ARRAY, [ DIM, SEGMENT ] )
+
+<<Description>> Computes a reverse, segmented copy scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of any type. It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and of type integer
+               with a value in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has the value a_m
+                 where (a_1, ..., a_m ) is the set,
+                 in array element order, of elements of ARRAY selected
+                 to contribute to r by the rules stated in Section 13.2.3.
+                 Note that this set is never empty.
+
+<<Example>> COPY_SUFFIX( [ 1, 2, 3, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 3, 3, 3, 5, 5]."
+
+[309:32+] Add
+
+"COUNT_PREFIX( MASK, [ DIM, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented COUNT scan
+                along dimension DIM of MASK.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+MASK is INTENT( IN) and shall be of type logical.
+     It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and of type integer
+               with a value in the range 1 <= DIM <= n, where n is
+               the rank of MASK.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical and
+                   shall have the same shape as MASK.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical and
+                     shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> The result is
+                                           of type default integer
+                                           and of the same shape as MASK.
+
+<<Result Value>> Element r of the result has
+                 the value COUNT( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is
+                 the (possibly empty) set of elements
+                 of MASK selected to contribute
+                 to r by the rules stated in Section 13.2.3.
+
+<<Example>> COUNT_PREFIX( [ F, T, T, T, T ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 0, 1, 2, 1, 2 ].
+
+COUNT_SUFFIX( MASK, [ DIM, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented COUNT scan
+                along dimension DIM of MASK.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+MASK is INTENT( IN) and shall be of type logical.
+     It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer with a value
+               in the range 1 <= DIM <= n, where n is the rank of MASK.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as MASK.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> The result is
+                                           of type default integer
+                                           and of the same shape as MASK.
+
+<<Result Value>> Element r of the result has
+                 the value COUNT( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m,) is
+                 the (possibly empty) set of elements of MASK selected
+                 to contribute to r by the rules stated in Section 13.2.3.
+
+<<Example>> COUNT_SUFFIX( [ T, F, T, T, T ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 2, 1, 1, 2, 1 ]."
+
+[320:14+] Add
+
+"IALL_PREFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented bitwise logical AND scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and of type integer
+               with a value in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value IALL( [ a_1, ..., a_m ] ) where
+                 ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY
+                 selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> IALL_PREFIX( [ 1, 2, 3, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 1, 1, 0, 4, 4 ].
+
+IALL_SUFFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented bitwise logical AND scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer
+               with a value in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value IALL( [ a_1, ..., a_m ] ) where
+                 ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY
+                 selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> IALL_SUFFIX( [ 1, 3, 2, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 0, 2, 2, 4, 5 ]."
+
+[320:25+] Add
+
+"IANY_PREFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented bitwise logical OR scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer
+               with a value in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value IANY( [ a_1, ..., a_m ] ) where
+                 ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> IANY_PREFIX( [ 1, 2, 3, 2, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 1, 3, 3, 2, 7 ].
+
+IANY_SUFFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented bitwise logical OR scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and of type integer
+               with a value in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value IANY( [ a_1, ..., a_m ] ) where
+                 ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute
+                 to r by the rules stated in Section 13.2.3.
+
+<<Example>> IANY_SUFFIX( [ 4, 2, 3, 2, 5 ], SEGMENT=  [ F, F, F,T, T ] )
+            is [ 7, 3, 3, 7, 5 ]."
+
+[324:7+] Add
+
+"IPARITY_PREFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented bitwise logical exclusive OR scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer
+               with a value in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value IPARITY( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute
+                 to r by the rules stated in Section 13.2.3.
+
+<<Example>> IPARITY_PREFIX( [ 1, 2, 3, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 1, 3, 0, 4, 1 ].
+
+IPARITY_SUFFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented bitwise
+                logical exclusive OR scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be be of type integer.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer with a value
+               in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value IPARITY( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute
+                 to r by the rules stated in Section 13.2.3.
+
+<<Example>> IPARITY_SUFFIX( [ 1, 2, 3, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 0, 1, 3, 1, 5 ]."
+
+[333:32+] Add
+
+"MAXVAL_PREFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented MAXVAL scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer or real.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer with a value
+               in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value MAXVAL( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> MAXVAL_PREFIX( [ 3, 4, -5, 2, 5 ], SEGMENT=  [ F, F, F, T, T ] )
+            is [ 3, 4, 4, 2, 5 ].
+
+MAXVAL_SUFFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented MAXVAL scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer or real.
+      It shall not be scalar
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer with a value
+               in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value MAXVAL( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> MAXVAL_SUFFIX( [ 3, 4, -5, 2, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 4, 4, -5, 5, 5 ]."
+
+[337:2+] Add
+
+"MINVAL_PREFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented MINVAL scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer or real.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and of type integer
+               with a value in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value MINVAL( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> MINVAL_PREFIX( [ 1, 2, -3, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 1, 1, -3, 4, 4 ].
+
+MINVAL_SUFFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented MINVAL scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer or real.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer with a value
+               in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value MINVAL( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> MINVAL_SUFFIX( [ 1, 2, -3, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ -3, -3, -3, 4, 5 ]."
+
+[342:16+] Add
+
+"PARITY_PREFIX( MASK, [ DIM, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented logical exclusive OR scan
+                along dimension DIM of MASK.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+MASK is INTENT( IN) and shall be of type logical.
+     It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer with a value
+               in the range 1 <= DIM <= n,
+               where n is the rank of MASK.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as MASK.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as MASK.
+
+<<Result Value>> Element r of the result has
+                 the value PARITY( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is the ( possibly empty) set
+                 of elements of MASK selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> PARITY_PREFIX( [ T, F, T, T, T ], SEGMENT= [ F, F, F, T, T ] )
+            is [ T, T, F, T, F ].
+
+PARITY_SUFFIX( MASK, [ DIM, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented logical exclusive OR scan
+                along dimension DIM of MASK.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+MASK is INTENT( IN) and shall be of type logical.
+     It shall not be scalar.
+
+DIM  (optional) is INTENT( IN) and shall be scalar
+                and of type integer with a value
+                in the range 1 <= DIM <= n,
+                where n is the rank of MASK.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as MASK.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as MASK.
+
+<<Result Value>> Element r of the result has
+                 the value PARITY( [ a_1, ..., a_m ] )
+                 where ( a_1, ...., a_m) is the (possibly empty) set
+                 of elements of MASK selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> PARITY_SUFFIX( [ T, F, T, T, T ], SEGMENT=  [ F, F, F, T, T ] )
+            is [ F, T, T, F, T ]."
+
+[343:34+] Add
+
+"PRODUCT_PREFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented PRODUCT scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer, real, or complex.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer with a value
+               in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value PRODUCT( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> PRODUCT_PREFIX( [ 1, 2, 3, 4, 5 ], SEGMENT= [ F, F, F, T, T ])
+            is [ 1, 2, 6, 4, 20 ].
+
+PRODUCT_SUFFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented PRODUCT scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer, real, or complex.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer with a value
+               in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value PRODUCT( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> PRODUCT_SUFFIX( [ 1, 2, 3, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 6, 6, 3, 20, 5 ]."
+
+[354:38+] Add
+
+"SUM_PREFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a segmented SUM scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer, real, or complex.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar and of type integer
+               with a value in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value SUM( [ a_1, ..., a_m ])
+                 where ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> SUM_PREFIX( [ 1, 2, 3, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 1, 3, 6, 4, 9 ].
+
+SUM_SUFFIX( ARRAY, [ DIM, MASK, SEGMENT, EXCLUSIVE ] )
+
+<<Description>> Computes a reverse, segmented SUM scan
+                along dimension DIM of ARRAY.
+
+<<Class>> Transformational function.
+
+<<Arguments>>
+ARRAY is INTENT( IN) and shall be of type integer, real, or complex.
+      It shall not be scalar.
+
+DIM (optional) is INTENT( IN) and shall be scalar
+               and of type integer with a value
+               in the range 1 <= DIM <= n,
+               where n is the rank of ARRAY.
+
+MASK (optional) is INTENT( IN) and shall be of type logical
+                and shall be conformable with ARRAY.
+
+SEGMENT (optional) is INTENT( IN) and shall be of type logical
+                   and shall have the same shape as ARRAY.
+
+EXCLUSIVE (optional) is INTENT( IN) and shall be of type logical
+                     and shall be scalar.
+
+<<Result Type, Type Parameter, and Shape>> Same as ARRAY.
+
+<<Result Value>> Element r of the result has
+                 the value SUM( [ a_1, ..., a_m ] )
+                 where ( a_1, ..., a_m ) is the (possibly empty) set
+                 of elements of ARRAY selected to contribute to r
+                 by the rules stated in Section 13.2.3.
+
+<<Example>> SUM_SUFFIX( [ 1, 2, 3, 4, 5 ], SEGMENT= [ F, F, F, T, T ] )
+            is [ 6, 5, 3, 9, 5 ]."

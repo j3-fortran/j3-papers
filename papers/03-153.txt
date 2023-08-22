@@ -1,0 +1,203 @@
+
+                                                       J3/03-153
+
+To: J3
+From: UK Fortran panel
+Subject: Edits for UK comment E1 (Generic bindings and abstract interfaces)
+
+Date: 14 March 2003
+
+1. Introduction
+
+UK Comment E1 was
+
+    Sections 4.5.1 and 12.3.2.1
+    Generic bindings and abstract interfaces are inadequately described.  
+    Further notes and examples are needed.
+
+Herein two examples.
+
+2. Discussion
+
+Both examples only show the modules defining useful stuff, they don't show
+how to use the modules.  Hopefully they are sufficiently self-explanatory
+that that is not necessary.
+
+2.1 Generic type-bound procedures
+
+This is probably the most trivial example of a derived type with some generic
+type-bound procedures that one could have and still be illustrative.  The
+example module is far from a complete real-world example - but the rest of
+it would just be "more of the same"...
+
+This example only illustrates the most basic use of the generic facility,
+and without any type extension.
+
+2.2 Abstract interfaces
+
+This example uses several new features, in particular:
+  abstract interfaces
+  type extension
+  procedure pointer components
+but then it's necessary to use several features to demonstrate anything
+real.  At least this is an attempt at a more-or-less complete real-world
+example.
+
+3. Edits to 02-007r3
+
+The edits below assume the passage of both UK TC4 and UK TC7; some minor
+changes will be needed if either of these do not happen.
+
+[436:23+] Add new subsection
+ "C.1.5a Generic type-bound procedures
+
+  Example of a derived type with generic type-bound procedures.
+  
+  The only difference between this example and the same thing rewritten to
+  use generic interface blocks is that with type-bound procedures,
+    USE(rational_numbers),ONLY :: rational
+  does not block the type-bound procedures - so the user still gets access to
+  the defined assignment and extended operations.
+  
+  MODULE rational_numbers
+    IMPLICIT NONE
+    PRIVATE
+    TYPE,PUBLIC :: rational
+      PRIVATE
+      INTEGER n,d
+    CONTAINS
+      ! ordinary type-bound procedure
+      PROCEDURE real => rat_to_real
+      ! specific type-bound procedures for generic support
+      PROCEDURE,PRIVATE :: rat_asgn_i, rat_plus_rat, rat_plus_i
+      PROCEDURE,PRIVATE,PASS(b) :: i_plus_rat
+      ! generic type-bound procedures
+      GENERIC :: ASSIGNMENT(=) => rat_asgn_i
+      GENERIC :: OPERATOR(+) => rat_plus_rat, rat_plus_i, i_plus_rat
+    END TYPE
+  CONTAINS
+    ELEMENTAL REAL FUNCTION rat_to_real(this) RESULT(r)
+      CLASS(rational),INTENT(IN) :: this
+      r = REAL(this%n)/this%d
+    END FUNCTION
+    ELEMENTAL SUBROUTINE rat_asgn_i(a,b)
+      CLASS(rational),INTENT(OUT) :: a
+      INTEGER,INTENT(IN) :: b
+      a%n = b
+      a%d = 1
+    END SUBROUTINE
+    ELEMENTAL CLASS(rational) FUNCTION rat_plus_i(a,b) RESULT(r)
+      CLASS(rational),INTENT(IN) :: a
+      INTEGER,INTENT(IN) :: b
+      r%n = a%n + b*a%d
+      r%d = a%d
+    END FUNCTION
+    ELEMENTAL CLASS(rational) FUNCTION i_plus_rat(a,b) RESULT(r)
+      INTEGER,INTENT(IN) :: a
+      CLASS(rational),INTENT(IN) :: b
+      r%n = b%n + a*b%d
+      r%d = b%d
+    END FUNCTION
+    ELEMENTAL CLASS(rational) FUNCTION rat_plus_rat(a,b) RESULT(r)
+      CLASS(rational),INTENT(IN) :: a,b
+      r%n = a%n*b%d + b%n*a%d
+      r%d = a%d*b%d
+    END FUNCTION
+  END"
+
+[466:42+] Insert new subsection
+ "C.9.4 Abstract interfaces (12.3) and procedure pointer components (4.5)
+
+  This is an example of a library module providing lists of callbacks that
+  the user may register and invoke.
+
+  MODULE callback_list_module
+    !
+    ! Type for users to extend with their own data, if they so desire
+    !
+    TYPE callback_data
+    END TYPE
+    !
+    ! Abstract interface for the callback procedures
+    !
+    ABSTRACT INTERFACE
+      SUBROUTINE callback_procedure(data)
+        IMPORT callback_data
+        CLASS(callback_data),OPTIONAL :: data
+      END SUBROUTINE
+    END INTERFACE
+    !
+    ! The callback list type.
+    !
+    TYPE callback_list
+      PRIVATE
+      CLASS(callback_record),POINTER :: first => NULL()
+    END TYPE
+    !
+    ! Internal: each callback registration creates one of these
+    !
+    TYPE,PRIVATE :: callback_record
+      PROCEDURE(callback_procedure),POINTER,NOPASS :: proc
+      CLASS(callback_record),POINTER :: next
+      CLASS(callback_data),POINTER :: data => NULL();
+    END TYPE
+    PRIVATE invoke,forward_invoke
+  CONTAINS
+    !
+    ! Register a callback procedure with optional data
+    !
+    SUBROUTINE register_callback(list, entry, data)
+      TYPE(callback_list),INTENT(INOUT) :: list
+      PROCEDURE(callback_procedure) :: entry
+      CLASS(callback_data),OPTIONAL :: data
+      TYPE(callback_record),POINTER :: new,last
+      ALLOCATE(new)
+      new%proc => entry
+      IF (PRESENT(data)) ALLOCATE(new%data,SOURCE=data)
+      new%next => list%first
+      list%first => new
+    END SUBROUTINE
+    !
+    ! Internal: Invoke a single callback and destroy its record
+    !
+    SUBROUTINE invoke(callback)
+      TYPE(callback_record),POINTER :: callback
+      IF (ASSOCIATED(callback%data) THEN
+        CALL callback%proc(list%first%data)
+        DEALLOCATE(callback%data)
+      ELSE
+        CALL callback%proc
+      END IF
+      DEALLOCATE(callback)
+    END SUBROUTINE
+    !
+    ! Call the procedures in reverse order of registration
+    !
+    SUBROUTINE invoke_callback_reverse(list)
+      TYPE(callback_list),INTENT(INOUT) :: list
+      TYPE(callback_record),POINTER :: next,current
+      current => list%first
+      NULLIFY(list%first)
+      DO WHILE (ASSOCIATED(current))
+        next => current%next
+        CALL invoke(current)
+        current => next
+      END DO
+    END SUBROUTINE
+    !
+    ! Internal: Forward mode invocation
+    !
+    RECURSIVE SUBROUTINE forward_invoke(callback)
+      IF (ASSOCIATED(callback%next)) CALL forward_invoke(callback%next)
+      CALL invoke(callback)
+    END SUBROUTINE
+    !
+    ! Call the procedures in forward order of registration
+    !
+    SUBROUTINE invoke_callback_forward(list)
+      TYPE(callback_list),INTENT(INOUT) :: list
+      IF (ASSOCIATED(list%first)) CALL forward_invoke(list%first)
+    END SUBROUTINE
+  END
+
+===END===

@@ -1,0 +1,158 @@
+                                                            J3/10-211
+To: J3
+From: Malcolm Cohen
+Subject: Interp: SOURCE= questions.
+Date: 2010 September 26
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0042
+TITLE: SOURCE= questions.
+KEYWORDS: ALLOCATE, SOURCE=
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the program
+  PROGRAM example1
+  REAL,ALLOCATABLE :: x(:),y(:)
+  ALLOCATE(x(10),y(10),SOURCE=3.14159265)
+  PRINT *,x,y
+  END
+
+This program does not conform to Fortran 2003 due to constraint C631
+which stated
+  "If SOURCE= appears, ... <allocation-list> shall contain only one
+   <allocate-object> ...".
+
+The corresponding constraint in Fortran 2008, C638, is missing this
+requirement, so apparently the program is now syntactically correct.
+
+However, the Introduction to the Fortran 2008 standard does not
+mention this as a new feature.
+
+Furthermore, 6.7.1.1 paragraph 4 begins
+  "If <allocate-object> is a coarray, <source-expr> shall not have a
+   dynamic type of ..."
+which implies that there is only one <allocate-object> for a
+<source-expr> (at least when the <allocate-object> is a coarray).
+
+Similarly, the wording of constraint C639 implies a one-to-one
+correspondance between <allocate-object> and <source-expr>.
+
+Q1. Is the omission of the single allocation requirement of Fortran
+    2003 an oversight? (i.e. is example1 non-conforming?).
+
+Also, consider the program
+  PROGRAM example2
+  REAL,ALLOCATABLE :: x[:]
+  ALLOCATE(x)
+  x = 3
+  END
+
+The ALLOCATE statement appears not to conform to Fortran 2008 because
+of 6.7.1.1 paragraph 4; since <source-expr> does not appear, it cannot
+satisfy any condition about its dynamic type.
+
+Q2. Is an ALLOCATE statement for a coarray required to have SOURCE=?
+    (i.e. is example2 non-conforming?).
+
+Also, if multiple allocations with SOURCE= are permitted,
+consider the program
+  PROGRAM example3
+    INTEGER,ALLOCATABLE :: x,y
+    ALLOCATE(x,y,SOURCE=f())
+    PRINT *,x,y
+  CONTAINS
+    INTEGER FUNCTION f()
+      INTEGER,SAVE :: n = 1
+      f = n
+      n = n + 1
+    END FUNCTION
+  END PROGRAM
+
+The execution semantics of SOURCE= in 6.7.1.2 paragraph 7 do not state
+whether the <source-expr> is evaluated once per statement or once per
+allocation.  If the processor evaluates per statement execution,
+something like " 1 1" will be printed, but if it evaluates it per
+allocation, something like " 1 2" could be printed.
+
+Q3. How many times may <source-expr> be evaluated in an ALLOCATE
+    statement with multiple allocations?
+
+Also, consider the program
+  PROGRAM example4
+    REAL,ALLOCATABLE :: x(:)
+    ALLOCATE(x,SOURCE=[0.5,1.5])
+    PRINT *,x
+  END PROGRAM
+
+The Introduction implies that this program should be standard-
+conforming, but it violates constraint C633, which begins
+  "(R631) If <allocate-object> is an array either <allocate-shape-
+   spec-list> shall appear or <source-expr> shall appear ..."
+The requirements of C633 are not satisfied because R631 is
+<allocation> and <source-expr> does not appear in R631.
+
+Q4. Is example4 intended to be standard-conforming?
+
+ANSWER:
+
+The answer to question 1 is No.
+This feature was deliberately added to the Fortran 2008 standard.
+Edits are supplied to correct its exposition.
+
+The answer to question 2 is No.
+An edit is supplied to correct paragraph 4 of 6.7.1.1.
+
+The answer to question 3 is once.
+An edit is supplied to clarify paragraph 7 of 6.7.1.2.
+
+The answer to question 4 is Yes.
+An edit is supplied to correct constraint C633.
+
+EDITS:
+
+{to 10-007}
+
+[xiii] Introduction, bullet "Data usage and computation",
+  Before "MOLD="
+  Insert "Multiple allocations are permitted in a single ALLOCATE
+          statement with SOURCE=."
+{(Q1) Add new feature to the feature list.}
+
+[126:31-33] Replace C633 entirely with the constraints
+  "C633 (R626) If an <allocate-object> is an array, either <allocate-
+        shape-spec-list> shall appear in its <allocation> or <source-
+        expr> shall appear in the ALLOCATE statement.
+
+   C633a (R631) If <allocate-object> is scalar, <allocate-shape-spec-
+         list> shall not appear."
+{(Q4) Fix broken constraint.}
+
+[127:5] Constraint C639, replace entirely with
+  "C639 (R626) If <source-expr> appears, the kind type parameters of
+        each <allocate-object> shall have the same values as the
+        corresponding type parameters of <source-expr>."
+{(Q1) Fix singular implication.  Avoid introducing any implication
+ that each <allocate-object> has the same set of kind type parameters
+ or that any <allocate-object> has the same set of kind type
+  parameters as the <source-expr> - the relationship is a subset.}
+
+[127:18] 6.7.1.1 paragraph 4, replace entirely with
+  "If <source-expr> has a dynamic type of C_PTR, C_FUNPTR, LOCK_TYPE,
+   or has a subcomponent whose dynamic type is LOCK_TYPE, no
+   <allocate-object> in that statement is permitted to be a coarray."
+{(Q2) Fix implied requirement of SOURCE= appearance for coarrays.}
+
+[128:26] 6.7.1.2 paragraph 7, append new sentence
+  "The <source-expr> is evaluated exactly once for each execution of
+   an ALLOCATE statement."
+{(Q3) Clarify number of evaluations.}
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 10-211   m193 Submitted
+
+----------------------------------------------------------------------

@@ -1,0 +1,211 @@
+                                                                12-108
+To: J3
+From: Van Snyder
+Subject: Interpretation concerning specification functions
+Date: 2012 January 19
+
+----------------------------------------------------------------------
+
+NUMBER: F08/xxxx
+TITLE: Can a specification function invoke an internal procedure?
+KEYWORDS: specification function, internal procedure
+DEFECT TYPE: Erratum
+STATUS: Under J3 consideration
+
+BACKGROUND:
+
+[10-007r1:7.1.11p5 150:44-45] prohibits a specification function from
+_being_ an internal function, but not from _invoking_ one.  There are
+(at least) three ways by which one might be invoked.  A fourth and
+more complicated way, involving a type-bound procedure with a dummy
+procedure argument, is not illustrated.  There might be others.
+
+QUESTIONS:
+
+(1) Given
+
+  module M
+
+    abstract interface
+      pure integer function F ( I )
+        integer, intent(in) :: I
+      end function F
+    end interface
+
+    procedure(f), save, pointer :: P => NULL()
+
+  contains
+
+    subroutine S ( A )
+      integer, intent(in) :: A(:)
+      integer :: B(g(size(a,1)))
+      integer :: C(size(b,1))
+      ...
+      p => h
+      ...
+    contains
+      pure integer function H ( I )
+        integer, intent(in) :: I
+        h = size(c,1)
+      end function H
+    end subroutine S
+
+    pure integer function G ( I )
+      integer, intent(in) :: I
+      g = i
+      if ( associated(p) ) g = p(i)
+    end function G
+
+  end module M
+
+is it permitted to invoke S if a prior invocation of it has caused P
+to become associated with H?
+
+(2) Given
+
+  module MT
+
+    abstract interface
+      pure integer function F ( I )
+        integer, intent(in) :: I
+      end function F
+    end interface
+
+    type T
+      procedure(f), pointer :: P => NULL()
+    end type T
+
+  contains
+
+    subroutine ST ( A )
+      integer, intent(in) :: A(:)
+      integer :: B(g(size(a,1)),t(p=h))
+      integer :: C(size(b,1))
+      ...
+    contains
+      pure integer function H ( I )
+        integer, intent(in) :: I
+        h = size(c,1)
+      end function H
+    end subroutine ST
+
+    pure integer function G ( I, P )
+      integer, intent(in) :: I
+      type(t), intent(in) :: P
+      g = i
+      if ( associated(p%p) ) g = p%p(i)
+    end function G
+
+  end module MT
+
+is a reference to ST permitted?
+
+(3) Given
+
+  module MR
+
+    abstract interface
+      pure integer function F ( I )
+        integer, intent(in) :: I
+      end function F
+    end interface
+
+  contains
+
+    recursive subroutine R ( A, Q )
+      integer, intent(in) :: A(:)
+      procedure(f) :: Q
+      integer :: B(q(size(a,1)))
+      integer :: C(size(b,1))
+      ...
+      call r ( a, rh )
+      ...
+    contains
+      pure integer function RH ( I )
+        integer, intent(in) :: I
+        rh = size(c,1)
+      end function RH
+    end subroutine R
+
+  end module MR
+
+is the recursive invocation of R permitted?
+
+ANSWERS:
+
+(1) It was intended that this not be permitted.  If H is invoked
+    while the specification part of S is being elaborated, it is
+    conceivable that H can reference or inquire about, by host
+    association, some local variable of S that has not yet been
+    created.
+
+    The prohibitions in 7.1.11p5-6 are inadequate.  They were
+    intended to prohibit invoking a procedure internal to the same
+    instance of the subprogram in which the specification expression
+    is invoked, but fail to do so.
+
+    Edits are provided to correct this oversight.
+
+    The prohibition against a specification function having a dummy
+    procedure argument is pointless, since it does not prohibit
+    arguments of types having procedure pointer components or
+    type-bound procedures, but an interpretation is not the correct
+    place to rectify this inconsistency.
+
+(2) It was intended that this not be permitted, for the same reasons
+    described in the answer to question (1).
+
+    The edits provided as the answer to question (1) correct this
+    oversight.
+
+(3) The invocation of RH by way of a specification expression is
+    harmless because the invoked instance of RH does not have access
+    to the same instance as the reference to Q in the declaration of
+    B.
+
+    The edits provided as the answer to (1) do not prohibit this, and
+    correct a note that implies it is prohibited.
+
+EDITS:
+
+[10-007r1:7.1.11p6 151:1-2] Insert ", or an instance of one that is
+internal to the same instance in which the specification expression
+is evaluated," after "subprogram".
+
+[10-007r1:7.1.11 Note 7.32 151:2+4-5] Replace "they not be internal
+ensures that they cannot" by "evaluation of a specification
+expression not invoke a procedure internal to the instance of the
+subprogram in which it appears ensures that it is not possible to"
+
+ALTERNATIVE EDITS:
+
+[10-007r1:7.1.11p6 151:2] Append before the end of the sentence
+", and shall not reference or inquire about an automatic variable
+declared after the appearance of the specification expression and
+within the same instance of the <specification-part> in which the
+specification expression appears".
+
+Existing requirements already impose this prohibition, except in the
+sort of situation illustrated by question (1).
+
+REMARK:
+
+One might argue that even an ordinary reference to H in (1) by way of
+P, during an invocation of S different from one in which P became
+associated with H, is not permitted, because P should include
+information about the activation record of S during which the pointer
+association occurred.  It is not obvious that this is prohibited.
+Maybe it should be.  The example in (2) does not have this loophole,
+nor would one involving a type-bound procedure that has a procedure
+argument.  One of two things is necessary:
+
+(a) Explicit prohibition against indirectly invoking an instance of a
+    procedure internal to the same instance of a subprogram, by way
+    of evaluating a specification expression, or
+
+(b) Prohibition against referencing or inquiring about a variable that
+    might not yet have been created.
+
+SUBMITTED BY: Van Snyder
+
+HISTORY: 12-xxx    m197  F08/xxxx submitted

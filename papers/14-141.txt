@@ -1,0 +1,105 @@
+                                                          J3/14-141
+To:        J3
+Subject:   FAILED_IMAGES intrinsic in TS 18508
+From:      Van Snyder
+Date: 2014 April 16
+Reference: 14-130
+
+1. Introduction
+===============
+
+The FAILED_IMAGES intrinsic function in subclause 7.4.12 of TS 18508
+reports an array of failed image indices.  If one wants to inquire
+whether a particular image has failed, one would need to use
+
+  if ( any ( the_interesting_image == failed_images() ) ) ....
+
+It would be convenient if one could also test whether one particular
+image (or set of images) had failed (or stopped).
+
+2. Proposal
+===========
+
+An intrinsic function that reports the status of one image or several
+images would be more useful.
+
+Instead of FAILED_IMAGES, provide a function IMAGE_STATUS that returns
+an array of STAT_FAILED_IMAGE, STAT_STOPPED_IMAGE, some other
+processor-dependent value, or zero, for a specified set of images, or an
+array of positive stopped image numbers and negative failed image
+numbers (almost like FAILED_IMAGES is presently specified to do) if no
+image set is specified.
+
+3. Edits to 14-130
+==================
+
+[24:3-19 7.4.12] Delete the subclause
+
+[25:20+] Insert a subclause
+
+7.4.13a IMAGE_STATUS ( IMAGES, [TEAM], [KIND] ) or
+        IMAGE_STATUS ( [TEAM], [KIND] )
+
+Description: Status of images.
+
+Class: Transformational function.
+
+Arguments.
+
+IMAGES  shall be a scalar or array of type integer.
+
+TEAM ... {same as [24:7-8]}
+
+KIND ... {same as [24:9-11]}
+
+Result Characteristics.  Integer.  If KIND is present, the kind type
+parameter is that specified by the value of KIND; otherwise, the kind
+type parameter is KIND(0).
+
+Case (i) IMAGES appears
+  The result has the same rank and shape as IMAGES.
+
+Case (ii) IMAGES does not appear
+  The result is a rank one array whose extent is equal to the number of
+  images that have stopped, failed, or are reporting a system-dependent
+  status.
+
+Result Value.  If TEAM is present, its value specifies the team;
+otherwise the team specified is the current team.
+
+Case (i) IMAGES appears
+  If IMAGES is a scalar, the result value is STAT_FAILED_IMAGE if the
+  specified image has failed, STAT_STOPPED_IMAGE if that image has
+  stopped, a nonzero processor-dependent value different from
+  STAT_FAILED_IMAGE or STAT_STOPPED_IMAGE if some other error has
+  occurred for that image, and zero otherwise.  If IMAGES is an array,
+  each element of the result is as if IMAGE_STATUS had been invoked
+  for the corresponding element of IMAGES.
+
+Case (ii) IMAGES does not appear
+  The value of each element is a positive image number if an image has
+  stopped, or a negative image number if an image has failed.
+
+{Alternatively, describe IMAGE_STATUS ( IMAGES, [TEAM], [KIND] ) as an
+elemental function, IMAGES "shall be of type integer", don't describe
+the array case for IMAGES, and retain the scalar requirement for TEAM
+and KIND.  Describe IMAGE_STATUS ( [TEAM], [KIND] ) as a
+transformational function.}
+
+Examples.  If image 3 is the only failed image in the current team and
+no image of the current team has stopped, IMAGE_STATUS () has the value
+-3.  If there are no stopped or failed images of the current team,
+IMAGE_STATUS () is a zero-size array.  If image 3 of the current team
+has failed, IMAGE_STATUS ( 3 ) has the value STAT_FAILED_IMAGE.
+
+[40:23] Replace "failed_images" with "image_status".
+
+[43:40-46] Replace with
+
+  status = image_status ( i )
+  if ( status == STAT_FAILED_IMAGE ) then
+    confirm%available(i) = .false.
+    cycle image
+  end if
+  if ( status /= 0 ) error stop
+  call event_query ( confirm%event(i), count )

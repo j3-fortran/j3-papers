@@ -1,0 +1,52 @@
+                                                    J3/17-200
+To: J3
+From: Salvatore Filippone & Damian Rouson
+Subject: Constraint C749
+Date: 2017 September 26
+
+1. Discussion
+=============
+
+In the Parallel Sparse Basic Linear Algebra Subroutines (PSBLAS) library,
+communication buffers would ideally be coarray components inside derived
+types that have other components for storing the data prior to packing the
+data into the buffer. Storing the buffer in the same derived type as the
+data that will be packed into the buffer clarifies the data dependencies,
+making it less likely that a programmer will rely on critical sections to
+manage buffer accesses.  A Fortran 2015 implementation of PSBLAS would
+have data structures of the following form:
+
+  type vector
+    real, allocatable :: component(:),component_buffer(:)[:]
+  end type
+
+  type(vector) :: bundle, field
+
+This fixes the number of such data objects in the program (two in the above
+case: bundle and field).  Fixing the number of data objects at compile time
+is undesirable in the context of a library  designed to be installed and
+used  in multiple applications, and because it prevents those same objects
+from being reused as components of other higher-level objects in a
+sufficiently flexible way.
+
+However, C749 in N2137 states,
+
+   "A data component whose type has a coarray ultimate component shall be a
+   nonpointer nonallocatable scalar and shall not be a coarray,"
+
+which precludes the more flexible data structures required in PSBLAS:
+
+  type(vector), allocatable :: bundle(:) ! Violates C749 for above vector
+  allocate(bundle(100))
+
+
+2. Edits
+========
+
+When a base document for Fortran 2020 has been provided, the text
+corresponding to C749 in N2137 should be edited to insert "nonallocatable"
+before "coarray ultimate component."  This will have the effect of allowing
+allocatable arrays of a derived type with an allocatable ultimate coarray
+component.  It will still disallow nonallocatable coarray ultimate
+components, which avoids unnecessary synchronizations upon allocation of
+the container object.

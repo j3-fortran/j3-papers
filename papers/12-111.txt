@@ -1,0 +1,208 @@
+To: J3                                                     12-111
+From: R. Bader
+Subject: TS 29113 Non-interoperable procedure arguments
+Date: 2012 January 28
+References: N1885, N1830, 11-251r1
+
+INTRODUCTION:
+
+11-251r1 added support for non-interoperable callback routines to
+TS 29113 (based on DIN-4 PDTS feedback); however this support
+appears to be incomplete: C_F_PROCPOINTER lacks the possibility
+to recover a noninteroperable function pointer within Fortran.
+
+This paper attempts to add the missing bits to the TS; an example
+is also provided which could be added to Annex A if desired.
+All edits are to N1885.
+
+COMMENT on MPI-3 requirements:
+
+The DIN-4 request was formulated at a stage when it was not yet
+clear how exactly the MPI callback interfaces would/should be
+defined; the latest MPI-3 draft defines these interfaces as
+BIND(C) in the mpi_f08 module; hence there is no need for MPI
+to implement non-interoperable Fortran wrappers for the
+reduction collectives and other MPI calls with procedure
+arguments. If this situation persists, the feature which is
+the topic of this paper would therefore not be needed by MPI-3.
+
+
+EDITS:
+
+[section 8.1]:
+in the heading, replace "C_F_POINTER, ... C_FUNLOC" by "ISO_C_BINDING
+module procedures"
+
+<<< this avoids having an overlong heading >>>
+
+after para 1, insert
+
+"This restriction is removed.
+
+ The function C_F_PROCPOINTER from the intrinsic module ISO_C_BINDING
+ has the restrictions in ISO/IEC 1539-1:2010 that
+ (a) its CPTR argument must be the C address of a procedure that is
+     interoperable. This restriction is removed.
+ (b) the interface of its FPTR argument shall be interoperable with
+     the prototype that describes the target of CPTR. This rule is
+     relaxed to apply only if the target of CPTR is interoperable."
+
+<<< Since the companion processor may be another Fortran compiler, it
+    might be worth pointing out that invoking C_FUNLOC with a
+    non-interoperable argument in a procedure compiles with compiler 1
+    and unpacking that C_FUNPTR entity with C_F_PROCPOINTER using
+    compiler 2 is unlikely to work. >>>
+
+at the end of para 2 and para 3 respectively, add "This restriction
+is removed."
+
+after para 3, delete "These restrictions are removed."
+
+
+[new section 8.x]: Add
+"8.x Interoperation with C functions
+
+A C function shall not invoke a Fortran procedure that is not
+interoperable."
+
+<<< The corresponding edit to 15.5.1 of ISO/IEC 1539-1:2010 is already
+    contained in section 9.9, but for improvement of clarity the text
+    should also appear in the mainline part of the TS. >>>
+
+and add
+
+"NOTE 8.13
+
+ It is recommended that a C function pointer corresponding to a
+ Fortran entity <funptr_name> of type C_FUNPTR is declared with
+ a prototype of the form <tt>void *(*<funptr_name>)()</tt> if
+ the interface of its target is non-interoperable or can change
+ the number and type of its arguments during execution of the
+ program. If the associated procedure is interoperable,
+ invocation from C can be performed after casting the function
+ pointer to a prototype which interoperates with the associated
+ procedure."
+
+<<< For the examples I wrote, using the above prototype worked
+    equally well for functions and subroutines i.e., the C compiler
+    did not complain, even with -ansi -Wall switches on. Perhaps
+    a C expert can confirm that this is OK? >>>
+
+
+[section 9.9]:
+
+{In 15.2.3.4 C_F_PROCPOINTER, paragraph 3}
+
+In the description of argument CPTR, delete " that is interoperable".
+In the description of argument FPTR, replace
+"The interface for FPTR shall be interoperable with the prototype
+ that describes the target of CPTR."
+by
+"If the target of CPTR is interoperable, the interface for FPTR
+ shall be interoperable (15.3.7) with the prototype that describes
+ the target of CPTR."
+
+<<< Since FPTR becomes pointer associated with the target of CPTR,
+    the rules in 7.2.2.4 of ISO-IEC 1539-1:2010 should take care of
+    procedure characteristics etc. >>>
+
+After the edit to 15.5.1 of ISO-IEC 1539-1:2010, add NOTE 15.23+,
+and insert the text of the TS 29113 NOTE 8.13 above.
+
+<<< alternatively, the NOTE could also be placed in section 15.3.3 of
+    ISO-IEC 1539-1:2010 >>>
+
+
+EXAMPLE:
+
+
+(could be added as a new item "A.2.7 Using C_FUNLOC and C_F_PROCPOINTER")
+
+A C library function may need to decide at run time which particular
+signature must be used to invoke a function argument:
+
+void fun_with_callback(void *(*fp)(), void *param, char type) {
+     switch(type) {
+     case 'i' :
+       ((void (*)(int *)) fp)( (int *) param);
+       break;
+     case 'f' :
+       ((void (*)(float *)) fp)( (float *) param);
+       break;
+     : // see below
+     }
+}
+
+The library function can be called from Fortran by using a C_FUNPTR
+dummy argument in the interface definition
+
+interface
+  subroutine fun_with_callback(fp, param, type) BIND(C)
+    type(c_funptr), value :: fp
+    type(*), intent(inout) :: param
+    character(kind=c_char,len=1), value :: type
+  end subroutine
+end interface
+
+and calling it after providing the function pointer argument with a
+suitable target:
+
+interface
+  subroutine callback_i(i) BIND(C)
+    integer(c_int) :: i
+  end subroutine
+  subroutine callback_f(f) BIND(C)
+    real(c_float) :: f
+  end subroutine
+end interface
+
+type(c_funptr) :: fp
+integer(c_int), target :: is = 4_c_int
+real(c_float), target :: fs = 3.5_c_float
+
+fp = c_funloc(callback_i)
+call fun_with_callback(fp, is, 'i')
+
+fp = c_funloc(callback_f)
+call fun_with_callback(fp, fs, 'f')
+
+Care must be taken to assure the invocation's signature is consistent
+with that of the function pointer's target. If fp becomes associated
+with a non-interoperable procedure, say
+
+subroutine callback_n(q)
+  real(kind=selected_real_kind(22,400)) :: q
+  ! assume that real kind does not interoperate with C
+  : ! do something with q
+end subroutine
+
+it is not allowed to invoke the callback from C (and it may in general
+not even be possible to write a prototype for it). One can however
+implement an auxiliary Fortran subroutine which reconstructs a Fortran
+procedure pointer from the C_FUNPTR entity via the C_F_PROCPOINTER
+intrinsic module procedure:
+
+subroutine invoke_noninteroperable(fp, param) BIND(C)
+  type(c_funptr), value :: fp
+  type(c_ptr), value :: param
+
+  real(kind=selected_real_kind(22,400)), pointer :: x
+  procedure(callback_n), pointer :: proc
+
+  call c_f_pointer(param, x)
+  call c_f_procpointer(fp, proc)
+  call proc(x)
+end subroutine
+
+That interoperable procedure may be called from the C library
+function
+
+     // the following replaces the line marked "see below" in
+     // the function body of fun_with_callback() above
+     case 'n' :
+       invoke_noninteroperable(fp, param);
+       break;
+
+after defining the prototype
+
+void invoke_noninteroperable(void *(*)(), void *);

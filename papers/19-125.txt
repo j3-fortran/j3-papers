@@ -1,0 +1,216 @@
+To: J3                                                     J3/19-125
+From: Tom Clune
+Subject: Analysis of generic facilities for containers
+Date: 2019-January-31
+Reference: J3/03-264r1, J3/06-123, J3/18-110r1, J3/18-281r1
+
+
+
+Introduction
+------------
+
+Various mechanisms for generic programming in Fortran have been
+proposed over the years.  This paper explores some of the strengths
+and weaknesses of the two most complete proposals, intelligent macros
+(J3/03-264r1) and parameterized modules (J3/06-123) for use in a
+nontrivial use case: generic containers (J3/18-110r1).  Some comments
+are also made with regard to the approach in J3/18-281r1
+("templated procedures"), but that proposal is too inncomplete at
+this time for a comparable analysis.  Finally, this paper also
+contrasts these approaches against existing practice of leveraging
+cpp/fpp to provide generic containers.
+
+
+Generic mechanisms
+------------------
+
+1. gFTL (https://github.com/Goddard-Fortran-Ecosystem/gFTL)
+
+gFTL is an existing framework for instantiating Fortran containers.
+It leverages the conventional cpp/fpp preprocessor and provides robust
+implementations for Vector, Set, and Map containers that are very
+similar to the same-named containers from the C++ standard template
+library (STL).  While this approach is not standard comforming it only
+relies on features that are available through essentially all modern
+Fortran compilers.  For this paper a stripped-down gFTL-like package
+was created that contains the essential aspects and simplifies the
+creation of similar implementations from the other proposed container
+mechanisms
+
+2. Intelligent macros (J3/06-123)
+
+As the name suggests this facility, if adopted, provides relatively
+simple mechanisms where by users can define and expand macros that
+produce Fortran statements.  User-defined macros have named arguments
+with the actual arguments consisting of a sequence of one or more
+tokens.  Special forms are provided for looping (MACRO DO) and
+specialization (MACRO IF).
+
+3. Parameterized modules (J3/03-264r1)
+
+This facility is modeled after analogous capabilities in Ada.
+Parameterized modules have one or more template parameters that can be
+types (as well as other things like integers).  Instantiation of a
+parameterized module acts as though a module-like entity exists that
+corresponds to the actual template parameters.
+
+
+
+Containers
+----------
+
+Software containers are convenient abstractions that allow client code
+to manage a collection of same-typed entities with a consistent set of
+interfaces including the ability to iterate over the elements of the
+collection.  Fortran arrays are a powerful form of container.  This
+paper explores the implementation of a generic Map container.  Such
+containers are also known as associative arrays and hashes and manage
+a collection of key-value pairs where all keys are of some fixed type
+and all values are of some (generally different) fixed type.  Values
+can be retrieved from the Map by specifying a key.  In general, keys
+can be any type that can be ordered.  And values can be of any type.
+
+This particular design for Map leverages a Set container. which manages
+a collection of entities of type Pair where Pair has 2 components: a
+key and value.   Internally, Set is implemented as a binary tree.
+
+The Set container (or rather the underlying tree structure) is in turn
+implemented by leveraging two types of Vector containers.  A Vector
+(or List) container is the simplest container considered here and and
+can be thought of as managing a growable array of entities of a given
+type.  Integer Vectors are used for managing mapping nodes of the tree
+and a Pair Vector is used to contain the node values.  (Pointers would
+possibly be the more natural way to implement such a tree, but are not
+used here for technical reasons related to implcations for further
+subclassing and an unresolved interpretation request for FINAL
+methods.)
+
+
+A zipped diretory tree is included ith this paper.  The directory tree
+includes representative implementations of the generic Map container
+using the 3 generic mechanisms described above.  Each also has an
+example driver program that insntantiates a sparse Integer-Real Map.
+None of these implementations fully functioning, but should be
+reasonably indicative of what a correct implemention would look like.
+The FPP version does at least compile and if time permits before I
+submit this paper may even successfully run the demo.
+
+
+Section 3.  Observations
+
+A. Containers use case
+
+Implementation of containers was relatively straightforward for both
+parameterized modules and macros.  Superficially the structures are
+quite similar and in particular the actual code for using an
+instantiated Map was quite similar.  However, the implementation using
+parameterized modules was considerably simpler for two important
+reasons.
+
+1. In both the intelligent macros and the cpp/fpp approaches, most
+   macros were required to be split into two separate macros so that
+   type declaration could go before module CONTAINS and type-bound
+   prodecures go after the module CONTAINS.  This would not be an
+   issue for very simple scenarious but if one desires the macros to
+   be composable, most use cases would run afoul of this issue.
+
+2. Macros required some amount of manual name mangling to avoid
+   namespace conflicts.  E.g., the Set container uses two different
+   types of vector containes (contained objects and indexing) which
+   otherwise have the same type-bound procedure names.  To bring both
+   types into the Set implementation some renaming (via "=>" )was
+   necessary for each type-bound procedure declaration.  Parameterized
+   modules on the other hand very nicely instantiate each of the two
+   vector classes and only require a rename of the types while the
+   type-bound procedures remain private and only accessible through
+   the type.
+
+As noted in the introduction, the templated procedures proposal
+description was insufficient to implement this use case without
+additional features.  Broadly one would expect to put all of the class
+methods into module that implements them as TEMPLATE functions and
+TEMPLATE subroutines.  However, without a mechanism to parameterize
+the types themselves, the user must then explicitly declare each
+instantiated type with all of the type-bound procedures.  However,
+some aspects of such an implementation are still not possible without
+additional work:
+
+* Factory methods.  Each container type (Vector, Set, Map) has factory
+  methods begin() and end() which return an iterator type.  Each
+  instantiation of a container has a dual iterator type that must be
+  instantiated.  However, parameterized procedures provide no
+  mechanism for returning an item of a type that is derived in such a
+  manner.
+
+* No specific mechanism was provided for declaring polymorphic dummy
+  arguments that are required for the passed argument dummy of
+  type-bound procedures.  A less seriousconcern that nonetheless needs
+  to be addressed.  Discussing with the author it was suggested that
+  the GENERIC TYPE mechanism could be used.  Presumably this would
+  look something like:
+
+
+      INTEGER FUNCTION size(this)
+         GENERIC TYPE(T) => TYPE(this)
+         CLASS (T), INTENT(IN) :: this
+      END INTEGER FUNCTION
+      
+
+Ultimately the more fundamental issue is simply that, at least for the
+containers use case, the mechanism is simply not friendly to object
+oriented features.  Methods are defined in modules separately from the
+types that they are bound to and users are left desiring yet another
+templating mechanism for their types.  This is possibly reparable, but
+a natural/unique solution is not readily apparent.
+
+
+B. Other observations about strengths and weaknesses
+
+While the use case analyis above highly favored parameterized modules
+over intelligent macros, other scenarios would likely motivate
+coopting at least some of the intelligent macros capabilities.
+
+For instance, the simplified container use case did not require any
+template specializations, but many real-world use cases would.  In
+particular, if the container use case was extended to consider
+containers of deferred length strings, one would be confronted with
+the need to declare string variables in two different ways at
+different points of the implementation.  Dummy arguments for objects
+passed into the container would be declared as
+
+     CHARACTER(*), ...
+
+while returned pointers to contained objects would be declared as
+
+     CHARACTER(:), ...
+
+In theory, one could have a separate template for this special issue,
+but it would result in considerable duplication.  Another relatively
+obvious use case that would demand specialization capabilities, would
+be a matrix utility that supports numeric types.  Such a facility
+might offer additional methods for floating-point types than for
+integers.
+
+Another (fixable) deficiency in the parameterized modules approach
+that would be exposed in other common use cases is the need to be able
+to "loop" over a set of template parameters.  E.g. a designer might
+wish to overload an interface for multiple types:
+
+     INTERFACE FOO
+         MODULE PROCEDURE FOO_INTEGER
+         MODULE PROCEDURE FOO_REAL
+         MODULE PROCEDURE FOO_DOUBLE
+         ...
+      END INTERFACE FOO
+
+and then generate an instantiation for each case.  Without some
+mechanism to loop over a list of template parameters such use cases
+will not be well-supported even by parameterized modules.
+
+One final observation of a desirable feature that is missing from the
+parameterized module paper would be some way to restrict the TYPE
+template parameters to be from some specific set of TYPE's.  E.g. only
+allow extensions of a base type, or from a list of specified types.  A
+common use case could be to restrict a TYPE parameter to be NUMERIC.
+
+

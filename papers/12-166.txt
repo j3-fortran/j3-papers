@@ -1,0 +1,88 @@
+To: J3                                                 12-166
+From: Nick Maclaren
+Subject: Parallel I/O
+Date: 2012 June 25
+References:
+
+
+I agree with Malcolm's that shared I/O is, at best, grossly system-,
+implementation- and even circumstance-dependent.  However, this is a
+partial rejoinder to his remarks in N1924, and one to some of N1924.
+We can do something fairly easily, but I disagree that direct-access
+is it - that can be done, but is tricky.
+
+
+Simplex Streams
+---------------
+
+There is one form of I/O that is straightforward to implement on almost
+all systems, for all 'ordinary' (i.e. disk semantics) files: pure
+simplex streaming.  Fortran is one of the few languages not to support
+it for at least input from shared files, and it is VERY commonly needed
+and used, even in single image programs; programmers get astounded when
+a compiler traps such use.
+
+Furthermore, no change need be made to the Fortran syntax to allow
+it; merely some specification of currently undefined semantics.
+
+By pure simplex streaming, I mean input or output, with no repositioning
+of any description, and no closing and reopening.  The most easily
+implemented and most useful form of input is when each image reads the
+file as if it were separate files.  The equivalent output form is where
+the output from each image is in order but interleaved in an unspecified
+order.
+
+And, of course, when files are the same or different is processor
+dependent; the standard cannot require compilers to get it right,
+because it is an almost undecidable question on some systems, which is
+something that C and C++ get wrong.  The same applies when a file in the
+Fortran sense may be multiple files in an operating system sense (note
+that we already have this issue).
+
+It is unfortunate that the interleaving has to be completely
+unspecified, but that is all that can be done with current operating
+systems.  There is rarely any facility to mark a transfer boundary
+except at the immediate system-call level, and they often get lost
+before reaching the storage device.  MPI users are familiar with this
+one :-(
+
+Note that you DON'T need to sychronise even open and close for this; all
+that is needed is the above semantics.  And, yes, if you write a shared
+file twice from the same image, one strictly ordered after the other,
+the interleaving will still be in an unspecified order!  There are good
+reasons for holding to that.
+
+
+Direct-Access Files
+-------------------
+
+I don't like shared direct-access file I/O, because it is a lot harder
+to get right than most people, even most implementors, realise.  Inter
+alia, its synchronisation must handle reading, rewriting and extension,
+even if one forbids truncation.  The implementation must also handle the
+fact that disk transfers are likely to be in different sizes from
+Fortran records, so a Fortran write is likely to involve a
+read-modify-write of data that the image has not accessed!  It can be
+done, but it's a hairy implementation task, definitely beyond what is
+taught in modern 'computer science' degrees.
+
+There is a far worse pair of problems, which are interlinked but easiest
+to describe separately.
+
+Because direct-access I/O is semantically identical to element access in
+an array, it has exactly the same memory model problems, confounded by
+the fact that the data path goes through an unknown number of filters
+with unknown properties.  Specifying sequential consistency will be a
+serious problem on some systems and not specifying it a serious problem
+for programmers.  Indeed, if it is not specified, there is no reason that
+it be even causally consistent :-(
+
+The other issue is that it introduces a second communication channel,
+and that can introduce serious inconsistencies and livelock, unless
+specified to be consistent.  This is almost entirely a problem for
+duplex files.  But, as above, specifying consistency will be a major
+problem on some systems.  The reason that simplex files do not have the
+problem is that their information flow is intrinsically acyclic.
+
+We need to decide whether such I/O is integrated into the segment model
+and, if it is, how it is.

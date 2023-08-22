@@ -1,0 +1,157 @@
+To:      J3                                           J3/16-280
+From:    R. Bader
+Subject: coarray dummy arguments and aliasing rules
+Date: 2016 October 07
+References: 16-007r2, TS18508, 16-147
+
+Introduction:
+~~~~~~~~~~~~~
+This paper is a rewrite of 16-147 that attempts to resolve a problem
+with coindexed write accesses to dummy arguments.
+
+Discussion:
+~~~~~~~~~~~
+
+Consider the following example program, to be executed with at least
+2 images:
+
+PROGRAM example_1
+  INTEGER :: a[*], il
+
+  il = this_image()
+  CALL sub(a, il)
+CONTAINS
+  SUBROUTINE sub(b, il)
+    INTEGER :: b[*], il
+
+    SELECT CASE (this_image())
+    CASE (1)
+      b[2] = il     ! (X)
+      SYNC ALL
+    CASE (2)
+      SYNC ALL
+      il = b        ! (Y)
+      WRITE(*,*) il
+    CASE DEFAULT
+      SYNC ALL
+    END SELECT
+  END SUBROUTINE
+END PROGRAM
+
+Question 1A: Was it intended that the program example_1 is conforming?
+
+{It appears to me that this example currently is not conforming based
+ on the F2008 as well as 16-007r2 specifications, because the statement
+ marked (X) constitutes a violation of the anti-aliasing rule
+ 16-007r2/15.5.2.13 para 1 item (3) on image 2: The object a on image
+ 2 is modified through something else than image's 2 dummy argument.
+ If this reasoning is correct and the intent is for the program to
+ be conforming, edits are needed to fix the problem.}
+
+Question 1B: Was it intended that the program example_1 is conforming
+ if statement (Y) is replaced by "il = a"?
+
+{If the answer to 1A is "no", this question is of course trivial.}
+
+Next, consider a second example program, again for at least 2 images:
+
+PROGRAM example_2
+  USE, INTRINSIC :: iso_fortran_env
+  INTEGER(atomic_int_kind) :: a[*]=0, il
+
+  il = this_image()
+
+  SELECT CASE (this_image())
+  CASE (1)
+    CALL sub_1(a, il)
+  CASE (2)
+    CALL sub_2(a, il)
+    WRITE(*,*) il
+  END SELECT
+CONTAINS
+  SUBROUTINE sub_1(b, il)
+    INTEGER(atomic_int_kind) :: b[*], il
+    CALL ATOMIC_DEFINE(b[2],il)          ! (Z)
+  END SUBROUTINE
+  SUBROUTINE sub_2(b, il)
+    INTEGER(atomic_int_kind) :: b[*], il
+    il = 0
+    DO WHILE (il == 0)
+      CALL ATOMIC_REF(il, b)
+    END DO
+  END SUBROUTINE
+END PROGRAM
+
+Question 2: Was it intended that the program example_2 is conforming?
+
+{To my knowledge, the intent was that it should be possible to
+ coordinate actions between two procedures in the manner illustrated
+ by the code above. See also MR&C, Modern Fortran Explained, Section
+ 19.6, last two paras. However, again the rule 16-007r2/15.5.2.13
+ para 1 item (3) appears to be violated, namely by statement (Z).}
+
+
+Suggested edits to 16-007r2:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Alternative 1:
+==============
+This alternative assumes the answers to 1A/1B/2 are Yes/No/Yes:
+
+[324:16+] Add another bullet item
+  "(d) the dummy argument is a coarray and the action is a
+   coindexed access to its ultimate argument executed on any image on
+   which it is established."
+
+[324:26+] Add another bullet item
+  "(d) the dummy argument is a coarray and the reference is a
+   coindexed access to its ultimate argument executed on any image on
+   which it is established."
+
+
+[326] After NOTE 15.40 add
+  "NOTE 15.40+1
+   The exception to the aliasing restrictions for dummy coarrays enables
+   cross-image write access for them within the procedure, or from other
+   procedures that have access to the coarray. Because nonatomic accesses
+   from different images typically must be separated by an image control
+   statement, code optimization within segments is not unduly
+   inhibited."
+
+Alternative 2:
+==============
+This alternative assumes the answers to 1A/1B/2 are Yes/No/No:
+
+[324:16+] Add another bullet item
+  "(d) the dummy argument is a coarray and the action is a
+   coindexed access to it that is executed in the same
+   procedure on any image of the current team."
+
+{or, even more limiting:
+  "... that is executed in the same procedure on any image of the current
+   team through its corresponding dummy argument".
+ This would also exclude using permuted actual coarrays if two coarray
+ dummies exist}.
+
+[324:26+] Add another bullet item
+  "(d) the dummy argument is a coarray and the reference is a
+   coindexed access to it that is executed in the same
+   procedure on any image of the current team."
+
+[326] After NOTE 15.40 add
+  "NOTE 15.40+1
+   The exception to the aliasing restrictions for dummy coarrays enables
+   cross-image write access for them within the procedure. Because
+   nonatomic accesses from different images typically must be separated
+   by an image control statement, code optimization within segments is
+   not unduly inhibited."
+
+Final Comment:
+~~~~~~~~~~~~~~
+
+If the answers to 1A/1B/2 turn out to be No/No/No, I think that at least
+some explanatory note should be supplied to clarify the intended
+limitations on coindexing of dummy arguments. The example programs are
+accepted by current compilers and produce the expected results.
+
+

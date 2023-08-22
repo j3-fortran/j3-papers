@@ -1,0 +1,92 @@
+From: R. Bader
+To: J3                                                         08-254
+Subject: Identify extensible dynamic type of UP object
+Date: 2008 July 17
+
+To provide a scenario, the following code is considered:
+
+module mod_stuff
+   implicit none
+   type :: is_not_extbl
+     sequence
+     integer :: i
+   end type
+   type :: is_extbl
+     integer :: j
+   end type
+contains
+   subroutine compare(a, b)
+     class(*), intent(in) :: a, b
+     if (same_type_as(a,b)) then
+       write(*,*) 'yes'
+     else
+       write(*,*) 'no'
+     end if
+   end subroutine
+end module
+program test
+   use mod_stuff
+   implicit none
+   type(is_not_extbl) :: obad, obad2
+   type(is_extbl) :: ogood, ogood2
+   call compare(2, 1)
+   call compare(2, 1.0)
+   call compare(obad2, obad)
+   call compare(ogood2, ogood)
+end program
+
+Since according to 13.7.141 of 08-007r2 all arguments to SAME_TYPE_AS()
+must be of extensible type (the context appears to imply that the
+restriction refers to the dynamic type), the above code has undefined
+behaviour on the first three calls of COMPARE; an implementation could
+write any combination of yes/no or abort with a run time error.
+The fourth call of compare will yield 'yes'.
+
+A library designer (who does not know what types the user will
+impose upon his interface) might want improved control (compared to the
+above situation) over user input (which may come from a source external
+to the program) when using unlimited polymorphic objects together
+with SAME_TYPE_AS() or EXTENDS_TYPE_OF(). The dynamic type of an
+unlimited polymorphic object can belong to one of the following three
+classes:
+ (1) an intrinsic type
+ (2) an extensible type
+ (3) a bind(c) or sequence type
+As it stands, the language allows him to disambiguate between (1) and
+(2)+(3) by using SELECT TYPE with all possible intrinsic types and
+kinds (even that will probably require preprocessing); it is to my
+knowledge not possible to disambiguate (2) and (3).
+Therefore it is suggested to add an intrinsic TYPE_IS_EXTENSIBLE()
+to the language which allows to do just that.
+
+Suggestions for edits:
+~~~~~~~~~~~~~~~~~~~~~~
+
+[page 322 table 13.1, after the TRIM entry]
+add a line
+
+TYPE_IS_EXTENSIBLE       (A)      I   True if and only if dynamic
+                                      type of A is extensible
+
+[page 393 after 13.7.169]
+add a new item:
+
+13.7.169+ TYPE_IS_EXTENSIBLE(A)
+
+Description:            True if and only if the dynamic type of A is
+                        extensible.
+Class:                  Inquiry function
+Argument:               A may be of any type. It may be a scalar or
+                        array.
+Result Characteristics: Default logical scalar.
+Result Value:           The result is true if and only if the dynamic
+                        type of the argument is extensible.
+
+Final Note:
+~~~~~~~~~~~
+
+Addition of the suggested intrinsic will probably even be useful if the
+SAME_TYPE_AS() and EXTENDS_TYPE_OF() intrinsic are provided with
+extended semantics by the committee, since these semantics may not
+have the behaviour the library designer specifically needs.
+

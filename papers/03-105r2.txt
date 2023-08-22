@@ -1,0 +1,229 @@
+
+                                                           J3/03-105r2
+
+To:      J3
+From:    Toon Moene
+Subject: Edits for C_LOC and C_F_POINTER
+Date:    2-apr-2003
+
+This paper aims to address this point made by Richard Maine in
+commenting on the CD:
+
+T8. The descriptions of C_LOC and C_F_POINTER are so incomprehensible
+    as to constitute technical, rather then mere wording flaws.
+    The descriptions are full of requirements that are assumed rather
+    than stated, and other requirements that contradict each other by
+    failing to state assumed conditions.  For the simplest example,
+    [384:20] says without qualification "FPTR shall be scalar",
+    although there is lots of discussion of cases where it is an
+    array; this requirement is clearly intended to apply only in
+    some cases, but that isn't stated.  Ref 02-276, 02-230r3.
+
+Subgroup would like to acknowledge the help of John Reid, Aleksandar
+Donev, Richard Maine, and Van Snyder in constructing this paper.
+
+Richard's points have been addressed with a complete rewrite of the
+descriptions. We have tried to keep as much as possible of the earlier
+words and not to alter the functionality.
+
+We noticed that zero-sized arrays were not excluded. We think that this
+is needed since a zero-sized array does not have an address. In fact,
+we think that a zero-sized array should not be interoperable.
+
+We considered returning C_NULL_PTR from C_LOC for a zero-sized array,
+but rejected this for consistency with the case of an unallocated 
+allocatable variable or a disassociated pointer. It will also make
+C_LOC faster since no test for zero size is needed.  
+
+We have also made each description into a subclause in the style of the
+intrinsic procedure definitions and put them in alphabetic order.
+
+Some of the Edits originally in 03-120 have been incorporated into
+this paper and removed from 03-120r1.
+
+Additional concerns raised by Richard regarding the problem of using
+the status of an argument as a function or a data object to resolve a
+generic refernce have lead to specification of separate functions for
+data and function arguments.  
+
+EDITS
+
+382:13. Replace "C_LOC function is" with "C_LOC and C_FUNLOC functions
+are".
+
+382:15-16. Replace "C_F_POINTER subroutine" with "C_F_POINTER and 
+C_F_PROCPOINTER subroutines".
+
+382:17-383:10+. Delete present definition of C_LOC and NOTE 15.3.
+
+386:3+6-7. Change "The function ... is interoperable" to
+  "The function C_LOC can be used to return a value of type C_PTR that
+   is the C address of an allocated allocatable variable The function
+   C_FUNLOC can be used to return a value of type C_FUNPTR that is the 
+   C address of a procedure.  For C_LOC and C_FUNLOC the returned
+   value is interoperable"
+{"value" is the correct term for the result of a function; entity is
+unnecessarily vague - C_LOC does not return a POINTER to a TYPE(C_PTR),
+it returns a value of TYPE(C_PTR).}
+
+388:10. After 'if' add 'its size is nonzero and'.
+
+383:11. Make into subclause 15.1.2.1 heading line.
+
+384:1-20+. Replace present definition of C_LOC and NOTES 15.5 and 15.6 by 
+
+15.1.2.2 C_F_POINTER (CPTR, FPTR [, SHAPE])
+
+Description. Associates a data pointer with the target of a C pointer and
+specifies its shape.
+
+Class. Subroutine.
+
+Arguments.
+
+CPTR   shall be a scalar of type C_PTR. It is an INTENT(IN) argument. 
+       Its value shall be:
+
+       Case (i):  The C address of an interoperable data entity, or
+
+       Case (ii): The result of a reference to C_LOC with a 
+       noninteroperable argument.
+
+       The value of CPTR shall not be the C address of a Fortran
+       variable that does not have the TARGET attribute.
+
+FPTR   shall be a pointer. It is an INTENT(OUT) argument.
+
+       Case (i): If the value of CPTR is the C address of an
+       interoperable data entity, FPTR shall be a data pointer with
+       type and type parameters interoperable with the type of the
+       entity. In this case, FPTR becomes pointer associated with the
+       target of CPTR. If it is an array, its shape is specified by
+       SHAPE and each lower bound is 1.
+
+       Case (ii): If the value of CPTR is the result of a reference to
+       C_LOC with a noninteroperable argument X, FPTR shall be a
+       nonpolymorphic scalar pointer with the same type and type
+       parameters as X. In this case, X or its target if it is a
+       pointer shall not have been deallocated or have become undefined
+       due to execution of a RETURN or END statement since the
+       reference. FPTR becomes pointer associated with
+       X or its target.
+
+SHAPE (optional) shall be of type integer and rank one. It is an
+       INTENT(IN) argument. SHAPE shall be present if and only if
+       FPTR is an array; its size shall be equal to the rank of FPTR.
+
+
+15.1.2.3 C_F_PROCPOINTER (CPTR, FPTR)
+
+Description. Associates a procedure pointer with the target of a 
+C function pointer.
+
+Class. Subroutine.
+
+Arguments.
+
+CPTR   shall be a scalar of type C_FUNPTR. It is an INTENT(IN) argument. 
+       Its value shall be the C address of a procedure that is 
+       interoperable.
+
+FPTR   shall be a procedure pointer. It is an INTENT(OUT) argument. 
+       The interface for FPTR shall be interoperable with the prototype 
+       that describes the target of CPTR. FPTR becomes pointer associated 
+       with the target of CPTR.
+
+
+NOTE 15.4
+
+The term "target" in the descriptions of C_F_POINTER and C_F_PROCPOINTER
+denotes the entity referenced by a C pointer, as described in 6.2.5 of 
+the C standard.
+
+
+
+15.1.2.4 C_FUNLOC (X)
+
+Description. Returns the C address of the argument.
+
+Class. Inquiry function.
+
+Argument. X shall either be a procedure that is interoperable, or
+            a procedure pointer associated with an interoperable procedure.
+
+Result Characteristics. Scalar of type C_FUNPTR. 
+
+Result Value.
+
+The result value will be described using the result name CPTR. The result 
+is determined as if C_FUNPTR were a derived type containing an 
+implicit-interface procedure pointer component PX and the pointer assignment 
+CPTR%PX => X were executed.
+
+The result is a value that can be used as an actual CPTR argument in a
+call to C_F_PROCPOINTER where FPTR has attributes that would allow the
+pointer assignment FPTR => X. Such a call to C_F_PROCPOINTER shall have the
+effect of the pointer assignment FPTR => X.
+
+
+15.1.2.5 C_LOC (X)
+
+Description. Returns the C address of the argument.
+
+Class. Inquiry function.
+
+Argument. X shall either
+
+(1)   have interoperable type and type parameters and be
+
+      (a) a variable that has the TARGET attribute and is interoperable,
+
+      (b) an allocated allocatable variable that has the TARGET attribute
+          and is not an array of zero size, or
+
+      (c) an associated scalar pointer, or
+
+(2)   be a nonpolymorphic scalar, have no nonkind type parameters, and be
+
+      (a) a nonallocatable, nonpointer variable that has the TARGET 
+          attribute,
+
+      (b) an allocated allocatable variable that has the TARGET attribute, or
+
+      (c) an associated scalar pointer.
+
+Result Characteristics. Scalar of type C_PTR.
+
+Result Value.
+
+The result value will be described using the result name CPTR.
+
+Case (i): If X is a scalar data entity, the result is determined as if
+C_PTR were a derived type containing a scalar pointer component PX of
+the type and type parameters of X and the pointer assignment CPTR%PX =>
+X were executed.
+
+Case (ii): If X is an array data entity, the result is determined as
+if C_PTR were a derived type containing a scalar pointer component PX
+of the type and type parameters of X and the pointer assignment of
+CPTR%PX to the first element of X were executed.
+
+If X is a data entity that is interoperable or has interoperable type
+and type parameters, the result is the value that the C processor
+returns as the result of applying the unary "&" operator (as defined in
+the C standard, 6.5.3.2) to the target of CPTR%PX.
+
+The result is a value that can be used as an actual CPTR argument in a
+call to C_F_POINTER where FPTR has attributes that would allow the
+pointer assignment FPTR => X. Such a call to C_F_POINTER shall have the
+effect of the pointer assignment FPTR => X.
+
+NOTE 15.5
+
+Where the actual argument is of noninteroperable type or type
+parameters, the result of C_LOC provides an opaque "handle" for it. In
+an actual implementation, this handle may be the C address of the
+argument; however, portable C functions should treat it as a void
+(generic) C pointer that cannot be dereferenced (6.5.3.2 in the C
+standard).
+

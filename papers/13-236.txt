@@ -1,0 +1,126 @@
+To: J3                                                     13-236
+From: R. Bader
+Subject: Multiple dispatch for Fortran 201X
+Date: 2013 February 08
+References: WG5/N1925
+
+
+(A) Wart description:
+~~~~~~~~~~~~~~~~~~~~~
+
+The following situations possible in more complex object-oriented
+programming scenarios lead to quite cumbersome coding:
+
+Assume that a subprogram takes multiple polymorphic arguments
+
+subroutine foo_xyz(a, b, c, ...)
+  class(x) :: a
+  class(y) :: b
+  class(z) :: c
+  :
+end subroutine
+
+Then, performing type resolution inside the subprogram requires multiple
+nested SELECT TYPE blocks, even though in many cases only a small subset
+of combinations require resolution.
+
+Alternatively, foo_xyz may be one of a large set of procedures bound
+to x, y, and z as %foo() and overridden by their descendants,
+respectively. Then, it might be desirable to select the actual procedure
+invoked based on the combined set of dynamic types of a, b, and c. This
+is presently not possible since only one argument may play the role of
+"passed argument".
+
+
+(B) Suggested solution:
+~~~~~~~~~~~~~~~~~~~~~~~
+
+As a solution for these problems, addition of multiple dispatch
+facilities to the Fortran language could be considered. For run time
+type and class resolution, the following syntax might be used for a
+code block defined inside the subprogram body of foo:
+
+select type (a, b, c)
+type (x1, y0, z2)
+  : ! exact typing for a, b, c
+class (x2, y3, z1)
+  : ! class restriction
+type (x4), class (y2, z4)
+  : ! mixed exact typing and class restriction
+end select
+
+Some additional rules may be required to assure that no ambiguities can
+occur in resolving to a unique case, and integration with the
+concept of generic type-bound procedures and operators will probably
+need attention (It may turn out that it is only sensible to allow
+"type is" in this context).
+
+Generic type-bound operators provide a nice example for the usefulness
+of the feature, since the function result typically will have the same
+type as the most extended type of the two arguments:
+
+function add(s1, s2) result(s)  ! generically bound to base as
+                                ! operator(+) via first argument
+  class(base), intent(in) :: s1
+  type(base), intent(in) :: s2
+  class(base), allocatable :: s
+  allocate(s, mold=s1)
+  select type(s, s1)
+! only same-type clauses are needed
+  type is (base, base)
+    : ! do addition for base
+  type is (ext, ext)
+    : ! do addition for ext
+  class default
+    : ! throw error
+  end select
+end function
+
+For invocation of multiple-dispatch type-bound procedures the following
+syntax is suggested:
+
+call {a,b,c}%foo(...)
+
+where all passed arguments are removed from the actual argument list in
+order of their appearance.
+
+This feature would allow to avoid writing numerous auxiliary procedures
+that might be needed to cover all combinations of supported type
+extensions.
+
+For full consistency, it may also be necessary to support forced
+multiple dispatch for the case where a dummy argument of the same
+declared type appears multiple times in a procedure which is bound to
+a type:
+
+type :: mytype
+  :
+contains
+  procedure, pass(a,b) :: foo_ab
+! must specify in order of appearance and without omissions to avoid
+! inconsistency
+end type
+
+subroutine foo_ab(a, b, ...) result(c)
+  class(mytype) :: a, b
+  :
+end function
+
+This procedure could only be invoked via
+
+  call {oa,ob}%foo_ab(...)
+
+
+(C) Questions for J3:
+~~~~~~~~~~~~~~~~~~~~~
+
+(1) Is it justifiable to consider the situation described in (A)
+    a wart?
+
+(2) What amount of effort will be needed to implement something along
+    the lines of (B)?
+
+(3) Is consideration of (B) as a new feature of Fortran 201X in
+    conformance with N1925 and therefore appropriate?
+
+

@@ -1,0 +1,169 @@
+
+
+                                              			J3/97-253
+
+NUMBER:
+TITLE:        Meaning of embedded blanks in namelist input name
+KEYWORDS:     NAMELIST, optional qualification, name, input
+DEFECT TYPE:  Interpretation
+STATUS:	      X3J3 consideration in progress
+
+BACKGROUND:
+In running some older NAMELIST tests, a test case was encountered that has
+embedded blanks within the "optional qualification" following a namelist group
+object name:
+
+    CHARACTER*10 string
+    NAMELIST /junk/ string
+
+    WRITE(9,*) ' $junk string(  :  ) = ''1234567890'' /'
+    REWIND(9)
+    READ(9,junk)
+
+    IF (string .NE. '123457890') THEN
+       PRINT *, 'string NE 1234567890, string = "', string, '"'
+       PRINT *, 'String test FAILED'
+    ELSE
+       PRINT *, 'String test PASSED'
+    END IF
+
+    END
+
+While studying the standard to determine if the above program was standard-
+conforming or not, some questions arose about the use of "name" and embedded
+blanks in the namelist section 10.9.1.1.  Among them were:  Since a blank is
+a delimiter, should it be allowed to be embedded in a variety of places in a
+namelist input record that are not currently described by the standard?  Do
+we want to strain namelist input scanning more than a reasonable amount?
+
+In normal Fortran terminology, the term "name" does not include  subobject
+qualification.  In section 2.5.1 Name and designator, lines 2 through 5, the
+standard states:
+
+  A name is used to identify a program constituent, such as a program
+  unit, named variable, named constant, dummy argument, or derived type.
+  The rules governing the construction of names are given in 3.2.1.  A
+  subobject designator is a name followed by one or more of the
+  following:  component selectors, array section, array element selectors,
+  and substring selectors.
+
+In section 10.9.1 Namelist Input, lines 13 to 16, the standard states:
+
+  In each name-value subsequence, the name shall be the name of a
+  namelist group list item with an optional qualification and the name
+  with the optional qualification shall not be a zero-sized array,
+  a zero-sized array section, or a zero-length character string.  The
+  optional qualification, if any, shall not contain a vector subscript.
+
+In section 10.9.1.1 Namelist group object names, lines 32 and 33, the
+standard states:
+
+  The name in the input record may be preceded and followed by one or
+  more optional blanks but shall not contain embedded blanks.
+
+QUESTION:
+
+(1) Does Section 2.5.1 mean that the optional qualification described in the
+    10.9.1 is not part of the name for namelist input?
+
+    If the optional qualification is not part of the name, there seem to be
+    no rules for where blanks and end-of-record may occur within the optional
+    qualification.
+
+    Also note that size of the name and the optional qualification together 
+    may be longer than the size of an input record if there are multiple levels
+    of structure component qualification in a structure component reference.
+
+
+(2) Are embedded blanks allowed within substring and subscript qualifications
+    in the namelist input?  May an END-OF-RECORD occur in these same places?
+
+(3) More specifically, are embedded blanks/END-OF-RECORD allowed in the
+    following places in namelist input?
+
+   1.  Between the name and the left parenthesis of either a substring or
+       subscript qualification?
+       
+           e.g.,  string (3:4)  =  '123'
+
+   2.  Between tokens within the parenthesized qualifier?
+
+           e.g.,  string( 3:4)  =  '123'
+           e.g.,  string( 3:4 )  =  '123'
+           e.g.,  string( 3: 4 )  =  '123'
+           e.g.,  string( 3 : 4 )  =  '123'
+
+           e.g.,  string(  :  )  =  '123'
+
+   3.  Between the two sets of parentheses for array and substring notation?
+       
+           e.g.,  string (  :  )  (  :  ) =  '123'
+
+   6.  Within the two subscripts or start and end values themselves?
+       
+           e.g.,  string ( 2 0 : 3 0 )  =  '123'
+
+(4) Are embedded blanks allowed within a reference to a structure?  May an 
+END-OF-RECORD occur within this reference?
+
+           e.g.,  LONG__NAME % LEVEL1 ( 2 0 : 3 0 ) % string = '123'
+
+(5) Section 10.9.1.1, lines 32 and 33 currently state:
+
+      The name in the input record may be preceded and followed by one or
+      more optional blanks but shall not contain embedded blanks.
+
+    Should the above lines have an addition along the following lines:
+
+      Blanks shall not precede the left parenthesis of a substring or subscript
+      qualification.  Blanks may follow the left parenthesis or precede the
+      right parenthesis of the substring or subscript qualification but shall
+      not be embedded within the subscript or substring themselves.  The end
+      of record shall not occur within any part of the substring or subscript
+      qualification.  Blanks may occur between a subscript and a substring
+      qualification.
+
+    Note to committee:
+
+      The above addition will then allow (  :  )  and ( 2:3 ) but will not
+      allow  (  1 0 : 2 0 ).  Blanks will be allowed in between the subscript
+      and substring reference:  ( 1:2 ) ( 3:4 ).
+
+    The following change is harder.  If the derived type qualification is so
+    long that it will not fit in one record, there are two choices that come
+    to mind:
+
+      * state that the input record must be long enough to contain the entire
+        reference
+
+      * allow the user to break up the structure reference to be able to
+        specify it within an input record.
+
+    The latter ability could be added to the standard via additional text along
+    the following lines:
+
+      Blanks shall not be embedded within the optional qualification provided
+      for a structure reference.  However, an end-of-record may occur after
+      a percent (%) separator in an input record.  The name may continue in
+      the next record.
+
+    This will allow a break at such places as:
+
+         LONG__NAME%LEVEL1(20:30)%EOR
+         string = '123'
+
+    where EOR stands for end-of-record.
+
+EDITS:
+
+SUBMITTED BY:  Joanne Brixius / Larry Rolison
+HISTORY:  J3/97-253 m143 submitted
+
+
+
+----------------------------------------------------------------------------
+Larry Rolison                      lrr@cray.com
+Cray Research, A Silicon Graphics Company
+655F Lone Oak Drive
+Eagan, MN  55121 
+----------------------------------------------------------------------------

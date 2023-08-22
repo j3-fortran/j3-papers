@@ -1,0 +1,103 @@
+To: J3                                                      11-103r2
+From: Craig Rasmussen/Nick Maclaren/Bill Long
+Subject: Copy to Contiguous Example using C Descriptor
+Date: 2011 February 18
+References: N1838-2
+
+Discussion:
+
+In N1838-2 there is an example of how to use the CFI_cdesc_t type in a
+C implementation of a BIND(C) interface.  This paper provides another
+example of using the CFI_cdesc_t type in C.  This new example provides
+code to copy an array (possibly noncontiguous) into a contiguous
+buffer.
+
+Edits to N1838-2:
+
+[21:33] At the end of A.2, append the following text:
+
+The following example provides functions that can be used to
+copy an array described by a CFI_cdesc_t descriptor to a contiguous
+buffer.  The input array need not be contiguous.
+
+The C functions are:
+
+#include "ISO_Fortran_binding.h"
+
+/*
+ * Returns the number of elements in the object described by desc.
+ * If it is an array, it need not be contiguous.
+ * (The number of elements could be zero).
+ */
+size_t numElements(const CFI_cdesc_t * desc)
+{
+   CFI_rank_t r;
+   size_t num = 1;
+
+   for (r = 0; r < desc->rank; r++) {
+      num *= desc->dim[r].extent;
+   }
+   return num;
+}
+
+/*
+ * Auxiliary routine to loop over a particular rank.
+ */
+static void *
+_copyToContiguous (const CFI_cdesc_t * vald,
+                   void * output, const void * input, CFI_rank_t rank)
+{
+   CFI_index_t e;
+
+   if (rank == 0) {
+      /* copy scalar element */
+      memcpy (output, input, vald->elem_len);
+      output = (void *)((char *)output + vald->elem_len);
+   }
+   else {
+      for (e = 0; e < vald->dim[rank-1].extent; e++) {
+         /* recurse on subarrays of lesser rank */
+         output = _copyToContiguous (vald, output, input, rank-1);
+         input = (void *) ((char *)input + vald->dim[rank].sm);
+      }
+   }
+   return output;
+}
+
+/*
+ * General routine to copy the elements in the array described by vald
+ * to buffer, as done by sequence association.  The array itself may
+ * be non-contiguous.  This is not the most efficient approach.
+ */
+void copyToContiguous (void * buffer, const CFI_cdesc_t * vald)
+{
+   _copyToContiguous (vald, buffer, vald->base_addr, vald->rank);
+}
+
+/*
+ * Send the data described by vald using the function send_contig, which
+ * requires a contiguous buffer.  If needed, copy the data to a contiguous
+ * buffer before calling send_contig.
+ */
+int send_data (CFI_cdesc_t * vald)
+{
+  size_t num_bytes = numElements(vald)*vald->elem_len;
+  if (CFI_is_Contiguous(vald)) {
+     // the data described by vald is already contiguous, just send it
+     send_contig(vald->base_addr, num_bytes);
+  }
+  else if (num_bytes) {
+     void * buffer = malloc(num_bytes);
+     copyToContiguous(buffer, vald);
+
+     // send the contiguous copy of data described by vald
+     send_contig(buffer, num_bytes);
+
+     free(buffer);
+  }
+}
+
+
+
+
+

@@ -1,0 +1,106 @@
+                                                                 J3/00-129
+
+Date:		28th February 2000
+To:		J3
+From:		Malcolm Cohen
+Subject:	ASYNCHRONOUS Questions
+
+1. Why does an asynchronous dummy require an explicit interface?
+
+   - Since an async actual can only be passed to an async dummy [77:37-38],
+     it would not seem to be necessary to have an explicit interface.
+
+     Or is it intended that the processor automatically "WAIT" when returning
+     from a procedure with an async dummy if the actual was not async?
+
+   - also, although an explicit interface is required it appears that it would
+     not have to admit to having an asynchronous dummy anyway, because
+     asynchronous (and volatile) are not characteristics of dummy arguments.
+     (see 12.2.1.1, page 244).
+
+2. What happens when an asynchronous variable is passed as an actual argument?
+
+   Consider
+
+     PROGRAM two
+     REAL,TARGET :: A(100)
+     REAL,ASYNCHRONOUS,POINTER :: X(:)
+     X => A(1::2)
+     READ(88,ASYNCHRONOUS='yes') X
+     CALL S(X)
+     CONTAINS
+       SUBROUTINE S(X)
+         REAL X(*)
+         ...?
+       END SUBROUTINE
+     END
+
+   How in the world is this stuff supposed to work?  Please don't tell me that
+   the ASYNCHRONOUS attribute makes a dummy array into an assumed-shape array
+   regardless of the array-spec.
+
+   We could fix this up similarly to interp 125, but more extensively;
+   something like (for ASYNCHRONOUS actuals only):
+
+   (1) If the actual argument is an array section or an assumed-shape array,
+       the dummy argument shall be an assumed-shape array.
+   (2) If the actual argument is a pointer array, the dummy argument shall be
+       an assumed-shape array or a pointer array.
+   (3) Otherwise there is no unusual requirement on the dummy.
+
+   i.e., once you have something that might be discontiguous it may only be
+   passed down to dummies that can handle the discontiguity without copying,
+   viz assumed-shape (or pointer in the specific pointer case).
+
+3. ASYNCHRONOUS works poorly with pointers?
+
+   Does ASYNCHRONOUS apply to the association status of a POINTER, the
+   definition status (of its target) or both?
+
+   [77:29-30] requires an object to have the asynchronous attribute if a
+              in a <data-ref> it refers to a variable that has been used
+              asynchronously.
+
+   Surely this should act more like the TARGET/VOLATILE attributes?
+   viz, that subobjects of an async object are async.
+
+   Consider:
+      REAL x(1000,1000)
+      REAL,POINTER,ASYNCHRONOUS :: p(:)
+      READ(88,ASYNCHRONOUS='yes') p
+   Apparently, it is required to give P the ASYNCHRONOUS attribute even though
+   P does not alter its association.
+   This looks like ASYNCHRONOUS applies to both.
+
+4. ASYNCHRONOUS attribute is too pervasive?
+
+   [77:37-38] says
+   "If a variable whose base object has the ASYNCHRONOUS attribute is passed
+    as an actual argument, the corresponding dummy argument shall have the
+    ASYNCHRONOUS attribute."
+
+   This means that once a variable has the ASYNCHRONOUS attribute, it can
+   never lose it (in a lower routine).
+
+   Also, consider:
+
+   DOUBLE PRECISION,ASYNCHRONOUS :: A
+   INTRINSIC DCOS
+   A = 2
+   PRINT *,DCOS(A)
+
+   this is apparently illegal, since the X dummy argument of intrinsic DCOS
+   does not have the ASYNCHRONOUS attribute.
+
+   Also, the requirement is confusingly worded, since if it is passed as an
+   actual argument to several routines there is not just one dummy argument.
+   (This would work if the requirement were moved to chapter 12.)
+
+   Also, the way this rule is worded extends its use past subobjects.
+
+5. Other
+
+    Sorry, I ran out of time to further refine this paper.  Maybe in a future
+    meeting...
+
+===END

@@ -1,0 +1,144 @@
+
+                                                       J3/05-133r2
+
+Date:    8-Feb-2005
+To:      J3
+From:    Bill Long
+Subject: Concurrent loop construct
+
+References: J3/04-243
+
+
+1) Number:
+
+   TBD
+
+2) Title: 
+
+   DO CONCURRENT Construct
+
+3) Submitted By: 
+
+   J3
+
+4) Status: 
+
+   For Consideration
+
+5) Basic Functionality: 
+
+The DO CONCURRENT construct is a new form of the block DO construct
+using loop control syntax like that of FORALL.  It would allow the
+iterations of the loop to be executed in any order. Restrictions on
+the statements in the loop block are required, but the restrictions
+are significantly fewer than for FORALL constructs.
+
+6) Rationale: 
+
+The performance of most modern processors is enhanced, sometimes
+significantly, if the number of memory references is reduced. This is
+typically accomplished by keeping more of the program data in
+processor registers, especially during iterations of a loop. Data from
+different loop iterations may be held in independent parts of a
+multi-word register (vectorization), in disjoint subsets of a single
+register set (loop unrolling), or in the register sets of several
+different processors or processor cores of a multi-threaded processor
+(parallel execution). Many modern computer systems can already take
+advantage of all of these optimization methods, and trends in computer
+system architecture suggest these optimization techniques will be
+even more important in the future.  The DO CONCURRENT construct is
+designed to allow compilers to better use these optimizations.
+
+These optimizations rely on the values contained in registers being
+the same as the associated values in memory when the corresponding
+variables are referenced during execution of the construct. This is
+the case if there is no associated memory value during execution of
+the construct, or if the nature of cross iteration data dependencies
+is properly limited.
+
+Compared to the FORALL construct, the DO CONCURRENT construct allows a
+much larger class of statements within the block, including calls to
+pure subroutines and some branches. DO CONCURRENT constructs also
+avoid the iteration space temporaries that FORALL requires in cases
+where the compiler cannot prove there are no cross iteration
+dependencies. If there really are dependencies, FORALL may be the
+better option, but in a large number of cases, there are no actual
+dependencies and DO CONCURRENT will provide much better performance.
+
+The DO CONCURRENT construct provides a way for the programmer to
+specify that the aggressive optimizations described above are
+allowed. It is cleaner and more portable than the current method of
+using directives that have difference spellings and meanings among
+vendors.
+
+7) Estimated Impact: 
+
+Specifications of the new syntax and restrictions on the statements in
+the construct block are needed in section 8.1.6. Additions in section
+16 to subsections on variable definition and undefinition, and pointer
+association status are also needed. Implementation in compilers should
+be simple, as many compilers already support similar features through
+directives. At a minimum, a compiler could convert the construct to a
+set of ordinary DO loops, possibly with an added IF test. The original
+proposal in 04-243 was rated as an impact of 5 on the JKR scale. This
+proposal is somewhat simpler than the original because it leverages
+the existing block DO construct.
+
+8) Detailed Specification: 
+
+The syntax for DO CONCURRENT specifies a new <loop-control> for the
+existing <block-do-construct> that uses the FORALL header syntax:
+
+   [,] CONCURRENT <forall-header>
+
+The scope rules for an <index-name> in the <forall-header> are the
+same as in a FORALL construct (7.4.4.1).
+
+The values of the index variables for the iterations of the construct
+are determined by the rules for the index variables of the FORALL
+construct (7.4.4.2.1 and 7.4.4.2.2). The number of distinct index
+value tuples is the iteration count for the construct. The order in
+which the iterations are executed is indeterminant.
+
+A statement in the loop range shall not cause a branch out of the loop
+range. The loop range shall not contain an EXIT statement that would
+cause the DO CONCURRENT construct to terminate.
+
+A variable that is referenced in an iteration of a DO CONCURRENT
+construct shall either be previously defined during that iteration, or
+shall not be defined during any other iteration. A variable that is
+defined in more than one iteration becomes undefined when execution of
+the construct completes.
+
+A pointer that is referenced in an iteration of a DO CONCURRENT
+construct either shall be previously pointer associated during that
+iteration, or shall not become pointer associated in the loop range. A
+pointer that is pointer associated in more than one iteration has a
+processor dependent association status when the execution of the
+construct completes.
+
+An allocatable object that is allocated in more than one iteration of
+a DO CONCURRENT construct shall be subsequently deallocated during the
+same iteration in which it was allocated.  An object that is allocated
+or deallocated in only one iteration of a concurrent shall not be
+deallocated, allocated, referenced, or defined in a different iteration.
+
+An input/output statement in a DO CONCURRENT construct shall not write
+data to a file record or position in one iteration and read from the
+same record or position in a different iteration.
+
+Procedures referenced in the loop range of a DO CONCURRENT construct
+shall be PURE. If the IEEE_EXCEPTIONS intrinsic module is accessible,
+references to the IEEE_GET_FLAG, IEEE_SET_HALTING_MODE, and
+IEEE_GET_HALTING_MODE subroutines shall not appear in the loop range.
+
+Note: The restrictions on referencing variables defined in an
+iteration apply to any procedure invoked by the loop.
+
+Note 12.44 in section 12.6 (Pure procedures) should be updated to
+include the DO CONCURRENT construct as well as the FORALL construct.
+
+9) History:
+
+   Concept originally submitted in J3/04-243 at J3 meeting 167.
+

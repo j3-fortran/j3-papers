@@ -1,0 +1,85 @@
+                                                            J3/17-122
+To: J3
+From: Malcolm Cohen
+Subject: SYNC TEAM semantics and requirements
+Date: 2017 February 07
+
+
+1. Introduction
+
+SYNC TEAM allows sync-ing with an immediate subteam of the current team,
+but there is no requirement for the team-variable to specify a team that
+contains the executing image.  However, the semantics seem to assume the
+team does contain the executing image.
+
+Note that it is only the "team whose parent is the current team" option
+that causes a problem, the current team or an ancestor team are both fine.
+
+
+2. Discussion
+
+Suppose we have a team ODD consisting of images 1, 3 and 5 in the parent
+team ALL, and a team EVEN consisting of images 2, 4 and 6 in the parent
+team ALL.  That is, each image does
+
+   TYPE(TEAM_TYPE),SAVE :: tmp[*]
+   TYPE(TEAM_TYPE) odd,even,all
+
+   all = GET_TEAM()
+   FORM TEAM(MOD(THIS_IMAGE(),2),tmp)
+   odd = tmp[1]
+   even = tmp[2]
+   SYNC ALL
+
+Then sometime later, still in team ALL, images 1, 2, 3 and 5 of ALL do
+  SYNC TEAM (ODD)
+
+According to 11.6.6p2, this (if successful)
+  "performs a synchronization of [ ODD ]",
+i.e. images 1, 3, 5 of ALL will sync, nothing is said re image 2 of ALL.
+
+The next sentence of p2 redundantly describes this in gory detail:
+  "Execution on an image, M, of the segment following the SYNC TEAM
+   statement is delayed until each other image of the specified team has
+   executed a SYNC TEAM statement specifying the same team as many times
+   as has image M in this team."
+i.e. images 1, 3 and 5 of ALL (images 1,2,3 of ODD) will sync, again,
+nothing is said about image 2 of ALL.
+
+However, the final sentence of p2 says
+  "The segments that executed before the SYNC TEAM statement on an image
+   precede the segments that execute after the corresponding SYNC TEAM
+   statement on another image."
+i.e. this says that image 2 of ALL does participate in the sync to the
+extent of segment ordering (but not delaying? - inconceivable!).
+
+This would appear to be an oversight.  Perhaps an earlier form of the team
+facility did not permit assignments which could produce this.
+
+Clearly TEAM+other syncing can never work, since if all the team members
+arrived at the SYNC TEAM before the other, they will have sunc and gone,
+not waiting for the other.
+
+
+3. Edit to 17-007
+
+[213:4] 11.6.6 SYNC TEAM statement, p1, append new sentence
+  "The executing image shall be a member of the specified team."
+{Requirement.}
+
+
+4. Alternatives
+
+[213:4] 11.6.6 SYNC TEAM statement, p1, append new sentence
+  "If the executing image is not a member of the specified team,
+   error termination is initiated."
+{This requires runtime diagnosis of the error, and prevents a program from
+ recovering from it.}
+
+[213:4] Same location, append different new sentence
+  "If the executing image is not a member of the specified team,
+   an error condition is raised."
+{This formulation of the requirement both requires runtime diagnosis of
+ the error, and enables a program to recover from it.}
+
+===END===

@@ -1,0 +1,90 @@
+
+                                                      J3/05-223
+
+Date:    22 July 2005
+To:      J3
+From:    Rob James
+Subject: Polymorphism and explicit-shape or assumed-size dummy arguments
+
+NUMBER: F03/0061
+TITLE: Polymorphism and explicit-shape or assumed-size dummy arguments
+KEYWORDS: polymorphism, assumed size, actual argument, dummy argument
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following program:
+
+      MODULE m
+        TYPE t1
+          INTEGER :: i
+        END TYPE
+      CONTAINS
+        SUBROUTINE abc (b)
+          CLASS(t1) :: b(*)
+          EXTERNAL xyz
+          CALL xyz(b(2))
+        END SUBROUTINE
+      END MODULE
+
+      SUBROUTINE xyz(d)
+        USE m
+        TYPE(t1) :: d(2,3)
+      END SUBROUTINE
+
+      PROGRAM foo
+        USE m
+        TYPE, EXTENDS(t1) :: t2
+          INTEGER :: j
+        END TYPE
+        TYPE(t2) a(10)
+        CALL abc(a(2))
+      END PROGRAM
+
+During the execution of "xyz", the dummy argument "d" is sequence
+associated with the associated actual argument (which is true if "d"
+has either explicit shape or assumed size).  This implies that the
+entity that is argument associated with "d" must be contiguous.
+
+The dummy argument "b" of the module subroutine "abc" is polymorphic,
+and its dynamic type in this case is different than its declared type.
+In this scoping unit, "xyz" has an implicit interface, so we know it
+doesn't have any polymorphic arguments.  So, the dummy argument of
+"xyz" must be nonpolymorphic, and have the same declared type as the
+actual argument (b(2)).
+
+This implies that we only want to pass the parent portion of b(2).
+But the dummy argument of "xyz" may be an explicit-shape or
+assumed-size array (in this case, it is an explicit-shape array).
+
+This means that we have to pass a contiguous array to "xyz".  This
+wouldn't be a problem if the dynamic type of "b" was the same as the
+declared type, but in this case it is not.  The parent portion of "b"
+(from element 2 to the end of the array) must be copied into a
+temporary array.
+
+The compiler cannot possibly know how big "b" is because it is an
+assumed-size array, so it is impossible to make such a copy.
+
+Was this program intended to be standard-conforming?
+
+
+ANSWER:
+
+No, this program was not intended to be standard-conforming.  Edits
+are provided to correct this oversight.
+
+
+EDITS:
+
+All edits refer to 04-007.
+
+[270:27]  Change "assumed-shape or pointer" to "assumed-shape,
+          pointer, or polymorphic".
+
+
+SUBMITTED BY: Rob James
+
+HISTORY: 05-176   m172 Submitted
+         05-223   m173 Answer provided

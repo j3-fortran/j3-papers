@@ -1,0 +1,386 @@
+                                                            10-235
+To: J3
+From: Nick Maclaren
+Subject: Interop TR: Restrictions for correctness
+Date: 2010 October 09
+Reference: 10-165r2, 10-206, 10-207, 10-222, 10-224r1
+
+
+This paper is about allocation, association, lifetime, descriptor update
+and related matters.  My concern is to ensure the following:
+
+    1) That the specification is reasonably comprehensible to a reader
+who is not both an expert on the minutiae of the Fortran standard and
+an expert on Fortran implementation issues.  Obviously, such a reader
+can be expected to look up references, if given a starting point.
+
+    2) That, to a reasonable extent, all conforming programs are
+implementable to the extent that they execute correctly.  Obviously,
+'reasonable' and 'correctly' should be interpreted relative to the
+quality of the main Fortran standard.
+
+I am afraid that neither are currently true, and I am doubtful that the
+problems are fixable without major revision.  This paper proposes such a
+revision, though it is very unlikely that it can be completed this week,
+especially as I am not in Las Vegas.  The same applies to converting
+the points it makes to the existing design.
+
+There is a further issue, which is that many of the comments on the
+original draft (as collated in N1766, with some replies in N1818) were
+on this area, and have not been addressed, implicitly or explicitly.
+
+I apologise for the lateness, length and incoherence of this, but
+the issues are evil ones and it needed to refer to the resolutions
+of the requirements in N1820.
+
+
+
+1. SUMMARY OF ISSUES
+--------------------
+
+The following are the main categories of problem that I have noticed:
+
+1.1 Descriptor use is currently entirely in terms of update, which is
+semantically very different from the permitted actions on Fortran
+metadata.  For example, the shape of an assumed-shape array can be
+changed only by creating a new array (e.g. a section).
+
+1.2 There are currently almost no restrictions and constraints on
+how descriptors may be used, nor is there enough description to say that
+anything not stated explicitly is forbidden.  10-165r2.pdf [11:6-7] are
+the only two I can find.
+
+1.3 The readers of this TR are likely to be primarily C programmers, and
+will assume that any action in the C code is permitted if it (a) uses
+only features that the TR describes (and does not forbid), and (b) is
+legal in C.
+
+1.4 N1826 6.7.1.3 para. 3 and 6.7.3.2 para. 1 require all associated
+allocatable variables to be linked in some way, but the mechanisms
+provided by this TR (including 10-206) do not make that implementable.
+
+1.5 The type matching and lifetime rules are very different between
+Fortran and C, and there are serious ambiguities about which ones should
+take precedence (given that we are talking about C code).
+
+While it is clearly possible to start addressing on these using the
+current design, I spent a complete day attempting that and gave up.  The
+problems were such that a slightly different design would make half of
+them simply go away, and make the other half much easier to specify.
+That is to make the C functions provided correspond fairly closely
+with the basic Fortran primitives, and to separate the three different
+categories of object when appropriate.
+
+As part of that, I include a first draft at a set of semantic
+restrictions that are not associated with particular functions.
+Whatever the conclusion, both those and the semantic constraints implied
+by the alternative design need including in the TR.  I do not guarantee
+that I have thought of everything, and I am sure that the wording is
+improper.
+
+
+
+2. EXAMPLES OF PROBLEMS
+-----------------------
+
+I apologise for the length of these, but I have attempted to make them
+comprehensible to people who are not necessarily C language and
+implementation technique experts.
+
+
+2.1 Allocation and Association
+------------------------------
+
+The Fortran standard requires the allocation in Joe to be reflected
+in what the main program sees.  The following is required to print
+False and True [N1826 6.7.1.3 p3 and 6.7.3.2 p1].
+
+    PROGRAM Main
+        ! Assume a suitable interface block for Fred
+        REAL, ALLOCATABLE :: x(:)
+        PRINT *, ALLOCATED(x)
+        CALL Fred(x)
+        PRINT *, ALLOCATED(x)
+    END PROGRAM Main
+
+    SUBROUTINE Fred (y)
+        ! Assume a suitable interface block for Joe
+        REAL, ALLOCATABLE :: y(:)
+        CALL Joe(y)
+    END SUBROUTINE Fred
+
+    SUBROUTINE Joe (z)
+        REAL, ALLOCATABLE :: z(:)
+        ALLOCATE(z(5))
+    END SUBROUTINE Joe
+
+Now, what if Fred were a BIND(C) function, especially one written in C?
+
+    What constraints do we need to add to enable this?
+    Or should it be forbidden?
+    Or what?
+
+
+2.1 Update and Creation
+-----------------------
+
+Currently the TR does not say whether a C program can or cannot
+initialise a C descriptor directly (see designation in C99 6.7.8), copy
+it using memcpy(), create it using a base address that was derived from
+an argument descriptor, or even update an argument descriptor directly.
+
+This cannot simply be forbidden, because 5.2.7 uses it specifically as a
+way of meeting 9c under controlled conditions [12:31-33], and as a way
+of meeting 10a and 10b (in part) [12:31]; so also does 10-224r1.
+However, [12:34] does not restrict itself to pointer arrays.
+
+But there are a LOT of constraints that are imposed by Fortran, such as
+that the attributes (as in 5.2.5 p3) and rank of an existing object may
+not be changed, the descriptors for INTENT(IN) or assumed-shape arrays
+may not be changed in any way, the dimension triples are limited in form
+(constraint 5), and that all allocatable descriptors are linked (see
+example 2.1 above).
+
+It is possible to change the rank of a contiguous assumed-shape array in
+Fortran by passing it through explicit-shape intermediaries (i.e. using
+sequence association).  This feature is quite important to a few
+algorithms, such as FFTs, and needs no facilities that are not in the
+current TR.  Many users will do that, and the obvious way is by
+constructing a new assumed-shape array starting from a base pointer
+obtained by CFI_address.  At the very least, it needs to be clear
+whether that is permitted.
+
+
+2.3 Lifetime
+------------
+
+This is an area where allocatable and (Fortran) pointer objects and
+internal procedures with BIND(C) as arguments expose the semantic
+differences between C and Fortran.
+
+Without going into the complicated details, here are some of the issues:
+
+    1) The lifetime of an argument descriptor is different in Fortran
+and C, because it may be needed for copy-out following the return, but C
+has nothing except call by value.  Note that, because the descriptor is
+passed by the value of the address, it is legal for C to free its memory
+following its last use and before the return.  That is likely to confuse
+Fortran!
+
+I am not just being legalistic, as there are several interfaces that
+work just like that, and it is apparently reasonable if C calls Fortran
+calls C.
+
+    2) The lifetime of an object created by CFI_allocatable is
+complicated.  Consider a C function that creates a new descriptor,
+allocates space using CFI_allocate, calls Fortran and then returns.  Is
+he expected to call CFI_deallocate before that C function call returns?
+
+As we know, but C programmers will not, the answer is that he is
+expected to unless that variable is a pointer variable and it was passed
+to the Fortran with the TARGET attribute, when he must NOT do that
+if the Fortran he called has retained any saved pointers to it.
+
+    3) Consider an object X that is the target of the global pointer
+object Y and was created by ALLOCATE.  It is then passed (without the
+target attribute) to a C function Fred, which uses it internally,
+finishes with it and (as a last action) nullifies Y.  That is legal
+in C but, under what conditions, is it forbidden by the TR?
+
+
+2.4 Type and Storage Compatibility
+----------------------------------
+
+This area is even murkier, and I would much rather exclude the
+potential problems than describe them, but here are some examples:
+
+    1) The TR brings the matter of alignment to the fore, and Fortran
+and C have different rules; I have seen programs fail because of this.
+For example, is it permitted for Fortran to create a descriptor that
+uses what C views as invalid alignment, if C does nothing but manipulate
+the descriptor and then pass it onto Fortran?  And conversely, of
+course.
+
+    2) Fortran and C have different rules about when storage defined as
+one type may be used for another type (note that this is NOT about using
+one type as another, but about using the storage).  C has the concept of
+types that are not equivalent but where storage holding one may be used
+as the other.  In N1826, this is not an issue, because arguments have no
+type, but the TR does.  Is that forbidden by this TR or not?
+
+    3) Related to this, what are the rules about C setting the type
+field?  C has at least three sets of rules for type equivalence, and
+Fortran has a different one.  Which one applies?
+
+    4) Is it permitted for C to create a descriptor where some or all
+indexing operations would not point to part of the object and then pass
+it to another C function, if they were never used?  Obviously, yes,
+until we consider example 2.1 above.
+
+
+
+
+ALTERNATIVE APPROACH
+--------------------
+
+I believe that it is much easier to have a set of functions that are
+much closer to the Fortran primitives, and to separate actions that are
+semantically inconsistent.  The wording of the constraints can then be a
+lot simpler, and they are much easier to get right.
+
+The other fundamental change in this proposal is that the C would not be
+allowed to create or update a descriptor except through the functions
+provided, in any way whatsoever.  Reading one doesn't cause trouble.
+
+I have made quite a few wording changes to match C concepts better,
+and have have included changes from 10-203r1.
+
+Personally, I should prefer that unused arguments and fields were
+required to be set to a suitable null value, but I have not made that
+change.
+
+
+5.2.6.2 int CFI_allocate ( CFI_cdesc_t * cdesc,
+    const CFI_bounds_t bounds[] );
+
+Description.  CFI_allocate allocates memory for an existing object using
+the same mechanism as the Fortran ALLOCATE statement.  On entry, the
+argument cdesc shall point to a C descriptor that describes an
+unallocated allocatable or a disassociated pointer object.  If the rank
+in the C descriptor is zero, the argument bounds is ignored; otherwise
+it points to an array of length the rank to use for the bounds for the
+allocation; the stride members are ignored.  The C descriptor is updated
+by this function.  The function returns an error indicator.
+
+[[[ Note that I have removed the explicit constraint on the base
+address, because it is redundant.  And, yes, 'array' arguments in C are
+evil. ]]]
+
+
+5.2.6.2+ int CFI_create ( CFI_cdesc_t * cdesc, void * base_addr,
+    CFI_attribute_t attribute, CFI_type_t type, size_t elem_len,
+    CFI_rank_t rank, const CFI_bounds_t bounds[] );
+
+Description.  CFI_allocate creates a new object, allocates memory for
+it, and initialises the C descriptor pointed to by cdesc.  On entry, the
+argument cdesc shall point to a C object large enough to hold a C
+descriptor of the specified rank; it shall not point to an existing C
+descriptor.  If the argument base_addr is NULL, the memory is allocated
+as if by a call to CFI_allocate, otherwise it shall be appropriately
+aligned (ISO/IEC 9899:1999 3.2) for an object of the specified type, and
+is used to set the base address of the object.  The argument attribute
+shall be one of CFI_attribute_assumed, CFI_attribute_allocatable or
+CFI_attribute_pointer.  The argument type shall be one of the type names
+in table 5.2.  The argument elem_len is ignored unless type is
+CFI_type_struct, in which case it is the size of the structure and shall
+be greater than zero.  The argument rank is the rank of the object and
+shall be between 0 and 31 inclusive.  If the argument rank is zero, the
+argument bounds is ignored; otherwise it points to an array of length
+the rank to use for the bounds for the allocation; the stride members
+are ignored.  The function returns an error indicator.
+
+If the argument attribute is CFI_attribute_assumed, the argument
+base_addr shall not be NULL, and the object will be a scalar or array
+without the ALLOCATABLE or POINTER attributes.  If the argument
+attribute is CFI_attribute_allocatable, the argument base_addr shall be
+NULL, and the object will be allocatable.  If the argument attribute is
+CFI_attribute_pointer, the object will be a pointer.
+
+
+5.2.6.2++ int CFI_setpointer ( CFI_cdesc_t * cdesc, void * base_addr,
+    const CFI_bounds_t bounds[] );
+
+Description.  CFI_setpointer updates an existing pointer object.  On
+entry, the C descriptor pointed to by cdesc shall describe a pointer
+object.  If the argument base_addr is NULL, the pointer is nullified;
+otherwise, the new base address is set to base_addr, which shall be
+appropriately aligned (ISO/IEC 9899:1999 3.2) for an object of the
+specified type.  If the rank in the C descriptor is zero, the argument
+bounds is ignored; otherwise it it points to an array of length the rank
+to use for the bounds for the allocation; the stride members are
+ignored.  The C descriptor is updated by this function.  The function
+returns an error indicator.
+
+
+5.2.6.3 int CFI_deallocate ( CFI_cdesc_t * cdesc );
+
+Description.  CFI_deallocate deallocates memory using the same mechanism
+as the Fortran DEALLOCATE statement.  On entry, the C descriptor pointed
+to by cdesc shall describe an allocated allocatable object or a pointer
+associated with a target that was allocated using CFI_allocate or the
+Fortran ALLOCATE statement.  The C descriptor is updated by this
+function.  The function returns an error indicator.
+
+[[[ Note that I have removed the explicit constraint on the base
+address, because it is redundant. ]]]
+
+
+[[[ 5.2.6.3 CFI_is_continuous is discussed elsewhere. ]]]
+
+
+[[[ 5.2.6.4 CFI_address would also be needed, as in 10-222. ]]]
+
+
+5.2.6.5 int CFI_section ( CFI_cdesc_t * result,
+    const CFI_cdesc_t * source, const CFI_bounds_t bounds[] );
+
+Description.  CFI_section initialises the C descriptor pointed to by
+result to refer to a section of an array pointed to by source; it shall
+not point to an existing C descriptor.  On entry, the argument result
+shall point to a C object large enough to hold a C descriptor of the
+appropriate rank.  The C descriptor pointed to by source shall describe
+an assumed-shape array, an allocated allocatable array, or an associated
+pointer array.  The argument bounds provides the bounds to use for the
+allocation and the number of elements shall be greater than or equal to
+the rank.  On exit, the C descriptor result pointed to by result will
+describe an assumed-shape array.  The function returns an error
+indicator.
+
+All strides in the bounds array shall be non-zero.  There shall be a
+reordering of the dimensions such that the absolute value of the stride
+of one dimension is not less than the absolute value of the stride of
+the previous dimension multiplied by the extent of the previous
+dimension.
+
+
+[[[ 5.2.6.6 is deleted. ]]]
+
+
+5.2.7 Use of C descriptors
+
+A C descriptor shall not be initialised, updated or copied other than by
+calling the functions specified here.  A C descriptor passed as a dummy
+argument shall not be updated if it has attribute INTENT(IN), or
+describes an assumed-shape array.
+
+Calling CFI_allocate or CFI_deallocate causes any Fortran variables and
+other C descriptors associated with that C descriptor to be updated
+[N1826 6.7.1.3].
+
+A C descriptor that is passed as an argument BIND(C) procedure call
+shall describe an object that is acceptable to both Fortran and C with
+the type specified in its type member.  If the argument has the
+INTENT(IN) or INTENT(INOUT) attributes, or its value or that of any
+element is used, all of its elements shall contain legal values of that
+type.
+
+
+5.2.7+ Restrictions on lifetimes
+
+When a Fortran object or internal procedure is deallocated, execution of
+its host instance is completed, or its allocation or association status
+becomes undefined, all C descriptors and C pointers to any part of it
+become undefined, and any further use of them is undefined behaviour
+(ISO/IEC 9899:1999 3.4.3).
+
+A C descriptor received as a dummy argument becomes undefined on return
+from the procedure call.  If the dummy argument does not have any of the
+TARGET, ASYNCHRONOUS or VOLATILE attributes, all C pointers to any part
+of the object it describes become undefined on return from the procedure
+call, and any further use of them is undefined behaviour.
+
+If a C descriptor is passed as an actual argument, its lifetime and that
+of the object it describes (ISO/IEC 9899:1999 6.2.4) shall not end
+before the return from the procedure call.  A Fortran pointer variable
+that is associated with a C descriptor shall not be accessed beyond the
+end of the lifetime of the C descriptor and the object it describes.

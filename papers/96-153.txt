@@ -1,0 +1,139 @@
+
+                                                           X3J3/96-153
+
+Date:      September 30, 1996
+From:      Michael Hennecke
+To:        WG5, X3J3
+Subject:   Support for C variable argument lists <stdarg.h>
+Reference: WG5/N1178, WG5/N1229, (X3J3/96-069)
+
+
+I would like to exchange the text concerning <stdarg.h> support which is
+in N1178 (96-069) with the following solution. The current text which uses
+OPTIONAL parameters on the Fortran side was a half-hearted approach, and 
+will almost surely not work for general applications. 
+Support of <stdarg.h> in its most general form seems to be necessary since 
+some important application programming interfaces make heavy use of 
+variable argument lists, e.g. all procedures with names XtVa* in the 
+X Toolkit Intrinsics.
+
+The new solution does not need a <lang-keyword> of C_STDARG, which will be
+deleted from the spec of the BIND attribute in 3.1. (This also makes many 
+"or BIND(C_STDARG)" clauses in the text superfluous.)
+
+Section 3.3.2 will be replaced by the following text:
+
+"
+ 3.3.2 Support for variable argument lists <stdarg.h>
+
+ C procedures may be called with a variable number of arguments of 
+ varying type. The argument list in the function prototype of such a 
+ procedure must contain one or more parameters followed by an <ellipsis> 
+ #...#. The called procedure may access the varying number of actual 
+ arguments by facilities defined in the standard header #<stdarg.h>#.
+ Fortran does not directly support this kind of procedure interfaces. 
+
+   NOTE:
+   The Fortran concept of OPTIONAL arguments is less flexible.
+   It requires the specification of all possible combinations of
+   arguments at compile time, including their types.
+
+ To provide a Fortran interface to an external procedure defined by means
+ of C which contains an <ellipsis>, an intrinsic module ISO_C_STDARG_H 
+ shall be provided. This module shall provide access to the following:
+
+   * A derived type definition with <type-name> C_VA_LIST.
+     This type has the BIND(C) attribute and PRIVATE components.
+
+       NOTE:
+       The type C_VA_LIST defined in the Fortran binding is only used by
+       the Fortran processor to build up the variable length argument list
+       and pass it to the C procedure.
+       It is not a translation of the C type #va-list# defined in 
+       #<stdarg.h>#. This latter type and the associated macros are only 
+       used in the definition of the callee, and are not required on the 
+       Fortran side.
+
+   * A named constant C_VA_EMPTY of TYPE(C_VA_LIST).
+     The value of this constant shall be distinct from any value that may
+     result from an argument list construction by means of OPERATOR(//).
+
+   * ASSIGNMENT(=) for <variable>s and <expression>s of TYPE(C_VA_LIST).
+     The assignment shall perform a true copying of the derived type
+     components, rather than using pointer assignments and reference 
+     counts.
+
+   * An extension of the OPERATOR(//) to operands <x_1> of TYPE(C_VA_LIST).
+     <x_2> may be of any type corresponding to a C data type, as specified
+     in section 3.2 of this TR. The result is of TYPE(C_VA_LIST). 
+     Paranteses used to specify the order of evaluation have no effect on
+     the value of the result.
+
+       EDITOR'S NOTE:
+       How restrictive should the TR be on the type of <x_2>? 
+       Only <basic> types? Arrays? Structures? C_VA_LIST objects???
+
+   * A function C_VA_ARG (AP, MOLD, POS)
+
+       Description. Extract argument of type MOLD from position POS of
+                    a varying length argument list AP.
+
+       Class. Transformational function.
+
+       Arguments.
+
+        AP    shall be scalar and of type C_VA_LIST. It is an INTENT(IN) 
+              argument. It holds the internal representation of a varying
+              length argument list.
+        MOLD  shall be of any type which is valid for <x_2> in the above
+              OPERATOR(//) extension. It is an INTENT(IN) argument.
+        POS   shall be scalar and of type default integer, with a value
+              greater than zero. It is an INTENT(IN) argument. 
+
+       Result Characteristics. The result is of the same type and type
+                               parameters as MOLD.
+
+       Result value.
+                    
+       Case (i):  If the element in position POS of the varying length 
+                  argument list AP has the same type and type parameters 
+                  as MOLD, the result value is that of this element.
+       Case (ii): Otherwise, the result value is undefined.
+	      
+       Elements with a value of C_VA_EMPTY are not taken into account when 
+       determining the position of an element in a varying length argument 
+       list AP.
+
+       Example. If AP is C_VA_EMPTY // 5_c_int // 2.0_c_dbl // 7_c_long,
+                then C_VA_ARG(AP,0.0_c_dbl,2) is of type REAL(c_dbl) and
+                has the value 2.0_c_dbl.
+
+         NOTE:
+         The function C_VA_ARG is not a translation of the macro #va_arg#
+         defined in #<stdarg.h>#. It accesses the Fortran processor's
+         intermediate representation of the varying length argument list,
+         not the C processor's representation as viewed in the callee.
+
+ The <interface-body> that specifies a Fortran interface to a C procedure
+ containing an <ellipsis> shall specify the dummy arguments as in 3.3.1, 
+ and shall specify an additional dummy argument of TYPE(C_VA_LIST) in the 
+ position of the <ellipsis>. INTENT shall not be specified for this 
+ argument.
+
+ To indicate an empty argument list, C_VA_EMPTY shall be used as actual
+ argument in a procedure reference. To pass a non-empty list of arguments,
+ C_VA_EMPTY shall be concatenated by the OPERATOR(//) with the list of
+ required arguments. C_VA_EMPTY shall be the leftmost operand of this 
+ concatenation, all other operands shall be specified from left to right 
+ corresponding to their respective position in a C procedure reference.
+ The Fortran processor translates the intermediate representation stored
+ in the C_VA_LIST argument into the representation expected by the C
+ processor at a procedure reference.
+
+ If the C procedure modifies its varying arguments, the object of type
+ C_VA_LIST is modified, not the operands of the OPERATOR(//) from which
+ it was constructed. The modified values in a C_VA_LIST data object can 
+ be extracted after the call by using the function C_VA_ARG.
+" 
+
+

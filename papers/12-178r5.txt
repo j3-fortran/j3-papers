@@ -1,0 +1,434 @@
+To:        J3                                      12-178r5
+From:      Bill Long
+Subject:   Coarray collectives
+Date: 2012 October 18
+Reference: WG5/N1930, 12-170
+
+Discussion:
+-----------
+
+This paper proposes syntax, semantics, and edits for feature
+3. Collectives in N1930:
+
+A collective subroutine is an intrinsic subroutine that is executed by
+a set of images. It performs a computation based on values on the
+images of the set. Collective subroutines offer the possibility of
+substantially more efficient execution of reduction operations than
+would be possible by non-expert programmers. Corresponding routines
+are widely used in MPI programs.
+
+C1: A call to a collective subroutine is not an image control
+    statement. However, such a call shall appear only in a context
+    that allows an image control statement.  Even though calls to
+    collective subroutines involve internal synchronization required
+    by the usual rules for reference and definition of subroutine
+    arguments, they do not facilitate ordering of segments.
+    
+C2: If a collective subroutine is invoked on one image, it shall be
+    invoked by the same statement on all images of the current team.
+
+C3: A collective subroutine based on a user-written procedure that
+    applies the required operation to local variables shall be
+    provided. In addition, because they are often needed, there should
+    be specific collective subroutines for SUM, MAX, and MIN for
+    intrinsic types for which the corresponding operations are
+    defined.  Forms that provide the result to just one image or to
+    all the images involved should be provided. Beyond this, there
+    should be a collective subroutine that broadcasts a value on one
+    image to a set of images. Coindexed source and result arguments
+    are not permitted.
+
+The syntax, semantics, and edits assume the Teams proposal in N1930.
+
+
+Syntax and Semantics
+--------------------
+
+A collective subroutine is one that is invoked on each image of the
+current team to perform a calculation on those images and that assigns
+the value of the result on all of them or one of them.  If it is
+invoked by one image, it shall be invoked by the same statement on all
+images of the current team in execution segments that are not ordered
+with respect to each other. From the beginning of execution as the
+current team, the sequence of calls to collective subroutines shall be
+the same on all images of the current team. A call to a collective
+subroutine shall appear only in a context that allows an image control
+statement.
+
+Each actual argument to a collective subroutine shall have the same
+shape, cobounds, and type parameters as the corresponding actual
+argument on every other image of the current team. The SOURCE and RESULT
+arguments shall not be coindexed.
+
+On any two images calling a collective subroutine, the ultimate
+arguments for a coarray dummy argument that is an actual argument to
+the collective subroutine shall be corresponding coarrays as described
+in 2.4.7 of ISO/IEC 1539-1:2010.
+
+Five collective subroutines are provided:
+
+CO_BROADCAST (SOURCE, SOURCE_IMAGE)  - a collective broadcast
+
+CO_MAX (SOURCE [,RESULT, RESULT_IMAGE])   - maximum value
+
+CO_MIN (SOURCE [,RESULT, RESULT_IMAGE])   - minimum value
+
+CO_REDUCE (SOURCE, OPERATOR [,RESULT, RESULT_IMAGE]) - 
+       reduction by a user-specified function
+
+CO_SUM (SOURCE [,RESULT, RESULT_IMAGE])   - SUM reduction
+
+ 
+CO_BROADCAST copies the value of SOURCE on image SOURCE_IMAGE to the
+corresponding SOURCE in the calls on all of the other images in the
+current team. SOURCE_IMAGE shall have the same value on all images.
+
+The SOURCE and RESULT arguments may be scalars or arrays. If the
+SOURCE argument is an array, the reduction or broadcast is done
+separately for each element of the array, broadside across the current
+team of images.
+
+The SOURCE and RESULT arguments of CO_MAX, CO_MIN, CO_REDUCE, or
+CO_SUM may be coarrays, but that is not required.
+
+If the RESULT argument is present it shall be present on all images
+and the computed value is assigned to RESULT; otherwise the computed
+value is assigned to SOURCE. If the RESULT_IMAGE argument is present
+it shall be present on all images with the same value and the computed
+value is assigned only on image number RESULT_IMAGE; otherwise the
+computed value is assigned on all images of the current team.
+
+
+Edits to J3/12-170:
+--------------------
+
+[5:5-6] In 3.1 replace the placeholder text with 
+"<<collective subroutine>> 
+intrinsic subroutine that is invoked on the current team of
+images to perform a calculation on those images and assign the
+computed value on one or all of them (7.2)"
+
+[13:3-5] In 7.1 replace the first two sentences with "Detailed
+specifications of the generic intrinsic subroutines ATOMIC_ADD,
+ATOMIC_AND, ATOMIC_CAS, ATOMIC_OR, ATOMIC XOR, CO_BROADCAST, CO_MAX,
+CO_MIN, CO_REDUCE, and CO_SUM are provided in 7.3."
+
+[13:10] In 7.2 replace the placeholder text with "A collective
+subroutine is one that is invoked on each image of the current team to
+perform a calculation on those images and that assigns the computed
+value on one or all of them. If it is invoked by one image, it shall
+be invoked by the same statement on all images of the current team in
+execution segments that are not ordered with respect to each
+other. From the beginning of execution as the current team, the
+sequence of calls to collective subroutines shall be the same on all
+images of the current team. A call to a collective subroutine shall
+appear only in a context that allows an image control statement.
+
+If an argument to a collective subroutine is a whole coarray the
+corresponding ultimate arguments on all images of the current team
+shall be corresponding coarrays as described in 2.4.7 of ISO/IEC
+1539-1:2010.
+
+[15:8+] At the end of 7.3 add new subclauses:
+
+"7.3.6  CO_BROADCAST (SOURCE, SOURCE_IMAGE)
+
+Description. Copy a variable to all images of the current team.
+
+Class. Collective subroutine.
+
+Arguments.
+
+SOURCE shall be a coarray. It is an INTENT(INOUT) argument. SOURCE
+becomes defined, as if by intrinsic assignment, on all images of the
+current team with the value of SOURCE on image SOURCE_IMAGE.
+
+SOURCE_IMAGE shall be of type integer. It is an INTENT(IN)
+argument. It shall be an image index and have the same value on all
+images of the current team.
+
+Example. If SOURCE is the array [1, 5, 3] on image one, after
+execution of CALL CO_BROADCAST(SOURCE,1) the value of SOURCE on all
+images of the current team is [1, 5, 3].
+
+
+7.3.7 CO_MAX (SOURCE [, RESULT, RESULT_IMAGE])
+
+Description. Compute elemental maximum value on the current team of
+images.
+
+Class. Collective subroutine.
+
+Arguments.
+
+SOURCE shall be of type integer, real, or character. It is an
+INTENT(INOUT) argument. If it is a scalar, the computed value is equal
+to the maximum value of SOURCE on all images of the current team. If
+it is an array it shall have the same shape and type parameters on all
+images of the current team and each element of the computed value is
+equal to the maximum value of all the corresponding elements of SOURCE
+on the images of the current team.
+
+RESULT (optional) shall be of the same type, type parameters, and
+shape as SOURCE. It is an INTENT(OUT) argument. If RESULT is present
+it shall be present on all images of the current team. 
+
+RESULT_IMAGE (optional) shall be of type integer. It is an INTENT(IN)
+argument. If it is present, it shall be present on all images of the
+current team, have the same value on all images of the current team,
+and that value shall be an image index.
+
+If RESULT and RESULT_IMAGE are not present, the computed value is
+assigned to SOURCE on all the images of the current team. If RESULT is
+not present and RESULT_IMAGE is present, the computed value is
+assigned to SOURCE on image RESULT_IMAGE and SOURCE on all other
+images of the current team becomes undefined.  If RESULT is present
+and RESULT_IMAGE is not present, the computed value is assigned to
+RESULT on all images of the current team. If RESULT and RESULT_IMAGE
+are present, the computed value is assigned to RESULT on image
+RESULT_IMAGE and RESULT on all other images of the current team
+becomes undefined.  If RESULT is present, SOURCE is not modified.
+
+
+Example. If the number of images in the current team is two and SOURCE
+is the array [1, 5, 3] on one image and [4, 1, 6] on the other image,
+the value of RESULT after executing the statement CALL CO_MAX(SOURCE,
+RESULT) is [4, 5, 6] on both images.
+
+
+7.3.8 CO_MIN (SOURCE [, RESULT, RESULT_IMAGE])
+
+Description. Compute elemental minimum value on the current team of
+images.
+
+Class. Collective subroutine.
+
+Arguments.
+
+SOURCE shall be of type integer, real, or character. It is an
+INTENT(INOUT) argument. If it is a scalar, the computed value is equal
+to the minimum value of SOURCE on all images of the current team. If
+it is an array it shall have the same shape and type parameters on all
+images of the current team and each element of the computed value is
+equal to the minimum value of all the corresponding elements of SOURCE
+on the images of the current team.
+
+RESULT (optional) shall be of the same type, type parameters, and
+shape as SOURCE. It is an INTENT(OUT) argument. If RESULT is present
+it shall be present on all images of the current team. 
+
+RESULT_IMAGE (optional) shall be of type integer. It is an INTENT(IN)
+argument. If it is present, it shall be present on all images of the
+current team, have the same value on all images of the current team,
+and that value shall be an image index.
+
+If RESULT and RESULT_IMAGE are not present, the computed value is
+assigned to SOURCE on all the images of the current team. If RESULT is
+not present and RESULT_IMAGE is present, the computed value is
+assigned to SOURCE on image RESULT_IMAGE and SOURCE on all other
+images of the current team becomes undefined.  If RESULT is present
+and RESULT_IMAGE is not present, the computed value is assigned to
+RESULT on all images of the current team. If RESULT and RESULT_IMAGE
+are present, the computed value is assigned to RESULT on image
+RESULT_IMAGE and RESULT on all other images of the current team
+becomes undefined.  If RESULT is present, SOURCE is not modified.
+
+Example. If the number of images in the current team is two and SOURCE
+is the array [1, 5, 3] on one image and [4, 1, 6] on the other image,
+the value of RESULT after executing the statement CALL CO_MIN(SOURCE,
+RESULT) is [1, 1, 3] on both images.
+
+
+7.3.9 CO_REDUCE (SOURCE, OPERATOR [, RESULT, RESULT_IMAGE])
+
+Description. General reduction of elements on the current team of
+images. 
+
+Class. Collective subroutine.
+
+Arguments.
+
+SOURCE is an INTENT(INOUT) argument. It shall not be polymorphic.  If
+SOURCE is a scalar, the computed value is the reduction operation of
+applying OPERATOR to the values of SOURCE on all images of the current
+team. If SOURCE is an array it shall have the same shape and type
+parameters on all images of the current team and each element of the
+computed value is equal to the value of the reduction operation of
+applying OPERATOR to all the corresponding elements of SOURCE on all
+the images of the current team.
+
+OPERATOR shall be a pure elemental function with two arguments of the
+same type and type parameters as SOURCE. Its result shall have the
+same type and type parameters as SOURCE. The arguments and result
+shall not be polymorphic. OPERATOR shall implement a mathematically
+commutative operation.  If the operation implemented by OPERATOR is
+not associative, the computed value of the reduction is processor
+dependent.
+
+RESULT (optional) shall be of the same type, type parameters, and
+shape as SOURCE. It is an INTENT(OUT) argument. If RESULT is present
+it shall be present on all images of the current team. 
+
+RESULT_IMAGE (optional) shall be of type integer. It is an INTENT(IN)
+argument. If it is present, it shall be present on all images of the
+current team, have the same value on all images of the current team,
+and that value shall be an image index.
+
+
+If RESULT and RESULT_IMAGE are not present, the computed value is
+assigned to SOURCE on all the images of the current team. If RESULT is
+not present and RESULT_IMAGE is present, the computed value is
+assigned to SOURCE on image RESULT_IMAGE and SOURCE on all other
+images of the current team becomes undefined.  If RESULT is present
+and RESULT_IMAGE is not present, the computed value is assigned to
+RESULT on all images of the current team. If RESULT and RESULT_IMAGE
+are present, the computed value is assigned to RESULT on image
+RESULT_IMAGE and RESULT on all other images of the current team
+becomes undefined.  If RESULT is present, SOURCE is not modified.  The
+assignment is as if by intrinsic assignment.
+
+The computed value of a reduction operation over a set of values is
+the result of an iterative process. Each iteration involves the
+execution of \cf{r = OPERATOR(x,y)} for \cf{x} and \cf{y} in the set,
+the removal of \cf{x} and \cf{y} from the set, and the addition of
+\cf{r} to the set. The process continues until the set has only one
+element which is the value of the reduction.
+
+Example. If the number of images in the current team is two and SOURCE
+is the array [1, 5, 3] on one image and [4, 1, 6] on the other image,
+and MyADD is a function that returns the sum of its two integer
+arguments, the value of RESULT after executing the statement CALL
+CO_REDUCE(SOURCE, MyADD, RESULT) is [5, 6, 9] on both images.
+
+
+7.3.10 CO_SUM (SOURCE [, RESULT, RESULT_IMAGE])
+
+Description. Sum elements on the current team of images.
+
+Class. Collective subroutine.
+
+Arguments.
+
+SOURCE shall be of numeric type. It is an INTENT(INOUT) argument.  If
+it is a scalar, the computed value is equal to a processor-dependent
+and image-dependent approximation to the sum of the values of SOURCE
+on all images of the current team. If it is an array it shall have the
+same shape on all images of the current team and each element of the
+computed value is equal to a processor-dependent and image-dependent
+approximation to the sum of all the corresponding elements of SOURCE
+on the images of the current team. 
+
+RESULT (optional) shall be of the same type, type parameters, and
+shape as SOURCE. It is an INTENT(OUT) argument. If RESULT is present
+it shall be present on all images of the current team. 
+
+RESULT_IMAGE (optional) shall be of type integer. It is an INTENT(IN)
+argument. If it is present, it shall be present on all images of the
+current team, have the same value on all images of the current team,
+and that value shall be an image index.
+
+If RESULT and RESULT_IMAGE are not present, the computed value is
+assigned to SOURCE on all the images of the current team. If RESULT is
+not present and RESULT_IMAGE is present, the computed value is
+assigned to SOURCE on image RESULT_IMAGE and SOURCE on all other
+images of the current team becomes undefined.  If RESULT is present
+and RESULT_IMAGE is not present, the computed value is assigned to
+RESULT on all images of the current team. If RESULT and RESULT_IMAGE
+are present, the computed value is assigned to RESULT on image
+RESULT_IMAGE and RESULT on all other images of the current team
+becomes undefined.  If RESULT is present, SOURCE is not modified.
+
+Example. If the number of images in the current team is two and SOURCE
+is the array [1, 5, 3] on one image and [4, 1, 6] on the other image,
+the value of RESULT after executing the statement CALL CO_SUM(SOURCE,
+RESULT) is [5, 6, 9] on both images."
+
+
+[17:10+] In 8.3 add a new edit to clause 13
+
+"{Move the three paragraphs of subclause 7.2 in this Technical
+Specification to follow paragraph 3 and Note 13.1 in Subclause 13.1 of
+ISO/IEC 1539-1:2010.}
+
+
+[17:10++] In 8.3 add a new edit to clause 13
+
+"{In 13.5 Standard generic intrinsic procedures, para 2} 
+
+After the line "A indicates ... atomic subroutine" insert a new line:
+
+C indicates that the procedure is a collective subroutine"
+
+
+[17:17+] In 8.3 add these entries at the end of the list of 
+modifications to Table 13.1 in 13.5 of the base standard}
+
+"CO_BROADCAST (SOURCE, SOURCE_IMAGE) C Copy a variable to 
+                                       all images.
+
+
+ CO_MAX    (SOURCE [, RESULT,      C   Compute maximum of elements
+                  RESULT_IMAGE])       on all images.
+
+ CO_MIN    (SOURCE [, RESULT,      C   Compute minimum of elements
+            RESULT_IMAGE])             on all images.
+
+ CO_REDUCE (SOURCE, OPERATOR       C   General reduction of elements
+            [, RESULT,                 on all images.
+            RESULT_IMAGE])
+
+ CO_SUM    (SOURCE [, RESULT,      C   Sum elements on all
+            RESULT_IMAGE])             images."
+
+
+[17:18] In 8.3, second set of edit instructions, replace "7.3.5" with
+"7.3.10".
+
+[17:19+] After 8.3, add a new subclause:
+
+"8.4 Edits to annex A
+
+{At the end of A.2 Processor dependencies, replace the final full stop
+with a semicolon and add new items as follows}
+
+     \bullet the computed value of the CO_SUM intrinsic function;
+
+     \bullet the computed value of the CO_REDUCE intrinsic function."
+
+
+[19:4-5] Replace the placeholder text in Annex A with
+
+"A.1 Clause 7 notes
+
+A.1.1 Collective subroutine examples
+
+The following example computes a dot product of two scalar coarrays
+using the co_sum intrinsic to store the result in a noncoarray scalar
+variable:
+
+  real, save :: x[*],y[*],xy[*]
+  real x_dot_y
+!Initialize x and y
+  x = this_image() 
+  call random_number(y)
+  xy = x*y
+  call co_sum(xy,x_dot_y)
+
+The function below demonstrates passing a noncoarray dummy argument to
+the co_max intrinsic.  The function uses co_max to find the maximum
+value of the dummy argument across all images.  Then the function
+flags all images that hold values matching the maximum.  The function
+then returns the maximum image index for an image that holds the
+maximum value:
+
+  function find_max(j) result(j_max_location)
+    integer, intent(in) :: j
+    integer j_max,j_max_location
+    call co_max(j,j_max)
+! Flag images that hold the maximum j
+    j_max_location = merge(this_image(),0,j==j_max)
+! Return highest image index associated with a maximal j 
+    call co_max(j_max_location) 
+  end function find_max
+
+"

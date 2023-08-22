@@ -1,0 +1,199 @@
+                                                            J3/13-266r2
+To:      J3
+From:    Malcolm Cohen
+Subject: Interp f08/91 on empty derived types
+Date:    2013 June 26
+
+1. Introduction
+---------------
+
+This interpretation request has 3 alternatives for the answer;
+alternatives 1 "ANSWER" and 2 "ALTERNATIVE ANSWER" have edit sections
+provided.
+
+A straw vote is anticipated to select which of ANSWER, ALTERNATIVE
+ANSWER, and ALTERNATIVE ALTERNATIVE ANSWER goes forward.
+
+
+2. Discussion
+-------------
+
+Paper 13-266 had a different answer A4 in the alternative answers; for
+ALTERNATIVE it was
+
+A4.  The program was not intended to conform to the standard, as the
+     terms "numeric sequence type" and "character sequence type" were
+     intended to reflect the storage sequences.  An edit is provided
+     to correct these definitions.
+
+However, the program as a whole clearly conforms with the published
+Fortran 90 and 95 as well as 2003, and there is no nonsense
+contradition between character sequence and numeric sequence.
+Although the example program is silly, it is not so catastrophic that
+it warrants introducing an incompatibility with 3 previous Fortran
+standards.
+
+
+3. The interp
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0091
+TITLE: Derived type with no components
+KEYWORD: Derived type
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Q1. Consider
+
+  Program m7_1
+  Type empty
+  End Type
+  Type(empty),Target :: x
+  Type(empty),Pointer :: y
+  y => x
+  Print *,Associated(y,x)
+  End
+
+Is this program standard-conforming, and does it print T or F?
+
+According to 16.5.3.2p2,
+  item 1  is default integer etc, N/A
+  item 2 is double precision etc, N/A
+  item 3 is default character, N/A
+  item 4 is C character, N/A
+  item 5 is SEQUENCE type, N/A
+
+According to item (6),
+  "a nonpointer scalar object of any type not specified in items
+   (1)-(5) occupies a single unspecified storage unit that is
+   different [from everything else]"
+
+If that analysis is correct, X occupies a single unspecified storage
+unit, not zero storage units, and therefore T should be printed.
+
+Q2. Consider
+
+  Program m7_2
+  Type sempty
+    Sequence
+  End Type
+  Type(sempty),Target :: x
+  Type(sempty),Pointer :: y
+  y => x
+  Print *,Associated(y,x)
+  End
+
+Is this program standard-conforming, and does it print T or F?
+
+Now X falls into item 5, which makes it a "sequence of storage
+sequences corresponding to the sequence of its ultimate components";
+there are no ultimate components, this makes it a zero-sized storage
+sequence and therefore F should be printed.
+
+This does not seem to be consistent with the apparent answer to Q1.
+
+Q3. Consider
+
+  Program m7_3
+  Type numeric_empty
+    Sequence
+  End Type
+  Type character_empty
+    Sequence
+  End Type
+  Type(numeric_empty) a
+  Integer b
+  Character c
+  Type(character_empty) d
+  Equivalence(a,b)             ! E1.
+  Equivalence(c,d)             ! E2.
+  End
+
+Is this program conforming?
+
+According to the definitions in 4.5.2.3, NUMERIC_EMPTY is a numeric
+sequence type and therefore one might expect to be able to EQUIVALENCE
+it to an INTEGER.  Similarly, CHARACTER_EMPTY is a character sequence
+type and therefore one might expect to be able to EQUIVALENCE it to a
+CHARACTER.
+
+However, NUMERIC_EMPTY is clearly also a character sequence type, and
+therefore statement E1 violates C592 because B is not character or
+character sequence.
+
+Similarly, CHARACTER_EMPTY is clearly also a numeric sequence type,
+and therefore statement E2 violates C591.
+
+It seems very strange to have a type that is simultaneously numeric
+and character sequence type.
+
+Q4. Consider
+
+  Program m7_4
+  Type numeric_empty_2
+    Sequence
+    Real c(0)
+  End Type
+  Type character_empty_2
+    Sequence
+    Character(0) c
+  End Type
+  Type(numeric_empty_2) a
+  Integer b
+  Character c
+  Type(character_empty_2) d
+  Equivalence(a,b)             ! E3.
+  Equivalence(c,d)             ! E4.
+  End
+
+Does this program conform?
+
+According to the definitions in 4.5.2.3, NUMERIC_EMPTY_2 is a numeric
+sequence type and not a character sequence type, and conversely
+CHARACTER_EMPTY_2 is a character sequence type and not a numeric
+sequence type, and therefore the constraints for the statements at E3
+and E4 are not violated.
+
+Thus this appears to be conforming, in contradiction to the example in
+Q3, even though the storage sequence of NUMERIC_EMPTY,
+NUMERIC_EMPTY_2, CHARACTER_EMPTY, and CHARACTER_EMPTY_2 are all the
+same.
+
+This does not look very consistent with the situation in Q3.
+
+ANSWER:
+
+A1.  The program is conforming and prints T.
+
+A2.  The program was not intended to conform; SEQUENCE makes no sense
+     when there are no components.  An edit is needed to correct this.
+
+A3.  The program does not conform as a sequence type must have at
+     least one component.
+
+A4.  The program is conforming.  The apparent design inconsistency is
+     not an error in the standard.
+
+EDIT to 10-007r1:
+
+[24:11+] 1.6.2, append new paragraph after the previous edits in
+         corrigenda 1 and 2,
+  "Fortran 2003 permitted a SEQUENCE type to have no components.  That
+   is not permitted by this part of ISO/IEC 1539."
+{Incompatibility with Fortran 2003.}
+
+[62:20+] 4.5.2.3, after constraint C436
+  Insert new constraint
+    "C436a (R425) If SEQUENCE appears, the type shall have at least
+           one component."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: m201  13-266   Submitted
+         m201  13-266r1 Revised
+         m201  13-266r2 Passed by J3 meeting
+
+----------------------------------------------------------------------

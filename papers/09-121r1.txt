@@ -1,0 +1,164 @@
+                                                            J3/09-121r1
+To: J3
+From: Malcolm Cohen
+Subject: Interoperability defects
+Date: 2009/02/11
+
+
+1. Introduction
+
+This paper contains an interp request against Fortran 2003 and a separate
+UTI insertion on a related (not the same) topic in Fortran 2008.
+
+
+2. Interp Request
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0129
+TITLE: C_LOC of character substrings
+KEYWORDS: interoperability
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+  SUBROUTINE S(A,I,K)
+    USE ISO_C_BINDING
+    CHARACTER(*),TARGET :: A
+    CHARACTER(:),ALLOCATABLE,TARGET :: B
+    TYPE(C_PTR) P1,P2,P3,P4,P5
+    P1 = C_LOC(A(1:1))    ! *1
+    P2 = C_LOC(A(I:I))    ! *2
+    P3 = C_LOC(A(1:))     ! *3
+    P4 = C_LOC(A(I:K))    ! *4
+    ALLOCATE(CHARACTER(1)::B)
+    P5 = C_LOC(B)         ! *5
+  END SUBROUTINE
+
+C_LOC (case 1) requires of its argument that it have interoperable
+type and type parameters (15.1.2.5, p395).  Case 2 does not apply
+because character type has a length type parameter.
+
+15.2.1 states
+  "if the type is character, interoperability also requires that the
+   length type parameter be omitted or be specified by an
+   initialization expression whose value is one".
+
+However, a substring does not have a declared type parameter that can
+be omitted or specified by an initialization expression.  Even in the
+reference marked *1, it is the substring starting and ending positions
+that are specified by initialization expressions, not the substring
+length.  In any case, if *1 satisfied the quoted requirement then *3
+also has its starting and ending positions specified by by
+initializations "or omitted".  In case *2, it must be totally obvious
+that the length has to be 1 since the expressions are lexically
+identical with no user function references, but neither are
+initialization expressions.  If I==K, it would be reasonable to expect
+*4 to be interoperable but it certainly does not satisfy the stated
+requirements.  Or, another interpretation would be that for substrings
+the length type parameter is by definition "omitted" since they have
+no syntax for its specification: in which case the question would
+arise as to what happens for zero-length substrings.
+
+It seems that the authors of the requirement forgot that "variables"
+include "substrings".
+
+Finally, case *5 is totally ambiguous because B has multiple length
+specifications, one which does not satisfy the requirement (the
+declaration) and one which does (the ALLOCATE statement).
+
+ANSWER:
+
+C_LOC should only require nonzero length, which corresponds to the
+requirement we make for arrays.
+
+Furthermore, the description of interoperability of intrinsic types
+is confusing for type CHARACTER.
+
+Edits are provided to fix the defects.
+
+EDITS:
+
+[395:8(16.1.2.5)] In the <<Argument.>> paragraph,
+  Before "type parameters" insert "kind".
+
+[395:16+] Insert new sentence after list:
+  "X shall not be a zero-length string."
+
+[396:5-7] Replace "; if ... one." with
+  ".  If the type is character, the length type parameter is
+   interoperable if and only if its value is one."
+{Reword so that the type/kind can be interoperable even if the
+ length is not.}
+
+[399:2-2(15.2.4p1)] Before "scalar" insert "named",
+{I think this is supposed to be talking about named variables only,
+ not about subobjects.}
+                    Change "if" to "if and only if"
+{Seems to be broken...}
+                  Change "and" to a comma,
+                  At the end of the sentence insert
+  ", and if it is of type character its length is not assumed or
+   declared by an expression that is not an initialization
+   expression".
+{It seems more straightforward to forbid the invalid than to require
+ the valid.}
+
+[399:7-8(15.2.5)] Change "An array Fortran variable"
+                  to "A Fortran variable that is a named array",
+                  Change "if" to "if and only if",
+                  Change "and" to a comma,
+                  At the end of the sentence insert
+  ", and if it is of type character its length is not assumed or
+   declared by an expression that is not an initialization
+   expression".
+
+SUBMITTED BY:  Malcolm Cohen
+
+HISTORY: 09-nnn      m187   Submitted.
+
+----------------------------------------------------------------------
+
+
+3. Additional Defect in 09-007
+
+C_LOC no longer allows character scalar operands; edit supplied to fix
+that at the same time as fixing the character length issues.
+
+[436:22] Change "be a contiguous variable with" to "have",
+         Before "type parameters" insert "kind".
+
+[436:24] After "array, it shall" insert "be contiguous and",
+         After "size." insert "It shall not be a zero-length string.".
+
+[437:21-22] Replace "; if ... one." with
+  ".  If the type is character, the length type parameter is
+   interoperable if and only if its value is one."
+{Reword so that the type/kind can be interoperable even if the
+ length is not.}
+
+[440:3-4(15.3.5p1)] Before "scalar" insert "named",
+{I think this is supposed to be talking about named variables only,
+ not about subobjects.}
+                    Change "if" to "if and only if"
+{Seems to be broken...}
+                  Change "and" to a comma,
+                  At the end of the sentence insert
+  ", and if it is of type character its length is not assumed or
+   declared by an expression that is not an initialization
+   expression".
+{It seems more straightforward to forbid the invalid than to require
+ the valid.}
+
+[440:8-9(15.3.6)] Change "An array Fortran variable"
+                  to "A Fortran variable that is a named array",
+                  Change "if" to "if and only if",
+                  Change "and" to a comma,
+                  At the end of the sentence insert
+  ", and if it is of type character its length is not assumed or
+   declared by an expression that is not an initialization
+   expression".
+
+===END===

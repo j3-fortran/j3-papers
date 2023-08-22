@@ -1,0 +1,217 @@
+                                                            08-182
+To: J3
+From: Malcolm Cohen
+Subject: Interp F03/0049
+Date: 2008 May 14
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0049
+TITLE: Separators in list-directed output involving UDDTIO
+KEYWORDS: list-directed output, separators, UDDTIO
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following program:
+
+MODULE m
+  TYPE t
+    INTEGER i
+  END TYPE
+  INTERFACE WRITE(FORMATTED)
+    MODULE PROCEDURE formattedWriteT
+  END INTERFACE
+CONTAINS
+  SUBROUTINE formattedWriteT(dtv, unit, iotype, v_list, iostat, iomsg)
+    CLASS(t),         INTENT(IN)    :: dtv
+    INTEGER,          INTENT(IN)    :: unit
+    CHARACTER(LEN=*), INTENT(IN)    :: iotype
+    INTEGER,          INTENT(IN)    :: v_list(:)
+    INTEGER,          INTENT(OUT)   :: iostat
+    CHARACTER(LEN=*), INTENT(INOUT) :: iomsg
+
+    WRITE(unit, *) dtv%i, 'a'
+  END SUBROUTINE
+END MODULE
+
+PROGRAM foo
+  USE m
+  TYPE(t) :: t1 = t(5)
+  OPEN(10, FILE='foo.txt', ACCESS='SEQUENTIAL', FORM='FORMATTED', &
+       DELIM='NONE')
+  WRITE(10, *), 'xyz', t1, 'zyx'
+END PROGRAM
+
+10.9.2 of Fortran 2003 states that character sequences produced for
+list-directed output are not separated from each other by value
+separators when the delimiter mode is NONE.  The implication of this
+is obvious when the adjacent effective output list items are both of
+character type.  But when user-defined derived-type input/output
+is involved, it is much less clear whether a separator should be
+included in the output.
+
+In the example given, it is unclear whether the output should be:
+ xyz 5 azyx
+or:
+ xyz 5 a zyx
+
+1. Should a separator be inserted between two non-delimited character
+   sequences when one of the character sequences is written by a child
+   data transfer statement, and the other is written by a parent data
+   transfer statement, where both statements are list-directed?
+
+2. Should a separator be inserted between two non-delimited character
+   sequences when the character sequences are written by two different
+   child data transfer statements, where both statements are
+   list-directed?
+
+3. Should a separator be inserted between two character sequences when
+   one of the character sequences is written by a child data transfer
+   statement, and the other is written by a parent data transfer
+   statement, where one of the statements is list-directed and the
+   other is format-directed?
+
+4. Should a separator be inserted between two character sequences when
+   the character sequences are written by two different child data
+   transfer statements, where one of the statements is list-directed
+   and the other is format-directed?
+
+There is also the further question of whether, in the case of
+recursive i/o, this is affected by intervening i/o operations to a
+different unit.  For example, in the modified program:
+
+    MODULE m2
+     TYPE t
+       INTEGER i
+     END TYPE
+
+     INTERFACE WRITE(FORMATTED)
+       MODULE PROCEDURE formattedWriteT
+     END INTERFACE
+
+    CONTAINS
+
+     SUBROUTINE formattedWriteT(dtv,unit,iotype,v_list,iostat,iomsg)
+       CLASS(t),         INTENT(IN)    :: dtv
+       INTEGER,          INTENT(IN)    :: unit
+       CHARACTER(LEN=*), INTENT(IN)    :: iotype
+       INTEGER,          INTENT(IN)    :: v_list(:)
+       INTEGER,          INTENT(OUT)   :: iostat
+       CHARACTER(LEN=*), INTENT(INOUT) :: iomsg
+
+       CHARACTER(100) temp
+
+       WRITE (temp,'(I0)') dtv%i
+       WRITE (unit,*) TRIM(temp)
+     END SUBROUTINE
+
+    END MODULE
+
+    PROGRAM foo2
+     USE m2
+     TYPE(t) :: t1 = t(5)
+
+     OPEN(10, FILE='foo.txt', ACCESS='SEQUENTIAL', &
+          FORM='FORMATTED', DELIM='NONE')
+     WRITE(10, *), 'xyz', t1, 'zyx'
+
+    END PROGRAM
+
+5. Does the second example write
+     xyz 5xyz
+   or
+     xyz5xyz
+
+   That is, in this case, does the data transfer which is an internal
+   file write affect whether 'xyz' and TRIM(temp) are adjacent?
+
+6. Similarly, if the outer list-directed WRITE were to an internal file
+   does an intervening external file i/o operation affect whether the
+   character sequences are considered adjacent (i.e. the opposite way
+   around to the second example)?
+
+ANSWER:
+
+1) No. It is the intent of the standard (10.9.2) that when both the
+   parent and child data transfer statements are both list-directed
+   output statements, or both are namelist output statements, the
+   processor treats the first list item appearing in a child data
+   transfer statement as if that list item had immediately
+   followed the last list item processed by the parent data
+   transfer statement, as long as no other data transfers to that
+   unit occurred in between the processing of those two list items.
+   Therefore, in this case, the two character sequences are
+   considered adjacent.
+
+2) No. It is the intent of the standard (10.9.2) that when two
+   different child data transfer statements are both list-directed
+   output statements, or both namelist output statements, they write
+   to the same unit, and no other data transfers to that unit occur
+   in between the two child data transfer statements, the processor
+   treats the first list item appearing in the second child data
+   transfer statement as if that list item had immediately followed
+   the last list item processed by the first child data transfer
+   statement.  Therefore, in this case, the two character sequences
+   are considered adjacent.
+
+3) It is processor dependent whether or not a separator appears
+   between two such character sequences.  In section 10.9.2, the
+   phrase "adjacent undelimited character sequences" refers to
+   character sequences produced by list-directed output.  When one of
+   the sequences is written by a child or parent output statement
+   that is not list-directed, the exception described in the first
+   paragraph of 10.9.2 does not apply. The other rules for inserting
+   optional blanks around values in list-directed output allow the
+   processor to insert optional leading and trailing blanks around a
+   list item.  The standard does not specify when optional blanks are
+   written; therefore, when two adjacent list items (the values
+   thereof) are written to an output record, and only one of them was
+   written by list-directed input/output, the standard does not
+   specify whether or not any optional blanks appear between those
+   values in the output record.
+
+4) It is processor dependent whether or not a separator appears
+   between two such character sequences.  See answer 3.
+
+5) The result should be "xyz5xyz", that is, the recursive i/o to the
+   internal file does not affect whether the character sequences being
+   written by the outer data transfer statement are considered
+   adjacent.
+
+6) No, if an outer data transfer is to an internal file, then a
+   recursive i/o operation to a different internal file or an external
+   file does not affect whether the character sequences are considered
+   adjacent.
+
+NOTE TO J3:
+
+In Fortran 2008, recursive i/o operations to a different external unit
+are allowed and these also ought not to affect whether the character
+sequences written by the outer data transfer statement are considered
+to be adjacent.  The edit to F2003 below will produce that result when
+applied to the (draft) F2008.
+
+EDITS:
+
+[241:5] In Section 10.9.2, add the following to the end of the
+        first paragraph:
+  "Two undelimited character sequences are considered adjacent when
+   both were written using list-directed input/output, no intervening
+   data transfer or input/output file positioning operations on that
+   unit occurred, and both were written either by a single data
+   transfer statement, or during the execution of a parent data
+   transfer statement along with its child data transfer statements."
+
+SUBMITTED BY: Rob James
+
+HISTORY: 05-140    m171  F03/0049 Submitted
+         05-140r1  m171  Passed by J3 meeting
+         05-170    m172  Failed J3 letter ballot #11
+         06-367r1  m178  Passed by J3 meeting
+         07-272    m181  Passed as changed by J3 letter ballot #13
+         08-155    m184  Failed WG5 ballot #4 N1711-N1721
+         08-nnn    m184  Revised answer.
+
+----------------------------------------------------------------------

@@ -1,0 +1,271 @@
+To: J3                                                     J3/14-149r2
+From: R. Bader
+Subject: Amendments to TS 29113
+Date: 2014 June 26
+References: N1942, N2014
+
+Based on implementation experience by Tobias Burnus and further comments
+by Daniel Chen, Bill Long and others, this paper suggests amendments
+to TS 29113. It is an updated version of 13-261. Edits are written
+against N2014 (14-007r1).
+
+
+Comments on 14-149r1 from Malcolm are mixed in below. Otherwise 149r1
+unchanged.
+
+
+(A) Assumed rank entities
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Fortran lower bounds of an assumed-rank dummy argument that does
+not have the POINTER or ALLOCATABLE attribute should be one; some words
+on bounds and extents are missing for assumed-rank entities. Furthermore,
+C533 must be loosened in order to allow assumed-rank entities to
+have the POINTER or ALLOCATABLE attribute.
+
+EDITS:
+
+[97:29] after "ALLOCATABLE attribute" add
+" that is not an assumed-rank entity (5.3.8.7)"
+
+[99:20+] After C540, add a new paragraph at the end of 5.3.8.7
+
+"The lower bounds of an assumed-rank entity that does not have the
+ POINTER or ALLOCATABLE attribute and is of rank larger than zero
+ are 1; its extents and upper bounds are determined as if it were
+ an assumed-shape array (5.3.8.3).
+ The size, bounds and shape of an assumed-rank entity that has the
+ POINTER or ALLOCATABLE attribute and is of rank larger than zero are
+ determined as if it were a deferred-shape array (5.3.8.4)."
+
+[[For a corresponding C descriptor, [442:42] already specifies
+  the lower bounds for a non-allocatable non-pointer array as zero.]]
+
+Malcolm reply:
+--------------
+A.1 (lower bounds) seems to be an oversight in the TS, so it is a bug
+fix.  The edits are however woeful.
+-> HPC to confirm the fix then EDIT
+
+A.2 (pointer/alloc assumed-rank) seems to be a new feature.  I guess
+that Germany will be requesting this as a "wart".
+ -> /dev/null (just kidding) but needs a WG5 vote anyway
+
+Nick Extra
+----------
+
+A.1 Yes, this is what was agreed.
+
+A.2 Permitting POINTER and ALLOCATABLE was agreed, but the wording of
+the TS may not have reflected the decision or may simply have been
+confusing.
+
+
+
+(B) Descriptors for assumed size objects
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Descriptors for assumed size objects according to section 15.5.2 have
+a dim[].extent value of -1. For some of the functions from section
+15.5.5, it is unclear to which extent such descriptors can appear as
+parameters. In detail,
+
+(B.1) CFI_address
+~~~~~~~~~~~~~~~~~
+
+From the present definition, no valid subscripts[] argument can be
+specified for an assumed-size object. This is too draconian.
+
+EDITS:
+
+[447:1-2] Replace
+    "The value of subscripts[i] shall be within the bounds of
+     dimension i specified by the dim member of the C descriptor."
+
+by
+    "The value of subscripts[i] shall be within the bounds of
+      dimension i of the array described by the C descriptor."
+
+Malcolm reply:
+--------------
+
+B.1 is an editorial fix for integration.  The edits are not good though.
+-> EDIT
+
+Nick Extra
+----------
+
+The intent is that it should be the equivalent of 6.5.3.1p2.  That
+doesn't say anything special about assumed-size.  We could spell it
+out in terms of the dim values, but attempts to do that got awfully
+messy, and we don't want to allow out-of-effective-array addressing.
+
+
+
+(B.2) CFI_select_part
+~~~~~~~~~~~~~~~~~~~~~
+
+The /source/ parameter is presently permitted to be an assumed-size
+object, resulting in assumed-size subobjects that are in general
+non-contiguous. This must be prohibited.
+
+EDIT:
+
+[452:7] After "nonallocatable nonpointer array", add
+" that is not assumed-size".
+
+Malcolm reply:
+--------------
+B.2 looks like a bug fix.  The edits actually reasonable this time
+-> HPC confirm then EDIT
+
+
+(B.3) CFI_setpointer
+~~~~~~~~~~~~~~~~~~~~
+
+The /source/ parameter is presently permitted to be an assumed-size
+object. This must be prohibited.
+
+EDIT:
+
+[453:4] After "nonallocatable nonpointer data object", add
+" that is not an assumed-size array".
+
+Malcolm reply:
+--------------
+B.3 looks like a bug fix.  The edits actually reasonable this time
+-> HPC confirm then EDIT
+
+
+(B.4) Assumed shape dummy matching
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An assumed-size object must not appear as an actual argument associated
+with an assumed-shape dummy. 12.5.2.4 para 14 specifies this for Fortran,
+but I consider it useful to add text that confirms this for the
+interoperation case.
+
+EDIT:
+
+[453:34-] At the end of 15.6, add the following text
+
+"Because an assumed-size object is prohibited from appearing as an
+actual argument associated with an assumed-shape dummy argument
+(12.5.2.4), a descriptor for an assumed-size object is not permitted
+to appear as an actual parameter corresponding to an assumed shape
+dummy argument."
+
+Malcolm reply:
+--------------
+B.4 is already handled in the correct place, reject.  "The value of
+the attribute member of the C descriptor shall be compatible with the
+characteristics of the dummy argument."
+
+Nick Extra
+----------
+
+The attribute member doesn't have anything to do with assumed-size
+versus assumed-shape!  However, B.4 is probably already covered in the
+main body of the standard, and so could be omitted.
+
+
+(C) Descriptor updates not uniquely defined
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For the functions CFI_section and CFI_select_part, it is not clear
+how the /lower_bound/ values are set. It is suggested to retain
+the pre-existing values.
+
+(C.1) CFI_section
+
+EDITS:
+
+[450:22] Replace "a C descriptor" by "an established C descriptor".
+
+[450:27] Replace "Successful execution ... dim members" by
+"Successful execution of CFI_section updates the /base_addr/ and the
+ /extent/ and /sm/ members of the /dim/ member for each array
+ dimension".
+
+The Example Case(ii) needs some minor fixes:
+
+[451:32,33,35] Replace ".lower" by ".lower_bound", thrice.
+
+
+(C.2) CFI_select_part
+
+EDITS:
+
+[452:1] Replace "a C descriptor" by "an established C descriptor".
+
+[452:16]: Replace the sentence "Successful execution ... members" by
+
+"Successful execution of CFI_select_part updates the /base_addr/ member,
+ the /extent/ and /sm/ members of the /dim/ for each array dimension
+ and, in case /result->type/ specifies a Fortran character type,
+ the /elem_len/ member"
+
+Malcolm reply:
+--------------
+C. is addressing an oversight.  I for one do not agree with the
+technical content.  Fortran array sections have all lower bounds ==1,
+since these functions are providing the same feature for C they should
+be the same (or 0 for C friendliness).
+
+C. also contains editorial fixes...
+
+Nick Extra
+----------
+
+The intent is that the lower bounds should be left as on entry, which
+will generally be as set up by CFI_establish.
+
+
+
+(D) Allow scalars to be argument associated with assumed-size TYPE(*)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This has been dealt with via 13-283. However I suggest a change to
+an example in Annex C.11.7:
+
+EDITS:
+
+[542:8] replace "[ z ]" by "z".
+
+[542:9-10] replace ", but it is necessary ... pass it" by
+"; the scalar z is treated as if it were a sequence associated
+ array of size one."
+
+Malcolm reply:
+---------------
+D. seems unimportant but looks editorial anyway
+
+
+
+(E) Token for assumed-rank entities.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The sequence of two dots should be listed as a token in section 3.2.1
+of the Fortran standard, to prevent a declaration of the form
+
+real, dimension(. .) :: a
+
+EDIT:
+
+[44:10] After ";", add ", .."
+
+Malcolm reply:
+--------------
+E. is definitely editorial
+
+
+
+Summary comment from Malcolm:
+-----------------------------
+
+So I would recommend that (after confirming the relevant technical
+details of the A.1 fix) you just send A.1, B.*, C.[451:32,33,35], D
+and E directly to /EDIT.  Since this paper is such a "portmanteau" I
+will make a new paper with the /EDIT recommendations for the above.
+
+

@@ -1,0 +1,206 @@
+								J3/98-190r2
+
+Date:		13 August 1998
+To:		J3
+From:		Dick Hendrickson/JOR
+Subject:	R4d:  Control of I/O rounding  -  Syntax and Edits
+Reference:	J3/98-111R2, J3/97-144
+
+Rationale:
+   This paper is a refinement of the preliminary specs that were passed in 
+J3/97-144. 
+   These specs:
+   1. Provide a feature necessary for development of an industrial quality 
+interval arithmetic module.
+   2. Provide a mechanism, presently unavailable, by which processors can 
+conform to the base conversion aspects of IEEE arithmetic.  This mechanism 
+is such that minimal functionality is also provided in a consistent way on 
+processors that choose not to conform to IEEE base conversion 
+specifications.
+
+The basic idea is to add new rounding control facilities modeled after BN 
+and BZ. They will control the way a processor must round real and complex 
+values for F, E, EN, ES, D, and G formatting, both on input and on output.
+
+There are five modes provided:
+RU          Round up
+RD          Round down
+RZ          Round to zero
+RN          Simulated round to nearest
+RP          Processor dependent default rounding
+
+The intent is to mimic  IEEE 754-1985 rounding modes with RU, RD, RZ, and 
+RN, but not actually require IEEE arithmetic or specify accuracy.
+
+Edits:
+
+-------------------------------------------------
+Add ROUND= to the list of things which may be changed on a reOPEN
+Page 151, line 41, after "PAD=," add
+" ROUND=,"
+
+-------------------------------------------------
+Add a new connect-spec for OPEN to R905  P152:30+
+
+"	ROUND = scalar-default-char-expr"
+
+-------------------------------------------------
+Add description, PAGE 155:4+
+
+9.3.4.x  ROUND= specifier in the OPEN statement
+The scalar-default-char-expr shall evaluate to one of UP, DOWN, ZERO, 
+NEAREST, or PROCESSOR_DEFINED.  The ROUND= specifier is permitted only for 
+a file being connected for formatted input/output. This specifies the 
+initial rounding mode for a file connection.  The ROUND= specifiers 
+correspond to round edit descriptors RU, RD, RZ, RN, and RP respectively.
+
+
+If this specifier is omitted, the rounding mode is processor dependent. 
+ The actual mode may be any one of the above five modes.
+
+Note 9.x
+A processor is free to select any rounding mode for the default mode.  The 
+mode might correspond to UP, DOWN, ZERO or NEAREST; or it might be a 
+completely different rounding mode.  End note
+
+In what follows, the term "decimal value" means the exact decimal number 
+as given by the character string, while the term "internal value" shall 
+mean the number actually stored (typically in binary form) in the 
+processor.  For example, in dealing with the decimal constant 0.1, the 
+decimal value is the exact mathematical quantity 1/10, which may be 
+represented on a binary processor with three binary digits with the 
+internal value (0.110)_2 * 2**(-3) = 3/32.
+
+The decimal value resulting from internal to decimal conversion when the 
+UP specifier is in effect shall be greater than or equal to the internal 
+value that has been converted. Similarly, the internal value resulting 
+from decimal to internal conversion when the UP specifier is in effect 
+shall be greater than or equal to the decimal value that has been 
+converted. The decimal value resulting from internal to decimal conversion 
+when the DOWN specifier is in effect shall be less than or equal to the 
+internal value that has been converted. Similarly, the internal value 
+resulting from decimal to internal conversion when the DOWN specifier is 
+in effect shall be less than or equal to the decimal value that has been 
+converted. The decimal value resulting from internal to decimal conversion 
+when the ZERO specifier is in effect shall be equal to the internal value 
+that has been converted or closer to zero than the internal value that has 
+been converted. Similarly, the internal value resulting from decimal to 
+internal conversion when the ZERO specifier is in effect shall be equal to 
+the decimal value that has been converted or closer to zero than the 
+decimal value that has been converted. The decimal value or internal value 
+resulting from the I/O conversion when the NEAREST specifier is in effect 
+shall correspond to "round to nearest," but need not actually be round to 
+nearest on processors that do not support the IEEE standard.  When the 
+PROCESSOR_DEFINED specifier is in effect, rounding during conversion shall 
+be a processor dependent default mode. PROCESSOR_DEFINED may correspond to 
+one of the other four modes.
+
+On processors that support IEEE rounding on conversions, UP shall 
+correspond to upward rounding, DOWN shall correspond to downward rounding, 
+ZERO shall correspond to round to zero, and NEAREST shall correspond to 
+ "round to nearest," as specified in 5.6 of ANSI/IEEE 754-1985.
+
+-------------------------------------------------
+Make RU, etc. stack up like BN for DT I/O
+Page 171, line 33, after "SS," add
+" RU, RD, RZ, RN, RP,"
+
+-------------------------------------------------
+Add a new  inquire-spec to INQUIRE R926  page 176:31+
+
+"           ROUND = scalar-default-char-variable"
+
+
+
+Add description  page 180:25+
+
+"9.7.1.x  ROUND= specifier in the INQUIRE statement
+The scalar-default-char-variable in the ROUND= specifier is assigned one 
+of the values UP, DOWN, ZERO, NEAREST, or PROCESSOR_DEFINED corresponding 
+to the rounding control in effect for the file connected for formatted 
+input/output.  If there is no connection, or if the connection is not for 
+formatted input/output, the scalar-default-char-variable is assigned the 
+value UNDEFINED.
+
+Note 9.y
+If no rounding mode was specified in an OPEN statement a processor is free 
+to return PROCESSOR_DEFINED as the result of the inquire statement, even 
+if the processor default corresponds to one of the other rounding modes. 
+ end note " 
+
+-------------------------------------------------
+Add round edit descriptor to control edit descriptors in R1010  page 
+185:19+
+
+"				or	round-edit-desc"
+
+Page 185:33+
+
+"R101x round-edit-desc	is	RU
+or	RD
+or	RZ
+or	RN
+or	RP"
+
+--------------------------------------------------
+Describe how format revision works  Page 187:3
+After "(10.6.x)," add
+" the rounding mode edit descriptor (10.6.x),"
+
+--------------------------------------------------
+Describe how rounding interacts with scale factors.
+Page 196, 25+ add new paragraph
+If RU, RD, RZ, or RN rounding is in effect it is as if:
+* On input the scale factor is applied to the external representation and 
+then this is converted using the current rounding mode.
+* On output the internal representation is converted using the current 
+rounding mode and then the scale factor is applied to the converted 
+character string.
+
+----------------------------------------------
+Add new section   196:40+
+
+"10.6.x  RU, RD, RZ, RN, and RP editing
+The round edit descriptors may be used to control the rounding mode during 
+conversion of real and complex values in formatted input/output (9.3.4.x). 
+ At the beginning of execution of each formatted input/output statement 
+for a file connected by an OPEN statement, the rounding mode is that 
+established by the OPEN statement; an internal file or a preconnected file 
+that has not been opened is treated as if the file had been opened with no 
+ROUND= specifier.  
+
+The round edit descriptors RU, RD, RZ, RN, and RP correspond to the ROUND= 
+specifiers UP, DOWN, ZERO, NEAREST, and PROCESSOR_DEFINED respectively.
+
+The round edit descriptors affect only D, E, EN, ES, F, and G editing."
+
+-------------------------------------------------
+Add an inquiry function, IEEE_SUPPORT_IO([X]), after IEEE_SUPPORT_INF. 
+page 335:38+
+
+"15.9.x  IEEE_SUPPORT_IO([X])
+Description.  Inquire if the processor supports the IEEE IO base 
+conversion rounding
+
+Class.           Inquiry function
+
+           Argument.    X (optional) shall be of type real and such that
+                               IEEE_SUPPORT_DATATYPE(X) has the value   
+                               true.  It may be scalar or array valued.
+
+           Result characteristics.  Default logical scalar
+           Result value.  The result has the value true if the processor 
+           supports IEEE base conversion as described in section 5.6 of 
+           ANSI/IEEE 754-1985 for the modes UP, DOWN, ZERO, and NEAREST; 
+           otherwise it has the value false.
+
+           Example.     IEEE_SUPPORT_IO(X) has the value true if the 
+                        processor supports IEEE base conversion for X.
+
+Add J3 note, "We need to add IEEE_SUPPORT_IO to the lists and sections at 
+the start of chapter 15."  end J3 note
+
+Add J3 note, 'We need to revisit the rule that the argument "shall be of 
+type real and such that IEEE_SUPPORT_DATATYPE(X) has the value true" since 
+this makes it impossible to write a portable program that uses this 
+function on a machine that doesn't support IEEE for some real types.

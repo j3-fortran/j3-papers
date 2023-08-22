@@ -1,0 +1,192 @@
+To: J3                                                     J3/19-212r1
+From: Bill Long
+Subject: US-23 Part 2, Standardizing use of BOZ constants 
+Date: 2019-August-09
+Reference: 19-132
+
+Discussion:
+-----------
+
+This paper describes Part 2 (of 3) of the BITS proposal, US-23. 
+
+Several common extensions for the usage of BOZ constants violate the
+constraint 
+
+C7109 (R764) A boz-literal-constant shall appear only as a
+             data-stmt-constant in a DATA statement, or where
+             explicitly allowed in 16.9 as an actual argument of an
+             intrinsic procedure.
+
+Several of the requests that lead to the proposal US-23 were actually
+cases where usage of these sorts of extensions lead to nonportable
+code. A side effect of adopting the full BITS data type is to
+automatically make these uses conforming with portable syntax and
+semantics.  However, a much smaller change is to relax C7109 and
+specify semantics for several usages of BOZ constants corresponding to
+commonly implemented extensions.
+
+These extensions include a BOZ constant as the expr in an intrinsic
+assignment where the variable is of type INTEGER or REAL.  If Table
+10.8 Intrinsic assignment type conformance in 10.2.1.2 Intrinsic
+assignment statement is expanded to permit BOZ constants for "Type of
+expr" in the integer and real rows, then the rules in Table 10.9
+Numeric conversion and the assignment statement specify the expected
+interpretation since BOZ constants are already allowed as the expr
+argument to both the INT and REAL intrinsics.
+
+In addition to assignment (and the corresponding initializations of
+named constants), the proposal is to allow array constructors that
+include a type specification, and the appearance of BOZ constants as
+I/O list items in a WRITE statement.
+
+
+Requirements
+------------
+
+Allow the following usage of BOZ constants beyond what is allowed in
+C7109, as follows:
+
+A: BOZ as an initialization in the definition of an integer named
+   constant.
+
+B: BOZ as an initialization in the definition of a real named
+   constant.
+
+C: BOZ as the expr of an intrinsic assignment to an variable of type
+   INTEGER.
+
+D: BOZ as the expr of an intrinsic assignment to an variable of type
+   REAL.
+
+E: BOZ constants that each have the same number of bits as ac-values
+   with a type-spec of INTEGER.
+
+F: BOZ constants that each have the same number of bits as ac-values
+   with a type-spec of REAL. Each ac-value must have a bit sequence
+   that is a valid representation for a value of the specified KIND of
+   REAL.
+
+G: BOZ constant as an output-item in a WRITE statement corresponding to
+   a B, O, or Z format edit descriptor.
+
+
+A simple test program compiled with various compiler reveals the
+existing support for these extensions:
+
+
+           A    B    C    D    E    F    G
+
+Cray       Y    Y    Y    Y    Y    Y    Y
+
+Fujitsu    Y    Y    Y    Y    Y    Y    N
+
+gfortran   Y    Y    Y    Y    Y    N    Y
+
+IBM        Y    Y    Y    Y    Y    Y    Y
+
+Intel      Y    Y    Y    Y    N    N    Y
+
+PGI        Y    Y    Y    Y    Y    Y    Y
+
+
+Notes: gfortran requires the -fno-range-check option to compile the
+       test code.
+
+       PGI required replacement of the MASKL reference with an
+       equivalent shift operation.
+
+       Fujitsu required wrapping the output list items in INT()
+       references
+
+Otherwise all of the compilers compiled the test code with no extra
+options and without any error messages and the resulting program
+executed with compare test successor failure as shown above. 
+
+The program:
+
+program test_bits
+use,intrinsic :: iso_fortran_env, only:int64, real64
+implicit none
+
+! A: Define integer with largest magnitude negative number, 
+!   (also a sign-bit mask)
+
+integer(int64),parameter :: lbmask = Z"8000000000000000"
+integer(int64),parameter :: lbmask1 = maskl(1, int64)
+
+! B: Define reals using BOZ constants
+
+real(real64),parameter :: one = Z"3FF0000000000000"
+real(real64),parameter :: two = Z"4000000000000000"
+real(real64),parameter :: three = Z"4008000000000000" 
+
+integer(int64) :: i,j,k,l,m,n(3)
+real(real64) :: a,b,c,d(3)
+
+write (*,100) "Value ", lbmask, " should be equal to ",   lbmask1
+write (*,100) "Got : ",one, " Expected: ", 1.0_real64
+write (*,100) "Got : ",two, " Expected: ", 2.0_real64
+write (*,100) "Got : ",three, " Expected: ", 3.0_real64
+
+
+
+! Use of BOZ constants as arguments to bitwise operations
+! (This is already conforming, included as a check.)
+
+i = 7
+j = iand (i, z"0000000000000003")
+
+write (*, 100) "Got : ", j, " Expected: ", 3
+
+! C: Intrinsic assignment to integer with expr a BOZ constant
+
+k = Z"1010101010101010"
+
+! D: Intrinsic assignment to real with expr a BOZ constant
+
+write (*,100) "Got : ",k, " Expected: ", Z"1010101010101010"
+
+a = Z"3FF0000000000000"
+
+write (*,100) "Got : ", a, " Expected: ", 1.0_real64
+
+
+! E: Array constructor in intrinsic assignment to integer
+
+n = [integer(int64) :: Z"1111111111111111", &
+   Z"2222222222222222",Z"3333333333333333"]
+
+write (*,100) "Got : ", n(1), " Expected: ",Z"1111111111111111"
+write (*,100) "Got : ", n(2), " Expected: ",Z"2222222222222222"
+write (*,100) "Got : ", n(3), " Expected: ",Z"3333333333333333"
+
+! F: Array constructor in intrinsic assignment to real
+
+d = [real(real64) :: Z"3FF0000000000000", & 
+   Z"4000000000000000",  Z"4008000000000000"]
+
+write (*,100) "Got :", d(1), " Expected: ",Z"3FF0000000000000"
+write (*,100) "Got :", d(2), " Expected: ",Z"4000000000000000"
+write (*,100) "Got :", d(3), " Expected: ",Z"4008000000000000"
+
+100 format (a,Z18.16, a, z18.16)
+
+end program test_bits
+
+
+
+Sematics and Syntax
+-------------------
+(to be supplied) 
+
+Edits to 18-007r1
+-----------------
+(to be supplied)
+
+
+
+
+
+
+
+

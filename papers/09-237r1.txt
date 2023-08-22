@@ -1,0 +1,123 @@
+                                                                  09-237r1
+To: J3
+From: Malcolm Cohen
+Subject: Recursive constraint for specific calling same-named generic
+         procedure
+Date: 2009 August 13
+
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0135
+TITLE: Interaction between RESULT, recursion, and host generic
+KEYWORDS: RESULT, generic, recursion
+DEFECT TYPE: Interpretation
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+
+  MODULE example
+    INTERFACE f
+      MODULE PROCEDURE f0,f
+    END INTERFACE
+  CONTAINS
+    INTEGER FUNCTION f0(n) RESULT(y)
+      y = n + 1
+    END FUNCTION
+    INTEGER FUNCTION f(n1,n2) RESULT(y2)
+      y2 = f(n1+n2)
+    END FUNCTION
+  END MODULE
+
+Q1. Does the reference to F in the assignment to Y2 refer to the
+generic F (and is thus a valid reference to F0) or to the specific F
+(and is thus an invalid recursive reference to itself with the wrong
+number of arguments)?
+
+Section 12.5.2.1 (Function subprogram, at lines 31-33
+on page 296) states:
+"If RESULT is specified, [...] all occurrences of the
+ function name in execution-part statements in the
+ scoping unit refer to the function itself."
+That would appear to indicate that it is a reference to the
+specific F itself, and thus invalid.
+
+How should the rules in 12.4.4 for resolving named procedure
+references be applied to this?  In particular, for the reference to F
+from within F,
+
+Q2. Is F established to be generic by rule (1)(d)?
+    If so, that should mean that the reference to F within itself
+    is a valid reference to the generic F (then resolved to F0).
+
+Q3. Is F established to be specific by rule (2)(e)?
+    Even if F is not established to be generic, if it is established
+    to be specific then the subsequent rule (6) in 12.4.4.2 means
+    the reference is valid, being resolved via host association to the
+    generic F (then resolved to F0).
+
+Q4. If F is not established, then rule (3) in 12.4.4.3 indicates the
+    reference would be to the external procedure F.  That does not
+    seem to make sense.
+
+Consider the case where F instead looks like this:
+
+    RECURSIVE INTEGER FUNCTION f(n1,n2) RESULT(y2)
+      IF (n1>1 .AND. n2>1) THEN
+        y2 = f(n1-1,n2-1)
+      ELSE
+        y2 = MAX(n1,n2)
+      END IF
+    END FUNCTION
+
+This would appear to be a valid subprogram using the interpretation in
+12.5.2.1 (that F is a reference to itself), but if F is not
+established then it would not be valid.
+
+Q5. Is this example conforming?
+
+ANSWER:
+
+(1) The analysis is correct, the use of F within the function F
+    is, as stated, a reference to F itself (and thus the example
+    is invalid).
+
+(2) F is not established to be generic: it contains a declaration of F
+    (the FUNCTION statement itself) so the generic in the host in the
+    rule (1)(d) does not apply.
+
+(3) According to the rules as they are now, F is not established to be
+    specific: rule (2)(e) is inapplicable because the FUNCTION
+    statement is a declaration of F.  This is an error in the standard.
+
+(4) You are correct, that would not make sense.  This is an error in
+    the standard.
+
+(5) You are correct, these rules are contradictory.  The intent was
+    that this example should be conforming.
+
+Edits are supplied to correct the rules in 12.4.4 to account for
+recursive self-references to functions with RESULT clauses.  The
+function F should be established to be specific, and the reference
+should be to itself.
+
+EDITS:
+
+[276:36+] Insert new case
+  "(a2) if the scoping unit is a subprogram that defines a procedure
+        with that name;"
+{Establish the name to be (only) specific.}
+
+[278:15+] Insert new case
+  "(3a) If the scoping unit is a subprogram that defines a procedure
+        with that name, the reference is to that procedure."
+{Resolve to the procedure.}
+
+SUBMITTED BY: Tobias Burnus
+
+HISTORY: 09-237    m189  Submitted
+         09-237r1  m189  Revised with draft answer
+
+----------------------------------------------------------------------

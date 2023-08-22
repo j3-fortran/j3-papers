@@ -1,0 +1,73 @@
+**************************************************
+                                        J3/03-279
+
+Date:      November 13, 2003
+To:        J3
+From:      Aleksandar Donev
+Subject:   Typeless arguments in MPI
+**************************************************
+
+__________________________________________
+The Problem
+__________________________________________
+
+The following issue has been discussed on the J3 e-mail list:
+
+Many C libraries dealing with IO/communication, and in particular MPI, have "typeless" dummy arguments (typically for buffers). These are typically a void pointer in the C interface. Consider the following (simplified) C prototype:
+
+void MPI_Send(void * buffer, int count);
+
+and its Fortran equivalent:
+
+INTERFACE
+	SUBROUTINE MPI_Send(buffer, count), BIND(C,"MPI_Send")
+		TYPE(C_PTR), VALUE :: buffer
+		INTEGER(C_INT), VALUE :: count
+	END SUBROUTINE
+END INTERFACE			
+
+The actual argument in C can be a pointer (C array) of any type, and an implicit conversion into a void pointer happens:
+
+float * buffer;
+buffer=malloc(...);
+MPI_Send(buffer,10); // Works in C
+
+Fortran has a very different system in which the types of the dummy and actual must match and no implicit conversion happens at the call point. Therefore, one cannot call the MPI_Send procedure with anything but a C pointer as an actual argument:
+
+REAL(C_FLOAT), ALLOCATABLE, TARGET :: buffer
+ALLOCATE(buffer(...))
+CALL MPI_SEND(buffer,10) ! NOT OK in Fortran
+
+but the following is OK:
+
+CALL MPI_SEND(C_LOC(buffer),10)
+
+__________________________________________
+Proposed solution
+__________________________________________
+
+I propose that modifications be made to the Fortran standard to allow the call to MPI_SEND without the C_LOC:
+
+! Make this legal:
+REAL(C_FLOAT), ALLOCATABLE :: buffer ! No TARGET necessary?
+ALLOCATE(buffer(...))
+CALL MPI_SEND(buffer,10) ! Should be OK
+
+The reason is two fold:
+1) It allows for easier interfacing to numerous existing libraries, including the existing Fortran interface to MPI (which is flawed as described above), from the user perspective.
+2) It will allow one to reuse current codes which use vendor extensions or simply non-conforming tricks to call MPI_SEND with different types. This is friendly to existing practices.
+
+__________________________________________
+Impact to Standard
+__________________________________________
+
+This will have no cost for the implementations since many implementations already have a switch that basically lets one have type mismatches, and since the above change is really just a syntactic wrapper for something everyone already knows how to do: Just pass the memory address.
+
+Incorporating this into the standard is not entirely trivial. The proposed change will requre that special provisions be made in argument association in the case when the dummy is a C pointer passed by VALUE and the actual is of a different type. Essentially what we would say is that it is as if the user had put a C_LOC in the call:
+
+! This:
+CALL MPI_SEND(buffer,10)
+! should be the same as:
+CALL MPI_SEND(C_LOC(buffer),10)
+
+Whether we relax the reqirement that the actual be a TARGET (since the actual of C_LOC needs to) is a different matter. I would suggest that TARGET not be required, but there are issues to consider here such as contiguity requirements and the provision for copy in/copy out (think Interp 125). For example, in some cases, one wants to make sure no copy in/copy out happens (such as asynchronous communication calls), and in Fortran using the TARGET attribute is the *only* way to ensure this (Interp 125).

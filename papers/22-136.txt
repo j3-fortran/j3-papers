@@ -1,0 +1,221 @@
+To: J3                                                     J3/22-136
+From: Malcolm Cohen
+Subject: Passing an array element to an array dummy argument
+Date: 2022-March-02
+Reference: 22-105
+
+1. Introduction
+
+There are problems with passing an array element of a non-contiguous array
+to an array dummy argument; we permit this in more situations than we
+perhaps should, and in particular, enable sequence association of the whole
+array element sequence following the array element actual argument with the
+array dummy argument.
+
+These problems occur in additional situations in Fortran 2018 that did not
+exist in Fortran 2003.
+
+Ironically, this is actually implementable for most occurrences of assumed
+type, as there will be an explicit interface in scope, so the compiler
+could make a contiguous copy of "the rest of the array". However, this
+would be an undue burden on the implementor, and was probably not intended
+by the feature.
+
+
+2. Problematic examples not left as an exercise to the reader
+
+(a) Passing an array element of an assumed-shape/pointer character
+    array to an explicit-shape or assumed-size dummy argument.
+
+    Fortran 2003 added the ability to pass character scalars (of
+    default or C kind) to character array dummies by sequence
+    association, but because the edits were botched, it passes the
+    whole rest of the array even when the array is not contiguous,
+    not just the array element.
+
+    See the first example "sub2" in the interp below.
+    This is particularly bad as no explicit interface is required,
+    so the compiler may have no clue that it should pass the whole
+    array.
+
+(b) We had a special request to allow passing scalars to TYPE(*)
+    DIMENSION(*), but because of the previous botchedness, again we
+    have enabled sequence association to pass the whole rest of a
+    discontiguous array.
+
+    See the second example "sub1" in the interp below.
+
+----------------------------------------------------------------------
+
+NUMBER: F18/036
+TITLE:  Array element argument for sequence association
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Paragraph 14 of 15.5.2.4 Ordinary dummy variables states
+
+If the actual argument is a noncoindexed scalar, the corresponding
+dummy argument shall be scalar unless
+ - the actual argument is default character, of type character with
+   the C character kind (18.2.2), or is an element or substring of an
+   element of an array that is not an assumed-shape, pointer, or
+   polymorphic array,
+ - the dummy argument has assumed-rank, or
+ - the dummy argument is an assumed-type assumed-size array.
+
+15.5.2.11 Sequence association, paragraphs 2 and 3, say
+
+   "An actual argument represents an element sequence if it is ... an
+    array element designator...
+    If the dummy argument is not of type character with default or C
+    character kind, and the actual argument is an array element
+    designator, the element sequence consists of that array element
+    and each element that follows it in array element order.
+
+    If the dummy argument is of type character with default or C
+    character kind, and has nonzero character length, the storage unit
+    sequence is as follows:
+    ...
+    - if the actual argument is an array element or array element
+      substring designator, the storage units starting from the first
+      storage unit of the designator and continuing to the end of the
+      array;"
+
+Consider
+    SUBROUTINE sub2
+      CHARACTER(10),TARGET :: a2(20,30)
+      CHARACTER(:),POINTER :: p2(:,:)
+      p2 => a2(::2,::3)(3:4)
+      CALL bad2(p2(1,1))
+    END SUBROUTINE
+    ! There is no explicit interface here.
+    SUBROUTINE bad2(b2)
+      CHARACTER b2(*)
+      ...
+    END SUBROUTINE
+
+15.5.2.11 says that the storage units of b2 are the storage units of
+p2 starting from the array element - in this case p2(1,1) - going on
+to the end of the array (p2); these are
+    a2(1,1)(3:3), a2(1,1)(4:4), a2(3,1)(3:3), a2(3,1)(4:4), ...
+which are discontiguous in storage. But as an assumed-size array, b2
+is supposed to have contiguous storage units.
+
+If there were an explicit interface, the compiler could gather all the
+elements of p2 into a temporary, and pass that, similarly to how it
+handles passing p2 itself as an actual argument to an "old style"
+dummy array. But there is not, and it would be completely unreasonable
+to copy the whole of the rest of p2 starting from some arbitrary array
+element into a temporary, when the dummy argument might be scalar.
+
+Q1. Was sequence association for default/C character to the storage
+    units of the whole of the rest of the array intended to apply to
+    non-contiguous arrays, or was the sequence association intended to
+    apply only to the storage units of the array element itself?
+
+Further consider
+
+    SUBROUTINE sub1
+      REAL,TARGET :: a(10,20,30)
+      REAL,POINTER :: p(:,:,:)
+      p => a(::2,::4,::3)
+      CALL bad1(p(1,1,1))
+    END SUBROUTINE
+    SUBROUTINE bad1(b)
+      TYPE(*) b(*)
+      ...
+    END SUBROUTINE
+
+15.5.2.11 says that the element sequence of the actual argument is the
+element sequence of the whole array p, starting from the specified
+array element - in this case p(1,1,1), i.e.
+    p(1,1,1), p(2,1,1),...
+But these correspond to the discontiguous array elements
+     A(1,1,1), A(3,1,1),...
+
+One cannot do anything much with an assumed-type variable other than
+pass it to C, but a C routine is allowed to access all the elements of
+an array so passed. That would be difficult in this case unless the
+Fortran processor makes a copy of the entire rest of P and pass that
+as an argument instead (and copy-back on return if not INTENT(IN)).
+
+Q2. Was sequence association for assumed type to the element sequence
+    of the whole of the rest of the array intended to apply to
+    non-contiguous arrays, or was the sequence association intended to
+    apply only to the array element itself?
+
+ANSWER:
+
+A1. When the array element or array element substring designator is of
+    a potentially discontiguous array is passed, only the storage
+    units of that array element or substring are intended to be
+    passed.
+
+An edit is provided to correct this error.
+
+A2. When an array element of a potentially discontiguous array is
+    passed to an assumed-type assumed-size dummy argument, only that
+    element is intended to be passed.
+
+An edit is provided to correct this error.
+
+EDITS to 18-007r1:
+
+[310:14] 15.5.2.11 Sequence association, p2,
+    After the first sentence, ending "C character kind (18.2.2).",
+    insert a paragraph break.
+    After that (in was-end-of-p2 now-new-p3), factor out
+        "If the dummy argument is not of type character with default
+         or C character kind,"
+    changing the comma to a colon, and turn those two sentences into
+    a bullet list with semicolons.
+    After "and the actual argument is an array element designator"
+    insert "of a simply contiguous array",
+{Avoid the hostages to fortune of listing the allowed ones or the
+ disallowed ones, in favour of what property we want the array to
+ have.}
+    At the end of (was-p2 now-new-p3) append bullet
+        "otherwise, if the actual argument is scalar, the element
+         sequence consists of that scalar".
+
+This makes the new p3 read
+   "If the dummy argument is not of type character with default or C
+    character kind:
+    - if the actual argument is an array expression, the element
+      sequence consists of the elements in array element order;
+    - if the actual argument is an array element designator of a
+      simply contiguous array, the element sequence consists of that
+      array element and each element that follows it in array element
+      order;
+    - otherwise, if the actual argument is scalar, the element
+      sequence consists of that scalar."
+
+[310:19-21] Same subclause, next paragraph (was p3),
+    After "substring designator"
+    insert "of a simply contiguous array".
+    Change the last "if the actual" to "otherwise, if the actual",
+    and delete "and not an array ... designator".
+
+This makes the old p3 read
+   "If the dummy argument is of type character with default or C
+    character kind, and has nonzero character length, the storage unit
+    sequence is as follows:
+    - if the actual argument is an array expression, the storage units
+      of the array;
+    - if the actual argument is an array element or array element
+      substring designator of a simply contiguous array, the storage
+      units starting from the first storage unit of the designator and
+      continuing to the end of the array;
+    - otherwise, if the actual argument is scalar, the storage units
+      of the scalar object."
+
+SUBMITTED BY: John Reid
+
+HISTORY: 22-105   m226  Submitted
+         22-nnn   m226  Revised
+
+----------------------------------------------------------------------
+
+

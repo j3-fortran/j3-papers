@@ -1,0 +1,92 @@
+To:       J3                                                    08-143r1
+From:     Jim Xia
+Subject:  Comment: to disallow coindexed object as a data-ref in
+          procedure-designator
+
+Date: 2008 April 28
+
+INTRODUCTION:
+
+The 2008 standard explicitly declares that a coindexed object can be
+used as the <data-ref> in a <procedure-designator> or <variable> in a
+<proc-component-ref>.  In particular, Note 12.16 on page 286 provides
+the following interpretation for the case
+   "If image I executes a procedure reference in which the variable
+    of a proc-component-ref specifies a procedure pointer on image J,
+    the procedure pointer association is fetched from image J but the
+    invocation of the associated procedure occurs on image I."
+
+This requirement poses extreme challenges to implementors (particularly
+on heterogenous systems), negatively impacts performance, and generates
+inadvertent dependencies on data state on wrong image. To Fortran users,
+the syntax support resembles the "remote procedure calls" and is very
+confusing.
+
+
+DISCUSSION:
+
+Assuming a coarray object, x, is of a derived type, consider a procedure
+call made on image I using the following syntax
+    call x[J]%proc(...)
+
+There are two possible meanings semantically: reference of a procedure
+pointer component of x[J] on image I, or reference a type-bound procedure
+of x[J] on image I.  Let's discuss the two cases separately
+
+1.)  calling the procedure component of x[J]
+  Note 12.16 specifically describes this case.  Base on the description,
+  the support on this functionality poses extreme challenges to
+  implementors.  Unlike data target which can be copied over to image I
+  from J, the procedure text on image J cannot be copied. Instead the
+  implementation has to rely on the address of the procedure target on J
+  and make an invocation on image I based on that address. This leads to
+  a serious problem: the procedure address "fetched" from image J may not
+  be valid on I because the corresponding procedures on images I and J
+  can be located at different addresses.  On a heterogenous system
+  this will certainly be the case (recall that coarrays are vowed to be
+  supported on heterogenous systems as one of the goals of the feature).
+  Therefore this call in general will not work based on the current
+  mechanism for invoking procedure pointers by most implementations. To
+  enable this feature, a significant amount of work (including
+  infrastructure work on how to locate the proper procedure on image I)
+  is required.  Additionally the performance of the procedure call will
+  likely be impacted due to the "mapping" process.
+
+
+2.)  calling the type bound procedure of x[J]
+  For an invocation on type bound procedure, the problem described in the
+  previous section may also exist if object x is polymorphic (in which
+  case the actual procedure call has to be resolved at runtime on image
+  I). Even for the case where x is non-polymorphic and therefore the
+  procedure call can be resolved at compile time, there exists another
+  problem: the type bound procedure very likely have dependencies on data
+  on each image.  The procedure call, x[J]%proc(...), on image I will
+  affect/be affected by data on image I instead of those on J.  This
+  effect has very different semantics from the "remote procedure call"
+  that the syntax may project to the end users. Therefore calling
+  type-bound procedures using coindexed object is also harmful.
+
+
+In addition to two problems described above, there is yet a third problem
+in using syntax x[J]%proc(...).  By the first appearance, this seems to
+indicate that coarrays support "the remote function call" to ANY user
+unless he/she becomes an expert on this topic.  This support will cause
+damage to the language while failing to render meaningful use. Therefore
+it's imperative to disallow this syntax altogether.
+
+
+EDITS to 08-007r2 (WG5 N1723):
+
+   [157:7.2.2.2] add C729a
+   C729a (R741) The <scalar-variable> shall not be coindexed object.
+
+   [285:12.5.1p1] add C1230a
+   C1230a (R1221) <data-ref> shall not be a coindexed object.
+
+   [286:12.5.1] delete Note 12.16
+
+
+SUBMITTED BY: Jim Xia
+
+HISTORY: m184 Submitted
+

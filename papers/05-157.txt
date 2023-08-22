@@ -1,0 +1,107 @@
+
+                                                               J3/05-157
+
+Date:      7 February 2004 
+To:        J3 
+From:      Van Snyder
+Subject:   Add MOLD to ALLOCATE
+
+
+Title: Add MOLD to ALLOCATE
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: J3/02-274, J3/03-254, J3/04-152 
+
+Basic Functionality: 
+
+A MOLD argument should be added to ALLOCATE similar to the SOURCE
+argument, which would only give the type of the allocated data, but not
+the contents. This would allow one to allocate an array of a given type
+given only a scalar of that type, which is needed to design custom
+allocators for various dynamic data structures.
+
+Rationale: 
+
+Certain dynamic data-structures strain the memory allocator to a maximum,
+requesting allocation and deallocation of lots of nodes (i.e., small
+allocations), while in actuality not really changing the total allocated
+memory much. To deal with such situations efficiently across a variety of
+compilers and usage patterns, it is best to include as part of the
+dynamic data structure a memory "allocator". Such an allocator can be
+made type-independent by using a scalar mold to give the type of the
+allocation only, but not the contents.
+
+There are other similar situations where it is desired to allocate a new
+object of unknown dynamic type, and rather then clone the contents of
+another object, perform default initialization on the newly allocated
+object. This is very similar to the "new" operator in C++. 
+
+The current SOURCE in ALLOCATE is not appropriate because it does a clone
+operation:
+
+1. "source-variable is then assigned to allocate-object by intrinsic
+assignment for objects whose declared type is the dynamic type of
+source-variable"
+
+and there is also the restriction:
+
+2. "The source-variable shall be a scalar or have the same rank as
+allocate-object"
+
+which means that one cannot allocate a whole array given just a scalar as
+a type template (mold).
+
+The alternative is to use a SELECT TYPE construct, which requires
+
+1.  The names of the desired types are accessible, and
+
+2.  One must know in advance all desired dynamic types.
+
+Objections to these two requirements were the reason to add SOURCE to
+the Fortran 2003 requirements.
+
+Estimated Impact:
+
+This feature has a modest impact on both the standard and compilers.
+
+This is very simple to incorporate into the standard (Aleks Donev
+proposed detailed edits earlier).
+
+Implementation wise, the only difference with SOURCE is that default
+initialization needs to be performed on a polymorphic variable, i.e.,
+without knowing the type at compile-time. That is, one must have the run
+time support to default-initialize a variable given its type descriptor
+and address. This already needs to be done for polymorphic INTENT(OUT)
+(see 270:38-41 in draft 03-007r2) variables, so the run-time support
+neccessary for it needs to be in compilers already.
+
+Detailed Specification:
+
+Add a MOLD keyword to the ALLOCATE statement.  The allocated object shall
+have the same dynamic type as the object specified by MOLD. Unlike
+SOURCE, use default initialization instead of intrinsic assignment for
+the value of the allocated object. Require the mold to be a scalar even
+if the allocation is for an array.  MOLD and SOURCE shall not both
+appear.
+
+Therefore:
+
+CLASS(base_type), POINTER :: var1, var2
+TYPE, EXTENDS(base_type) :: dynamic_type_of_var2
+END TYPE
+TYPE (dynamic_type_of_var2), TARGET :: var3
+var2 => var3
+ALLOCATE(var1, MOLD=var2)
+
+should be equivalent to:
+
+SELECT TYPE ( var2 )
+  ...
+TYPE IS ( dynamic_type_of_var2 )
+  ALLOCATE(dynamic_type_of_var2::var1)
+END SELECT
+
+History: J3/05-157 at J3 meeting 171

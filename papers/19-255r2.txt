@@ -1,0 +1,357 @@
+To: J3                                                     J3/19-255r2
+From: Gary Klimowicz
+Subject: Add reductions to DO CONCURRENT (US20)
+Date: 2019-October-18
+
+Reference: 18-007r1, 19-198r2
+
+Introduction
+============
+
+Performing a reduction on the array elements computed
+in DO CONCURRENT can be inefficient for large arrays.
+Naive expressions of a reduction are non-conforming or
+inefficient, requiring synchronization or explicit use
+of temporaries.
+
+At meeting 219, J3 approved continued work on this item,
+passing paper 19-198r2.
+
+At meeting 220, plenary approved including REDUCE variables with the
+POINTER attribute. Plenary approved prohibiting REDUCE variables with
+the ASYNCHRONOUS and VOLATILE attributes.
+
+
+Requirements
+============
+
+Provide Fortran support for some of the features of the OpenMP
+reduction clause on numeric and logical intrinsic types.
+
+The proposal should support:
+    1. Extend DO CONCURRENT to include the addition of scalar
+       and array "reduction variables".
+
+    2. Allow multiple reduction variables to be defined for a
+       single DO CONCURRENT.
+
+    3. Support a limited set of intrinsic binary and n-ary operators
+       as reduction operators.
+
+    4. Provide the implicit initialization of the reduction variables
+       consistent with the reduction operators.
+
+    5. Have reduction variable semantics aligned with existing
+       locality specifications for DO CONCURRENT.
+
+    6. Have behavior analogous to a limited version of the OpenMP
+       reduction clause.
+
+
+Specification
+=============
+1. Add a new locality-spec to describe reduction variables.
+   Reduction variables are local to each iteration of the loop,
+   initialized with a suitable value upon entry to the loop, but are
+   related to a defined instance of the reduction variable in the
+   scope outside the loop.
+
+2. Provide a limited set of operators and functions that can be
+   applied to reduction variables. This list is currently
+           + * .AND. .OR. .EQV. .NEQV. MIN MAX IAND IOR IEOR
+
+3. Provide for default initialization of reduction variables.
+   A suitable initial value of an induction variable can be determined
+   by its reduction operator.
+
+4. Provide a limited number of ways that reduction variables can
+   be defined in an iteration.
+   We will limit the use of reduction variables to simplify implementation:
+       var = var op expression
+       var = expression op var
+       var = function (var, expression)
+       var = function (expression, var)
+   for suitable values of op and function.
+   For array reduction variables, var can be a contiguous array section
+   of the reduction variable.
+
+5. Upon normal completion of the DO CONCURRENT the value
+   of each reduction variable will be as if the value of the reduction
+   variable prior to the execution of the DO CONCURRENT was combined
+   with each value of the reduction variable from each iteration of
+   the loop via the reduce operator. This combination could be
+   performed in any order.
+
+6. The processor may make assumptions about how to parallelize the
+   DO CONCURRENT iterations to optimize or eliminate synchronized
+   access to the reduction variables.
+
+7. Reduction variables may have the ALLOCATABLE attribute.
+
+8. Reduction variables may have the POINTER attribute, and a copy
+   of the target is available to the iterations.
+
+9. Reduction variables cannot have the ASYNCHRONOUS or VOLATILE
+   attributes.
+
+8. Reduction variables may be contiguous array sections.
+
+
+
+Edits to 18-007r1
+=================
+
+{ edits in page order }
+
+{ add remark to Introduction in the bullet for Execution control: }
+
+[xiii] add:
+"The REDUCE locality specifier for DO CONCURRENT provides the
+ability to define reduction variables to be calculated on
+the loop."
+
+{ Introduction briefly describes new features }
+
+
+
+{ 11.1.7.2 Form of the DO construct }
+{ Extend the definition of locality-spec to include reduction variables}
+
+[181:9] now reads:
+
+"R1130 locality-spec is LOCAL ( variable-name-list )
+                    or LOCAL_INIT ( variable-name-list )
+                    or SHARED ( variable-name-list )
+                    or DEFAULT ( NONE )"
+
+after "LOCAL_INIT ( variable-name-list )" add
+"or REDUCE (reduce-op : variable-name-list)"
+
+so the resulting rule reads
+"R1130 locality-spec is LOCAL ( variable-name-list )
+                    or LOCAL_INIT ( variable-name-list )
+                    or REDUCE (reduce-op : variable-name-list)
+                    or SHARED ( variable-name-list )
+                    or DEFAULT ( NONE )"
+
+{ Add to rule 1130 the new locality-spec }
+
+
+
+{ Define a limited set of binary operators and procedures that can
+   be used to combine values of the reduction variables}
+
+[181:9+] After rule 1130, add new rules:
+
+"R1130a  reduce-op is binary-reduce-op
+                        or function-reduce-op
+
+R1130b  binary-reduce-op is +
+                        or *
+                        or .AND.
+                        or .OR.
+                        or .EQV.
+                        or .NEQV.
+
+R1130c  function-reduce-op is MIN
+                        or MAX
+                        or IAND
+                        or IOR
+                        or IEOR"
+
+{ The list of permissible reduction operations is defined }
+
+
+{ Add restrictions on the variables in REDUCE locality-specs }
+
+[181:26+] Add a new constraint
+
+"C1128+    A variable-name that appears in a REDUCE locality-spec shall
+           not have the ASYNCHRONOUS, INTENT (IN), OPTIONAL, or
+           VOLATILE attribute, shall not be coindexed, and shall not
+           be an assumed-size array. A variable-name that is not permitted
+           to appear in a variable definition context shall not appear
+           in a REDUCE locality-spec."
+
+{ Reduction variables are not allowed to be ASYNCHRONOUS, INTENT(IN),
+  OPTIONAL, or VOLATILE }
+
+
+{ Reduction variables are of limited type }
+[181:26+] After constraint C1128, add a new constraint:
+"C1128+    A variable that appears in a REDUCE locality-spec
+           shall be a scalar or array of type corresponding to its
+           reduce-op as defined in Table 11.1."
+
+[181:26+] Somewhere near the new constraint, add this table:
+"
+            Table 11.1. The types of the allowed operands
+                      for each reduction operator.
+
+      OPERATOR            ALLOWED TYPES
+      --------            -------------
+        +                 integer, real, complex
+        *                 integer, real, complex
+      .AND.               logical
+      .OR.                logical
+      .EQV.               logical
+      .NEQV.              logical
+       MIN                integer, real
+       MAX                integer, real
+       IAND               integer
+       IOR                integer
+       IEOR               integer"
+
+{ Reduction variables are limited to scalars or arrays of numeric
+  or logical types }
+
+
+
+{ 11.1.7.5 Additional semantics for DO CONCURRENT constructs }
+
+{ Add REDUCE as a new kind of locality }
+
+[184:28-31 p1] Now reads:
+"The locality of a variable that appears in a DO CONCURRENT construct
+is LOCAL, LOCAL_INIT, SHARED, or unspecified. A construct or statement
+entity of a construct or statement within the DO CONCURRENT construct
+has SHARED locality if it has the SAVE attribute. If it does not have
+the SAVE attribute, it is a different entity in each iteration,
+similar to LOCAL locality."
+
+In line 28, replace "LOCAL, LOCAL_INIT, SHARED, or unspecified"
+with "LOCAL, LOCAL_INIT, REDUCE, SHARED, or unspecified"
+so that the first sentence of paragraph 1 reads:
+
+"The locality of a variable that appears in a DO CONCURRENT construct
+is LOCAL, LOCAL_INIT, REDUCE, SHARED, or unspecified. A construct or
+statement entity of a construct or statement within the DO CONCURRENT
+construct has SHARED locality if it has the SAVE attribute. If it does
+not have the SAVE attribute, it is a different entity in each
+iteration, similar to LOCAL locality."
+
+{ REDUCE is added to the types of locality }
+
+
+
+{ Describe REDUCE locality }
+
+[184:43+] Add a paragraph to describe restrictions on REDUCE locality:
+"A variable that has REDUCE locality is a construct entity with the
+same type, type parameters, and rank as the variable with the same
+name in the innermost executable construct or scoping unit that
+includes the DO CONCURRENT construct, and the outside variable is
+inaccessible by that name within the construct. The construct entity
+has the CONTIGUOUS, POINTER, or TARGET attribute if and only if the
+outside variable has that attribute; it does not have the ALLOCATABLE,
+BIND, INTENT, PROTECTED, SAVE, or VALUE attribute, even if the outside
+variable has that attribute. If it is not a pointer, it has the same
+bounds as the outside variable. At the beginning of execution of each
+iteration,
+    - a reduction variable with the ALLOCATABLE attribute shall be
+      allocated before execution of the DO CONCURRENT.
+    - a reduction variable with the POINTER attribute shall be associated
+      before execution of the DO CONCURRENT. The construct entity is
+      associated with a copy of the associated target. The pointer
+      association status of the reduction variable is not allowed to be
+      changed in the loop body.
+    - the construct entity for the reduction variables are defined to
+      have an initial value corresponding to their reduce-op as
+      specified in Table 11.2."
+
+
+[184:43+] Add Table 11.2 near the above edit
+"Table 11.2. The default initial values for
+            each reduction operator.
+
+  OPERATOR          INITIAL VALUE
+  --------          -------------
+    +                     0
+    *                     1
+  .AND.                .TRUE.
+  .OR.                 .FALSE.
+  .EQV.                .TRUE.
+  .NEQV.               .FALSE.
+   MIN                 HUGE(reduction variable)
+   MAX                 nnlmsbtp *
+   IAND                 NOT(0)
+   IOR                    0
+   IEOR                   0
+
+ * nnlmsbtp = the value of the negative number of the largest
+   magnitude supported by the processor for numbers of the type
+   and kind of the reduction variable.
+
+
+{ initial values are defined for variables based on
+  the reduce-op in the reduce locality-spec }
+
+
+
+{ 11.1.7.5 p 2 Add REDUCE to the LOCAL and LOCAL_INIT I/O, TARGET
+  descriptions }
+
+[185:1-4] Lines 1-4 after the bullet list currently reads:
+"If a variable with LOCAL or LOCAL_INIT locality becomes an affector
+of a pending input/output operation, the operation shall have
+completed before the end of the iteration. If a variable with LOCAL or
+LOCAL_INIT locality has the TARGET attribute, a pointer associated
+with it during an iteration becomes undefined when execution of that
+iteration completes.
+
+In line 1, replace "LOCAL or LOCAL_INIT locality" with
+"LOCAL, LOCAL_INIT, or REDUCE locality"
+
+In line 2, replace "LOCAL or LOCAL_INIT locality" with
+"LOCAL, LOCAL_INIT, or REDUCE locality"
+
+so the paragraph now reads:
+"If a variable with LOCAL, LOCAL_INIT, or REDUCE locality becomes an
+affector of a pending input/output operation, the operation shall have
+completed before the end of the iteration. If a variable with LOCAL,
+LOCAL_INIT, or REDUCE locality has the TARGET attribute, a pointer
+associated with it during an iteration becomes undefined when
+execution of that iteration completes."
+
+{ REDUCE behaves like LOCAL and LOCAL_INIT for I/O }
+
+
+
+{ 11.1.7.2 After p2 Add restrictions on the use of reduction variables
+  in the loop body }
+
+[185:4+] Add a paragraph to describe restrictions
+the on use of reduction variables:
+"Variables listed in a REDUCE locality-spec can only appear
+in the following forms within the body of the DO CONCURRENT:
+   var = var binary-reduce-op expression
+   var = expression binary-reduce-op var
+   var = function-reduce-op( [expression-list ,] var [, expression-list] )
+where var is an object-name, an array-element or an array-section."
+
+[185:4+] After the above paragraph, add a constraint requiring the
+designator to be contiguous:
+
+"C1141+   A reduction variable that is an array shall be contiguous."
+
+{ Reduction variable use is restricted }
+
+
+{ Add semantics for loop termination and reduction variables }
+
+[185:4+] After the above, add a paragraph
+"For DO CONCURRENT statements with a REDUCE locality-spec, the value of
+each reduction variable is its value before the DO CONCURRENT combined
+via the reduce-op with the values of each iteration's reduction
+variable at the termination of the iteration. For array reduction
+variables, this application is done elementwise. The application of
+the reduction operators to the results of each iteration can be done
+in any order."
+
+{ Reduction variables actually reduce }
+
+
+
+{ end }
+
+

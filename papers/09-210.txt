@@ -1,0 +1,105 @@
+                                                            09-210
+To: J3
+From: Malcolm Cohen
+Subject: What does "image-independent" really mean?
+Date: 2009 April 23
+
+
+1. Introduction
+
+The term "image-independent" is too vague to be useful.
+We should say what we require.
+
+Maybe we should also require things in the non-image non-coarray case?
+
+
+2. Meanderings
+
+So, let us consider a call and return of procedure S on image 1.  Procedure
+calls happen asynchronously between images.  So what does image-independent
+really mean?
+
+2A. Consider the specific example:
+
+(X) image 1 returns from S the Nth time, and finalises A then B.
+
+(Y) In a subsequent segment, image 2 returns from S.
+
+(Z) In a subsequent**2 segment, image 1 returns from S the (N+1)th time,
+    finalising B then A.
+
+At point (Y), does image 2 use the same order as at (X) or (Z)?
+
+2B. Consider the philosophical example:
+
+If procedure S has an optional argument OPT, and when OPT is present it
+finalises A then B whereas when OPT is not present it finalises B then A.
+
+That is certainly an image-independent algorithm, but it certainly does not
+guarantee the same finalisation order for "simultaneous" invocations of S
+on images 1 and 2.
+
+It's even not that unlikely for a processor to do something like this, if S
+is being inlined with specialisation...
+
+There are many other algorithms which produce different results despite
+being image-independent algorithms, e.g. finalisation in address order
+or finalisation in size order.
+
+Finally, when final subroutines can get called in parallel (perhaps they
+are elemental), the putative "order" is highly unlikely to be the same on a
+single image, let alone multiple images.  Or is this now disallowed?
+
+2C. More philosophical pontification
+
+Consider the following outline of S with three local variables:
+
+  SUBROUTINE S(N)
+     TYPE(something_finalisable) A(N),B(M), C(N)
+     ...
+  ENTRY E(N,M)
+     ...
+  END
+
+Now, if the subprogram is entered via S, on exit it will finalize A and C.
+But if it is entered via E, on exit it will finalize A, B and C.
+
+Whatever orders it chooses for these two situations, the orders cannot be
+the same because of the presence (or absence) of B.
+
+If the order matters for image 1 and image 2 both calling S (or both
+calling E), surely it matters just as much if one calls S and the other
+calls E?
+
+2D. Applicability
+
+Perhaps this need only apply when a deallocation event is caused by
+DEALLOCATE of an allocatable coarray (in a final subroutine)?  In which
+case this could be spelled out.  Is there any other case that is
+problematic?
+
+2E. Other suitcases
+
+In the case
+  SUBROUTINE s2
+    REAL,ALLOCATABLE :: coa[*],cob[*]
+    ...
+    DEALLOCATE(coa,cob) ! point s2-1
+    ...
+    RETURN              ! point s2-2
+  END
+
+At point s2-1, COA and COB are deallocated in a processor-dependent order
+(see 133:23-24).  This is not image-independent (no finalisation).  If
+final subroutines are a problem, why is this not a problem.  According to
+133:20-22, there is a synchronisation for COA and a synchronisation for
+COB; or is this a mistake?
+
+Similarly at point s2-2 (see 133:15).
+
+
+3. Of answers
+
+I have none.
+
+===END===

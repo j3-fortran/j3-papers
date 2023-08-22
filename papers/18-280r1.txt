@@ -1,0 +1,152 @@
+To: J3                                                     J3/18-280r1
+From: Salvatore Filippone & Damian Rouson & Bill Long
+Subject: Constraint C825
+Date: 2018-October-18
+References: J3/17-200r1
+
+
+Introduction
+------------
+
+Boundary data exchange is a common communication pattern in parallel
+numerical solvers for linear systems, partial differential equations
+(PDEs), and particle tracking, and linear algebra. In such settings,
+each image responsible for a subdomain of the problem packs its local
+boundary values into a buffer and exchanges the buffer with the images
+responsible for neighboring subdomains.
+
+Coarrays are a natural choice for these communication buffers. An
+object-oriented extension to this approach would be to encapsulate
+both the boundary data and the interior, non-boundary data for each
+subdomain as components of a derived type, with the boundary data
+contained in a coarray component, and the interior data contained in a
+non-coarray component.  Storing the buffer in the same derived type as
+the data that will be packed into the buffer clarifies the data
+dependencies, making it less likely that a programmer will rely on
+critical sections to manage buffer accesses. A Fortran 2018
+implementation of this would have data structures of the following
+form:
+
+  type vector
+    real, allocatable :: component(:),component_buffer(:)[:]
+  end type
+
+  type(vector) :: bundle, field
+
+Unfortunately, Fortran 2018 rules fix the number of such data objects
+in the program. Fixing the number of data objects at compile time is
+undesirable in the context of a library designed to be installed and
+used in multiple applications, and because it prevents those same
+objects from being reused as components of other higher-level objects
+in a sufficiently flexible way.  It is also undesirable in
+applications that would need to be recompiled to allow for changing
+the partitioning of the problem into subdomains.
+
+Therefore, since each coarray image of a parallel solver may be
+responsible for an arbitrary number of subdomains, the parent type
+should be allocatable. However, this approach is prohibited by
+constraint C825 in 18-007r1, 8.5.6 CODIMENSION attribute, which
+states,
+
+    "An entity whose type has a coarray ultimate component shall be a
+     nonpointer nonallocatable scalar, shall not be a coarray, and
+     shall not be a function result."
+
+Relaxing this restriction, allowing the parent type to be an
+allocatable array, would enable the above object-oriented approach.
+
+
+Use Cases
+---------
+
+1.) In the Parallel Sparse Basic Linear Algebra Subroutines (PSBLAS)
+library, communication buffers would ideally be coarray components
+inside derived types that have other components for storing the data
+prior to packing the data into the buffer. Each instance of the
+derived type would represent a subdomain, and each coarray image would
+be responsible for an arbitrary number of subdomains. For a problem
+decomposed into 100 subdomains, the solver might look like:
+
+  type(vector), allocatable :: bundle(:)
+  allocate(bundle(100))
+
+2.) In solving a PDE on a three-dimensional (3D) volume that is the
+union of 3D subdomains, "halo exchanges" communicate values between
+neighboring subdomains.  For example, in the case wherein each
+subdomain receives incoming values from its nearest neighbors, it is
+convenient to encapsulate a coarray buffer for which each choice of
+co-indices corresponds to an In Box accessed by one nearest neighbor
+and the
+
+type subdomain
+  real, allocatable :: grid_values(:,:,:)
+  real, allocatable :: xy_inbox(:,:,:)[:] 
+  real, allocatable :: xz_inbox(:,:)[:]
+  real. allocatable :: yz_inbox(:,:)[:]
+end type
+
+type(subdomain), allocatable :: T(:)
+
+my_num_subdomains = num_subodomains / num_images()
+allocate( T(my_num_subdomains) )
+do i=1,size(T,1)
+  allocate( T(i)%xy_inbox(nx,ny,-1:1)[*])
+  allocate( T(i)%xz_inbox(nx,nz,-1:1)[*])
+  allocate( T(i)%yz_inbox(ny,nz,-1:1)[*])
+end do
+
+where In Boxes are buffers for planar boundary data arriving from
+neighboring subdomains in the adjacent to each subdomain.
+
+3.) A third common use case arises in particle tracking, in which case
+there is the additional complication that the size of the above
+allocations will need to be adjusted at runtime depending on the
+number of incoming particles.  In this context, remote images set the
+size (based on the number of particles that exit their subdomains),
+but images cannot allocate memory remotely so it is more like that Out
+Boxes will be used to place data for pick-up by remote images.  The
+details relevant to this paper, however, will be the same.
+
+
+Feature suggestion and possible issues
+--------------------------------------
+
+Modify constraint C825 in order to allow derived types with coarray
+ultimate components to be allocatable arrays.  The replacement C825
+reads:
+
+    "An entity whose type has a coarray ultimate component shall not
+     be a pointer, shall not be a coarray, and shall not be a function
+     result."
+
+
+
+Requirements
+--------------------
+
+Coarray components are already required to be allocatable:
+
+C746 (R737) If a <coarray-spec> appears, it shall be a
+            <deferred-coshape-spec-list> and the component shall have
+            the ALLOCATABLE attribute.
+
+The example TYPE described above conforms to this requirement.
+
+A restriction should be considered::
+
+   A discontiguous actual array argument of a type with a coarray
+   component shall not be associated with a contiguous dummy
+   argument. {Prevent copy-in/copy-out.}
+
+In an array like bundle(:) each element has a separate
+coarray. Collective actions, such as allocation, on the corresponding
+coarrays of the involved images have to include the set of coarrays
+for the same element of bundle on each image of the current
+team. Similarly, the shape of bundle(:) should be the same on each
+image so that each element's coarray has a corresponding coarray on
+the other images of the current team. If the parent array is
+polymorphic, it should have the same dynamic type on all the images.
+
+
+
+

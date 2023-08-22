@@ -1,0 +1,322 @@
+To: J3                                                     11-233
+From: John Reid
+Subject: Interps F08/0003 and F08/0038
+Date: 2011 October 01
+References: N1875, 10-007r1
+
+DISCUSSION
+
+Most of the intrinsics with an optional DIM argument disallow the
+corresponding actual argument being an optional dummy argument
+because its presence or absence affects the rank of the result.
+
+F08/0003 points out that a disassociated pointer or unallocated
+allocatable variable would be regarded as absent and therefore
+needs to be excluded too. It proposes to add the restriction in
+some cases and in others to rewrite the function as an overloaded
+pair, one with a DIM argument and one without.
+
+F08/0038 points out that the restrictions are pointless when the
+function is described as an overloaded pair.
+
+Describing all the relevant functions as an overloaded pair seems
+to me to be the best solution. This is detailed here.
+
+-----------------------------------------------------------------------
+
+NUMBER: F08/0003
+TITLE: Is a disassociated pointer allowed as an actual DIM argument?
+KEYWORDS: DIM argument
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+QUESTION:
+
+Several intrinsic functions, such as ANY, have a DIM argument, with
+the rank of the result depending upon whether it is present.  There is
+a prohibition against the actual argument being an optional dummy
+argument, but not against it being a disassociated pointer or
+deallocated allocatable.  Is the following program standard
+conforming, and if so what does it print?
+
+  program DIM_Arg
+    integer, pointer :: Dim => NULL()
+    logical :: Mask(2,2) = &
+      & reshape( (/ .true., .false, .false, .true. /), (/ 2, 2 /) )
+    print *, shape( any(mask,dim) )
+  end program DIM_Arg
+
+The description worked until we allowed a disassociated pointer or
+unallocated allocatable variable that is associated with a nonpointer
+nonallocatable optional argument to be interpreted not to be present.
+
+ANSWER:
+
+It was intended that this program not conform. The edits of F08/0038
+address this issue.
+
+EDITS to 10-007r1:
+
+None.
+
+SUBMITTED BY: Van Snyder
+
+HISTORY: 10-148    m192  F08/0003 submitted
+         10-148r1  m192  revised - Passed by J3 meeting
+         10-202    m192  Passed by J3 letter ballot #21 10-199
+         11-006Ar1 m196  Adjust edits to reference 10-007r1
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0038
+TITLE: Are pointless restrictions on DIM arguments intended?
+KEYWORDS: DIM argument, optional, intrinsic reduction function
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+DISCUSSION:
+
+Some of the reduction functions have two forms, one with a DIM
+argument and one without; the DIM argument is not optional.  IALL is
+an example.  Other reduction functions have a DIM argument that is
+optional.  COUNT is an example.  The actual argument corresponding to
+the DIM actual argument is prohibited from being an optional dummy
+argument in both cases.  The reason in the case of an optional DIM
+argument is so that the processor can determine the rank of the
+result.  In the case of those with two forms, there is no problem for
+the processor to determine the rank, so the prohibition against the
+corresponding actual argument being an optional dummy argument is
+pointless.  There is already a prohibition against it being an absent
+optional dummy argument in 12.5.2.12p3(4) [299].
+
+Consider, for example
+
+  subroutine S ( ARRAY, DIM )
+    integer, intent(in) :: ARRAY(:,:)
+    integer, intent(in), optional :: DIM
+    if ( present(dim) ) then
+      print *, iall(array,dim)
+    else
+      print *, iall(array)
+    end if
+  end subroutine S
+
+This subroutine clearly does not conform, but a processor would have
+no difficulty determining the rank of the result of IALL(ARRAY,DIM).
+
+QUESTION:
+
+(1) Was the pointless restriction intentional, or was it an oversight
+that it did not get removed in the two-form case when MAXLOC etc. were
+added?
+
+(2) Is it necessary to continue the pointless restriction?
+
+ANSWER:
+
+(1) This was an oversight.
+
+(2) No.  Edits are provided to remove it.
+
+Furthermore, if the intrinsics that are written with an optional DIM
+argument are rewritten in the other form, the pointless restriction is
+removed for these, too. This would also render interp F08/0003 mute.
+
+EDITS to 10-007r1:
+
+[13.2.4p1 316:24-26]
+Replace the two sentences "These functions ... dummy argument." by
+"An added DIM argument specifies the dimension to be reduced."
+
+[13.5 Table 13.1 319]
+Replace "ALL ( MASK [, DIM ])" by "ALL ( MASK ) or ( MASK, DIM )".
+Replace "ANY ( MASK [, DIM ])" by "ANY ( MASK ) or ( MASK, DIM )".
+
+[13.5 Table 13.1 320]
+Replace "COUNT (MASK [, DIM, KIND])" by
+"COUNT (MASK [, KIND ]) or (MASK, DIM [,KIND])".
+
+[13.5 Table 13.1 322]
+Replace "PARITY (MASK [, DIM])" by
+"PARITY (MASK) or (MASK, DIM)".
+
+[13.5 Table 13.1 323]
+Replace "LBOUND (ARRAY [,DIM ,KIND])" by
+"LBOUND (ARRAY [,KIND]) or (ARRAY, DIM [,KIND])".
+
+[13.5 Table 13.1 323]
+Replace "LCOBOUND (COARRAY [,DIM ,KIND])" by
+"LCOBOUND (COARRAY [,KIND]) or (COARRAY, DIM [,KIND])".
+
+[13.5 Table 13.1 322]
+Replace "NORM2 ( X [, DIM ])" by "NORM2 ( X ) or ( X, DIM )".
+Replace "PARITY ( MASK [, DIM ])" by
+        "PARITY ( MASK ) or ( MASK, DIM )".
+
+[13.5 Table 13.1 323]
+Replace "THIS_IMAGE (COARRAY[, DIM])" by
+        "THIS_IMAGE (COARRAY) or  (COARRAY, DIM)".
+
+[13.5 Table 13.1 323]
+Replace "UBOUND (ARRAY [,DIM ,KIND])" by
+"UBOUND (ARRAY [,KIND]) or  (ARRAY, DIM [,KIND])".
+
+[13.5 Table 13.1 323]
+Replace "UCOBOUND (COARRAY [,DIM ,KIND])" by
+"UCOBOUND (COARRAY [,KIND]) or  (COARRAY, DIM [,KIND])".
+
+[13.7.10 328:2]
+Replace the subclause heading by "ALL ( MASK, DIM ) or ( MASK )"
+
+[13.7.10p3 328:7-8]
+In the description of the DIM argument, delete "(optional)" and
+"The corresponding ... optional dummy argument.".
+
+[13.7.10p4 328:10]
+In the description of Result Characteristics, replace "is absent" by
+"does not appear".
+
+[13.7.13 329:6]
+Replace the subclause heading by "ANY ( MASK, DIM ) or ANY ( MASK )"
+
+[13.7.13p3 329:11-12]
+In the description of the DIM argument, delete "(optional)" and
+"The corresponding ... optional dummy argument.".
+
+[13.7.13p4 329:14]
+In the description of Result Characteristics, replace "is absent" by
+"does not appear".
+
+[13.7.41 338:25]
+Replace the subclause heading by
+"COUNT (MASK [,KIND]) or COUNT(MASK, DIM [,KIND])".
+
+[13.7.41p3 338:30-31]
+In the description of the DIM argument, delete "(optional)" and
+"The corresponding ... optional dummy argument.".
+
+[13.7.41p4 338:34]
+In the description of Result Characteristics, replace "is absent" by
+"does not appear".
+
+[13.7.61p3 description of DIM 347:34]
+Delete "The corresponding ... optional dummy argument."
+
+[13.7.71p3 description of DIM 352:27]
+Delete "The corresponding ... optional dummy argument."
+
+[13.7.73p3 description of DIM 353:22]
+Delete "The corresponding ... optional dummy argument."
+
+[13.7.83p3 description of DIM 357:30]
+Delete "The corresponding ... optional dummy argument."
+
+[13.7.90 359:29]
+Replace the subclause heading by
+"LBOUND (ARRAY [,KIND]) or LBOUND (ARRAY, DIM [,KIND])".
+
+[13.7.90p3 360:3-4]
+In the description of the DIM argument, delete "(optional)" and
+"The corresponding ... optional dummy argument.".
+
+[13.7.90p4 360:7]
+In the description of Result Characteristics, replace
+"DIM is present" by "DIM appears".
+
+[13.7.91 360:18]
+Replace the subclause heading by
+"LCOBOUND (COARRAY [,KIND]) or LCOBOUND (COARRAY, DIM [,KIND])".
+
+[13.7.91p3 360:24-25]
+In the description of the DIM argument, delete "(optional)" and
+"The corresponding ... optional dummy argument.".
+
+[13.7.91p4 360:28]
+In the description of Result Characteristics, replace
+"DIM is present" by "DIM appears".
+
+[13.7.108p3 description of DIM 366:29]
+Delete "The corresponding ... optional dummy argument."
+
+[13.7.109p3 description of DIM 367:35]
+Delete "The corresponding ... optional dummy argument."
+
+[13.7.114p3 description of DIM 369:36]
+Delete "The corresponding ... optional dummy argument."
+
+[13.7.115p3 description of DIM 371:2]
+Delete "The corresponding ... optional dummy argument."
+
+[13.7.123 374:24]
+Replace the subclause heading by
+"NORM2 (X) or NORM2 (X, DIM)".
+
+[13.7.123p3 374:29-30]
+In the description of the DIM argument, delete "(optional)" and
+"The corresponding ... optional dummy argument.".
+
+[13.7.123p4 374:31]
+In the description of Result Characteristics, replace "is absent" by
+"does not appear".
+
+[13.7.128 377:20]
+Replace the subclause heading by
+"PARITY (MASK) or PARITY (MASK, DIM)".
+
+[13.7.128p3 377:25-26]
+In the description of the DIM argument, delete "(optional)" and
+"The corresponding ... optional dummy argument.".
+
+[13.7.128p4 377:28]
+In the description of Result Characteristics, replace "is absent" by
+"does not appear".
+
+[13.7.133p3 description of DIM 379:7]
+Delete "The corresponding ... optional dummy argument."
+
+[13.7.161p3 description of DIM 390:22]
+Delete "The corresponding ... optional dummy argument."
+
+[13.7.165 392:6]
+Replace the subclause heading by
+"THIS_IMAGE ( ), THIS_IMAGE (COARRAY), or THIS_IMAGE (COARRAY, DIM)".
+
+[13.7.165p3 392:11-13]
+In the description of the DIM argument, delete "(optional)" and
+"The corresponding ... optional dummy argument.".
+
+[13.7.165p4 392:14]
+In the description of Result Characteristics, replace
+"DIM is present" by "DIM appears".
+
+[13.7.171 394:19]
+Replace the subclause heading by
+"UBOUND (ARRAY [,KIND]) or UBOUND (ARRAY, DIM [,KIND])".
+
+[13.7.171p3 394:26-27]
+In the description of the DIM argument, delete "(optional)" and
+"The corresponding ... optional dummy argument.".
+
+[13.7.171p4 394:30]
+In the description of Result Characteristics, replace
+"DIM is present" by "DIM appears".
+
+[13.7.172 395:6]
+Replace the subclause heading by
+"UCOBOUND (COARRAY [,KIND]) or UCOBOUND (COARRAY, DIM [,KIND])".
+
+[13.7.172p3 395:11-13]
+In the description of the DIM argument, delete "(optional)" and
+"The corresponding ... optional dummy argument.".
+
+[13.7.172p4 395:15]
+In the description of Result Characteristics, replace
+"DIM is present" by "DIM appears".
+
+
+SUBMITTED BY: Van Snyder
+
+HISTORY: 10-187r1  m192  F08/0038 submitted
+         10-187r2  m192  Revised edit - Passed by J3 meeting
+         10-202    m192  Passed by J3 letter ballot #21 10-199
+         11-006Ar1 m196  Adjust edits to reference 10-007r1

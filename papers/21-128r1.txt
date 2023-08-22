@@ -1,0 +1,151 @@
+To: J3                                                     J3/21-128r1
+From: Malcolm Cohen
+Subject: Interp F18/025 Is component initialization an attribute?
+Reference: 20-151
+Date: 2021-March-01
+
+----------------------------------------------------------------------
+
+NUMBER: F18/025
+TITLE: Is component initialization an attribute?
+KEYWORDS: Component initialization, SEQUENCE, Generic
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in program
+
+QUESTION:
+
+Consider
+  MODULE m1
+    TYPE t
+      SEQUENCE
+      INTEGER :: a = 1
+    END TYPE
+  END MODULE
+  MODULE m2
+    TYPE t
+      SEQUENCE
+      INTEGER :: a = 999
+    END TYPE
+  END MODULE
+  MODULE m
+    USE m1,t1=>t
+    USE m2,t2=>t
+  END MODULE
+
+The normative text on attributes states:
+    "Every data object has a type and rank and can have ... other
+     properties that determine the uses of the object. Collectively,
+     these properties are the attributes of the object."
+It does seem that default initialization of components determines the
+uses of an object, but there is no clear statement either way that
+specifies that it is or is not an attribute. Obviously, it cannot
+appear in an attribute specification statement, but then, none of the
+attributes of a component can appear there.
+
+Q. Is component initialization an attribute? This affects type
+   equivalence, and thus generic resolution and pure procedure
+   semantics.
+
+For example,
+    PROGRAM test1
+      USE m
+      TYPE(t1) :: x = t1(0)
+      CALL sub(x) ! Has INTENT(OUT), therefore
+      PRINT *,x   ! we expect x%a to be now equal to 1.
+    END PROGRAM
+    SUBROUTINE sub(y)
+      USE m
+      TYPE(t2),INTENT(OUT) :: y
+      PRINT *,y   ! We expect y%a to be now equal to 999.
+    END SUBROUTINE
+This is only a valid program if type T1 is considered to be the same
+as T2, i.e. if component initialization is not an attribute. But then,
+is X%A initialised to 1 at the CALL, or to 999 on entry to SUB?
+Whichever, it seems the user will be surprised.
+
+Similarly, if component initialization is an attribute, then
+    MODULE mg
+      USE m
+      INTERFACE s
+        MODULE PROCEDURE s1,s2
+      END INTERFACE
+    CONTAINS
+      SUBROUTINE s1(a)
+        TYPE(t1) a
+        ...
+      END SUBROUTINE
+      SUBROUTINE s2(a)
+        TYPE(t2) a
+        ...
+      END SUBROUTINE
+    END MODULE
+would specify a valid generic interface, but if it is not an attribute
+the module M2 is not valid.
+
+Finally, if component initialization is not an attribute, it might
+circumvent restrictions aimed at preventing side-effects of pure
+procedures, for example:
+    MODULE safe
+      REAL,TARGET :: x
+      TYPE t
+        SEQUENCE
+        REAL,POINTER :: p
+      END TYPE
+    END MODULE
+    MODULE bad
+      USE safe,ONLY:x
+      TYPE t
+        SEQUENCE
+        REAL,POINTER :: p => x
+      END TYPE
+    END MODULE
+    MODULE unsafe
+    CONTAINS
+      PURE SUBROUTINE s(a,b)
+        USE safe,ONLY:t1=>t
+        USE bad,ONLY:t2=>t
+        REAL,INTENT(OUT) :: a
+        REAL,INTENT(IN) :: b
+        TYPE(t1) oops
+        oops = t2() ! Only valid if component init not an attr.
+        oops%p = a  ! And then this modifies a global variable.
+        a = b
+      END SUBROUTINE
+    END MODULE
+
+ANSWER:
+
+Component initialization was intended to be an attribute.
+An edit is provided to clarify this ambiguity.
+
+ALTERNATIVE ANSWER:
+
+Component initialization was not intended to be an attribute. An edit
+is provided to clarify this ambiguity. Note that interp F18/019 might
+need a stricter answer to ensure the safety of pure procedures.
+
+EDIT to 18-007r1:
+
+[69:7] 7.5.2.4 Determination of derived types, p2,
+       After "attributes"
+       insert "(including any default initialization)".
+{Make it clear that default initialization is considered to be an
+ attribute for the purposes of type equivalence.}
+
+ALTERNATIVE EDIT:
+
+[69:7] After "attributes."
+       Insert "Default initialization of a component is not considered
+               to be an attribute for this purpose."
+{Make it clear that default initialization is not considered to be an
+ attribute for the purposes of type equivalence.}
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 21-nnn  m223  Submitted
+
+----------------------------------------------------------------------
+
+
+
+

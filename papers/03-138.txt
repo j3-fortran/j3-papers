@@ -1,0 +1,256 @@
+
+                                                          J3/03-138
+
+To: J3
+From: UK Fortran panel
+Subject: Edits for UK comment TC4 (Type-bound generics)
+Date: 11 March 2003
+
+1. Comment TC4
+
+    Change type-bound generics to be sets of specific named type-bound
+    procedures.
+
+    The generic type-bound procedure facility is difficult to understand and 
+    unnecessarily difficult to implement. It's confusing for the user when 
+    you explain that generic resolution produces a "slot number" in the 
+    dispatch table instead of a name.
+    
+    This confusion arises at least partly because although normal generics 
+    are a collection of (named) normal procedures, type-bound generics are a 
+    collection of UNNAMED type-bound procedures created by compiler magic 
+    from the list of the actual procedures implementing them at some level.
+    
+    It's also difficult to understand when, during inheritance, one is 
+    extending the generic vs. overriding an already-existing specific, 
+    precisely because the specifics don't have names.
+        
+    Section 4.5.1
+    Page 44
+    Syntax change: Instead of GENERIC :: <generic-spec> => <procedure-list>
+      have GENERIC :: <generic-spec> => <type-bound-proc-list>
+    
+    Concomitant change:
+    (a) The GENERIC statement always adds new specifics to the list, it 
+    never overrides them.
+    (b) To override a specific within a generic, you use the specific name 
+    on the PROCEDURE statement, just like nongeneric tbps.
+    i.e. to override a specific, you specific *the specific name*,
+    to extend the generic, you specify *the generic spec*.
+    
+    Advantages:
+    (1) Simpler exposition.
+    (2) Simpler implementation.
+    (3) Programs will be simpler to understand and maintain, because of the
+    differentiation between overriding and extending.
+    
+    Disadvantages:
+    (1) The user has to name the specifics instead of the compiler doing 
+    all the work.
+    (2) The specific names have to be public if the user wants them to be
+    overridable.
+
+2. Specifications
+
+That generic type-bound procedures be specified explicitly as a set of
+non-generic type-bound procedures, instead of as the set of implementation
+procedures.
+
+A generic type-bound procedure may have an accessibility, but does not have
+any of the other binding attributes, viz PASS/NOPASS and NON_OVERRIDABLE.
+Each individual specific is individually overridable (or not).  Each
+individual specific either has the PASS attribute or the NOPASS attribute.
+
+3. A Potential Simplification
+
+The rules for unambiguous generic sets in 16.2.3 allow for the situation
+when one procedure has the PASS attribute and the other does not.  So there
+is no reason for the individual specifics in a generic type-bound procedure
+binding not to have differing PASS/NOPASS attributes.
+
+This is somewhat obfuscated in 02-007r3, where the PASS/NOPASS attribute is
+specified for the generic name but actually applies to the list of (unnamed)
+specifics represented by the implementation procedure list.
+
+In the unlikely event that it is considered too confusing to have the PASS/
+NOPASS attribute varying within the generic set, a simple constraint could
+be made to require that all the specifics for a generic binding have the same
+PASS/NOPASS attribute specification.
+
+4. Syntax
+
+The syntax of the generic proc-binding statement shall be:
+
+   GENERIC [ [ , <access-spec> ] :: ] <generic-spec> => <binding-name-list>
+
+   Constraint: Each <binding-name> in the <binding-name-list> shall be the name
+               of a specific binding of the type.
+
+5. Edits to 02-007r3
+
+Edits marked as "ESSENTIAL:" should be done (or at least considered) even if
+the technical change proposed is not done, as they correct mistakes in the
+current version.  Edits marked "USEFUL" are wording improvements that also
+should be considered regardless.
+
+[44:23] Change "<binding-attr-list>" to "<access-spec>", and
+        change "<binding-list>" to "<binding-name-list>".
+{Syntax change.}
+
+[44:24-25] Delete.
+{ESSENTIAL: This constraint is more than adequately covered by 16.2.  A generic
+binding is a local entity of class 2, as is a specific binding.  There is no
+"escape" clause for generic bindings, so "an identifier of a local of one class
+shall not be used to identify another local entity of the same class" is quite
+sufficient for our purposes.  The presence of this unnecessary constraint is
+confusing.}
+
+[44:25+] Add constraints
+  "C445a (R442) Each <binding-name> in <binding-name-list> shall be the name of
+         a specific binding of the type.
+   C445b (R442) If <generic-spec> is not <generic-name>, each of its specific
+         bindings shall have a passed-object dummy argument (4.5.1.6)."
+
+[44:23+] Move the constraint at [45:15-17] to here.
+{ESSENTIAL: Misplaced.}
+
+[45:6,8] Delete ",R442" twice.
+{No longer applicable.}
+
+[45:10] Change "R440" to "R444".
+{ESSENTIAL: This was the wrong rule number.  See C452 for a similarly scoped
+constraint which has the correct rule number, viz R444.}
+
+[45:11-12] Delete.
+{This constraint was misplaced anyway.  The reworded version is C445b.}
+
+[45:13-14] Delete.
+{It is no longer possible to override a specific with a GENERIC statement.}
+
+[45:15-17] See above: this constraint to be moved to [44:23+].
+
+[49:3] Before "." insert
+  "for its specific bindings."
+{Say what goes into the generic interface.  Obvious, but I don't think we
+come right out and say it anywhere else for generic tbps.  We do it for
+ordinary generic interfaces at [257:1-2].}
+
+[49:3+] Insert new paragraph
+  "A type-bound procedure may be identified by a <<binding name>> in the scope
+   of the type definition.  This name is the <binding-name> for a specific
+   binding, and the <generic-name> for a generic binding whose <generic-spec>
+   is <generic-name>.  A final binding, or a generic binding whose <generic-
+   spec> is not <generic-name>, has no binding name."
+{ESSENTIAL: It's nice to say what we all know we mean.  And some have been
+confused about whether final bindings can be invoked through the type via a
+binding name equal to their procedure name.
+EDITOR: Please index "binding name" to here.}
+
+[49:4] Add "specific" before "binding".
+
+[49:5] Append sentence and add note:
+  "Each additional <generic-binding> with the same <generic-spec> extends the
+   generic interface.
+   Note 4.29a
+   Unlike the situation with generic procedure names, a generic type-bound
+   procedure name is not permitted to be the same as a specific type-bound
+   procedure name in the same type (16.2)."
+{It's nice to say what the syntax means, as well as allowing it.
+ESSENTIAL: Some edit should be done here even if this TC is not accepted,
+but not this one.}
+
+[50:18+3] Replace "procedure bindings" with "procedures".
+{USEFUL: These are called either "type-bound procedures" or "bindings".}
+
+[56:1-3] Replace with
+  "If a generic binding specified in a type definition has the same
+   <generic-spec> as an inherited binding, it extends the generic interface
+   and shall satisfy the requirements specified in 16.2.3."
+{It is no longer possible to override a specific with a GENERIC statement.}
+
+[56:5-7] Replace with
+  "it extends the type-bound generic interface for <dtio-generic-spec> and
+   shall satisfy the requirements specified in 16.2.3."
+{It is no longer possible to override a specific with a GENERIC statement.}
+
+[122:13,32] Delete "type-bound".
+{USEFUL: The adjective is redundant here, and not needed.
+Alternatively, change "type-bound generic binding" to "generic type-bound
+procedure".}
+
+[142:4] Delete "type-bound".
+{USEFUL: As above, the unnecessary adjective is redundant.}
+
+[199:8] Change "derived-type procedure" to "generic".
+{USEFUL: The correct term for the means of specification is "generic binding",
+and the correct term for what is specified is "generic type-bound procedure";
+never "derived-type procedure binding".}
+
+[203:10] Change "type-bound generic binding" to "generic type-bound procedure".
+{USEFUL: The right term for a generic tbp is generic tbp.}
+
+[262:26] Change "the name of a procedure binding" to "a binding name".
+{USEFUL: Simplify and improve wording.}
+
+[262:28-263:10] Replace with
+  "Resolving references to type-bound procedures is described in 12.4.5."
+{ESSENTIAL: It is a serious disservice to the reader to bury the details of
+type-bound procedure invocation in the middle of 12.4.0.  It deserves its
+own subsection.}
+
+[272:19] Insert "named" before "procedure".
+{ESSENTIAL: This section only handles named procedures, not procedure
+components or type-bound procedures.}
+
+[274:30+] Insert new section
+  "12.4.5 Resolving type-bound procedure references
+
+   If the <binding-name> in a <procedure-designator> (R1219) is that of a
+   specific type-bound procedure, the procedure referenced is the one
+   identified by the binding with that name in the dynamic type of the
+   <data-ref>.
+
+   The generic binding with that name in the declared type of the <data-ref>
+   is used to select a specific binding:
+     (1) If the reference is consistent with one of the specific bindings of
+         that generic binding, that specific binding is selected.
+     (2) Otherwise, the reference shall be consistent with an elemental
+         reference to one of the specific bindings of that generic binding;
+         that specific binding is selected.
+   The reference is to the procedure identified by the binding with the same
+   name as the the selected specific binding, in the dynamic type of the
+   <data-ref>."
+{Describe the simpler resolution procedure for generic type-bound procedures.
+ESSENTIAL: Resolution of type-bound procedures deserves its own section.}
+
+[397:20+3] Delete "type-bound" before "generic bindings".
+{USEFUL: Adjective doesn't fit this noun phrase.}
+
+[398:28] Change "A ... <generic-name>" to
+  "The binding name (4.5.1.5) of a type-bound procedure"
+{ESSENTIAL: The text is poor at the moment because it implies that a 
+generic binding for which the <generic-spec> is <generic-name> does not
+have a binding name.}
+
+[425:35] Change ", or" to ",".
+[425:36] Before "." insert ", or as part of the finalization process".
+{ESSENTIAL: Existing text omits the final subroutine case.}
+
+[470:1-20] Delete.
+{There is no longer anything complicated about generic type-bound procedure
+dispatch, so no need to explain it.  Generic tbps now use generic resolution
+to select a specific binding, and that dispatches in the normal way.}
+Alternatively:
+  [470:3-4] Change "override ... procedures," to
+    "add new specific procedures to inherited generic interfaces".
+  {Overriding of the specifics is no longer part of generic processing.}
+  [470:9-12] Replace with
+    "Invocation of the specific procedure follows the normal type-bound
+     procedure invocation (12.4), where for a polymorphic object any overriding
+     of that specific in the dynamic type takes effect."
+  [470:14-16] Replace "Either ... table." with
+    "The name of the selected specific binding chooses a slot in the dispatch
+     table."
+  {The complicated alternative no longer exists.}
+
+===END===

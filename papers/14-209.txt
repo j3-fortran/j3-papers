@@ -1,0 +1,96 @@
+                                                             J3/14-209
+To: J3
+From: Malcolm Cohen
+Subject: Interp re specifiers in image control statements
+Date: 2014 June 26
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0113
+TITLE: Specifiers in image control statements
+KEYWORDS: STAT=, ERRMSG=, ACQUIRED_LOCK=, image control
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+
+  CHARACTER(80) text(0:100),msg
+  INTEGER stat,istat(2)
+  REAL,ALLOCATABLE :: x(:)
+  TYPE(LOCK_TYPE) :: lock[*], alock(0:80)[*]
+  LOGICAL acq, aacq(0:80)
+  ...
+  SYNC ALL(STAT=stat,ERRMSG=text(stat))       ! A
+  SYNC IMAGES (*,STAT=stat,ERRMSG=text(stat)) ! B
+  SYNC MEMORY(STAT=stat,ERRMSG=text(stat))    ! C
+  LOCK(lock,ACQUIRED_LOCK=acq, &
+       STAT=istat(MERGE(1,2,acq)), &
+       ERRMSG=text(istat(MERGE(1,2,acq))))    ! D
+  UNLOCK(lock,STAT=stat,ERRMSG=text(stat))    ! E
+  LOCK(alock(stat),STAT=stat)                 ! F
+  msg = ''
+  UNLOCK(alock(LEN_TRIM(msg)),STAT=stat, &
+         ERRMSG=msg)                          ! G
+  stat = 13
+  SYNC IMAGES(stat,STAT=stat)                 ! H
+  msg = 'oops'
+  SYNC IMAGES(LEN_TRIM(msg),STAT=stat, &
+              ERRMSG=msg)                     ! I
+
+In each of the statements labelled A-F, there is a dependency between
+the STAT= specifier and the ERRMSG= specifier.  There appears to be no
+prohibition against this.
+
+Additionally, in the LOCK statement (D), there is a dependency between
+the ACQUIRED_LOCK= specifier and the STAT= specifier (there is no
+dependency between ACQUIRED_LOCK= and ERRMSG= because the former is
+only set on successful execution and the latter is only set on an
+error condition).  There appears to be no restrictions at all on any
+dependencies from ACQUIRED_LOCK=.
+
+In the LOCK statement (F), there is a dependency between the STAT=
+specifier and the lock variable.  Similarly for the UNLOCK (G), there
+is a dependency between the lock variable and the ERRMSG= specifier.
+
+In the SYNC IMAGES statement (H), there is a dependency between the
+STAT= variable and the image set.  In the SYNC IMAGES statement (I),
+there is a dependency between the ERRMSG= variable and the image set.
+
+Are all these examples conforming, and if so, is the dependent
+variable referenced with the value of the other variable at the
+beginning of execution of the statement or at the end of execution of
+the statement?
+
+ANSWER:
+
+No interpretation is established and therefore these are not
+conforming.  An edit is provided to clarify this.
+
+EDITS:
+
+[190:16-] 8.5.4 SYNC IMAGES statement, insert new p1,
+  "The value of <image-set> shall not depend on the value of
+   <stat-variable> or <errmsg-variable>.".
+
+[194:6-] 8.5.6 LOCK and UNLOCK statements, insert new p1,
+  "The <lock-variable> shall not depend on the value of
+   <stat-variable>, <errmsg-variable>, or the
+   <scalar-logical-variable> in the ACQUIRED_LOCK= specifier.
+   The <scalar-logical-variable> shall not depend on the
+   <lock-variable>, <stat-variable>, or <errmsg-variable>.".
+
+[195:2-] 8.5.7 STAT= and ERRMSG= specifiers..., insert new p1,
+  "The <stat-variable> shall not depend on the value of the
+   <errmsg-variable>, <lock-variable>, or the
+   <scalar-logical-variable> in the ACQUIRED_LOCK= specifier.
+   The <errmsg-variable> shall not depend on the value of the
+   <stat-variable>, <lock-variable>, or the <scalar-logical-variable>
+   in the ACQUIRED_LOCK= specifier.".
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: m204  14-mmm    Submitted
+
+----------------------------------------------------------------------

@@ -1,0 +1,177 @@
+To: J3                                                           12-179
+From: Nick Maclaren
+Subject: My Objections to Interpretation F03/0065
+Date: 17 September 2012
+References: N1939.txt
+
+
+I shall attempt to analyse the answer in detail, and give examples of
+why I voted "no" and still object to the answer, though not the
+decision.  To clear the decks, I propose to ignore two paragraphs in
+F03/0065, as they simply state facts:
+
+    However, Note 7.22 in Fortran 2003 shows this transformation as
+    being acceptable.
+    
+    The erroneous example has been removed in Fortran 2008.
+
+
+The Wording
+-----------
+
+The remainder of the question and answer is:   
+
+    Given
+      REAL X
+      X = ... some value ...
+    may
+      IF( X+3.0 .EQ. 3.0 )...
+    be transformed into
+      IF( X .EQ. 0.0 )...
+    by the processor?
+    
+    In Fortran 2003, 7.1.8.5 Evaluation of relational intrinsic
+    operations says
+      "Two relational intrinsic operations are relationally equivalent
+       if their logical values are equal for all possible values of
+       their primaries."
+    
+    On a machine where addition of 3.0 to a small value is not exact,
+    the logical values for X+3.0==3.0 are not the same as X==0.0 for
+    all possible values of X, therefore it would seem that this
+    transformation would not be possible.
+    
+    ANSWER:
+    
+    No, the transformation is not permitted unless it gives the same
+    answer for all possible values (of X and X+3.0).
+
+The intention was that this is an interpretation about the handling of
+'EQ.' - no more - but that is not the only way to read those words.  I
+read them as also making a statement about the arithmetic (in this case,
+X+3.0), because of the sentence beginning "On a machine ...", and I am
+sure that at least some other readers will do the same.
+
+My points below try to explain why I regard the existing wording as
+a serious mistake, by showing examples that it appears to forbid but
+which are important and widely-used optimisations.  In all cases,
+let us consider the common case where:
+
+    1) the compiler does NOT define IEEE_NAN in IEEE_FEATURES, or the
+programmer does NOT access any of the IEEE_...  modules, or both, and
+
+    2) the processor compiles into IEEE 754 operations, with 32-bit
+REALs and 64-bit 'registers', and does not trap unordered comparisons.
+
+
+Possible Alternative Answer
+---------------------------
+
+This is not very good, but would address the issues that I am concerned
+about.
+
+    ANSWER:
+    
+    No, transformations across a relational operator are not permitted
+    unless they give the same answer for all possible values of the
+    operands on either side (X, 0.0, X+3.0 and 3.0).  The standard does
+    not specify how X+3.0 is calculated, but the transformation would
+    not give the same answer for all values of X in any floating-point
+    arithmetic.
+
+In particular, the qualification "across a relational operator" (or
+similar wording) is essential to resolve my concerns.
+
+
+Example 1
+---------
+
+Let us consider three possible implementations, described in terms
+of IEEE 754 arithmetic with the declared types:
+
+Base:
+    IF (X+3.0 .EQ. 3.0) ...
+
+Version 1:
+    IF (X .EQ. 0.0) ...
+
+Version 2:
+    IF (REAL(X,KIND=KIND(0.0D0))+3.0D0 .EQ. 3.0D0) ...
+
+In both modified versions, the condition "the logical values for
+X+3.0==3.0 are not the same as <the transformed code> for all possible
+values of X" holds.  But does this interpretation also forbid a compiler
+to produce version 2 code?  If not, why not?
+
+
+Example 2
+---------
+
+Let's consider a closely related example:
+
+    ! Z is a model property parameter, which can be set to various
+    ! values for different builds
+    REAL, PARAMETER :: Z = 0.0
+    REAL :: X
+    READ *, X
+
+followed by:
+
+    IF (X+Z .EQ. X) ...
+
+versus:
+
+    IF (.TRUE.) ...
+
+Is that transformation allowed?  Well, it is in any non-IEEE arithmetic
+model, but is isn't if the processor supports IEEE NaNs with their
+preferred comparison semantics.  However, we are considering the case
+when that is NOT so.
+
+Programmers can still get a NaN without relying on undefined behaviour,
+even with our assumptions, by 10.7.2.3.2.  What was simple in 1977 isn't
+today.
+
+Do IEEE NaNs count as one of 'all possible values' if the processor uses
+IEEE 754 hardware, even in the case when it does NOT support IEEE
+arithmetic and does NOT trap unordered comparisons?  The answer implies
+"yes".
+ 
+
+Example 3
+---------
+
+Let's consider another closely related example:
+
+    ! Z is a model property parameter, which can be set to various
+    ! values for different builds
+    REAL, PARAMETER :: Z = 0.0
+    REAL :: X, Y
+    READ *, X
+
+    Y = X*0.0
+    IF (X*0.0 .EQ. Y) ...
+
+Now, the 'Y = X*0.0' can be optimised to 'Y = 0.0', and the IF statement
+to either 'IF (.TRUE.) ...' or 'IF (0.0 .EQ. Y) ...', which gives 6
+possibilities.  Of the few compilers I currently have access to, I get:
+
+    Y = X*0.0
+    IF (X*0.0 .EQ. Y) ...
+
+and something that appears to be:
+
+    Y = 0.0
+    IF (.TRUE.) ...    ! or possibly IF (0.0 == Y) ...
+
+plus two that trap the undefined exception.  But perhaps the second
+should really be generating:
+
+    Y = 0.0
+    IF (X*0.0 .EQ. Y) ...
+
+This is like example 2, but even nastier, because it would require
+different rules for the evaluation of expressions that are the operands
+of relations and in all other contexts.  However, it is important to
+note that it does not apply just to IEEE 754 NaNs, but to ANY constraint
+on the arithmetic implied by an answer to this interpretation.

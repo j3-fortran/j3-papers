@@ -1,0 +1,137 @@
+
+                                                     J3/04-151
+
+Date:      05 January 2004
+To:        J3
+From:      Aleksandar Donev
+Subject:   The ADDRESS attribute
+
+
+Title: The ADDRESS attribute
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: J3/03-279r1
+
+Basic Functionality: 
+
+I propose that modifications be made to the Fortran standard to
+allow passing buffers to C IO/communication routines without
+explicitly using C_LOC. For this purpose, a new attribute, spelled
+ADDRESS in this proposal, is provided. It would only be
+compatible with a dummy argument of type TYPE(C_PTR). The C
+address of the actual argument is passed by value by the caller.
+The actual argument must be a valid argument for the C_LOC
+intrinsic, in particular, have the TARGET attribute.
+Here is an example:
+
+INTERFACE
+   SUBROUTINE MPI_Send(buffer, count), BIND(C,"MPI_Send")
+      TYPE(C_PTR), ADDRESS :: buffer ! New attribute
+      INTEGER(C_INT), VALUE :: count
+   END SUBROUTINE
+END INTERFACE
+
+! Make this legal:
+REAL(C_FLOAT), DIMENSION(...), TARGET :: buffer
+CALL MPI_SEND(buffer,10) ! No need for C_LOC
+
+The above problem is similar to the one with "pass-by-value".
+Implementations used to deal with C interop with the %VAL
+intrinsic, so that one had to wrap a %VAL around any argument in
+a call that required pass-by-value. The present system in which
+the VALUE attribute is present in the interface and there is no
+difference at the call site is much better for the user and for code
+clarity. I am essentially proposing that a similar solution be
+implemented to the common problem of passing the address to an
+IO-type routine.
+
+Rationale: 
+
+Many C libraries dealing with IO/communication, and in particular
+MPI, have "typeless" dummy arguments (typically for buffers).
+These are typically a void pointer in the C interface. Consider the
+following (simplified) C prototype:
+
+void MPI_Send(void * buffer, int count);
+
+and its Fortran equivalent:
+
+INTERFACE
+   SUBROUTINE MPI_Send(buffer, count), BIND(C,"MPI_Send")
+      TYPE(C_PTR), VALUE :: buffer
+          INTEGER(C_INT), VALUE :: count
+   END SUBROUTINE
+END INTERFACE
+
+The actual argument in C can be a pointer (C array) of any type,
+and an implicit conversion into a void pointer happens:
+
+float * buffer;
+buffer=malloc(...);
+MPI_Send(buffer,10); // Works in C
+
+Fortran has a very different system in which the types of the
+dummy and actual must match and no implicit conversion happens
+at the call point. Therefore, one cannot call the MPI_Send
+procedure with anything but a C pointer as an actual argument:
+
+REAL(C_FLOAT), DIMENSION(:), TARGET :: buffer
+CALL MPI_SEND(buffer,10) ! NOT OK in Fortran
+
+but the following is OK:
+
+CALL MPI_SEND(C_LOC(buffer),10)
+
+The rationale for the proposed solution is two fold:
+1) It allows for easier interfacing to numerous existing libraries,
+including the existing Fortran interface to MPI (which is flawed as
+described above), from the user perspective.
+2) It will allow one to reuse current codes, which use vendor
+extensions or simply non-conforming tricks to call MPI_SEND with
+different types. This is friendly to existing practices.
+
+Estimated Impact: 
+
+This will have no cost for the implementations since many
+implementations already have a switch that basically lets one
+have type mismatches, and since the above change is really just a
+syntactic wrapper for something everyone already knows how to
+do: Just pass the memory address.
+
+Incorporating this into the standard is not entirely trivial. The
+proposed change will require that special provisions be made in
+argument association in the case when the dummy is a C pointer
+with the ADDRESS. Essentially what we would say is that it is as
+if the user had put a C_LOC in the call:
+
+! This:
+CALL MPI_SEND(buffer,10)
+! should be the same as:
+CALL MPI_SEND(C_LOC(buffer),10)
+
+Whether we relax the requirement that the actual be a TARGET
+(since the actual of C_LOC needs to) is a different matter. I would
+suggest that TARGET be required. If TARGET were optional,
+there are issues to consider here such as contiguity requirements
+and the provision for copy in/copy out (think Interp 125), as well as
+the risk of allowing pointers to be taken by the C procedure and
+abused, even in a legal program. I would like to say that, in some
+cases, one wants to make sure no copy in/copy out happens (such
+as asynchronous communication calls), and in Fortran using the
+TARGET attribute is the *only* way to ensure this (Interp 125).
+
+Detailed Specification: 
+
+A dummy argument interoperable with a C pointer may have the
+ADDRESS attribute. The VALUE attribute is implied by the
+ADDRESS attribute, but may be duplicated.
+
+If the dummy argument has the ADDRESS attribute, the actual
+argument must be a valid actual argument for C_LOC. The value
+of the result of C_LOC applied to the actual argument, i.e., the C
+adress of the actual argument, is associated with the dummy.
+
+History: 

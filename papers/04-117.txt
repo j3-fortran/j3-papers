@@ -1,0 +1,391 @@
+
+                                                            J3/04-117
+
+Date:    10 Dec. 2003
+To:      J3
+From:    Walt Brainerd
+Subject: Proposed new features in Fortran
+
+----------------------------------------------------------------------------
+
+Number:
+
+Title: Clarify the "as if" rules.
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: 
+
+Basic Functionality: Clarify that most of what is described in the standard
+is what the effect of executing a program must, not that
+it must actually be executed as described.
+
+For example, make it clear that statements do not really
+have to be executed in the order written (except for
+transfer of control) even though that's in effect what
+it says.
+
+Rationale: People ask about this often, in places like c.l.f.
+It would save a lot of time to make it clear in the
+standard, rather than having to answer the questions.
+
+Estimated Impact:  None, on the technical content.
+
+Detailed Specification: Make editorial changes to clarify this concept.
+
+History: Submitted as Pub-101
+
+----------------------------------------------------------------------------
+
+Number:
+
+Title: Clarification of function side effects
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: Fortra 2003, Section 7.1.8.1
+
+Basic Functionality: Clarify when a function (especially one with side effects)
+must be executed. Perhaps a good example is the following.
+Is the value printed for x predictable?
+
+program side_effect ! This is a lot like NOTE 7.15.
+
+   x = 2.0
+   y = 0*f(x)
+   print *, x, y
+
+   contains
+
+   function f(x)
+   x = x + 1
+   f = x
+   end function f
+
+end program side_effect
+
+Rationale: The Fortran 77 interp on this subject was never used to
+modify the standard in any way and members of J3 seem
+to disagree on this issue, so that indicates to me that
+it should be clarified.
+
+Estimated Impact: It depends on the way we go.
+
+If f doesn't have to be evaluated, and x is unpredictable,
+the words in 7.1.8.1 need to be made stronger (clearer?).
+
+If not, the sections needs a rewrite.
+
+[Is my bias showing?]
+
+Detailed Specification: Clarify the issue.
+
+History: Submitted as Pub-102
+
+----------------------------------------------------------------------------
+
+Number:
+
+Title: OPT=-HUGE(0)
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: 
+
+Basic Functionality: Allow the programmer to indicate that no rearrangement
+of expressions (or statements?) may take place. For example,
+for L1(x) .or. L2(x), L1 must first be computed and,
+regardless of the result L2 must be computed. In x+y+z,
+x and y must be added first. In other words, the code must
+be performed the same as the semantics indicate.
+
+This might subsume the .andif. and volatile functions and
+would really "mean what you code".
+
+It is a big step which extends the idea of
+"honor parentheses in expressons".
+
+Rationale: The same as Pub-101 and Pub-102. There appears to be no
+agreement on what can be done; this allows the programmer
+to control things more closely.
+
+Estimated Impact: It might make it easier to decide how to handle
+the side effects issue.
+
+There would be some small additional syntax and
+its description, which might be a bit complicate,
+but should be doable in one place, for the most part.
+
+Detailed Specification: I don't have any suggestions for syntax, but perhaps
+sections of code could be controlled by some syntax
+that turns this on. Or it could be per procedure or
+program unit.
+
+History: Submitted as Pub-103
+
+----------------------------------------------------------------------------
+
+Number:
+
+Title: Clarify "approximation" for real values
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: 
+
+Basic Functionality: State in one place that the standard recognizes that
+(essentially) all real and complex values and computations
+involve approximations.
+
+Rationale: In some places we say real computations are approximate
+(e.g., SQRT). In other places we do not (e.g., +).
+
+Probably nobody will think that + must be exact, but
+why not state it clearly.
+
+It will shorten the standard.
+
+Estimated Impact: This is editorial only.
+
+Detailed Specification: Put the words in the standard once.
+
+Remove all/most of the occurrences of
+"processor-dependent approximation".
+
+History: Submitted as Pub-104
+
+----------------------------------------------------------------------------
+
+Number:
+
+Title: Add an ASSERT executable statement and 3 helper functions
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: 
+
+Basic Functionality: Add an executable statement of the form
+
+ASSERT (alexp, [string],[level])
+
+where alexp is either a simple-logical-expression or a
+non-simple-logical-expression.
+
+The value of alexp shall be TRUE
+
+If string is absent it is as if it were present with
+the value    who_am_i(some_argument)//"alexp".
+
+If level is absent, it is if it were present with the
+value 1
+
+Execution of an assert statement has no effect.
+
+Add 3 helper functions:
+
+WHO_AM_I (logical-flag)
+if logical-flag has one value (or is absent) the result is
+a string with the name of the subprogram in it.  If logical-
+flag has the other value, the result is "module:subprogram"
+
+USUALLY(alexp)
+The result of USUALLY is TRUE
+
+RARELY(alexp)
+The result of RARELY is TRUE
+
+There are no restrictions on alexp for either function.
+
+Rationale: It allows the user to explicitly state things that must
+be true in a subprogram in a way that can be checked or
+bypassed at execution time.  It allows the user to give
+explicit hints to the optimizer in both a portable and
+checkable way.
+
+By splitting the alexp into simple and non-simple, where
+simple for example has no .AND., etc. operators, only
+simple inquiry functions, only simple integer operations,
+etc, vendors would be strongly encouraged to parse the
+simple expressions and use them in their optimization
+decisions.  They could also parse the non-simple ones.
+But, the intent is to make the simple ones a portable
+way to say simple things about a routine so that almost
+all optimizers will be pressured to do the right thing.
+This, obviously, requires input from vendors.
+
+The RARELY and USUALLY functions in an ASSERT would
+be hints for optimization as opposed to flat out truths.
+Thus, for example,
+ASSERT (MOD(N,4) == 0)
+    DO I = 1,N
+would allow a processor to unroll the loop by 4 and NOT
+generate checking code.  Whereas,
+ASSERT(USUALLY(MOD(N,4)==0))
+would tell a processor that unrolling by 4 is a darn
+good idea, but that checking code is needed.
+
+ASSERTs would most likely occur at the start or end
+of a subprogram for "programming by contract" or
+just before a DO loop as an optimization hint.
+
+Estimated Impact: It only adds one more executable statement that follows
+the normal rules of executable statements, it can be
+a branch target, can't be mixed with the declaratives,
+etc.
+
+Execution of an ASSERT has no effect, hence it's
+reletivily easy for a naive code generator to process.
+
+A more reasonable implementation would be something like
+IF (level < some_command_line_or_environment_value .and.
+ .not. alexp)  STOP string
+This allows the user to get run-time checking during
+debugging and allows for fast execution once a program
+is completely debugged.
+
+Detailed Specification: see above.
+
+If this idea really flies, we could think about allowing
+simple asserts to be part of the declarations and hence
+part of the interface information and hence take part
+in generic resolution.  This sounds like a darn good idea
+for a subsequent revision of the standard.
+
+History: Submittied as Pub-105
+
+----------------------------------------------------------------------------
+Number:
+
+Title: The ADDRESS attribute
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: 
+
+Basic Functionality: I propose that modifications be made to the Fortran standard to
+allow passing buffers to C IO/communication routines without
+explicitly using C_LOC. For this purpose, a new attribute, spelled
+ADDRESS in this proposal, is provided. It would only be
+compatible with a dummy argument of type TYPE(C_PTR). The C
+address of the actual argument is passed by value by the caller.
+The actual argument must be a valid argument for the C_LOC
+intrinsic, in particular, have the TARGET attribute.
+Here is an example:
+
+INTERFACE
+   SUBROUTINE MPI_Send(buffer, count), BIND(C,"MPI_Send")
+      TYPE(C_PTR), ADDRESS :: buffer ! New attribute
+      INTEGER(C_INT), VALUE :: count
+   END SUBROUTINE
+END INTERFACE
+
+! Make this legal:
+REAL(C_FLOAT), DIMENSION(...), TARGET :: buffer
+CALL MPI_SEND(buffer,10) ! No need for C_LOC
+
+The above problem is similar to the one with "pass-by-value".
+Implementations used to deal with C interop with the %VAL
+intrinsic, so that one had to wrap a %VAL around any argument in
+a call that required pass-by-value. The present system in which
+the VALUE attribute is present in the interface and there is no
+difference at the call site is much better for the user and for code
+clarity. I am essentially proposing that a similar solution be
+implemented to the common problem of passing the address to an
+IO-type routine.
+
+Rationale: Many C libraries dealing with IO/communication, and in particular
+MPI, have "typeless" dummy arguments (typically for buffers).
+These are typically a void pointer in the C interface. Consider the
+following (simplified) C prototype:
+
+void MPI_Send(void * buffer, int count);
+
+and its Fortran equivalent:
+
+INTERFACE
+   SUBROUTINE MPI_Send(buffer, count), BIND(C,"MPI_Send")
+      TYPE(C_PTR), VALUE :: buffer
+          INTEGER(C_INT), VALUE :: count
+   END SUBROUTINE
+END INTERFACE
+
+The actual argument in C can be a pointer (C array) of any type,
+and an implicit conversion into a void pointer happens:
+
+float * buffer;
+buffer=malloc(...);
+MPI_Send(buffer,10); // Works in C
+
+Fortran has a very different system in which the types of the
+dummy and actual must match and no implicit conversion happens
+at the call point. Therefore, one cannot call the MPI_Send
+procedure with anything but a C pointer as an actual argument:
+
+REAL(C_FLOAT), DIMENSION(:), TARGET :: buffer
+CALL MPI_SEND(buffer,10) ! NOT OK in Fortran
+
+but the following is OK:
+
+CALL MPI_SEND(C_LOC(buffer),10)
+
+The rationale for the proposed solution is two fold:
+1) It allows for easier interfacing to numerous existing libraries,
+including the existing Fortran interface to MPI (which is flawed as
+described above), from the user perspective.
+2) It will allow one to reuse current codes, which use vendor
+extensions or simply non-conforming tricks to call MPI_SEND with
+different types. This is friendly to existing practices.
+
+Estimated Impact: This will have no cost for the implementations since many
+implementations already have a switch that basically lets one
+have type mismatches, and since the above change is really just a
+syntactic wrapper for something everyone already knows how to
+do: Just pass the memory address.
+
+Incorporating this into the standard is not entirely trivial. The
+proposed change will require that special provisions be made in
+argument association in the case when the dummy is a C pointer
+with the ADDRESS. Essentially what we would say is that it is as
+if the user had put a C_LOC in the call:
+
+! This:
+CALL MPI_SEND(buffer,10)
+! should be the same as:
+CALL MPI_SEND(C_LOC(buffer),10)
+
+Whether we relax the requirement that the actual be a TARGET
+(since the actual of C_LOC needs to) is a different matter. I would
+suggest that TARGET be required. If TARGET were optional,
+there are issues to consider here such as contiguity requirements
+and the provision for copy in/copy out (think Interp 125), as well as
+the risk of allowing pointers to be taken by the C procedure and
+abused, even in a legal program. I would like to say that, in some
+cases, one wants to make sure no copy in/copy out happens (such
+as asynchronous communication calls), and in Fortran using the
+TARGET attribute is the *only* way to ensure this (Interp 125).
+
+
+Detailed Specification: A dummy argument interoperable with a C pointer may have the
+ADDRESS attribute. The VALUE attribute is implied by the
+ADDRESS attribute, but may be duplicated.
+
+If the dummy argument has the ADDRESS attribute, the actual
+argument must be a valid actual argument for C_LOC. The value
+of the result of C_LOC applied to the actual argument, i.e., the C
+adress of the actual argument, is associated with the dummy.
+
+History: Submittied as Pub-106
+
+----------------------------------------------------------------------------

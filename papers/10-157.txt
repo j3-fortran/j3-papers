@@ -1,0 +1,84 @@
+                                                            10-157
+To: J3
+From: Robert Corbett
+Subject: Interpretation Request: Deallocating argument associated
+				 objects
+Date: 2010 May 31
+
+All Fortran 2008 references are with respect to J3/10-007.
+
+QUESTION:
+
+Can an object that was created by an ALLOCATE statement and that
+is argument associated with a dummy argument be deallocated by a
+DEALLOCATE statement through a variable other than the dummy
+argument?
+
+ANSWER:
+
+No.
+
+DISCUSSION:
+
+Interpretations F90/000081 and F90/000125 provide background
+information for this interpretation request.
+
+Section 12.5.2.13, paragraph 1, page 300, lines 2-4 of
+Fortran 2008 states
+
+    While an entity is associated with a dummy argument, the
+    following restrictions hold.
+
+      (1)  Action that affects the allocation status of the
+	   entity or subobject thereof shall be taken through
+	   the dummy argument.
+
+I read that statement as meaning that an allocated object cannot be
+deallocated while it is associated with a dummy argument except
+through the dummy argument.  I was recently told by members of the
+committee that only allocatable variables have an allocation status,
+and that therefore the restriction applies only to allocatable
+variables.  I pointed out that Note 12.33 on pages 300-301
+contradictions that assertion.  I was then told that Note 12.33 is
+inaccurate.
+
+Consider the following program
+
+      SUBROUTINE SUBR(A)
+        REAL A(*)
+        REAL P, Q
+        DIMENSION P(:), Q(:)
+        POINTER P, Q
+        COMMON P, Q
+
+        DEALLOCATE (P)
+      END
+
+      PROGRAM MAIN
+        REAL P, Q
+        DIMENSION P(:), Q(:)
+        POINTER P, Q
+        COMMON P, Q
+
+        ALLOCATE (P(100))
+        P = 1.0
+        Q => P
+        CALL SUBR(Q(1:100:11))
+      END
+
+Under the interpretation that the restriction cited above applies only
+to allocatable variables, this program is standard conforming.  Every
+compiler I checked implements the CALL statement by making a
+contiguous copy of the elements Q(1:100:11) before the call and then
+copying the elements back to Q(1:100:11) after the return.  Because
+the allocated object that was the target of Q was deallocated during
+execution of SUBR, the elements are copied back to unallocated
+storage.
+
+I believe that the implementations of the CALL statement created by
+the compilers I tried were intended to be permitted.  Therefore, I
+believe that the program is not standard conforming.  I recognize that
+there are other ways of implementing the program that do not have the
+problem of copying back the elements of the actual argument.
+
+EDITS:

@@ -1,0 +1,68 @@
+To: J3                                                 J3/09-192
+From: Rolf Rabenseifner and Craig Rasmussen
+Subject: Additional request from the MPI Forum
+Date: 2009 April 19
+References: 08-185r1, 08-255, N1759
+
+08-185r1
+
+The MPI Forum has been restarted in order to update the Message Passing
+Interface (MPI) standard.  As part of this standardization effort, a new
+Fortran binding will be created for version 3.0 of the MPI standard.
+Previously (see 08-185r1) the MPI Forum has requested that J3 consider
+modifying the Fortran standard to accomplish the following:
+
+  1. A mechanism to suppress copy-in/copy-out semantics for MPI
+  asynchronous operations.
+
+  2. Suppress argument checking for MPI choice buffers (C void * formal
+  parameters).
+
+These two items have been addressed by new features (assumed type and
+assumed rank) in N1759.
+
+An additional item needs to be addressed in the new MPI 3.0 Fortran
+bindings.  During asynchronous (split phase) communication, a programmer
+first requests that a buffer be sent (or received) and later in the code
+later waits for the request to finish.  For example,
+
+CALL MPI_IRecv(buffer,...,request,...) ! request receive into buffer
+...
+CALL MPI_Wait(request,...)             ! wait for communication to finish
+
+Following completion of the MPI_Wait call, the buffer argument can now be
+referenced.  Especially since buffer doesn't appear as an argument to
+MPI_Wait, there is nothing to prevent the compiler from aggressive
+optimizations with respect to the buffer array.
+
+At meeting 185, the use of the VOLATILE, ASYNCHRONOUS, and TARGET
+attributes to protect MPI buffers from overly aggressive optimizations
+was discussed, but no conclusions were reached and no votes were taken.
+An additional possibility was suggested in 08-255 by Aleksandar Donev
+to the ASYNCHRONOUS attribute in conjuction with SYNC MEMORY statements.
+
+The VOLATILE attribute may be used to signal to the compiler that a
+variable may be modified asynchronously by an external mechanism.
+However, this disables all optimizations involving the variable.  The
+disabling of all optimizations is not needed, particularly since in
+conforming MPI programs, the variable will not be referenced or defined
+while asynchronous data transfer is occuring, just as required in F2003
+for variables involved in async I/O.  Many within the MPI Forum have
+expressed concern about the performance implications of use of the
+VOLATILE attribute.
+
+One possible solution that has been suggested is to use the BLOCK
+construct to limit the scope of VOLATILE attribute.  For example,
+
+CALL MPI_IRecv(buffer,...,request,...)
+...
+CALL MPI_Wait(request,...)
+BLOCK
+   VOLATILE :: buffer
+END BLOCK
+a(1) = buffer(1)
+
+The MPI Forum requests guidance of WG5 on how to address this issue
+in MPI 3.0.
+
+

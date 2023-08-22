@@ -1,0 +1,407 @@
+
+                                                                 J3/98-134
+
+	To: X3J3							   
+	From: JOR (R. Bleikamp)
+	Subject: Edits for derived type I/O
+	Date: Feb. 18, 1998
+	
+	Edits are based on the functional description in paper 97-217r1.
+	
+	The text strings <i> and </i> delimit text to be italicized.
+	Many quoted names (i.e. "w", "d", "m") are to be italicized also.
+	
+	"*"s in the left margin are used to highlight really important/new stuff.
+	
+	One minor functional change from 97-217r1.  The processor no longer resets
+	the state of BN/BZ/SP/SS/P to the unit default.  They are still pushed/popped
+	around the call to the user defined derived type I/O routine.
+	
+	Edits are based on 98-007 (Jan 13, 1998).
+	
+	Section 9.2.2.1 [143:38], list item (7),
+	    change "data transfer" to
+	    "data transfer, except for child data transfer I/O statements (9.4.4.4.3)"
+	
+	Section 9.4.2 [156:11]
+	Section 9.4.2 [156:17]
+	Section 9.4.2 [156:20]
+	
+	    In all three lines, change the "." to 
+	    ", except when the object is processed by a user defined derived type
+	     I/O routine, as described in section 9.4.4.4.3."
+	
+	Section 9.4.2 [156:28]
+	
+	    Change the "." to 
+	    ", except when the list item is processed by a user defined derived
+	     type I/O routine, as described in section 9.4.4.4.3."
+	
+	Section 9.4.4.4.2 [161:3],
+	
+	    Change "objects." to
+	    "objects, except when the derived type object is processed by a user
+	     defined derived type I/O routine, as described in section 9.4.4.4.3."
+	
+	Section 9.4.4 [157:41], in the first list,
+	
+	    In list item (5),
+	    change "(9.2.1.3.2)."
+	    to "(9.2.1.3.2), except when executing a child data transfer statement
+	    (9.4.4.4.3)."
+	    
+	Section 9.4.4 [158:1], in the first list,
+	
+	    In list item (8),
+	    change "(9.2.1.3.3)." to
+	    "(9.2.1.3.3), except when executing a child data transfer statement
+	     (9.4.4.4.3)."
+	
+	If we decide to support ASYNC I/O in a user defined derived type
+	I/O routine, then the second list in this section needs a similar edit.
+	No edits for now.
+	
+	Add a new section, 9.4.4.4.3 [161:26+]:
+	
+	    "9.4.4.4.3  User Defined Derived Type I/O Routines
+	
+	     User defined derived type I/O routines allow a program to alter the
+	     default handling of derived type objects and values in data transfer
+	     I/O statements as described in section 9.4.2.
+	
+	     A user defined derived type I/O routine is any routine whose interface
+	     matches one of the interfaces described in this section.
+	     A particular user defined derived type I/O routine is selected based
+	     on the direction of the data transfer (input or output), the type of
+	     data transfer statement (formatted or unformatted), and the particular
+	     derived type.
+	
+	     When an interface for a matching user defined derived type I/O
+	     routine is visible in a scoping unit, and other requirements are met,
+	     the processor will not process those derived types list items as
+	     described in 9.4.2.  Instead, it will call the matching user defined
+	     derived type I/O routine, for any data transfer I/O statements executed
+	     in that scoping unit.  The user defined derived type routine
+	     controls the actual data transfer operations for the derived type
+	     list item.
+	
+	  *  An I/O statement which includes a derived type list item, that
+	  *  causes a user defined derived type I/O routine to be invoked, is
+	  *  called a parent data transfer I/O statement.  Any other I/O data
+	  *  transfer statement executed specifying the unit passed into a
+	  *  user defined derived type I/O routine while the parent data
+	  *  transfer I/O statement is being processed is called a child data
+	  *  transfer I/O statement.
+	
+	     Note: A user defined derived type I/O routine will usually contain
+	     child data transfer I/O statements, that read values from,
+	     or write values to, the current record.  The effect of executing the
+	     user defined derived type I/O routine is similar to substituting the
+	     list items from any child data transfer statements into the parent
+	     data transfer I/O statement's list item list, along with similar
+	     substitutions in the format specification.
+	
+	     Note: A particular execution of a READ, WRITE or PRINT statement can
+	     be both a parent and a child data transfer I/O statement.  A user
+	     defined derived type I/O routine can indirectly call itself or another
+	     user defined derived type I/O routine by executing a child data
+	     transfer I/O statement containing a list item of derived type,
+	     where a matching interface is visible for that derived type.
+	     If a user defined derived type I/O routine calls itself indirectly
+	     in this manner, it must be declared RECURSIVE.
+	
+	  *  A child data transfer I/O statement is processed differently than
+	  *  a non-child data transfer I/O statement in the following ways:
+	  *    - Executing a child data transfer statement does not position
+	  *      the file prior to data transfer.  
+	
+	  *    - An unformatted child data transfer I/O statement does not
+	  *      position the file after data transfer is complete.  
+	
+	     For a particular derived type, there are four possible user defined
+	     derived type I/O routines; one each for formatted input, formatted
+	     output, unformatted input, and unformatted output.  The user need not
+	     supply all four routines for a particular type.
+	
+	     The four interfaces are:
+	
+	          INTERFACE READ ( FORMATTED )
+	            SUBROUTINE my_read_routine_formatted		&
+		    				(unit,			&
+	                                         dtv,			&
+	                                         iotype, w, d, m,	&
+	                                         eof, err, eor, errmsg)
+	              INTEGER, INTENT(IN) :: unit ! unit number
+		      ! the derived type value/variable
+	              TYPE (whateveritis), INTENT(OUT) :: dtv
+		      ! the edit descriptor string
+	              CHARACTER, (LEN=*), INTENT(IN) :: iotype
+	              INTEGER, OPTIONAL, INTENT(IN) :: w,d,m
+	              LOGICAL, INTENT(OUT) :: eof, err, eor
+	              CHARACTER, (LEN=*), INTENT(OUT) :: errmsg
+	            END
+	          END INTERFACE
+	
+	          INTERFACE READ ( UNFORMATTED )
+	            SUBROUTINE my_read_routine_unformatted		&
+	                                        (unit,			&
+	                                         dtv,			&
+	                                         eof, err, eor, errmsg)
+	              INTEGER, INTENT(IN) :: unit
+		      ! the derived type value/variable
+	              TYPE (whateveritis) INTENT(OUT) :: dtv
+	              LOGICAL, INTENT(OUT) :: eof, err, eor
+	              CHARACTER, (LEN=*), INTENT(OUT) :: errmsg
+	            END
+	          END INTERFACE
+	
+	          INTERFACE WRITE ( FORMATTED )
+	            SUBROUTINE my_write_routine_formatted		&
+	                                        (unit,			&
+	                                         dtv,			&
+	                                         iotype, w, d, m,	&
+	                                         err, errmsg)
+	              INTEGER, INTENT(IN) :: unit
+		      ! the derived type value/variable
+	              TYPE (whateveritis), INTENT(IN) :: dtv
+		      ! the edit descriptor string
+	              CHARACTER, (LEN=*), INTENT(IN) :: iotype
+	              INTEGER, OPTIONAL, INTENT(IN) :: w,d,m
+		      LOGICAL, INTENT(OUT) :: err
+	              CHARACTER, (LEN=*), INTENT(OUT) :: errmsg
+	            END
+	          END INTERFACE
+	
+	          INTERFACE WRITE ( UNFORMATTED )
+	            SUBROUTINE my_write_routine_unformatted		&
+		    				(unit,			&
+	                                         dtv,			&
+	                                         err, errmsg)
+	              INTEGER, INTENT(IN) :: unit
+		      ! the derived type value/variable
+	              TYPE (whateveritis), INTENT(IN) :: dtv
+		      LOGICAL, INTENT(OUT) :: err
+	              CHARACTER, (LEN=*), INTENT(OUT) :: errmsg
+	            END
+	          END INTERFACE
+		
+		The actual specific routine names (the my_..._routine_...
+		routine names above) and the dummy argument names may be chosen by
+		the user.  These routines shall not be invoked directly
+		(i.e. via a call, or overloading an operator).
+	
+		The "dtv" dummy argument may also be given the TARGET attribute,
+		but shall not be given any other attributes.
+	
+		The user defined derived type I/O routines are invoked during the
+		processing of I/O data transfer statements when the I/O data
+	        transfer statement is processing a derived type list item and:
+	
+	     	  - for unformatted, list directed, and namelist i/o, a
+		    matching interface for the derived type of that list item
+		    is visible
+	
+	     	  - for I/O statements with a <format-specification>, 
+	     	    a matching interface for the derived type of that list
+		    item is visible, and the list item matches up with a DT
+		    edit descriptor,
+	
+		The "unit" dummy argument will have the same unit value as
+		specified by the user in the originating I/O statement
+		for all external units except "*".  When an internal unit or
+		the "*" external unit was specified in the originating I/O
+		statement, the "unit" dummy argument will have a processor
+		dependent negative value.
+	
+		Note: Since the "unit" dummy argument value will be negative when
+		the parent I/O statement specified an internal file or "*" unit,
+		a user defined derived type I/O routine should not execute an
+		INQUIRE without checking for a positive value of the unit dummy
+		argument.
+		
+		The "iotype" argument will have the value:
+	
+		  - "LISTDIRECTED" if the originating I/O statement specified
+		     list directed I/O,
+	
+		  - "NAMELIST" if the original I/O statement contained an
+		    NML= specifier, or
+	
+		  - "DT[letters]" if the originating I/O statement contained a
+		    format specification and the list item matched up with a
+		    DT edit descriptor.
+		    The "DT" in "iotype" and the <i>letters</i> after the "DT"
+		    will be converted to upper case.
+	
+		If the original I/O statement is a READ statement, a value assigned
+		to the "dtv" dummy arg (or some portion thereof) by the user defined
+		derived type I/O read routine will assign those values into the
+		input list item.
+		
+		If the original I/O statement is a WRITE or PRINT, the "dtv"
+		dummy arg contains the value of the list item from the
+		original I/O statement.
+		
+		The "w", "d", and "m" arguments contain the user specified
+		values from the FORMAT (i.e.  FORMAT(DT12.5.2 ) ).  If the
+		user did not specify "w", "d", and/or "m", those dummy
+		arguments will not be present.  They will not be present if
+		the original I/O statement was a list directed, or namelist
+		I/O statement.
+		
+		The user defined derived type I/O routines for reads shall
+		assign a value of .FALSE.  or .TRUE. to the "err", "eof", and
+		"eor" dummy args.   The value assigned to these dummy arguments
+		determine whether or not the corresponding condition will
+		be triggered by the processor in the parent I/O statement when
+		the user defined derived type I/O routine returns.
+	
+		If the value .TRUE. is assigned to the "err" dummy argument, 
+		the "errmsg" dummy argument shall be defined also, before the
+		user defined derived type I/O routine returns.
+	
+		When "err" is set to true, and the parent I/O statement did
+		contained neither an ERR= nor an IOSTAT= specifier, the
+		processor shall attempt to output the "errmsg" value and stop
+		execution of the program.
+		
+	Note to the reader: If we add an ERRMSG= specifier to all read/write
+	statements, this value would be returned thereto.
+		
+		When a DT edit descriptor is matched with a list item that is
+		not a derived type an error will occur.
+		
+		When a DT edit descriptor is matched with a list item that is
+		a derived type, but no matching interface for a
+		user defined derived type I/O routine was visible, an error will
+		occur.
+	
+		Note: The users routine may chose to interpret the "w" argument as a
+		field width, but this is not required.  If it does, it would be
+		appropriate to fill an output field with "*"s if "w" is too small.
+		
+		When a parent READ statement is active, I/O statements
+		shall not READ from any other external unit other than the one
+		passed in via the dummy arg "unit", nor perform output to any
+		external unit.
+		
+		When a parent WRITE or PRINT statement is active, I/O statements
+		shall not perform output to any other external unit other than the
+		one passed in via the dummy arg "unit, nor perform input from any
+		external unit.
+	
+		When a parent I/O statement is active, data transfer I/O
+		statements that specify an internal file are permitted.
+	
+	     	OPEN, CLOSE, BACKSPACE, ENDFILE, and REWIND statements shall not
+		be executed while a user defined derived type I/O routine
+		is active.
+	
+		The user defined derived type I/O routines may
+		use a FORMAT with a DT edit descriptor, for handling components
+		of the derived type which are themselves a derived type.
+		A child I/O statement that is a list directed or namelist I/O
+		statement may contain a list item of derived type.
+		
+		Child WRITE and PRINT statements will write
+		into the record started by the parent output statement,
+		starting at the position in the record where the last edit descriptor
+		left off.  Record boundaries may be created by output statements
+		in the user defined derived type I/O routines for formatted I/O.
+		A child formatted WRITE or PRINT statement will not position the file
+		to the next record before the list items are processed, but it
+		will end the current record when the child output statement
+		completes, unless the child output statement is non-advancing.
+	
+		Child READ statements start reading from the postion in the current
+		record where the last edit descriptor from the parent
+		I/O statement left off.  Multiple records may be read from a
+		formatted file.  A child formatted READ statement will position
+		the file at the next record when the child READ statement completes,
+		unless the child READ statement is non-advancing.
+		
+		Record positioning edit descriptors, such as TL and TR,
+		used on "unit" by a child I/O statement, shall not cause the
+		record position to be positioned before the record position at
+		the time the user defined derived type I/O routine was invoked.
+	
+		Note: A robust user defined derived type I/O routine may wish to
+		use INQUIRE to determine what BLANK=, PAD= and DELIM= are for
+		an external unit.
+		
+		Edit descriptors which affect subsequent edit descriptors
+		behavior, such as BN, SP, P, etc., are permitted in FORMATs in
+		child I/O statements.  The processor will save the state of BN,
+		BZ, S, SP, SS, and P before calling a user defined derived type
+		I/O routine, call the user defined derived type I/O routine, and
+		reset the processor's state of BN, BZ, S, SP, SS, and P to the saved
+		state when the user defined derived type I/O routine returns.
+	
+		A child I/O statement is free to use these state changing edit
+		descriptors without having any effect on the formatting of list
+		items in the parent I/O list.
+	
+	Note to the reader: If directed rounding mode edit descriptors are added,
+	these will be added to the list of "saved" states.
+	
+	     	READ and WRITE statements executed in a user defined derived
+		type I/O routine, or executed in a routine invoked (directly
+		or indirectly) from a user defined derived type I/O routine
+		shall not contain an ASYNCHRONOUS="YES" specifier, nor shall
+		the parent READ or WRITE statement contain an ASYNCHRONOUS="YES"
+		specifier.
+	
+	        A user defined derived type I/O routine, and any routines invoked
+		therefrom, shall not define, or cause to become undefined, any
+		storage location referenced by any I/O list item, the
+		corresponding format, or any specifer in any active parent input/output
+		statement, except through the "dtv" dummy argument.
+	
+	
+	In section 10.2.1 [173:1+], add
+	    "or  DT [<i>letter</i>] ...  [w[.d[.m]]]  "
+	
+	In section 10.2.1 [173:11+] add
+	    "Constraint: The string  of <i>letters</i> following a DT edit descriptor
+	     shall not contain more than 253 characters."
+	
+	Add a new section 10.5.5 [181:28+]:
+	    "10.5.5  User defined derived type editing
+	
+	     The DT edit descriptor allows a user provided routine to be used
+	     for processing a list item of derived type instead of the processor
+	     supplied I/O formatting routines.
+	
+	     The DT characters may be followed by up to 253 <i>letters</i>
+	     (additional interspersed blanks are permitted) (ex. "DT LNK LST").
+	     The text of the edit descriptor, including the initial "DT" and
+	     the string of <i>letters</i>, up to but not including <i>w</i>,
+	     will be converted to uppercase and have all blanks removed. 
+	     The resulting character value will be passed to the user defined
+	     derived type I/O routine as the "iotype" argument.
+	
+	     Note: The <i>letters</i> after "DT" could be used to request different
+	     formatting rules for various components in the derived type.
+		
+	     When a derived type variable or value matchs up with a DT
+	     edit descriptor, the user shall provide the corresponding
+	     read/write procedure for that derived type, with
+	     a visible interface that matches the definition in
+	     section 9.4.4.4.3.
+	
+	In section 12.3.2.1, in R1207 [204:14+] add,
+	    "or  READ (FORMATTED)
+	     or  READ (UNFORMATTED)
+	     or  WRITE (FORMATTED)
+	     or  WRITE (UNFORMATTED)"
+	
+	
+	OPTIONAL edits for Richard Maine, for the F2000 Introduction, summary of
+	new features.
+	
+	  User control of derived type I/O
+	
+	  F2000 provides a portable mechanism for the implementor of opaque
+	  data types to also implement the I/O conversion routines for
+	  the opaque data type, in Fortran, directly accessible from Fortran's
+	  READ and WRITE statements, for both formatted and unformatted I/O.  

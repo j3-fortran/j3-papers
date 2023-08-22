@@ -1,0 +1,340 @@
+
+                                                             J3/97-196
+
+Date:    97 July 10
+To:      J3/DATA
+From:    Malcolm Cohen
+Subject: Proposed Draft Syntax for Single Inheritance/Type Extension
+
+1. Introduction
+---------------
+
+This paper proposes syntax for single inheritance, the specifications of which
+appear in 97-183r2.  Some clarifications of unclear points in 97-183r2 are
+also provided.
+
+2. Declaration syntax
+---------------------
+
+For base types the EXTENSIBLE keyword is used, as per 97-183r2.
+For extended types the EXTENDS clause is used, different from 97-183r2.
+
+We say a type has the EXTENSIBLE property if either of these clauses is used.
+A type declared with the EXTENDS clause is an <<extended type>>.
+The <<parent type>> of an extended type is the type named in the EXTENDS
+clause.
+The <<base type>> of a type declared with the EXTENSIBLE keyword is the
+type itself; the <<base type>> of an extended type is the base type of its
+parent type.
+
+The F95 rule:
+
+  R423 <derived-type-stmt> <<is>> TYPE [[,<access-spec]::] <type-name>
+
+Becomes
+
+  R423 <derived-type-stmt> <<is>> TYPE [[,<type-modifier-list>]::] <type-name>
+  R423a <type-modifier> <<is>> EXTENSIBLE
+                        <<or>> EXTENDS(<extensible-type-name>)
+                        <<or>> <access-spec>
+
+  Constraint: If the EXTENSIBLE type modifier is used, the EXTENDS clause
+              shall not be present.
+
+  R423b <extensible-type-name> <<is>> <type-name>
+
+  Constraint: <parent-type-name> shall be the name of an accessible type
+              that has the EXTENSIBLE property.
+
+An additional constraint to the list following R424 is
+
+  Constraint: If <type-name> has the EXTENSIBLE property, SEQUENCE shall not
+              be present.
+
+Examples
+
+  TYPE,EXTENSIBLE :: point_2d
+    REAL x,y
+  END TYPE
+  TYPE,EXTENDS(point_2d) :: point_3d
+    REAL z
+  END TYPE
+
+2alt. Alternative Declaration Syntax
+------------------------------------
+The same as above, but with "BASE" replacing "EXTENSIBLE", and "INHERIT"
+replacing "EXTENDS".  Thus the example become
+
+  TYPE,BASE :: point_2d
+    REAL x,y
+  END TYPE
+  TYPE,INHERIT(point_2d) :: point_3d
+    REAL z
+  END TYPE
+
+3. Component References
+-----------------------
+
+The scope of an extended type includes all component names from the parent
+type, together with its additional component names (if any), and the parent
+component name; this latter has the same name as the parent type.
+
+For intrinsic i/o purposes, the list of components is considered to be the same
+as the parent type's list of components, with the extended components appended
+to the end of the list.
+
+Examples:
+
+  TYPE(point_2d) p2
+  TYPE(point_3d) p3
+
+  p2 contains components: p2%x, p2%y
+  p3 contains components: p3%x, p3%y, p3%z, p3%point_2d
+
+  PRINT *,p2    ! Prints p2%x then p2%y
+  PRINT *,p3    ! Prints p3%x then p3%y then p3%z
+
+4. Polymorphic Variables
+------------------------
+
+Add a new <type-spec> possibility (to R502):
+
+                       <<or>> OBJECT(<extensible-type-name>)
+
+Add a new constraint to the type declaration constraint list (after R506):
+
+  Constraint: An entity declared with the OBJECT keyword shall be a dummy
+              argument or shall have the POINTER attribute.
+
+Add a new constraint following for component definitions (after R427):
+
+  Constraint: A component declared with the OBJECT keyword shall have the
+              POINTER attribute.
+
+"5.1.1.8 Polymorphic objects
+
+ An OBJECT type specifier is used to declare entities that can, at run-time,
+ assume the type of the derived type specified by the <type-name> or any
+ other type that has been extended from that <type-name>.  A non-pointer
+ polymorphic dummy argument assumes the type from the associated actual
+ argument.  A polymorphic pointer dummy argument assumes the type of the
+ associated actual pointer argument if the pointer actual argument has the
+ pointer association status of "associated" at procedure invocation.  A
+ polymorphic pointer assumes the type from its target in a pointer assignment
+ statement, or assumes TYPE(<type-name>) from a successful ALLOCATE statement.
+ A polymorphic pointer with a pointer association status of disassociated or
+ undefined has no current type.
+
+ A polymorphic name only provides direct access to the components of the
+ declared type."
+
+5. Argument Association
+-----------------------
+
+There are three cases:
+ (1) Only the dummy argument is polymorphic
+     - the actual argument must be of the declared type of the dummy argument,
+       or of a type extended therefrom;
+ (2) Only the actual argument is polymorphic
+     - the actual argument's runtime type must be the same as the (fixed) type
+       of the dummy argument or of a type extended therefrom;
+ (3) Both the actual argument and the dummy argument are polymorphic
+     - the actual argument's runtime type must be of the declared type of the
+       dummy argument or of a type extended therefrom.
+
+In cases (2) and (3) a runtime check may be necessary to enforce the rule.
+Case (1) can always be checked at compile-time.
+
+Examples:
+ Given
+   TYPE(point_2d) t2
+   TYPE(point_3d) t3
+   OBJECT(point_2d) p2
+   OBJECT(point_3d) p3
+   ! p2 and p3 are dummy arguments or pointers
+ for case (1), given
+   SUBROUTINE SUB2(x2); OBJECT(point_2d) x2
+   SUBROUTINE SUB3(x3); OBJECT(point_3d) x2
+ then
+   CALL SUB2(t2) ! is legal - t2 is of the declared type of x2
+   CALL SUB2(t3) ! is legal - t3 is extended from the declared type of x2
+   CALL SUB3(t2) ! is illegal - t2 is not of a compatible type with x3
+   CALL SUB3(t3) ! is legal - t3 is of the declared type of x3
+ for case(2), given
+   SUBROUTINE TUB2(d2); TYPE(point_2d) d2
+   SUBROUTINE TUB3(d3); TYPE(point_3d) d3
+ then
+   CALL TUB2(p2) ! is legal - p2's declared type is the same as that of d2
+   CALL TUB2(p3) ! is legal - p3's declared type extends that of d2
+   CALL TUB3(p2) ! is only legal if p2's runtime type is TYPE(point_3d) or
+                 ! something extended therefrom
+   CALL TUB3(p3) ! is legal - p3's declared type matches that of d3
+ for case(3),
+   CALL SUB2(p2) ! is legal
+   CALL SUB2(p3) ! is legal
+   CALL SUB3(p2) ! is only legal if p2's runtime type is compatible
+   CALL SUB3(p3) ! is legal
+
+6. Pointer Assignment
+---------------------
+I propose that pointer assignment of polymorphic variables follow exactly the
+same rules as argument association of non-pointers.
+
+In particular, this allows
+  TYPE,EXTENDS(point_3d) :: point_4d
+    REAL t
+  END TYPE
+  ...
+  TYPE(point_3d),POINTER :: p
+  OBJECT(point_2d),TARGET :: dummy ! a dummy argument
+  p => dummy ! Legal if dummy's runtime type is point_3d or anything extended
+             ! therefrom, e.g. point_4d.  However, p only ever gives access to
+             ! the point_3d part of a point_4d object.
+
+7. Type Enquiry
+---------------
+Two new intrinsic functions SAME_TYPE_AS, CONTAINS_TYPE_OF.
+(Same as in 97-183r2, with a name change for the second intrinsic).
+
+SAME_TYPE_AS(POLY,MOLD)
+  POLY is a polymorphic variable of any type.
+  MOLD may be polymorphic or of fixed type.
+  Result is .TRUE. if and only if POLY's runtime type is the same as that
+  of MOLD.
+
+CONTAINS_TYPE_OF(POLY,MOLD)
+  POLY is a polymorphic variable of any type.
+  MOLD may be polymorphic or of fixed type.
+  Result is .TRUE. if and only if POLY's runtime type is the same as the type
+  of MOLD or is an extension of the type of MOLD.
+
+7alt: Alternative Type Enquiry
+------------------------------
+Instead of intrinsic functions these could be operators, viz
+  .EQTYPE. for SAME_TYPE_AS
+and
+  .SUBTYPE. for CONTAINS_TYPE_OF
+
+8. Access to Extended Components
+--------------------------------
+97-183r2 only provides one mechanism to access components of a type extended
+from the variable, that is via additional names.
+
+Example:
+  OBJECT(point_2d) p2 ! dummy argument
+
+  If p2 is known to be of runtime TYPE(point_3d), to gain access to the
+  Z component an additional variable is needed, e.g.
+
+  TARGET p2
+  TYPE(point_3d),POINTER :: p3
+  IF (CONTAINS_TYPE_OF(p2,MOLD=p3)) THEN
+    p3 => p2
+    PRINT *,'Z component is',p3%z
+  ELSE
+    PRINT *,'ERROR: p2 only has 2 dimensions'
+  END IF
+
+8alt: Alternative mechanism for accessing extended components
+-------------------------------------------------------------
+The above mechanism is not too complicated for a very small number of
+types but requires additional pointers to be declared and it can become
+tedious doing all the type tests.
+
+I therefore propose a SELECT TYPE construct, with each <type-selection-block>
+acting as a scoping unit in which the components of the selected type
+are directly visible (as if the TYPE were a MODULE which it USEd).
+
+The example above then becomes:
+
+  OBJECT(point_2d) p2 ! dummy argument
+  SELECT TYPE(p2)
+    TYPE IN (point_3d)
+      PRINT *,'Z component is',z
+    ELSE
+      PRINT *,'ERROR: p2 only has 2 dimensions'
+  END SELECT
+
+There are two forms of type selector, "TYPE IN" which implicitly invokes the
+CONTAINS_TYPE_OF intrinsic, and "TYPE IS" which implicitly invokes the
+SAME_TYPE_AS intrinsic.  Thus the ELSE clause could have been written
+    TYPE IS (point_2d)
+
+The syntax for this is as follows:
+
+Rxxx1 <select-type-construct> <<is>> <select-type-stmt>
+                                     <type-selection-block>...
+                                     [ <else-selection-block> ]
+                                     <end-select-type-stmt>
+
+Rxxx2 <select-type-stmt> <<is>> SELECT TYPE ( <expr> )
+
+Constraint: <expr> shall be a polymorphic object or a reference to a function
+            that returns a polymorphic pointer.
+
+Rxxx3 <type-selection-block> <<is>> <type-selection-stmt> <block>
+
+Rxxx4 <type-selection-stmt> <<is>> TYPE IS ( <extensible-type-name> )
+                            <<or>> TYPE IN ( <extensible-type-name> )
+
+Rxxx5 <else-selection-block> <<is>> <else-selection-stmt> <block>
+
+Rxxx6 <else-selection-stmt> <<is>> ELSE
+
+Rxxx7 <end-select-type-stmt> <<is>> END SELECT
+
+Each type selection condition is tested in turn, and the block executed for
+the first one that is satisfied; control then passes to the end-select-type
+statement.  [This allows easier programming of complicated type selections,
+without preventing use of a jump table should the type tag values be
+suitable for such usage.  Though perhaps we should choose a different keyword
+to avoid the false similarity with the SELECT CASE construct?]
+
+- - - - - -
+
+Another common complaint (even with normal derived types) is that accessing
+several components that lie at the end of several data-ref's is tedious
+(i.e. the complaint is that Fortran does not have any equivalent of Pascal's
+WITH statement).
+
+We could kill two birds with one stone here with a slight change of keywords
+and extension of the above (SELECT TYPE) proposal; 
+
+Example of keyword change:
+  INSPECT(p2)
+    WHEN TYPE IN(point_3d)
+      PRINT *,'Z component is',z
+    ELSE
+      PRINT *,'ERROR: p2 only has 2 dimensions'
+  END INSPECT
+
+Example of user complaint:
+  LONG_VARIABLE_NAME%ARRAY_COMPONENT(I+1,J,K*N+3)%SCALAR%I_VALUE = 1
+  LONG_VARIABLE_NAME%ARRAY_COMPONENT(I+1,J,K*N+3)%SCALAR%J_VALUE =
+      LONG_VARIABLE_NAME%ARRAY_COMPONENT(I+1,J,K*N+3)%SCALAR%J_VALUE + 1
+  LONG_VARIABLE_NAME%ARRAY_COMPONENT(I+1,J,K*N+3)%SCALAR%K_VALUE = 0
+Example of solution:
+  INSPECT(LONG_VARIABLE_NAME%ARRAY_COMPONENT(I+1,J,K*N+3)%SCALAR)
+    I_VALUE = 1
+    J_VALUE = J_VALUE + 1
+    K_VALUE = 0
+  END INSPECT
+
+9. Generic Resolution
+---------------------
+The rules for unambiguous generic procedure names require that there be both
+a disambiguating argument "by position" and "by name" - with some positional
+requirements if these are not the same argument.
+
+A polymorphic dummy argument in a procedure can act as a disambiguator if the
+corresponding dummy argument in the other procedure is either of a type that
+is not extensible (i.e. an intrinsic type or a non-extensible derived type)
+or if it is of an extensible type that has a different base type to that of
+the polymorphic dummy argument.
+
+(This is the same as in 97-183r2, the wording has been changed to try to make
+things clearer.)
+
+...........................Malcolm Cohen, NAG Ltd., Oxford, U.K.
+                           (malcolm@nag.co.uk)
+

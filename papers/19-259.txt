@@ -1,0 +1,320 @@
+To: J3                                                     J3/19-259
+From:  Jon Steidel & Zach Jibben
+Subject: Edits for Put with Notify 
+Date: 2019-October-17
+Reference:  19-251, 18-007r1
+
+I Introduction
+
+A capability called "put with notify" is popular in the SHMEM
+community as a very efficient, narrowly focused, synchronization
+technique for data transfers between images. The basic idea is to
+combine a "put" (definition of a variable on a different image) with a
+notification mechanism that allows the receiving image to know that
+the data has arrived.  While long requested for coarrays in Fortran,
+there was previously no simple syntax to allow for two things (the put
+and the notify) on the left side of an assignment.  
+
+Fortran 2018 introduced specifiers as part of an image selector. The 
+addition of a notify-specifier to an image selector, and a NOTIFY WAIT
+statement could solve this problem. For example,
+
+    x[10, NOTIFY=nx] = y
+
+where nx is a coarray declared of type(NOTIFY_TYPE).  The NOTIFY_TYPE
+is defined in the intrinsic module ISO_FORTRAN_ENV and has properties
+similar to type EVENT_TYPE.
+
+The effective notify operation is to the nx variable on the same image
+as specified by the image selector.  On image 10,
+
+    NOTIFY WAIT (nx)
+    [here it is safe to reference x and get the new value]
+
+
+II Use-cases
+ 
+It is common for an image, i, to wait until another image, j, has 
+updated a coarray on image i before image i continues execution. This
+can currently be implemented using events.  For example,
+
+!   On some image other than 10
+    x[10] = y
+    EVENT POST (nx [10])
+
+!  On image 10
+    EVENT WAIT (nx)
+    z = x
+
+It could be implemented more efficiently using a put with notify 
+mechanism:
+
+!  On some image other than 10
+   x[10, NOTIFY=nx] = y
+
+! On image 10
+   NOTIFY WAIT (nx)
+   z = x
+
+The put with notify version differs from the EVENT version in that the
+notify can be incorporated into the same data packet as the value of y. 
+Also the synchronization is only on this particular transfer, and not
+all outstanding memory operations on this image.  The put with 
+notify operation does not constitute segment ordering, and the NOTIFY 
+WAIT statement is not an image control statement.  The notify variable
+semantics are like those of atomic operations with regard to segment
+ordering.
+
+If x is an array "waiting" for data to be transferred to separate
+elements from one or more images, the NOTIFY WAIT could have an
+optional UNTIL_COUNT= clause similar to EVENT WAIT.
+
+! On images other than image 10
+  x(i)[10, NOTIFY=nx] = y
+
+! On image 10
+  NOTIFY WAIT (nx, UNTIL_COUNT=size(x))
+  z(:) = x(:)
+
+
+III Edits
+
+[xiii] Introduction
+Add the sentence
+
+  "The put with notify feature adds a NOTIFY_TYPE to ISO_FORTRAN_ENV, a
+   NOTIFY specifier to an image selector, and adds the NOTIFY WAIT
+   execution control statement."
+
+{Define notify variable}
+
+[22:44+] add
+
+3.154.3+
+notify variable
+scalar variable of type NOTIFY_TYPE (16.10.2.20+) from the intrinsic
+module ISO_FORTRAN_ENV
+
+{Add NOTIFY WAIT statement to the list of action statements}
+
+[33:49+] add
+           or <notify-wait-stmt>
+
+{Add notify-variable to 5.3.6 Image execution states}
+
+[37:33] after "lock variable" add
+        ", notify variable, "
+
+{Add notify types to constraint C737}
+
+[66:9] after "EVENT_TYPE" add
+       ", NOTIFY_TYPE, "
+
+[66:10-11] after "EVENT_TYPE" add
+           ", NOTIFY_TYPE, " twice
+
+{Add notify types to constraint C847}
+
+[102:12-13] after "EVENT_TYPE (16.10.2.10)" add
+       ", NOTIFY_TYPE (16.10.2.20+), "
+
+ {Add NOTIFY= spec to image selectors}
+          
+[131:7+] add the following to R926 image-selector-spec
+
+       or NOTIFY = <notify-variable>
+
+R926+  <notify-variable>  is  <scalar-variable>
+
+[131:10+] add the following constraints 
+
+C931+  (R926+) A <notify-variable> shall be of type NOTIFY_TYPE from the
+       intrinsic module ISO_FORTRAN_ENV (16.10.2)
+
+C931++ (R926+) <notify-variable> shall not be coindexed.
+
+C931+++ An image selector with a NOTIFY= <image-selector-spec> shall only
+        appear in a designator for the variable of an assignment
+        statement.
+
+[131:24+] add a new paragraph
+"Successful execution of a statement containing an image-selector with a
+NOTIFY=specifier atomically increments the count of the notify variable
+on the image specified by the image selector. The completion of an
+assignment statement with NOTIFY= specifier does not depend on the
+execution of a corresponding NOTIFY WAIT statement."
+
+{Disallow NOTIFY_TYPE variables as SOURCE= variables in ALLOCATE
+statements}
+
+[132:17-19] after "EVENT_TYPE" add
+            ", NOTIFY_TYPE, " twice
+
+[132:30-31] after "EVENT_TYPE," add
+            " NOTIFY_TYPE, " twice
+
+{Add a new section NOTIFY WAIT statement after 11.5 FAIL IMAGE statement.
+We use the syntax rule <event-wait-list> here, which is a forward
+reference.  This could be cast as a <notify-wait-list> and EVENT WAIT
+could then use this rule, if forward references are not desired.}
+
+[198:4+] 11.5+ NOTIFY WAIT statement
+
+The NOTIFY WAIT statement waits until the value of the <notify-variable>
+is greater than or equal to the threshold value of the NOTIFY WAIT
+statement.
+
+R1163+ <notify-wait-stmt> is NOTIFY WAIT ( <notify-variable> 
+                                        [ , <event-wait-spec-list> ] )
+
+The <notify-variable> shall not depend on the value of <stat-variable> or
+<errmsg-variable>.
+
+Execution of a NOTIFY WAIT statement consists of the following sequence
+of actions:
+
+  1. if the UNTIL_COUNT= specifier does not appear, the threshold value
+     is set to one; otherwise, the threshold value is set to the maximum
+     of the value of the scalar-int-expr and one;
+  2. the executing image waits until the count of the notify variable is 
+     greater than or equal to the threshold value or an error condition  
+     occurs;
+  3. if no error condition occurs, the count of the notify variable is 
+     atomically decremented by the threshold value.
+
+If an error condition occurs during execution of an NOTIFY WAIT
+statement, the value of the count of its notify variable is processor
+dependent.
+
+A NOTIFY WAIT statement execution is initially unsatisfied.  Successful
+execution of a NOTIFY WAIT statement with a threshold value of <k>
+satisfies the first <k> unsatisfied executions of assignment statements
+with a NOTIFY= specifier that specifies the same notify variable
+specified in the NOTIFY WAIT statement.
+
+The <stat-variable> in a <event-wait-spec> shall not depend on the value
+of <notify-variable> or an <errmsg-variable> in <event-wait-spec>. The
+<errmsg-variable> in <event-wait-spec> shall not depend on the value of
+<notify-variable> or a <stat-variable> in a <event-wait-spec.
+
+If a STAT= specifier appears in <event-wait-spec>, the <stat-variable> is
+assigned the value zero if execution of the NOTIFY WAIT statement is
+successful.
+
+If a STAT= specifier appears in <event-wait-spec> and an error condition
+occurs, <stat-variable> is assigned a processor-dependent positive value
+that is different from the value of STAT_FAILED_IMAGE (16.10.2.26) and
+STAT_STOPPED_IMAGE (16.10.2.29) from the intrinsic module ISO_FORTRAN_ENV
+(16.10.2).
+
+If an error condition occurs during execution of a NOTIFY WAIT statement
+that does not contain the STAT= specifier in <event-wait-list>, error
+termination is initiated.
+
+If an ERRMSG= specifier appears in <event-wait-list> and an error
+condition occurs, <errmsg-variable> is assigns an explanatory message,
+as if by intrinsic assignment. If no such condition occurs, the
+definition status and the value of <errmsg-variable> are unchanged.
+
+The set of error conditions that can occur during execution of a
+NOTIFY WAIT statement is processor-dependent.
+
+{Modify 11.6.2 Segments to account for notify variables}
+
+[199:15] after "event variable" add
+         " or notify variable"
+
+199:16] after "event variable" add
+        " or notify variable"
+
+
+[199:16] before "Otherwise" add
+  " A coarray defined by an assignment statement with a NOTIFY=specifier
+    cannot be referenced until after the successful execution of a cor-
+    responding NOTIFY WAIT statement whose <notify-variable> is the 
+    same as the <notify-variable> specified in the NOTIFY= specifier, 
+    unless the coarray definition and the coarray reference are in 
+    ordered segments."
+
+
+[430:22+] 16.10.2.20+ NOTIFY_TYPE
+
+NOTIFY_TYPE is a derived type with private components. It is an
+extensible type with no type parameters. Each nonallocatable component is
+fully default-initialized.
+
+A scalar variable of type NOTIFY_TYPE is a notify variable. The value of
+a notify variable includes its notify count, which is updated by
+execution of a sequence of assignment statements with an image selector
+that specifies a NOTIFY= specifier or NOTIFY WAIT statements.
+
+The effect of each change is as if the intrinsic subroutine ATOMIC_ADD
+were executed with a variable that stores the notify count as its ATOM
+argument. A coarray that is of type NOTIFY_TYPE may be referenced or
+defined during execution of a segment that is unordered relative to the
+execution of another segment in which that coarray is defined. The NOTIFY
+count is of type integer with kind ATOMIC_INT_KIND from the intrinsic
+module ISO_FORTRAN_ENV. The initial value of the notify count of a notify
+variable is zero.
+
+  C1610+ A named entity with declared type NOTIFY_TYPE, or which has a
+         noncoarray potential subobject component with declared type
+         NOTIFY_TYPE, shall be a variable. A component that is of such a
+         type shall be a data component.
+
+  C1610++ A named variable with declared type NOTIFY_TYPE shall be a
+         coarray. A named variable with a noncoarray potential subobject
+         component of type NOTIFY_TYPE shall be a coarray.
+
+  C1610+++ A notify variable shall not appear in a variable definition
+         context except as the <notify-variable> in an assignment
+         statement with an image selector that specifies a NOTIFY=
+         specifier or NOTIFY WAIT statement, as an allocate-object, or as
+         an actual argument in a reference to a procedure with an
+         explicit interface if the corresponding dummy argument has
+         INTENT (INOUT).
+
+  C1610++++ A variable with a nonpointer subobject of type NOTIFY_TYPE
+         shall not appear in a variable definition context except as an
+         allocate-object in an ALLOCATE statement without a SOURCE=
+         specifier, as an allocate-object in a DEALLOCATE statement, or
+         as an actual argument in a reference to a procedure with an
+         explicit interface if the corresponding dummy argument has
+         INTENT (INOUT).
+
+NOTE 1
+The restrictions against changing a notify variable except via assignment
+statements with an image selector that specifies a NOTIFY= specifier and
+NOTIFY WAIT statements ensure the integrity of its value and facilitate
+efficient implementation, particularly when special synchronization is
+needed for correct notify handling.
+
+NOTE 2
+Updates to variables via atomic subroutines are coherent but not
+necessarily consistent, so a processor might have to use extra
+synchronization to obtain the consistency required for the segments
+ordered by assignment statements with an image selector that specifies a
+NOTIFY= specifier and NOTIFY WAIT statements.
+
+
+{Add events that modify notify variable definition status}
+
+[513:42+] Add 
+
+(35+) Successful execution of an assignment statement with an image
+selector that specifies a NOTIFY= specifier or NOTIFY WAIT statement
+causes the notify variable to become defined.
+
+
+[516:29+] Add
+
+(14+) a notify-variable in an assignment statement with an image selector
+that specifies a NOTIFY= specifier or NOTIFY WAIT statement;
+
+
+[520:2+] Add a new bullet item
+
+o the value of the count of the notify variable in a NOTIFY WAIT
+  statement if an error condition occurs (11.5+);
+
+

@@ -1,0 +1,229 @@
+
+                                                J3/05-273r2
+
+Date: 2005/11/10
+To: J3
+From: Malcolm Cohen
+Subject: Specification, syntax and edits for contiguous attribute
+References: Feature j3-043, 05-149r2, 05-186, 05-235r3, 05-267.
+
+
+1. Requirement:
+---------------
+
+Provide a method to indicate that the target of a pointer or a dummy argument
+is contiguous.  Specifying an assumed-shape dummy argument to be contiguous
+shall not require the actual argument to be contiguous.
+
+
+2. Detailed Specification:
+--------------------------
+
+The CONTIGUOUS attribute is an attribute that may be possessed only by an
+assumed-shape array or an array pointer.  It indicates that the assumed-shape
+array is contiguous or that the pointer shall only be associated with a
+contiguous object.  Note that the absence of the CONTIGUOUS attribute does not
+mean that an entity is not contiguous.
+
+If a non-contiguous actual argument is associated with an assumed-shape array
+with the CONTIGUOUS attribute, the dummy is nonetheless contiguous; the
+processor shall make a copy if necessary.
+
+An object is (runtime) contiguous if it is zero-size, a scalar, or an array
+with its elements occupying consecutive memory locations in array element
+order.
+
+A means to test for runtime contiguity shall be provided; this can be used to
+avoid attempting an invalid pointer assignment (of a CONTIGUOUS pointer to a
+non-contiguous target).
+
+Integration: Allow rank remapping to take a contiguous array (currently it is
+limited to rank one arrays, only to avoid difficulties with non-unit stride).
+
+3. Syntax:
+----------
+
+The CONTIGUOUS attribute can be used in component declaration statements
+and type declaration statements.  The entity being declared shall be a
+pointer or assumed-shape array.
+
+A pointer with the CONTIGUOUS attribute shall only be pointer-associated with a
+contiguous target.  An assumed-shape dummy array is contiguous whether the
+actual argument is contiguous or not.
+
+The CONTIGUOUS statement may also be used to give the attribute to a variable.
+
+Examples:
+      real, contiguous, dimension(:,:) :: d
+      type t
+        real, pointer, contiguous        :: sptr(:)
+      end type
+      contiguous :: dummy
+
+The intrinsic function IS_CONTIGUOUS(A) returns .TRUE. if and only if
+A is contiguous.
+
+4. Edits:
+---------
+
+[xiii] Introduction, the list of new Fortran 2008 features should include
+       "Performance enhancements: CONTIGUOUS attribute."
+
+In section 1.6 Compatibility, there are no changes needed.
+
+[50:7+] In the list of allowed <component-attr-spec> (R441) add:
+     "<<or>> CONTIGUOUS"
+
+[50:31+] Add a new constraint:
+
+C443a (R440) If the CONTIGUOUS attribute is specified, the component shall be
+      an array with the POINTER attribute.
+
+[71:20+] In the list of allowed <attr-spec> (R503) add:
+     "<<or>> CONTIGUOUS"
+
+[72:29+] Add new constraint:
+ "C512a (R501) An entity that has the CONTIGUOUS attribute shall be an array
+        pointer or an assumed-shape array."
+
+[78:2-] Add a new subsection:
+
+ "5.1.2.4a  CONTIGUOUS attribute
+
+  The <<CONTIGUOUS attribute>> specifies that an entity is contiguous.
+
+  An object is <<contiguous>> if it is not the real or imaginary part of an
+  array of type complex, and is: 
+    (1) an object with the CONTIGUOUS attribute,
+    (2) a scalar object,
+    (3) a nonpointer array that is not assumed-shape,
+    (4) an array allocated by an ALLOCATE statement,
+    (5) an assumed-shape array that is argument associated with an array
+        that is contiguous,
+    (6) a pointer associated with a contiguous target,
+    (7) an array with at most one element, or 
+    (8) an non-zero sized array section (6.2.2) with the following 
+        properties:
+          (a) Its base object is contiguous.
+          (b) It does not have a vector subscript.
+          (c) The elements of the section, in array section order, are a subset
+              of the base object elements that are consecutive in array element
+              order.
+          (d) If the array is of type character and a <substring-range>
+              appears, the <substring-range> specifies all of the
+              characters of the <parent-string> (6.1.1).
+          (e) Only its final <part-ref> has nonzero rank.
+
+  An object is not contiguous if it is an array subobject, and
+   (1) the object has two or more elements,
+   (2) the elements of the object in array element order are not consecutive in
+       the elements of the base object,
+   (3) the object is not of type character with length zero, and
+   (4) the object is not of a derived type that has no ultimate components
+       other than zero-sized arrays and characters with length zero.
+
+  It is processor-dependent whether any other object is contiguous.
+
+  Note 5.10a
+
+  If a derived type has only one component that is not zero-sized, it is
+  processor-dependent whether a structure component of a contiguous array of
+  that type is contiguous.  That is, the derived type might contain padding on
+  some processors.
+
+  [end Note]
+
+  Note 5.10b
+
+  The CONTIGUOUS attribute allows a processor to enable optimizations that
+  depend on the memory layout of the object occupying a contiguous block
+  of memory.  Examples of CONTIGUOUS attribute specifications are:
+
+   REAL, POINTER, CONTIGUOUS        :: SPTR(:)
+   REAL, CONTIGUOUS, DIMENSION(:,:) :: D
+
+   [end Note]"
+
+[87:12+] Add a new subsection:
+ "5.2.4a  CONTIGUOUS statement
+
+  R523a  <contiguous-stmt>  is  CONTIGUOUS [::] <object-name-list>
+
+  The CONTIGUOUS statement specifies the CONTIGUOUS attribute  (5.1.2.4a)
+  for a list of objects."
+
+In 7.4.2, Pointer assignment
+[143:21] in C720, change "is specified...otherwise" to
+   "is not specified:
+
+[144:25+] Add new paragraph
+ "If <data-pointer-object> has the CONTIGUOUS attribute, <data-target> shall
+  be contiguous."
+{Pointer assignment.}
+
+In 7.4.2.1, Data pointer assignment
+[144:26] In the first line of the penultimate para of the section, before
+         "shall", insert 
+  "shall be contiguous ([xref to the definition of contiguous])
+   or of rank one. It"
+
+In 7.4.2.3, Examples
+[145:First line of Note 7.44] Change
+   "high-rank views of (parts of) rank-one objects" to
+   "different-rank views of parts of an object"
+     
+[145:Second line of Note 7.44] Insert the sentence
+   "This requires that the object be either rank one or
+    contiguous." After the first sentence of the note.
+
+[161:19] Before "TARGET, or VOLATILE" insert "CONTIGUOUS,".
+{Propagate the attribute into ASSOCIATE/SELECTTYPE.}
+
+[256:28] Change "VALUE(...), ASYNCHRONOUS(...),"
+  to "ASYNCHRONOUS(5.1.2.3), CONTIGUOUS(5.1.2.3a), VALUE(5.1.2.15),"
+{The characteristics of a dummy data object need to include its contiguity
+ requirement.}
+
+[257:3] After "whether it is a pointer," insert
+ "whether it has the CONTIGUOUS attribute,".
+{Needed here too.}
+
+[269:15] Before "If a dummy argument is allocatable" insert
+ "If a dummy pointer has the CONTIGUOUS attribute, the actual argument shall
+  have the CONTIGUOUS attribute."
+{So that contiguous pointers are not required to be the same as noncontig ones.}
+
+[270:5-6] Replace "either a scalar or an assumed-shape array" with
+ "either a scalar or an assumed-shape array that does not have the 
+  CONTIGUOUS attribute."
+
+[271:8,11] After "shall be an assumed-shape array" insert
+ "that does not have the CONTIGUOUS attribute".
+{VOLATILE/ASYNCHRONOUS isn't going to work if we make it do a copy.}
+
+[296:15+] Add a new function to the list in 13.5.8 of Other inquiry
+          functions:
+ "IS_CONTIGUOUS(A)     Contiguity inquiry"
+
+[325:7+] Add a description for a new intrinsic function:
+ "13.7.56a  IS_CONTIGUOUS(A)
+
+  Description. Determine whether an object is contiguous (5.1.2.4a).
+
+  Class. Inquiry function.
+
+  Argument.  A may be of any type.  It shall be an assumed-shape array
+             or an array pointer.  If it is a pointer it shall be associated.
+
+  Result Characteristics.  Default logical scalar.
+
+  Result Value.  The result has the value true if A is contiguous, and
+                 is false otherwise.
+
+[416:24] Append new sentence to the last item (number 8),
+ "A pointer that has the CONTIGUOUS attribute occupies a storage unit that is
+  different from that of a pointer that does not have the CONTIGUOUS
+  attribute."
+{So that contiguous pointers are not required to be the same as noncontig ones.}
+
+===END===

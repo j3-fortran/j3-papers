@@ -1,0 +1,247 @@
+To: J3                                                     J3/23-118
+From: Malcolm Cohen & Jon Steidel
+Subject: Interp F23/005 on defined assignment/operators and dynamic type
+Date: 2023-February-07
+
+----------------------------------------------------------------------
+
+NUMBER: F23/005
+TITLE: Defined assignment/operators and dynamic type
+KEYWORDS: Defined assignment, defined operations, dynamic type
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+10.2.1.4 Defined assignment statement states that a subroutine
+"defines the defined assignment x1 = x2 if
+    (1) the subroutine is specified with a SUBROUTINE (15.6.2.3) ...
+        statement that specifies two dummy arguments, d1 and d2,
+    [and]
+    (3) the types of d1 and d2 are compatible with the dynamic types
+        of x1 and x2, respectively,"
+
+Furthermore, 10.2.1.2 Intrinsic assignment statement states
+        "An intrinsic assignment statement is an assignment statement
+         that is not a defined assignment statement (10.2.1.4)."
+
+This means that
+(i) in the situation where there is no intrinsic assignment, whether
+    there is a defined assignment (and thus the program is valid)
+    depends on the dynamic types, not the declared types;
+(ii) in the situation where there may be an intrinsic assignment for
+     a derived type, whether this is overridden by  defined assignment
+     again depends on the dynamic types.
+
+Similar wording appears in in 10.1.6 Defined operations, specifically
+in 10.1.6.1 Definitions, paragraph 2, item (3), and paragraph 5 item
+(3). Similar conclusions follow.
+
+These consequences are contrary to the principle that generic
+resolution is determined statically, that is, at compile time.
+Generic resolution is indeed done statically for generic names and
+generic type-bound procedures. It would be very surprising for it
+not to be done statically for generic assignment and operators.
+
+For example, consider
+
+    Module c23_005
+        Type t
+            Integer c
+        End Type
+        Type,Extends(t) :: t2
+            Integer d
+        End Type
+        Generic :: Assignment(=) => assign_t2_int
+    Contains
+        Subroutine assign_t2_int(a,b)
+            Class(t2),Intent(InOut) :: a
+            Integer,Intent(In) :: b
+            a%c = b
+            a%d = -b
+        End Subroutine
+    End Module
+    Program test
+        Use c23_005
+        Class(t),Allocatable :: x
+        Allocate(x,Source=t2(1,2))
+        x = 12345                   ! (1)
+        Print *,x%c
+    End Program
+
+
+There is no intrinsic assignment at (1), so the program would be
+invalid unless generic resolution is done on the dynamic type.
+
+Consider
+
+    Module c23_005a
+        Type t
+            Integer c
+        End Type
+        Type,Extends(t) :: t2
+            Integer d
+        End Type
+        Generic :: Assignment(=) => assign_t2_t
+    Contains
+        Subroutine assign_t2_t(a,b)
+            Class(t2),Intent(InOut) :: a
+            Type(t),Intent(In) :: b
+            a%c = b%c**2
+            a%d = -b%c**2
+        End Subroutine
+        Subroutine sho(w)
+            Class(t),Intent(In) :: w
+            Select Type (w)
+            Type Is (t)
+                Print *,'t:',w
+            Type Is (t2)
+                Print *,'t2:',w
+            End Select
+        End Subroutine
+    End Module
+    Program test
+        Use c23_005a
+        Class(t),Allocatable :: x
+        Allocate(x,Source=t2(1,2))
+        x = t(9)                    ! (2)
+        Call sho(x)
+    End Program
+
+Intrinsic assignment would be available for the assignment at (2),
+but if generic resolution were done on the dynamic type, the defined
+assignment would be executed, not the intrinsic assignment. That
+affects the result - does the program print "t: 9" or "t2: 81 -81".
+
+It does not have to be the left-hand-side that is polymorphic:
+consider
+
+    Module c23_005b
+        Type t
+            Integer c
+        End Type
+        Type,Extends(t) :: t2
+            Integer d
+        End Type
+        Generic :: Assignment(=) => assign_t_t2
+    Contains
+        Subroutine assign_t_t2(a,b)
+            Type(t),Intent(Out) :: a
+            Class(t2),Intent(In) :: b
+            a%c = b%c**2 - b%d**2
+        End Subroutine
+    End Module
+    Program test
+        Use c23_005b
+        Class(t),Allocatable :: x
+        Type(t) y
+        Allocate(x,Source=t2(1,2))
+        y = x                       ! (3)
+        Print *,y
+    End Program
+
+Here the question is whether the program prints "1" for generic
+resolution of the statement at (3) done at compile time (and thus the
+intrinsic assignment), or "-3" for generic resolution done at
+execution time (and thus the defined assignment).
+
+For defined operations, consider
+
+    Module c23_005c
+        Type t
+            Integer c
+        End Type
+        Type,Extends(t) :: t2
+            Integer d
+        End Type
+        Generic :: Operator(+) => t2_plus_int
+    Contains
+        Type(t2) Function t2_plus_int(a,b) Result(r)
+            Class(t2),Intent(In) :: a
+            Integer,Intent(In) :: b
+            r%c = a%c + b
+            r%d = a%d - b
+        End Function
+    End Module
+    Program test
+        Use c23_005c
+        Class(t),Allocatable :: x
+        Allocate(x,Source=t2(1,2))
+        Print *,x+10                    ! (4)
+    End Program
+
+This is valid only if the dynamic type is used to resolve the generic
+operation at (4) in favour of the defined operation, even though the
+compiler has no idea what the declared type might be at runtime.
+
+One final consideration is that type compatibility is between
+entities, not between types. Therefore, the quoted words
+    "the types of d1 and d2 are compatible with the dynamic types
+     of x1 and x2"
+have no meaning, and thus by subclause 4.2 Conformance, paragraph 1,
+    "A program (5.2.2) is a standard-conforming program ... if the
+     program has an interpretation according to this document"
+all programs which attempt to use defined assignment or operators are
+non-conforming.
+
+So the question is, should generic resolution of defined assignment
+and defined operators follow the dynamic type, as suggested by the
+current wording?
+
+DISCUSSION:
+
+These words come from paper 02-129r2 at meeting 160, which claimed to
+be making no technical change. The editor wrote in his report
+    "These seem more than editorial.  Looks like a couple of dynamic
+     and declared types got switched around for a start.  And same
+     type got changed to compatable type.  I'll just assume it is all
+     correct."
+
+Unfortunately, no-one followed up on the report.
+
+No compilers have been reported as following the implications of the
+current wording - they all use the declared types for generic
+resolution, just like normal type compatibility.
+
+ANSWER:
+
+No, generic resolution of defined assignment and defined operations
+should follow the rules for type compatibility, which uses the
+declared type not the dynamic type.
+
+It is noted that the rules for argument association already include
+the correct wording; 15.5.2.5 Ordinary dummy variables, p2, states
+    "The dummy argument shall be type compatible with the actual
+     argument."
+
+Edits are provided to correct this misstatement.
+
+EDITS to N2209.
+
+[161:6] 10.1.6 Defined operations, 10.1.6.1 Definitions, p2, (3),
+    Change
+        "the type of d2 is compatible with the dynamic type of x2,"
+    to
+        "d2 is type-compatible with x2,"
+
+[161:23] Same subclause, p5, (3),
+    Change "the types of d1 and d2 are compatible with the dynamic
+            types of x1 and x2, respectively,"
+    to
+        "d1 and d2 are type-compatible with x1 and x2, respectively,"
+
+[172:13] 10.2.1.4 Defined assignment statement, p2, (3),
+    Change "the types of d1 and d2 are compatible with the dynamic
+            types of x1 and x2, respectively,"
+    to
+        "d1 and d2 are type-compatible with x1 and x2, respectively,"
+{Note the lines in NOTE 8 at the top of the page do not count towards
+ the line number in the interpretation document.}
+
+SUBMITTED BY: Malcolm Cohen & Jon Steidel
+
+HISTORY: 23-nnn   m229  Submitted
+
+----------------------------------------------------------------------
+
+

@@ -1,0 +1,200 @@
+
+
+Subject: RANDOM expectations                            J3/01-378
+From: Kurt W. Hirchert                  (Meeting 159) 19 Nov 2001
+
+==========
+Background
+==========
+
+During the development of RANDOM_NUMBER and RANDOM_SEED for
+Fortran 90, the PROC subgroup developed some fairly specific
+expectations about how conventional random number generators
+would be supported through this interface.  They declined to make
+these expectations explicit in the standard, reasoning that it
+was "obvious" how to interface the conventional cases, and that
+stating explicit expectations might interfere with unconventional
+implementations.  As it turned out, these expectations were not
+obvious to many implementors, and program portability suffered
+as a result.  Some of these expectations have since been filled
+in by interpretations, but not all.  I believe the Fortran
+community would be better server if we would be fill in the
+missing expectations.
+
+===========
+Straw Votes
+===========
+
+1. Is it appropriate to work on this at this time?
+    [From my point of view, this is repairing a hole in the
+    description of existing technical content, and thus "in order"
+    during this integration period, but if the committee disagrees,
+    I can set this aside and bring it back during the public
+    comment period.]
+
+2. Should these expectations be expressed in normative text or
+    just in notes?
+
+3. Are the expectations in the last part of this document the
+    right ones?
+    [If your answer is "no", we'll probably need to discuss what
+    needs to be changed, but the yes/no vote is an appropriate
+    starting point.]
+
+================
+The Expectations
+================
+
+[The material which follows is not written as edits to the current
+draft, but I hope I have written it rigorously enough that it will
+not be subject to misinterpretation.  Paragraphs prefixed with "*"
+are material which I believe would be normative if we choose to
+make the expectations normative.  Paragraphs prefixed with "+" are
+material which would be non-normative commentary in either case.
+Paragraphs prefixed with "." are internal to this document and
+would not appear as either normative or non-normative text in the
+standard.]
+
++  It is hoped that pseudorandom number generators other than the
+intrinsic pseudorandom number generator will also be packaged using
+this RANDOM_NUMBER / RANDOM_SEED interface, so a program can easily
+be switched from one pseudorandom number generator to another simply
+by adding or changing a USE statement to change which RANDOM_NUMBER
+/ RANDOM_SEED pair is accessible.
+
+*  Each element of the value returned by RANDOM_NUMBER shall be
+greater than or equal to zero and and less than or equal to one.
+
+.  Why did we make this range [0,1] instead of [0,1) or (0,1)?
+With most pseudorandom number generators, one can convert a random
+number into a random decimal digit by the formula INT(10*X), but
+with our specification, this really needs to be MIN(INT(10*X),9),
+although the probability of 1 being returned should be miniscule.
+If we are going to leave the specification like this, we might
+put some kind of warning here.  [Are there any current
+implementations that actually return 1?]
+
+*  Collectively, the elements returned by any sequence of calls
+to RANDOM_NUMBER with no intervening call to RANDOM_SEED shall
+approximate the statistical properties of random numbers drawn from
+a uniform distribution.
+
+.  It would not have occurred to me that there would be any
+question about successive calls to RANDOM_NUMBER delivering
+different values, except that the question came up in a
+comp.lang.fortran discussion.
+
++  In mosts, calls to RANDOM_SEED should not degrade the
+statistical approximation, but in some cases, they can cause
+"random" sequences to repeat, so they are excluded from the
+general requirement.
+
+*  The generation process shall be deterministic.  The state of
+the pseudorandom number generator at the time of a call to
+RANDOM_NUMBER, together with the type, type parameters, and shape
+of the HARVEST argument fully determine both the values returned
+in HARVEST and the state of the pseudorandom number generator
+following the call.
+
+.  The current description of RANDOM_SEED describes the changing
+state of pseudorandom number generator as a changing seed.  This
+implies that all internal states of the generator must of external
+representations as seeds.  I don't think we really want to force
+that, so I switched to calling the state a state.
+
+.  This requirement for deterministic results has some implications
+on the parallel generation of random numbers.  If each processor
+has an independent generator, processors cannot simply "race"
+each other to deliver random numbers to different parts of the
+HARVEST array.  Instead, processors must be allocated their part
+of the HARVEST array in some predictable fashion.
+
+.  Should a note emphasize that a single precision request is not
+equivalent to a double precision request, a 10x10 request is not
+equivalent to a 20x5 request or a one-dimensional request of length
+100, and that a request of length 100 is not equivalent to two
+successive requests of length 50, although all of these equivalences
+may hold on some specific Fortran processors?
+
++  There are no restrictions on what integer values the program
+is permitted to specify as seed values, so it is the responsibility
+of the processor to transform whatever seed value is specified into
+a state suitable for the operation of the generator.
+
++  Many existing programs handle seeds of more than one integer
+value by repeating the last value as many times as necessary to
+get an array of the right size.  It is recommended that processors
+take whatever steps are needed to avoid statistical anomalies in
+this common case.  (For example, a processor might XOR different
+elements of the supplied seed with different fixed values to get
+an effective seed, so an external seed with repeated values will
+not have repeated values in the effective seed.)
+
+*  The initial state of the pseudorandom number generator is
+processor dependent, but fixed for all executions on a given processor.
+
++  This consistent initial state in conjunction with the deterministic
+nature of the of the generator means that, by default, successive
+executions of a program (or of similar programs that make the
+same requests to RANDOM_NUMBER) will get the same numbers back.
+Such reproducible results facilitate program development and
+debugging.
+
+*  A call to RANDOM_SEED with the SIZE= argument returns the
+number of integer values in a seed value for this pseudorandom
+number generator.  PUT= and GET= arguments to RANDOM_SEED shall
+have at least this many elements.  Only the first this number of
+elements will be used from a PUT= argument.  Only the first this
+number of elements will be defined in a GET= argument.  The state
+of the pseudorandom number generator is unchanged.
+
+*  A call to RANDOM_SEED with the PUT= argument changes the state
+of the pseudorandom number generator.  The state of the
+pseudorandom number generator following the call is fully determined
+by the seed value in the PUT= argument.
+
+*  A call to RANDOM_SEED with the GET= argument returns a seed
+value dependent on the current state of the pseudorandom number
+generator.  The state of the pseudorandom number generator following
+the call is the one that would result from supplying that seed
+value as a PUT= argument.
+
++  If possible, the state following such a call should also be the
+same as the state prior to that call.  This should always be possible
+for generators whose seed values are nothing more than simple
+transformations of the internal state, but it may not always be
+possible in cases where the transformation from seed to state
+is more complex.
+
+*  A call to RANDOM_SEED with no arguments changes the state of
+the pseudorandom number generator.  This change is _not_ required
+to be deterministic and should normally vary from execution to
+execution.
+
++  Typically, this functionality is implemented by using data
+such as the real-time clock or processor ID in creating a seed
+value.
+
++  Some programs execute repeated calls to RANDOM_SEED with no
+arguments, in the mistaken belief that this will make the
+numbers from RANDOM_NUMBER "more random".  In practice, just the
+opposite may be the case.  The resulting state, although not
+predictable from execution to execution, may be unchanging or
+slowly changing within a single execution, so this may result in
+repeated output sequences.  Programs are recommended to avoid this
+practice.  Processors are recommended to "ignore" extra no-
+argument RANDOM_SEED calls (i.e., when the previous RANDOM_SEED
+call also had no arguments).
+
++  Externally, a deterministic process running on non-deterministic
+data is indistinguishable from a non-deterministic process, so a
+processor could switch to a non-deterministic generation process
+in response to a call to RANDOM_SEED with no arguments, so long as
+it switches back to a deterministic process after the next call
+to RANDOM_SEED with an argument.
+
+                               - end -
+
+--
+Kurt W Hirchert                                  hirchert@atmos.uiuc.edu
+UIUC Department of Atmospheric Sciences                  +1-217-265-0327

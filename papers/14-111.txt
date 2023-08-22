@@ -1,0 +1,388 @@
+To:      J3                                           J3/14-111
+From:    John Reid and Reinhold Bader
+Subject: Coarray intrinsics
+Date: 2014 January 27
+References: N1996, N1999
+
+Discussion
+----------
+
+Rather hurriedly in Delft, WG5 added the option of a team variable
+appearing in an image selector, e.g., a[team :: i,j]. The intention
+was to allow the cosubscripts of a coarray declared in an ancestor
+to be interpreted in exactly the same way in a change team construct
+as in the ancestor, for example, when performing halo exchanges.
+
+If the coarray and team variables are declared in the scoping unit
+or are accessed by use or host association, the image selector can
+be interpreted at compile time. If the coarray is a dummy argument,
+the interpretation has to be completed at run time, using extra
+information in the descriptor for the coarray, and the team variable
+must be accessible.
+
+To allow for the case where the team variable is not accessible, J3
+added the intrinsic GET_TEAM at the last meeting. This places a copy
+of the value of the team variable of the ancestor at a given distance
+in a local team variable.
+
+Assignments for team variables are not permitted, but GET_TEAM has
+the nature of an assignment and indeed can be used as a back-door
+method to perform an assignment. This seems most undesirable.
+GET_TEAM introduces scope for inconsistent setting of team variables.
+
+A further disadvantage is that an ancestor team may be at different team
+distances on executing images of different teams.
+
+If a coarray is a dummy argument, its corank and cobounds are declared
+afresh, which "establishes" the coarray in the procedure. We take the
+view that if a team variable appears in an image selector for this
+dummy coarray, the team should be available as another argument or
+by use or host association. Accessing it through team depth is unsafe.
+
+We propose that team depth be removed entirely from the syntax. This
+involves the removal of the intrinsics GET_TEAM and TEAM_DEPTH and
+the replacement of DISTANCE by TEAM as arguments of TEAM_ID, NUM_IMAGES,
+and THIS_IMAGE. Team depth remains a useful concept in the text.
+
+GET_TEAM was originally suggested for defining a team variable with the
+value of the initial team. With the removal of GET_TEAM, we propose
+that it be available as a protected variable in ISO_FORTRAN_ENV.
+
+We add the optional argument TEAM to FAILED_IMAGES because it may
+be undesirable to exit the team execution context to obtain information
+about which images in an ancestor team have failed (see the vote of
+Reinhold Bader in N1999).
+
+We add the optional argument TEAM to LCOBOUND and UCOBOUND so that the
+coshape of a coarray in an ancestor team can be determined. We add the
+optional argument TEAM to IMAGE_INDEX to convert cosubscripts to an
+image index in an ancestor team.
+
+We add the function ESTABLISHED in order that a check can be made
+as to whether a coarray is established for a team so that the
+selector COARRAY [TEAM :: ... ] can be employed.
+
+There has been some discussion over dropping the restriction on
+assignments of team variables. This would not affect most of the
+changes suggested here. We see it as very desirable to rely
+consistently on the values of team variables rather than team
+distances. However, rather than adding a variable to ISO_FORTRAN_ENV
+for the initial team, we suggest adding the function CURRENT_TEAM(),
+which would also allow the user get the value of the current team
+on entry to a procedure. Edits that are intended only for the case with
+the restrictions retained are labelled A1. Edits that are intended only
+for the case with the restrictions removed are labelled A2.
+
+
+Edits to N1996:
+---------------
+
+[9:5] Change "a specified team" to "an ancestor team".
+
+[9:27-28] Delete "as an actual argument in a reference to the
+intrinsic subroutine GET_TEAM,".
+
+A1: [9:34+] Add paragraph:
+The team variable INITIAL_TEAM is defined in the intrinsic module
+ISO_FORTRAN_ENV. It has the PROTECTED attribute and ITS VALUE
+represents the initial team.
+
+A2: [9:34+] Add paragraph:
+The intrinsic function CURRENT_TEAM() returns the value of the current
+team.
+
+[10:20] Delete "or by a reference to the intrinsic subroutine
+GET_TEAM (7.4.13)".
+
+[11:2-3] Delete "or a reference to the intrinsic subroutine GET_TEAM
+that defined a team variable for the current team or an ancestor of
+the current team,".
+[Overlaps an edit in 14-110].
+
+[11:4-5] Delete sentence "If the team distance between the teams is
+<d>, the statement shall lie within d nested CHANGE TEAM constructs."
+[Overlaps an edit in 14-110].
+
+A1: [11:7+] In the code of NOTE 5.2:
+line 2: delete "INITIAL,".
+line 5: delete line "CALL GET_TEAM(INITIAL)".
+lines 14-16. replace "INITIAL" by "INITIAL_TEAM" thrice.
+
+A2: [11:7+] In the code of NOTE 5.2:
+line 5: change line to "INITIAL = CURRENT_TEAM()".
+End A2
+
+[12:10-11] Delete "or by a call to the intrinsic subroutine GET_TEAM
+(7.4.13)".
+
+A1: [17:5] Delete "GET_TEAM, TEAM_DEPTH,".
+
+A2: [17:5] Replace "GET_TEAM, TEAM_DEPTH," by "CURRENT_TEAM".
+
+[17:9-10] Before "THIS_IMAGE" insert "IMAGE_INDEX, LCOBOUND, UCOBOUND,".
+
+A2: [23:23+] Add
+
+7.4.10a CURRENT_TEAM ()
+
+<<Description.>> Value of the current team.
+
+<<Class.>> Transformational function.
+
+<<Arguments.>> None.
+
+<<Result Characteristics.>> Scalar of the type TEAM_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module.
+
+<<Result Value.>> The result has the value of the current team.
+
+<<Examples.>> Outside any CHANGE TEAM constructs in the main program,
+CURRENT_TEAM () returns the value of the initial team. Outside any
+CHANGE TEAM constructs in a subprogram, CURRENT_TEAM () returns the
+value that the current team had on entry to the procedure.
+
+[23:23+] Add
+
+7.4.10b ESTABLISHED (COARRAY, TEAM)
+
+<<Description.>> Determines whether a coarray is established for a team.
+
+<<Class.>> Transformational function.
+
+<<Arguments.>>
+COARRAY shall be a coarray of any type.
+
+TEAM  shall be a scalar of the type TEAM_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module. Its value shall represent an
+      ancestor  team.
+
+<<Result Characteristics.>> Default logical.
+
+<<Result Value.>> The result has the value true if COARRAY is
+established for the team represented by the value of TEAM; otherwise,
+it has the value false.
+
+<<Example>> Suppose COARRAY is an allocatable coarray. If it was
+allocated during the execution of the team represented by the value of
+TEAM or an ancestor of this team, ESTABLISHED (COARRAY, TEAM) returns
+the value true. Otherwise, it returns the value false.
+
+[24:1] Change line to
+7.4.12 FAILED_IMAGES ([, TEAM, KIND])
+
+[24:3+] Add
+<<Arguments.>>
+TEAM (optional) shall be a scalar of the type TEAM_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module. Its value shall represent an
+      ancestor team. If TEAM is present, its value specifies the team;
+      otherwise, the team specified is the current team.
+
+[24:4-6] Remove "Argument." and indent the rest of the paragraph in the
+usual way for an argument description.
+
+[24:9] After "failed images" add "in the specified team".
+
+[24:10] Change "current" to "specified".
+
+[24:14 to 25:26] Delete subclauses 7.4.13 and 7.4.14.
+
+[25:27] Replace "DISTANCE" by "TEAM".
+
+[25:30] Replace line by
+TEAM (optional) shall be a scalar of the type TEAM_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module. Its value shall represent an
+      ancestor team.
+
+[25:32-36] Replace paragraph by
+<<Result Value.>> If TEAM is present, the result has the value of the
+team identifier of the invoking image in the team specified by the
+value of TEAM; otherwise, the result value is the team
+identifier of the invoking image in the current team.
+
+[26:10+] Add a new subsection
+"7.5.0 IMAGE_INDEX, LCOBOUND, and UCOBOUND
+The descriptions of the intrinsic functions IMAGE_INDEX, LCOBOUND, and
+UCOBOUND in ISO/IEC 1539-1:2010 are changed by adding the optional
+argument TEAM and a modified result if it is present.
+
+The TEAM argument shall be a scalar of the type TEAM_TYPE defined in
+the ISO_FORTRAN_ENV intrinsic module. If TEAM is present, its value
+shall represent an ancestor team, the coarray shall be established in
+it, and the functions return results for the coarray in it instead of
+the current team."
+
+[26:13] Replace "DISTANCE" by "TEAM"
+
+[26:14-17] Replace paragraph by
+The TEAM argument shall be a scalar of the type TEAM_TYPE defined in the
+ISO_FORTRAN_ENV intrinsic module. If TEAM is present, its value
+specifies the team; otherwise, the team specified is the current team.
+
+[26:23] Replace "DISTANCE" by "TEAM" twice.
+
+[26:24-29] Replace paragraph by
+The TEAM argument shall be a scalar of the type TEAM_TYPE defined in the
+ISO_FORTRAN_ENV intrinsic module. If TEAM is present, the result
+has the value of the image index that the invoking image has in
+the team specified by the value of TEAM; otherwise, the result value is
+the image index of the invoking image in the current team.
+
+A2 [32:1-] Add table entry
+CURRENT_TEAM   ()              T  Current team.
+
+[32:1-] Add table entry
+ESTABLISHED   (COARRAY, TEAM)  T  Test whether established.
+
+[32:1-] In the table entry for FAILED_IMAGES, change "KIND" to
+"TEAM, KIND". Delete the table entries for GET_TEAM and TEAM_DEPTH.
+
+[32:1] Change "NUM_IMAGES()" to
+"IMAGE_INDEX, LCOBOUND, NUM_IMAGES(), UCOBOUND,".
+
+[32:2+] Add:
+IMAGE_INDEX (COARRAY, SUB       I  Convert subscripts to image index
+            [,TEAM])
+LCOBOUND    (COARRAY [, DIM,    I  Lower cobound(s) of a coarray.
+            KIND, TEAM])
+
+[32:3] Replace "DISTANCE" by "TEAM".
+
+[32:3+] Add:
+UCOBOUND (COARRAY [, DIM,    I  Upper cobound(s) of a coarray.
+          KIND, TEAM])
+
+[32:4] Replace "DISTANCE" by "TEAM".
+
+[32:4+] Add
+THIS_IMAGE    (COARRAY [,TEAM]) or     T  Cosubscript(s) for this image
+              (COARRAY, DIM [,TEAM])
+
+[32:6+] Add:
+________________________________________________________________
+
+{In 13.7.79 IMAGE_INDEX, edit the subclause title as follows}
+13.7.79 IMAGE_INDEX (COARRAY, SUB [, TEAM])
+________________________________________________________________
+
+{In 13.7.79 IMAGE_INDEX, at the end of paragraph 3 add}
+
+TEAM (optional) shall be a scalar of the type TEAM_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module. Its value shall represent an
+      ancestor team for which COARRAY is established.
+________________________________________________________________
+
+{In 13.7.79 IMAGE_INDEX, replace paragraph 5 by}
+<<Result Value>>
+Case (i) If the value of SUB is a valid sequence of cosubscripts for
+         COARRAY, the result of IMAGE_INDEX (COARRAY, SUB) is the index
+         of the corresponding image. Otherwise, the result is zero.
+Case (ii) If the value of SUB is a valid sequence of cosubscripts for
+         COARRAY in the team specified by the value of TEAM, the result
+         of IMAGE_INDEX (COARRAY, SUB, TEAM) is the index of the
+         corresponding image in the team specified by the value of
+         TEAM.  Otherwise, the result is zero.
+_______________________________________________________________
+
+{In 13.7.91 LCOBOUND, edit the subclause title as follows}
+13.7.91 LCOBOUND (COARRAY [, DIM, KIND, TEAM])
+________________________________________________________________
+
+{In 13.7.91 LCOBOUND, at the end of paragraph 3 add}
+
+TEAM (optional) shall be a scalar of the type TEAM_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module. Its value shall represent an
+      ancestor team for which COARRAY is established.
+________________________________________________________________
+
+{In 13.7.91 LCOBOUND, at the end of paragraph 4 add}
+
+in the current team if TEAM is absent or in the team specified by
+the value of TEAM if TEAM is present.
+________________________________________________________________
+
+{In 13.7.91 LCOBOUND, replace paragraph 5 by}
+
+<<Result Value.>>
+
+Case (i):   LCOBOUND (COARRAY, DIM) has a value equal to the lower
+            cobound for cosubscript DIM of COARRAY in the current team.
+Case (ii):  LCOBOUND (COARRAY) has a value whose ith element is equal to
+            LCOBOUND (COARRAY, i), for i = 1, 2,. . . , n, where n is
+            the corank of COARRAY in the current team.
+Case (iii): LCOBOUND (COARRAY, DIM, TEAM=TEAM) has a value equal
+            to the lower cobound for cosubscript DIM of COARRAY in the
+            team specified by the value of TEAM.
+Case (iv):  LCOBOUND (COARRAY,TEAM=TEAM) has a value whose ith
+            element is equal to LCOBOUND (COARRAY, i, TEAM=TEAM),
+            for i = 1, 2,. . . , n, where n is the corank of COARRAY in
+            the team specified by the value of TEAM.
+
+[32:8] Replace "DISTANCE" by "TEAM".
+
+[32:11] Replace line by
+TEAM (optional) shall be a scalar of the type TEAM_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module. Its value shall represent an
+      ancestor  team. If TEAM is present, it specifies the team;
+      otherwise, the team specified is the current team.
+
+[32:16-19] Delete paragraph.
+
+[32:24] Replace line by
+13.7.165 THIS_IMAGE ([TEAM]) or THIS_IMAGE (COARRAY [, TEAM, DIM])
+
+[33:2] Replace line by
+TEAM (optional) shall be a scalar of the type TEAM_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module. Its value shall represent an
+      ancestor team. If COARRAY appears, it shall be established for
+      TEAM.
+
+[33:3-9] Replace paragraph by
+In 13.7.165 THIS_IMAGE ( ), THIS_IMAGE (COARRAY), or
+THIS_IMAGE (COARRAY, DIM]) at the end of paragraph 5 add
+Case (iv): The result of THIS_IMAGE (TEAM) is a scalar with a value
+           equal to the index of the invoking image in the team
+           specified by the value of TEAM.
+Case (v):  The result of THIS_IMAGE (COARRAY, TEAM) is the sequence of
+           cosubscript values for COARRAY that would specify the
+           invoking image in the team specified by the value of TEAM.
+Case (vi): The result of THIS_IMAGE (COARRAY, DIM, TEAM) is the value
+           of cosubscript DIM in the sequence of cosubscript values
+           for COARRAY that would specify the invoking image in the
+           team specified by the value of TEAM.
+
+[33:9+] Add:
+________________________________________________________________
+
+{In 13.7.173 UCOBOUND, edit the subclause title as follows}
+13.7.91 UCOBOUND (COARRAY [, DIM, KIND, TEAM])
+________________________________________________________________
+
+{In 13.7.173 UCOBOUND, at the end of paragraph 3 add}
+
+TEAM (optional) shall be a scalar of the type TEAM_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module.  Its value shall represent an
+      ancestor team for which COARRAY is established.
+________________________________________________________________
+
+{In 13.7.173 UCOBOUND, at the end of paragraph 4 add}
+
+in the current team if TEAM is absent or in the team specified by
+the value of TEAM if TEAM is present.
+________________________________________________________________
+
+{In 13.7.173 UCOBOUND, replace paragraph 5 by}
+
+<<Result Value.>>
+
+Case (i):   UCOBOUND (COARRAY, DIM) has a value equal to the upper
+            cobound for cosubscript DIM of COARRAY in the current team.
+Case (ii):  UCOBOUND (COARRAY) has a value whose ith element is equal to
+            UCOBOUND (COARRAY, i), for i = 1, 2,. . . , n, where n is
+            the corank of COARRAY in the current team.
+Case (iii): UCOBOUND (COARRAY, DIM, TEAM=TEAM) has a value equal
+            to the upper cobound for cosubscript DIM of COARRAY in the
+            team specified by the value of TEAM.
+Case (iv):  UCOBOUND (COARRAY,TEAM=TEAM) has a value whose ith
+            element is equal to UCOBOUND (COARRAY, i, TEAM=TEAM),
+            for i = 1, 2,. . . , n, where n is the corank of COARRAY in
+            the team specified by the value of TEAM.

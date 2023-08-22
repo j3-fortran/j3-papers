@@ -1,0 +1,145 @@
+
+                                                          J3/01-291r1
+
+Subject: Revised answer for Interp 71
+From:    Malcolm Cohen
+To:      J3
+Date:    21st August 2001
+
+----------------------------------------------------------------------
+
+NUMBER: 000071
+TITLE: Character array constructors
+KEYWORDS: Character, array constructor, zero-size
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+The f95 standard appears to leave the length of zero-sized character
+array constructors undefined.  The penultimate paragraph of clause
+4.5 says
+
+  "The type and parameters of an array constructor are those of the
+   <ac-value> expressions."
+
+If there are no elements, then the values of the type parameters
+might not be defined.  The type and kind are always well defined at
+compile time.  However, the length parameter for zero-sized character
+array constructors is not obviously well-defined, even at run-time.
+
+Zero-sized constructors are certainly allowed, as mentioned in the
+antipenultimate paragraph of clause 4.5:
+
+  "An empty sequence forms a zero-sized rank-one array."
+
+Experimentation with different f90 compilers yields varying results.
+
+QUESTION 1:
+Is the following a valid program and, if so, what len value does it
+print?
+
+  program zero
+    write (*,*) len( (/ ('abc', i = 1 , 0) /) )
+  end
+
+QUESTION 2:
+Is the following a valid program and, if so, what value does it print?
+
+    program zero_size
+      integer :: n = 0
+      call sub('abcdefghij', n)
+    contains
+      subroutine sub(string, n)
+        character*(*) :: string
+        integer :: n
+        integer :: i
+        write (*,*) len( (/ (string(:i+2), i = 1 , n) /) )
+      end subroutine
+    end program zero_size
+
+QUESTION 3:
+Is the following a valid program and, if so, what values does it print
+for the lengths and for n_calls?
+
+    program zero_size
+      integer :: n = 0
+      integer :: n_calls = 0
+      call sub('abcdefghij', n)
+      write (*,*) 'n_calls = ', n_calls
+    contains
+      subroutine sub(string, n)
+        character*(*) :: string
+        integer :: n
+        integer :: i
+        write (*,*) len( (/ (string(:f(i)), i = 1 , n), 'abcde' /) )
+      end subroutine sub
+      integer function f(i)
+        f = 2*i + 5
+        n_calls = n_calls + 1
+      end function f
+    end program zero_size
+
+QUESTION 4:
+Is this character array constructor valid?
+   (/ ('ABC'(:J/2), J=4,2) /)
+
+ANSWER:
+(1) Yes.  The length is 3.
+    Clause 4.5 says that
+       "The type and type parameters of an array constructor are
+        those of the <ac-value> expressions."
+    There is no exclusion for <ac-value>s that contribute no elements
+    to the value of the array constructor: thus <ac-value>s that are
+    inside zero-trip implied DO loops still contribute their "type"
+    information.
+
+    The example array constructor has an <ac-value> that is the
+    character literal 'abc'; this clearly has the character length of
+    3 and therefore the array constructor has a character length of 3.
+
+    The description of how an <ac-value> that is an implied DO is
+    handled confuses syntax and semantics: an edit is supplied to
+    clarify this.
+
+(2) No, the <ac-value> has an indeterminate character length and so cannot
+    satisfy the requirement for the lengths to be the same.  The edits below
+    clarify this situation.
+(3) No, one <ac-value> has an indeterminate character length and so cannot
+    satisfy the requirement for the lengths to be the same.
+(4) No, the <ac-value> has an indeterminate character length.
+
+EDITS:
+
+In clause 4.5, in the paragraph beginning
+   "If an <ac-value> is a scalar expression"
+[46:1] replace:
+   "an <ac-value> sequence"
+with
+   "a sequence of elements".
+
+[45:38+] Add to end of paragraph:
+"The character length of an ac-value in an <ac-implied-do> whose iteration
+ count is zero shall not depend on the value of the implied DO variable and
+ shall not depend on the value of an expression that is not an initialization
+ expression."
+
+{NOTE TO J3/WG5:
+ This satisfies Henry's final anomaly with the previous answer, as
+      (/ (V,I=1,0) /)
+ and
+      (/ (/ (V,I=1,0) /) /)
+ are now both allowed.  It also satisfies one of Kurt's many objections,
+ though perhaps not the others.}
+
+SUBMITTED BY: Richard Maine
+HISTORY:  98-101   m144 submitted 20 Nov 1997
+          99-207   m150 additional input
+          99-217r3 m150 approved uc
+          00-209   m153 passed by J3 letter ballot
+                   m153 duplicated in interp 000071;  processing 000016
+                        complete
+          00-268   m154 Failed WG5 letter ballot (N1395 & N1403)
+          WG5/N1452 Suggested revision
+          158-mjc-007 m158
+
+----------------------------------------------------------------------

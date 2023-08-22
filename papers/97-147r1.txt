@@ -1,0 +1,383 @@
+                                                      X3J3/97-147
+
+Date:    Feb 13, 1997
+To:      X3J3
+From:    R. Maine
+Subject: Specs and preliminary syntax for R.3, procedure pointers
+Ref:     X3J3/97-103
+
+This paper summarizes the specifications and preliminary syntax
+for procedure pointers, item R.3 on the F2k requirements list of
+X3J3/97-010.  It is a further development of the work in paper
+X3J3/97-103.  The specifications summarized herein were
+previously approved by X3J3, but the syntax has not yet been
+approved.
+
+At X3J3 meeting 139, the subgroup was directed to "reconsider
+whether to add a requirement that procedure pointers should
+require an explicit interface."  The subgroup considered this
+and concluded that procedure pointers with both explicit and
+implicit interfaces are required.
+
+
+1. SPECIFICATIONS
+
+1.1 Procedure pointers vs. procedure variables
+
+Proposals for procedure pointers and procedure variables offer
+similar functionality.  After much discussion, /data is
+recommending the procedure pointer formulation because it more
+naturally offers the null pointer or null association concept.
+
+1.2 Similar existing features
+
+Specifications for this facility are based on analogies with two
+existing language features.
+     
+1.2.1 Dummy procedures.
+
+If a set of declarations of a name in conjunction with that name
+appearing in a dummy argument would make that name the name of a
+dummy procedure, then that same set of declarations in
+conjunction with that name being declared with the POINTER
+attribute will make that name the name of a procedure pointer.
+The class of procedures which can then be associated with that
+procedure pointer is exactly the class of procedures which could
+have been supplied as the corresponding actual argument in the
+dummy procedure case.  Thus, procedure pointers cannot be
+associated with internal procedures, statement functions, generic
+procedures, most intrinsic procedures, etc.  If the interface of
+the procedure pointer is explicit, the interface of the procedure
+being associated must also be explicit (with matching
+characteristics).
+
+1.2.2 Data-object pointers.
+
+The mechanism for establishing an association is the pointer
+assignment statement, a disassociated status can be created with
+the NULLIFY statement or the NULL intrinsic function, the
+one-argument form of the ASSOCIATED intrinsic function can be
+used to test for a null association status, and the two-argument
+form of the ASSOCIATED intrinsic function can be used to test for
+a particular association.  However, it is not proposed to allow
+one to ALLOCATE or DEALLOCATE a procedure pointer.
+     
+As with data object pointers, the default initial status for such
+pointers is "undefined".  Just as a data-object pointer can
+become undefined if it is associated with a module variable and
+the module goes out of scope, a procedure pointer can become
+undefined if it is associated with a module procedure and the
+module goes out of scope.
+
+Procedure-pointer dummy arguments, function results, and derived
+type components would be allowed analogous with the data-object
+pointers.
+
+The actual argument associated with a procedure pointer dummy
+argument shall be a procedure pointer; it is not allowed to
+be a procedure.
+
+There are no arrays of procedure pointers, but the usual
+workaround of having arrays of a derived type with pointer
+components works as well for procedure pointers as for data-
+object-pointers.
+
+
+2. SYNTAX (EXPLICIT INTERFACE)
+
+2.1 Existing declaration syntax
+
+One syntax for declaring variables as pointers to explicit
+interface procedures already exists if we just assign a meaning
+to the previously meaningless combination of an interface body
+and a POINTER statement for the same name.  An example is
+    INTERFACE
+      SUBROUTINE e(x,y)
+        REAL :: x, y
+      END SUBROUTINE
+    END INTERFACE
+    POINTER :: e
+This declares e to be a pointer to an explicit interface
+procedure.
+
+2.2 Abstract explicit interfaces
+
+It is less obvious how to declare some forms of procedure pointer
+components.  This is because the existing syntax requires at
+least 2 separate constructs (the interface block and the pointer
+statement) to declare a procedure pointer with an explicit
+interface.
+
+All other derived type components are declared with a single
+statement rather than with multiple attribute statements.  Even
+if the interface body syntax is expanded to allow the pointer
+specification, this approach would result in interface bodies
+nested inside of derived type definitions, which is arguably
+objectionable.
+
+An additional problem with the existing syntax is that it does
+not provide a reasonable way to declare multiple pointers with
+the same interface.  For the non-pointer case, this was not too
+much of an issue because there were not often large numbers of
+essentially identical interface bodies in a single scope.  There
+might be at most one for each procedure dummy argument and one
+for each specific external procedure referenced; those for
+external procedures could potentially be automaticaly generated.
+In contrast, it is plausible for there could be an arbitrarily
+large number of procedure pointers with the same interface in a
+scoping unit and there is no obvious way to automatically
+generate the interface bodies.
+
+We propose a mechanism to assign a symbolic name to an interface
+so that procedure pointers can be declared to have this interface
+by name rather than requiring the matching interfaces to be
+repeatedly declared in detail.  We will refer to this symbolic
+name as an abstract interface name because it is the name of
+an abstract interface instead of a specific procedure interface.
+Note that the abstract interface name is purely syntactic.  We
+specifically avoid attaching semantic significance to the name.
+In particular, it does not act like a type.  You can declare two
+different procedure pointers with different abstract interface
+names and they are still compatable as long as the
+charactersitics of the interfaces are the same.  It would be
+difficult to disallow this without changing the feature of
+f90/f95 that allows a procedure to have different interface
+bodies in different scopes, as long as their characteristics
+agree.  (In particular, the dummy argument names need not agree).
+
+Abstract interface names can be imported by USE or host
+association.
+
+To define an abstract interface while introducing as little
+new syntax as practical, we propose a third form of interface
+block.  This form would have an interface statement uses a
+prefix ABSTRACT, resulting in the syntax
+
+     ABSTRACT INTERFACE
+
+The syntax of the interface body is unchanged from the existing
+interface body syntax, but there is one semantic difference.
+This kind of interface body defines the characteristics of an
+interface, but it does not in itself attach those characteristics
+to any object.  The procedure name in the interface body becomes
+instead the name of the abstract interface.
+
+An example of an abstract interface block is
+
+   ABSTRACT INTERFACE
+
+     SUBROUTINE sub(x,y)
+       REAL :: x,y
+     END SUBROUTINE
+
+     FUNCTION fun(x) RESULT(f)
+       REAL :: x,f
+     END FUNCTION
+
+   END INTERFACE
+
+This example defines abstract interfaces named sub and fun.
+
+
+2.3 Procedure declaration statement
+
+A procedure declaration statement has a syntax modeled after a
+type declaration statement for a derived type.  The keyword
+PROCEDURE is used instead of TYPE and an abstract interface name
+is used instead of a derived type name.  For example, the
+statement
+
+  PROCEDURE(fun), POINTER :: a => NULL(), b, c
+
+declares three procedure pointers, all having the abstract
+interface named fun.  Possibly relevant attributes are POINTER,
+SAVE, OPTIONAL, and INTENT.  Note that EXTERNAL is not allowed
+(because it would be a form of redundancy that we already disallow
+elsewhere).
+
+Although it was the requirements of procedure pointers that most
+motivated the need for abstract interfaces and the corresponding
+procedure declaration statements, there are some non-pointer
+cases where a procedure declaration statement could naturally be
+used.  We propose to allow these cases.  Specifically, a
+procedure declaration statement without the pointer attribute may
+be used to declare a dummy or external procedure.
+
+2.4 Procedure pointer component definition
+
+Component definition statements would be enhanced to add the form
+
+   PROCEDURE(<interface-name>), POINTER :: <component-decl-list>
+
+The POINTER attribute is required and no other attributes are
+allowed.
+
+Example:
+
+  TYPE my_object_type
+    TYPE(my_type) :: x
+    PROCEDURE(my_interface), POINTER :: my_procedure
+  END TYPE
+
+2.5 NULLIFY and NULL()
+
+Procedure pointers may appear in the NULLIFY statement.  The
+NULL() intrinsic can return a null procedure pointer; the
+optional argument of NULL() may be a procedure pointer.
+2.6. ASSOCIATED()
+
+The one-argument form of associated can be used with procedure
+pointers.
+     
+The two-argument form of ASSOCIATED is also allowed, but note
+that two pointers are nominally different if they are associated
+with the same module procedure but from different instances of
+the host module.  However, it appears that such queries must
+always involve at least one pointer that is really undefined, so
+implementations are not required to track this.
+
+2.7 Pointer assignment
+
+Pointer assignment for procedure pointers has the same syntax
+as other pointer assignments.  Note that the target for
+procedure pointer assignment may be a procedure (how else
+are they going to get associated with anything non-null),
+but that we do not propose to require that procedures be
+explicitly declared to have the target attribute.
+
+For example
+
+  ABSTRACT INTERFACE
+    FUNCTION fun(x), RESULT(y)
+      REAL :: x,y
+    END FUNCTION fun
+  END INTERFACE
+  PROCEDURE(fun), POINTER :: rfp
+  INTRINSIC sin
+  rfp => sin
+
+associates RFP with the (specific) intrinsic function SIN.
+
+2.8 Procedure pointer references
+
+Just as with data pointers, procedure pointers are automatically
+dereferenced when used in an appropriate context.  In particular,
+if RFP is a pointer to a real function and SP is a pointer to
+a subroutine, then the forms
+
+  x = rfp(y)
+  CALL sp(z)
+
+invoke the function that is associated with rfp and the subroutine
+that is associated with sp.  Execution of these statements is illegal
+if rfp or sp is not associated.
+     
+We recommend that procedure reference syntax be extended to allow
+the procedure to be specified as a structure component, e.g.
+     CALL parent%proc_pointer(args)
+On the other hand, we do not recommend a similar extension for
+functions that return procedure pointers.  E.g., we would require
+     pp=>ppf(args1)
+     CALL pp(args2)
+rather than extending to allow
+     CALL ppf(args1)(args2)
+This is consistent with data-object pointers, which can be
+subscripted, substringed, etc.  as components, but not as
+function results.
+
+3. SYNTAX (IMPLICIT INTERFACE)
+
+3.1 Existing declaration syntax
+
+A syntax for declaring variables as pointers to implicit
+interface procedures already exists if we just drop the
+prohibition against a name having both the POINTER and EXTERNAL
+attribute.  Sample declarations are:
+
+  REAL, EXTERNAL, POINTER :: fp => NULL()
+  EXTERNAL :: sp
+  POINTER :: sp
+
+Implicit interface function pointers can be declared either with
+a single statement, as illustrated above, or with separate
+attribute statements.  For explicit interface subroutine
+pointers, there is no way to specify both the external and
+pointer attributes in one statement with the existing syntax.
+
+3.2 Implicit inference of attributes
+
+As in the non-pointer case, the distinction between implicit
+interface function and subroutine pointers can be inferred by the
+use of the name in a call statement or function reference.  A
+pointer to an implicit interface external function may be
+implicitly typed following the same rules as the non-pointer
+case.  For example, in the following, sp is a subroutine pointer
+and fp is a real function pointer.
+
+  EXTERNAL sp, fp
+  POINTER sp, fp
+  ...
+  CALL sp
+  y = fp(x)
+
+
+In the non-pointer case, the external attribute can also be
+implicitly inferred by the use of the name in a subroutine call
+or a function reference.  However, a procedure name passed as an
+actual argument must be explicitly declared to have the external
+attribute (even if it also appears in a context that implies the
+external attribute - see 12.3.2.2).  For procedure pointers, we
+certainly want the external attribute to be at least as explicit
+as for the non-pointer case.  We propose that a procedure pointer
+used on either side of a pointer assigment statement must also be
+explicitly given the external attribute.  We don't want the
+compiler to have to infer that B is a procedure pointer in cases
+like the following
+
+    POINTER :: a, b
+    ...
+    b => a
+    ...
+    a => s
+    ...
+    CALL s
+
+Because a procedure pointer cannot be referenced unless it is
+first associated, and since most ways of associating it would
+require that the externalness be explicit, there aren't very
+many cases left in which implicit externalness is useful.  Note
+that this is very different from the non-pointer case, where the
+large majority of the usage is in cases where the externalness
+is implicitly obvious.  Therefore, we recommend that the
+external attribute must be explicitly declared for procedure
+pointers.
+
+Of course, the pointer attribute must always be explicitly
+declared.
+
+3.3 Abstract implicit interfaces
+
+As in the explicit interface case, it is proposed that abstract
+implicit interfaces be defined.  Otherwise, there is no
+obvious syntax for declaring derived type components that
+are pointers to implicit interface subroutines.
+
+The following is an example of the proposed syntax for
+declaring abstract implicit interfaces
+
+  ABSTRACT INTERFACE
+    EXTERNAL :: foo
+    REAL, EXTERNAL :: bar
+  END INTERFACE
+
+This example declares foo to be an abstract interface for
+implicit interface subroutines and bar to be an abstract
+interface for implicit interface real functions.
+
+Procedure declaration statements have the same syntax as
+for the explicit interface case.  Examples using the
+above two abstract interfaces are
+
+  PROCEDURE(foo), POINTER :: a
+  PROCEDURE(bar), POINTER :: b
+

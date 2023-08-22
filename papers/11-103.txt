@@ -1,0 +1,94 @@
+To: J3                                                      11-103
+From: Craig Rasmussen
+Subject: Copy to Contiguous Example using C Descriptor
+Date: 2011 January 18
+References: N1838-2
+
+Discussion:
+
+In N1838-2 there is an example of how to use the CFI_cdesc_t type in a
+C implementation of a BIND(C) interface.  This paper provides another
+example of using the CFI_cdesc_t type in C.  This new example provides
+code to copy an array (possibly noncontiguous) into a contiguous
+buffer.
+
+Edits to N1838-2:
+
+[21:33] At the end of A.2, append the following text:
+
+The following example provides three functions that can be used to
+copy an array described by a CFI_cdesc_t descriptor to a contiguous
+buffer.  The input array need not be contiguous.
+
+The C functions are:
+
+  #include "ISO_Fortran_binding.h"
+
+  /*
+   * Returns true if the array described by desc is contiguous
+   */
+  int isContiguous(CFI_cdesc_t * desc)
+  {
+     int r;
+     size_t sm = desc->elem_len;
+
+     for (r = 0; r < desc->rank; r++) {
+        if (sm == desc->dim[r].sm) {
+           sm *= desc->dim[r].extent;
+        } else {
+           return 0;
+        }
+     }
+
+     return 1;
+  }
+
+  /*
+   * Returns the number of elements in the array described by desc.
+   * The array may be non-contiguous.
+   */
+  size_t numElements(CFI_cdesc_t * desc)
+  {
+     int r;
+     size_t num = 1;
+
+     /* TODO - can have 0 size arrays? */
+
+     for (r = 0; r < desc->rank; r++) {
+        num *= desc->dim[r].extent;
+     }
+     return num;
+  }
+
+  /*
+   * General routine to copy the elements in the array described by desc
+   * to cont_buf.  The array itself may be non-contiguous.  For an array
+   * of specific rank and type there exists more efficient methods to
+   * copy the buffer.  Returns a pointer to the contiguous copy.
+   */
+  void * copyToContiguous(CFI_cdesc_t * desc, void * cont_buf,
+                          size_t offset, int rank)
+  {
+     size_t b, e, num_copied;
+     char * next_out;
+
+     char * in  = (char *) desc->base_addr + offset;
+     char * out = (char *) cont_buf;
+
+     if (rank == 0) {
+        /* copy scalar element */
+        for (b = 0; b < desc->elem_len; b++) {
+           *out++ = *in++;
+        }
+        cont_buf = out;
+     }
+     else {
+        rank -= 1;
+        for (e = 0; e < desc->dim[rank].extent; e++) {
+           /* recur on subarrays of lesser rank */
+           cont_buf = copyToContiguous(desc, cont_buf, offset, rank);
+           offset += desc->dim[rank].sm;
+        }
+     }
+     return cont_buf;
+  }

@@ -1,0 +1,132 @@
+
+                                                          J3/02-305r1
+
+Date:     November 14, 2002
+To:       J3
+From:     Rob James
+Subject:  Function prefixes and specification inquiries
+
+Introduction
+------------
+The following code looks like it's allowed, according to the
+Committee Draft:
+
+type(dt(1)) function f()
+  integer, parameter :: i = f%x
+  type :: dt(x)
+    integer, kind :: x
+    ...
+  end type
+  ...
+end function
+
+The initializer for i (f%x) appears to be a perfectly fine 
+specification expression, at least according to 7.1.7 
+(Initialization expression).  However, the type and type 
+parameters of f haven't even been defined yet.  Sure, they're 
+specified previously, in the function statement, and that's all 
+that seems to be required.
+
+In Fortran 95, there didn't need to be a requirement that the 
+type of a variable needed to be defined.  The only types that had
+type parameters were intrinsic types, and therefore always 
+defined.  With the arrival of derived type parameters in Fortran 
+200x, however, the type of an object whose type parameter is being
+inquired about could be defined later, if the type and type 
+parameters of the object are specified on a function statement.
+
+The same problem gets some nastier symptoms if you use a type 
+alias, rather than a parameterized derived type.  Consider the 
+following code fragment, which again looks legal according to the
+Committee Draft:
+
+type(ta) function f()
+  integer, parameter :: i = f%kind
+  typealias :: ta => integer(i)
+  ...
+end function
+
+From a legal type parameter inquiry, we get a nasty little 
+circular definition.  
+
+1. The type and type parameters of f are those aliased by the type
+   alias ta.
+2. The type aliased by ta is integer with kind type parameter 
+   value equal to the value of i.
+3. The value of i is the kind type parameter of f.
+4. Go to 1.
+
+This problem can be fixed in one of three ways:
+
+1. Fix the description of specification inquiries to prohibit 
+   these situations.
+2. Fix the description of type parameter inquiries to prohibit
+   these situations.
+3. Fix 5.1.1.7 to say that, if a derived type is specified on a 
+   function statement and the derived type is defined within the
+   body of the function, the effect is the same as if the result
+   variable was specified with that derived type in a type
+   declaration statement appearing immediately after the derived
+   type definition.  Something analogous would also need to be
+   added for type aliases.
+
+Personally, I prefer option 3, as it seems a bit cleaner and it 
+specifies something that Fortran 95 did not: the exact effect of
+specifying a derived type in a function prefix when that derived
+type is defined inside the body of the function.
+
+
+Proposed Edits
+--------------
+Page and line numbers refer to the Committee Draft.
+
+The following edit implements fix #3 described above.  It also 
+incorporates type aliases into the section about the TYPE type
+specifier, and changes the headings of 5.1.1.7 and 5.1.1.8 to
+"TYPE" and "CLASS" respectively, since 5.1.1 is titled "Type 
+specifiers", and these are the corresponding type specifiers 
+for derived types, type aliases, and polymorphic entities.
+
+[73:16-26] Remove these lines, replacing them with the following:
+<<5.1.1.7  TYPE>>
+
+A TYPE type specifier may be used to declare entities of a derived 
+type or a type that is aliased by a type alias.  
+
+If the <derived-type-spec> contains a <type-name>, then the TYPE 
+type specifier is used to declare entities of the derived type 
+specified by that <type-name>.  Derived type parameter values for 
+each such entity may be specified by a <type-param-spec-list> in 
+the <derived-type-spec>.  The components of each such entity are 
+declared to be of the types specified by the corresponding 
+<component-def-stmt>s of the <derived-type-def> (4.5.1).
+
+If the <derived-type-spec> is a <type-alias-name>, then the TYPE 
+type specifier is used to declare entities of the type and type 
+parameters aliased by the type alias specified.  It is as if the 
+<declaration-type-spec> for which the <type-alias-name> is an 
+alias was used instead.
+
+When a data entity is declared explicitly using the TYPE type 
+specifier, the specified derived type or type alias shall have 
+been defined previously in the scoping unit or be accessible 
+there by use or host association.  If the data entity is a 
+function result, the derived type or type alias may be specified 
+in the FUNCTION statement provided the derived type or type alias 
+is defined within the body of the function or is accessible there 
+by use or host association.  If the derived type or type alias is 
+specified in the FUNCTION statement and is defined within the 
+body of the function, it is as if the function result variable 
+was declared with that derived type or type alias immediately 
+following the <derived-type-def> of the specified derived type or 
+the <type-alias-stmt> that defines the specified 
+<type-alias-name>.
+
+A scalar entity of derived type is a <<structure>>. If a derived 
+type has the SEQUENCE property, a scalar entity of the type is a 
+<<sequence structure>>.
+
+<<5.1.1.8  CLASS>>
+
+J3 Response:  J3 will recommend that this change be made to the
+Committee Draft.

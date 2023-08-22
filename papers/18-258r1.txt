@@ -1,0 +1,113 @@
+To: J3                                                     J3/18-258r1
+From: Dan Nagle & Steve Lionel
+Subject: cstring-fstring
+Date: 2018-October-16
+
+
+
+I Introduction
+
+When interoperating between C and Fortran, strings may need to be passed
+between procedures written in C and those written in Fortran.  This
+raises the issue of how to convert strings between the representation
+used by either language.
+
+Fortran strings have a length, which is stored as metadata.
+C strings have a starting address and may be terminated
+by a null character.  (This "null-terminated string" is not mandated
+by the C standard, but is a convention employed by several library
+procedures of C.)
+
+
+II Use-cases
+
+
+Fortran to C
+
+15.5.2.4p3 makes an exception to the requirement that length type
+parameters of the actual and dummy arguments agree "for the case 
+of the character length parameter of an actual argument of type 
+character with default kind or C character kind (18.2.2) 
+associated with a dummy argument that is not assumed-shape or 
+assumed-rank. " This means that one typically declares character
+dummy arguments for C functions to be arrays of characters.
+
+C, however, typically wants to see a NUL at the end of the string
+to indicate its length, so Fortran code will usually pass
+
+TRIM(char-value)//C_NULL_CHAR
+
+Having an intrinsic that performs this function would allow for
+cleaner code. Some users might not want the TRIM operation
+so it would make sense to have this as an option.
+
+
+Fortran to C
+
+When a C function passes a string to a Fortran interoperable procedure
+it can't be received as type CHARACTER except as an array of single
+characters. There is no straightforward way to convert this to a
+Fortran character value of the proper length (determined by searching
+for a NUL.) An intrinsic that takes such a character array as an
+argument and returns a character value of the correct length would
+make this much less painful.
+
+
+III Specification
+
+Add two new procedures to intrinsic module ISO_C_BINDING to provide 
+the conversion. All arguments are INTENT(IN).
+
+C_F_STRING (ARRAY, MAXLEN)
+
+Class: Transformational function
+
+ARRAY shall be a rank-1 character array of default kind or kind
+C_CHAR, and with a length type parameter of 1
+
+MAXLEN shall be a scalar integer
+
+Result characteristics: The result is a character scalar with the same
+kind type parameter as ARRAY.
+
+Result value:
+
+I am having trouble coming up with proper wording for this. The idea is:
+
+Each character of the result value is the value of the corresponding
+element of ARRAY, in element sequence order, until a value of CHAR(0)
+is found, or MAXLEN elements have been examined, or the number of
+elements in ARRAY have been examined (if not assumed-size), whichever 
+comes first. The length of the result value is one less than the
+index of the ARRAY sequence element that contains CHAR(0).
+
+The reason for requiring MAXLEN is to help avoid the security issues of 
+walking off the end of the value.
+
+
+F_C_STRING (STRING [, TRIM])
+
+Class: Transformational function
+
+STRING shall be a scalar of default kind or of kind C_CHAR
+
+TRIM (optional) shall be a logical scalar
+
+Result characteristics: The result is of type character with
+the same kind type parameter as STRING. 
+
+Result value: 
+
+Case (i): if TRIM is absent or has the value true, the value
+of the result is the value of STRING with any trailing blanks 
+removed, and a NUL character (CHAR(0)) appended to the trimmed
+value. The length type parameter is one greater than the length 
+of STRING less the number of trailing blanks in STRING.
+
+Case (ii): if TRIM is present with the value false, the
+value of the result is the value of STRING with a NUL character
+(CHAR(0)) appended. The length type parameter of the result is one
+greater than the length of STRING.
+
+
+

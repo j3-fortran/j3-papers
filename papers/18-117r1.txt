@@ -1,0 +1,81 @@
+To: J3                                                     J3/18-117r1
+From: Bill Long
+Subject: Put with Notify
+Date: 2018-February-13
+
+
+Discussion:
+-----------
+
+A capability called "put with notify" is popular in the SHMEM
+community as a very efficient, narrowly focused, synchronization
+technique for data transfers between images. The basic idea is to
+combine a "put" (definition of a variable on a different image) with a
+notification mechanism that allows the receiving image to know that
+the data has arrived.  While long requested for coarrays in Fortran,
+there was previously no simple syntax to allow for two things (the put
+and the notify) on the left side of an assignment.  Fortran 2018
+introduced specifiers as part of an image selector, which could be
+extended to overcome this problem.
+
+Feature outline:
+----------------
+
+Extend the image selector syntax to allow a NOTIFY = <notify-variable>
+specifier in the variable of an assignment. For example,
+
+   x[10, notify=nx] = y
+
+where nx is a coarray declared type(notify_type). Type notify_type
+would be defined in the iso_fortran_env module and has properties
+similar to event variables (an integer count that is atomically
+incremented).
+
+The effective notify operation is to the nx variable on the same image
+as specified by the image selector.  On image 10,
+
+   notify wait(nx)
+   [here it is safe to reference x and get the new value]
+
+If x was an array "waiting" for data to be transferred to separate
+elements from multiple images, the notify wait could include a count=
+specifier similar to event wait.
+
+The feature differs from the sequence of 
+
+! On image /= 10
+    x[10] = y
+    event post (nx)
+
+! On image 10
+    event wait (nx)
+    z = x
+
+
+in that the notify operation in the new feature can be incorporated
+into the same data packet as the value of y, and also that the
+synchronization is only on this particular transfer, and not all
+outstanding memory operations on the image. In other words,
+
+! On image /= 10
+    x[10, notify=nx] = y
+ 
+
+! On image 10
+    notify wait (nx)
+    z = x
+
+does not constitute segment ordering and the notify wait statement is
+not an image control statement.  The notify variable modification
+semantics are like those of atomic operations with regard to segment
+ordering.
+
+
+
+
+
+
+
+
+
+

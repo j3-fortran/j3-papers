@@ -1,0 +1,220 @@
+                                                             J3/14-224
+To:      J3
+From:    Nick Maclaren
+Subject: Volatile and association
+Date: 2014 August 07
+
+----------------------------------------------------------------------
+
+NUMBER: TBD
+TITLE: Volatile and association
+KEYWORD: VOLATILE
+DEFECT TYPE: Interpretation
+STATUS: J3 consideration in progress
+
+QUESTION 1:
+
+Are variants a to f of example 1 supposed to be conforming?  In any
+cases that these are conforming, is the first PRINT statement required
+to print the original count and the second the updated count?
+
+PROGRAM Main
+    USE Counting_Module
+    INTEGER, VOLATILE :: count
+    count = 0
+    CALL Start_Counting(count)    ! Start some external agent
+    CALL Fred(count)
+CONTAINS
+    SUBROUTINE Fred (arg)
+        INTEGER :: arg                        ! Example 1(a)
+        ! INTEGER, VALUE :: arg               ! Example 1(b)
+        ! INTEGER, INTENT(IN) :: arg          ! Example 1(c)
+        ! INTEGER, TARGET :: arg              ! Example 1(d)
+        ! INTEGER, VOLATILE :: arg            ! Example 1(e)
+        PRINT *, arg
+        CONTINUE ! Assume that the agent increments the count here
+        PRINT *, arg
+    END SUBROUTINE Fred
+END PROGRAM Main
+
+
+QUESTION 2:
+
+Is the following example supposed to be conforming?  If it is, is the
+first PRINT statement required to print the original counts and the
+second the updated counts?
+
+PROGRAM Main
+    USE Counting_Module
+    INTEGER, VOLATILE :: counts(5)
+    count = 0
+    CALL Start_Counting(counts)    ! Start some external agent
+    CALL Fred(counts(::3))
+CONTAINS
+    SUBROUTINE Fred (arg)
+        INTEGER :: arg(*)
+        PRINT *, arg(:2)
+        CONTINUE ! Assume that the agent increments the counts here
+        PRINT *, arg(:2)
+    END SUBROUTINE Fred
+END PROGRAM Main
+
+
+QUESTION 3:
+
+Is the following example supposed to be conforming, and to print the
+values before and after the update?
+
+MODULE Weeble
+    INTEGER :: data = 123
+END MODULE Weeble
+
+MODULE Wobble
+    USE Weeble, alias => data
+    PRIVATE :: data
+    VOLATILE :: alias
+END MODULE Wobble
+
+PROGRAM Main
+    USE Counting_Module
+    USE Wobble
+    CALL Start_Counting(alias)    ! Start some external agent
+    CALL Fred
+CONTAINS
+    SUBROUTINE Fred    ! In general, an external subroutine
+        USE Weeble
+        INTEGER :: temp
+        temp = data
+        CONTINUE ! Assume that the agent updates data/alias here
+        PRINT *, temp, data
+    END SUBROUTINE Fred
+END PROGRAM Main
+
+
+QUESTION 4:
+
+Is the following example supposed to be conforming, and to print the
+values before and after the update?
+
+MODULE Weeble
+    INTEGER, ALLOCATABLE :: data(:)
+END MODULE Weeble
+
+MODULE Wobble
+    USE Weeble, alias => data
+    VOLATILE :: alias
+END MODULE Wobble
+
+PROGRAM Main
+    USE Wobble
+    INTERFACE
+        SUBROUTINE Start_Counting (arg)
+            INTEGER, ALLOCATABLE, VOLATILE :: arg(:)
+        END SUBROUTINE Start_Counting
+    END INTERFACE
+    ALLOCATE(alias(3))
+    CALL Start_Counting(alias)    ! Start some external agent
+    CALL Fred
+CONTAINS
+    SUBROUTINE Fred    ! In general, an external subroutine
+        USE Weeble
+        INTEGER, ALLOCATABLE :: temp(:)
+        ALLOCATE(temp(1:UBOUND(data,1)),SOURCE=data)
+        CONTINUE ! Assume that the agent updates data/alias here
+        PRINT *, temp, data
+    END SUBROUTINE Fred
+END PROGRAM Main
+
+
+DISCUSSION:
+
+Question 1:
+
+It is unclear whether "by means not specified by the program" (5.3.19p1)
+is constrained by the requirement to act only through the dummy argument
+(12.5.2.13) or not.
+
+If the restriction in 12.5.2.13 applies only to program action, then
+they are all legal.  Most compilers would use the latest value for 1(e)
+and possibly 1(d), not for 1(b), but might not for the others.  In
+particular, doing so for 1(c) would conflict with 5.3.10p2.
+
+If it is forbidden by 12.5.2.13, all of these examples are undefined,
+except for 1(d), but including 1(e).  That is, at best, confusing.  1(d)
+is also likely to cause implementation problems, because it requires
+compilers to generate code for a non-volatile argument to handle data
+races with an unspecified external agent.
+
+Question 2:
+
+This is just to show the interaction with sequence association.  The
+case where the VOLATILE attribute is specified for arg in subroutine
+Fred is already excluded by C1239.
+
+Questions 3 and 4:
+
+These are just to show that similar issues arise with other forms of
+association.  5.3.19p2 makes it clear that the aliasing is permitted for
+use, host, and construct association.  Pointer association is already
+covered in 5.3.19p3 by "If, by means not specified by the program, the
+target is referenced, defined, or becomes undefined, the pointer shall
+have the VOLATILE attribute."  Linkage association is probably immune,
+but I cannot be sure.
+
+General:
+
+To ensure atomicity of the sort needed by volatile accesses, ALL
+accesses and association need to have special code generated for them,
+and not just the ones where the VOLATILE attribute is visible.  Even
+on systems where the same instructions are generated for both, many
+optimisations must not be used.
+
+The simplest solution would be to place a constraint on all forms of
+association, not just pointer association, as has been done for
+ASYNCHRONOUS (5.3.4p2), and refer to that in 16.5.1.1.  Note that the
+restriction has to be fairly draconian, because of the above problems.
+The approach proposed is to forbid all 'alien' updates during the period
+that the object is associated with any object without the VOLATILE
+attribute.  No reliable or portable program should be affected.
+
+I am not happy about the wording, but there doesn't seem to be a simple
+way of specifying the large number of conditions needed.
+
+There is currently no exemption for the VALUE attribute in 12.5.2.13, so
+I assume that none is needed in this case.
+
+
+ANSWER:
+
+Question 1:
+
+Only examples 1(b) and 1(e) are supposed to be conforming; the former is
+required to print the values before the update, twice, and the latter is
+required to print the values before and after the update.  Edits are
+provided to correct the defect.
+
+Questions 2, 3 and 4: these examples are not intended to be conforming,
+and edits are provided to correct the defect.
+
+
+EDITS to 14/007r2:
+
+[102] 5.3.19p4+ after paragraph 4, as a new paragraph:
+
+    "An object that has the VOLATILE attribute and is associated with an
+     object that does not have the VOLATILE attribute shall not
+     * become defined or undefined or
+     * have its association status, dynamic type and type parameters,
+       or array bounds changed
+     by means not specified by the program.
+
+[443] 16.5.1.1 after paragraph 1, add a new paragraph:
+
+    "The rules governing actions by means not specified by the program
+    are given in Clause 5, under the VOLATILE attribute."
+
+
+SUBMITTED BY: Nick Maclaren
+
+
+HISTORY: m205   14-nnn   Submitted

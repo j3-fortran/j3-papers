@@ -1,0 +1,256 @@
+To: J3                                                     11-144
+From: John Reid
+Subject: Interop functions
+Date: 2011 February 10
+References: N1838, ISO/IEC 1539-1:2010
+
+DISCUSSION
+
+The following problems have been highlighted in other papers:
+
+1. A C descriptor may be copied in C, which is often OK, but not for
+allocatable arrays (see 11-126).
+
+2. Restrictions are needed on what changes are permitted in C to the
+values of the members of a C descriptor (see 11-127). There is a
+danger that we will miss necessary restrictions.
+
+3. Updating C descriptors is allowed under some circumstances, but not
+others. E.g. C descriptors for assumed-shape dummies may not be updated.
+
+Also Craig Rasmussen pointed out in an email that we are missing
+CFI_bounds_to_cdesc.
+
+These problems may be avoided by following Nick Maclaren's
+"ALTERNATIVE APPROACH" in 10-235 of replacing three of the present
+functions by three new ones. The functions suggested here are not
+exactly those of 10-235 but are similar. I believe that they will
+be far more convenient than the present functions and provide all the
+functionality that a C programmer needs to interact with Fortran.
+For example, it is easy to establish an assumed-shape array or an
+array section and there is no need for complicated rules on what is
+allowed and what is not allowed.
+
+Initializing, updating, or copying C descriptors in other ways will be
+outwith the Standard. Accessing the members will be permitted, of
+course. Also, altering the value of the array it describes will be
+permitted, but not the properties of this array.
+
+No changes are proposed for the functions CFI_address, CFI_allocate,
+CFI_deallocate, and CFI_is_contiguous. Paper 11-123 proposes the
+removal of CFI_cdesc_to_bounds. I propose to replace the other three
+by these three:
+
+CFI_establish_cdesc  Establish a C descriptor for an assumed-shape
+               array, an unallocated allocatable, or a unassociated
+               pointer.
+CFI_setpointer Alter a C descriptor for a pointer.
+CFI_section    Initialize a C descriptor for a section of a given array.
+
+If this paper is accepted, the edits in 11-125 and the edit for [16:18+]
+in 11-134 will not be needed.
+
+There has been some email discussion of the need for the C programmer
+to do the equivalent of the Fortran section a%y. For a contiguous
+array, this can be done with CFI_establish_cdesc and I show this in
+an example in the edits below. Alternatively, we could add an extra
+function - see draft at the end of this paper.
+
+
+EDITS to N1838:
+
+In 5.2.6 Functions, replace subclauses 5.2.6.2 (CFI_cdesc_t),
+5.2.6.3 (CFI_initialize_desc), and 5.2.6.5 (CFI_associate) by the
+following.
+
+5.2.6.2 int CFI_establish_cdesc ( CFI_cdesc_t * cdesc, void * base_addr,
+    CFI_attribute_t attribute, CFI_type_t type, size_t elem_len,
+    CFI_rank_t rank, const CFI_bounds_t bounds[] );
+
+Description. CFI_establish_cdesc establishes a C descriptor for an
+assumed-shape array, an unallocated allocatable, or a unassociated
+pointer with the given properties.  On entry, the argument cdesc shall
+point to a C object large enough to hold a C descriptor of the specified
+rank; it shall not point to a C descriptor that describes an object.
+The argument attribute shall be one of CFI_attribute_assumed,
+CFI_attribute_allocatable, or CFI_attribute_pointer.  If the argument
+attribute is CFI_attribute_assumed, the argument base_addr shall be
+appropriately aligned (ISO/IEC 9899:1999 3.2) for an object of the
+specified type, and is used to set the base address of the object.
+If the argument attribute is CFI_attribute_allocatable or
+CFI_attribute_pointer, the argument base_addr shall be NULL. The
+argument type shall be one of the type names in Table 5.2. The argument
+elem_len is ignored unless type is CFI_type_struct, in which case it
+shall be greater than zero. The argument rank shall be between 0 and 15
+inclusive. If the argument rank is zero or the argument attribute is
+not CFI_attribute_assumed, the argument bounds is ignored; otherwise,
+it points to an array of length the rank specifying the bounds; the
+stride members are ignored. The function returns an error indicator.
+
+Example 1. The following code fragment establishes a C descriptor for
+an unallocated rank-1 allocatable array to pass to Fortran for
+allocation there.
+   CFI_rank_t rank;
+   CFI_bounds_t bounds[1];
+   CFI_CDESC_T(1) field;
+   int ind;
+   rank = 1;
+   ind = CFI_establish_cdesc ( &field, NULL, CFI_attribute_allocatable,
+                     CFI_type_double, 0, rank, bounds );
+
+Example 2. If source already points to a C descriptor for the Fortran
+array a declared thus:
+  type t
+    double precision x
+    complex(kind(0d0)) y
+  end type
+  type(t) a(100)
+the following code fragment establishes a C descriptor for the array
+component, a%y.
+   CFI_bounds_t bounds[1];
+   CFI_CDESC_T(1) component;
+   int ind;
+   bounds[0]->lower_bound = 1;
+   bounds[0]->upper_bound = 100;
+   bounds[0]->stride = 1;
+   ind = CFI_establish_cdesc ( &component,
+             (char *)source->base_addr+sizeof(double),
+             CFI_attribute_assumed, CFI_type_double_Complex,
+             0, source->rank, bounds );
+
+
+5.2.6.3 int CFI_setpointer ( CFI_cdesc_t * cdesc, void * base_addr,
+    const CFI_bounds_t bounds[] );
+
+Description.  CFI_setpointer updates a C descriptor for a pointer.  On
+entry, the C descriptor pointed to by cdesc shall describe a pointer
+object.  If the argument base_addr is NULL, the pointer is nullified;
+otherwise, the new base address is set to base_addr, which shall be
+appropriately aligned (ISO/IEC 9899:1999 3.2) for an object of the
+specified type that has the TARGET attribute if is the C address of a
+Fortran object.  If the rank in the C descriptor is zero, the argument
+bounds is ignored; otherwise, it points to an array of length the rank
+and is used for the bounds and strides.  The C descriptor is updated by
+this function.  The function returns an error indicator.
+
+Example. If cdest already points to a C descriptor for a pointer array
+of rank 1, the following code makes it point instead to base_addr
+with bounds and stride (1:100:5).
+   CFI_bounds_t bounds[1];
+   int ind;
+   bounds[0]->lower_bound = 1;
+   bounds[0]->upper_bound = 100;
+   bounds[0]->stride = 5;
+   ind = CFI_setpointer ( &cdesc, base_addr,  bounds );
+
+5.2.6.5 int CFI_section ( CFI_cdesc_t * result,
+    const CFI_cdesc_t * source, const CFI_bounds_t bounds[] );
+
+Description.  CFI_section establishes the C descriptor pointed to by
+result to refer to a section of an array pointed to by source. On entry,
+the argument result shall point to a C object large enough to hold a C
+descriptor of the appropriate rank and shall not point to a C descriptor
+that describes an object. The C descriptor pointed to by source shall
+describe an assumed-shape array, an allocated allocatable array, or an
+associated pointer array.  The argument bounds points to an array of
+length the rank specifying the bounds and strides of the array section.
+On exit, the C descriptor pointed to by result will describe an
+assumed-shape array. The function returns an error indicator.
+
+Example. If source already points to a C descriptor for the rank-1
+Fortran array A, the following code fragment establishes a C descriptor
+for the array section A(1:10:5).
+   CFI_bounds_t bounds[1];
+   CFI_CDESC_T(1) section;
+   int ind;
+   bounds[0]->lower_bound = 1;
+   bounds[0]->upper_bound = 10;
+   bounds[0]->stride = 5;
+   ind = CFI_section ( &section, &source, bounds );
+
+
+[16:7-18] Replace 5.2.7 Restrictions on the use of C descriptors by
+
+5.2.7 Use of C descriptors
+
+A C descriptor shall not be initialized, updated or copied other than by
+calling the functions specified here.  A C descriptor passed as a dummy
+argument shall not be updated if it has attribute INTENT(IN).
+
+Calling CFI_allocate or CFI_deallocate for a C descriptor changes the
+allocation status of the Fortran variable it describes and causes
+other C descriptors associated with that C descriptor to be updated
+(see 6.7.1.3 of ISO/IEC 1539-1:2010).
+
+A C descriptor that is passed as an argument of a BIND(C) procedure call
+shall describe an object that is acceptable to both Fortran and C with
+the type specified in its type member.
+
+
+5.2.7+ Restrictions on lifetimes
+
+When a Fortran object is deallocated, execution of
+its host instance is completed, or its allocation or association status
+becomes undefined, all C descriptors and C pointers to any part of it
+become undefined, and any further use of them is undefined behaviour
+(ISO/IEC 9899:1999 3.4.3).
+
+A C descriptor received as a dummy argument becomes undefined on return
+from the procedure call.  If the dummy argument does not have any of the
+TARGET, ASYNCHRONOUS or VOLATILE attributes, all C pointers to any part
+of the object it describes become undefined on return from the procedure
+call, and any further use of them is undefined behaviour.
+
+If a C descriptor is passed as an actual argument, its lifetime and that
+of the object it describes (ISO/IEC 9899:1999 6.2.4) shall not end
+before the return from the procedure call.  A Fortran pointer variable
+that is associated with a C descriptor shall not be accessed beyond the
+end of the lifetime of the C descriptor and the object it describes.
+
+
+POSSIBLE ADDITIONAL FUNCTION:
+
+5.2.6.5a int CFI_component ( CFI_cdesc_t * result,
+        const CFI_cdesc_t * source, CFI_type_t type,
+        size_t displacement, size_t elem_len );
+
+Description.  CFI_component establishes a C descriptor for a section of
+an array selected by component selection. On entry, the argument result
+shall point to a C object large enough to hold a C descriptor of the
+rank given by the C descriptor pointed to by source and shall not point
+to a C descriptor that describes an object. The C descriptor pointed to
+by source shall describe an assumed-shape array, an allocated
+allocatable array, or an associated pointer array. The values of the
+arguments displacement and elem_len shall be between 0 and the
+elem_len member of the C descriptor pointed to by source. On exit,
+the C descriptor pointed to by result will describe an assumed-shape
+array whose type is given by the argument type, and whose base address
+is the base address of the source array plus the value of the argument
+displacement. The resulting base address shall be appropriately aligned
+(ISO/IEC 9899:1999 3.2) for an object of the specified type. If the
+argument type is CFI_type_struct or CFI_type_unspecified, the element
+length shall be given by the argument elem_len; otherwise, it is
+determined by the argument type and the value of the argument
+elem_len is ignored.
+
+The function returns an error indicator.
+
+Example. If source already points to a C descriptor for the Fortran
+array a declared thus:
+  type t
+    double precision x
+    complex(kind(0d0)) y
+  end type
+  type(t) a(100)
+  CFI_type_double d;
+the following code fragment establishes a C descriptor for the array
+component, a%y.
+   CFI_CDESC_T(1) component,;
+   int ind;
+   ind = CFI_component, ( &component, &source,
+         CFI_type_double_Complex, sizeof(d), 0 );
+
+
+
+
+

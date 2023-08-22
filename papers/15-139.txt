@@ -1,0 +1,229 @@
+                                                            J3/15-139
+To: J3
+From: Malcolm Cohen
+Subject: Atomic memory "model" and "progress"
+Date: 2015 February 21
+
+
+1. Introduction
+
+The current text in the standard for atomic subroutines uses the "big
+hammer" of making the "interleaving" of calls processor dependent.  This
+has two problems:
+(1) it is difficult from this bland statement to know just what it means
+    precisely; for example, whether "backwards-in-time" effects or
+    "anti-causality" effects can be observed; the naive user will assume
+    neither can happen, the more sophisticated user might consider the
+    former to be possible, and the paranoid user will consider both to be
+    possible - this is not a recipe for anything other than confusion;
+(2) it is even more difficult to know what the program can actually rely on
+    at all (just how paranoid does the user have to be!).
+
+Given that we do not at this time have a formal memory model, this means
+that it is therefore highly desirable to specify, in normative text, the
+aspects of atomic subroutine usage that the processor is required to obey
+(and therefore that the program can rely on), and also to specify things
+that the program can definitely not rely on.
+
+This paper contains several suggested normative rules to achieve this.
+Note that this is certainly incomplete, and does not rise to the level of a
+"formal memory model", but it is hoped that it will be sufficiently useful
+to make progress towards such a model in the near future.
+
+Only the text marked "Normative" is intended to become normative text.
+Some of the examples or discussion might be useful as informative text.
+Some examples in A.3.2.2 probably need (at least some of) the normative
+text to actually be guaranteed to work.
+
+Note that some of the examples could be changed to the "litmus test" form
+as described at the Delft meeting.  This is a preliminary paper so explicit
+edits to the TS are not included yet, and I have not (yet) spent the time
+to work out exactly what set of examples would be best.
+
+
+2. Progress and eventuality (single update).
+
+Normative Text:
+  If a variable X on image A is defined by an atomic subroutine on image B,
+  in an unordered segment image C repeatedly references the variable X
+  by an atomic subroutine, and no other image defines X (on image A),
+  image C will eventually receive the value defined by image B, even if
+  none of the images A, B or C execute an image control statement until
+  after that value is defined.
+Note: A, B and C are not required to be different images, but the question
+      is uninteresting if they are all the same image.
+Further note: The use of "eventually" is going to leave the actuality up
+              to "Quality Of Implementation".  That seems like a reasonable
+              thing to do for now.
+
+Example:
+  When the number of images is at least 3, and in the absence of image
+  failure, the program below will terminate and print 42.
+
+  PROGRAM progress
+    USE ISO_FORTRAN_ENV
+    INTEGER(ATOMIC_INT_KIND) x[*]
+    INTEGER(ATOMIC_INT_KIND) xvalue
+    LOGICAL(ATOMIC_LOGICAL_KIND) :: wait[*] = .TRUE.
+    LOGICAL(ATOMIC_LOGICAL_KIND) :: waiting
+    INTEGER,PARAMETER :: A=1, B=2, C=3
+    x = 0
+    SYNC ALL
+    SELECT CASE (THIS_IMAGE())
+    CASE (B)
+      CALL ATOMIC_DEFINE(ATOM=x[A],VALUE=42)
+    CASE (C)
+testloop: DO
+        BLOCK
+          INTEGER(KIND(x)) tmp
+          CALL ATOMIC_REF(ATOM=x[A],VALUE=xvalue)
+          IF (xvalue/=0) EXIT testloop
+        END BLOCK
+      END DO testloop
+      CALL ATOMIC_DEFINE(ATOM=wait[B],VALUE=.FALSE._ATOMIC_LOGICAL_KIND)
+    END SELECT
+waitloop: DO
+      CALL ATOMIC_REF(ATOM=wait[B],VALUE=waiting)
+      IF (.NOT.waiting) EXIT waitloop
+    END DO waitloop
+    SYNC ALL
+    IF (THIS_IMAGE()==C) PRINT *,xvalue
+  END PROGRAM
+
+  Initially, x[A] is zero and wait[B] is true.
+  - Image B will at some time after the first SYNC ALL atomically define
+    x[A] with the value 42.
+  - Meanwhile, image C will repeatedly atomically reference x[A] until it
+    becomes nonzero; this is guaranteed to happen "eventually" (it might
+    take a long time if carrier pigeons are being used as the transport
+    mechanism for inter-image communications).  At this point it atomically
+    defines wait[B] to false.
+  - Finally, all images then sit in the "wait loop" repeatedly atomically
+    referencing wait[B] until it is false.  Again, this is guaranteed to
+    happen "eventually".
+  The program then terminates, with image C printing 42.
+
+  Notes:
+  - From after the first SYNC ALL until x[A] becoming visibly nonzero on
+    image B, and for at least a little time afterwards, no image executes
+    any image control statement.
+  - The same cannot be said of the "wait loop" - image C is going to exit
+    this also immediately it reaches it.  The only purpose of the wait loop
+    is to establish the lack of image control statement execution during
+    the execution of the "test loop".
+
+
+3. Consistency and multiple update to a single variable.
+
+Normative Text:
+  If, in unordered segments, a variable X on image A is defined by an
+  atomic subroutine on image B and defined by an atomic subroutine on image
+  C, the effect is that one of the definitions occurs before the other, and
+  that this effect is observed by any images D and E that might be
+  atomically referencing X.  That is, assuming without loss of generality
+  that the effect is of B preceding C, an image atomically referencing X
+  shall not observe C preceding B.
+
+Example:
+  That is, in the absence of image failure, the program shown below will
+  always print "ok".  In any case, it will never print "NG".
+
+  PROGRAM consistency
+    USE ISO_FORTRAN_ENV
+    INTEGER,PARAMETER :: A=1, B=2, C=3, D=4, E=5
+    INTEGER(ATOMIC_INT_KIND) x[*]
+    INTEGER(ATOMIC_INT_KIND) xval1,xval2,xfinal
+    x = 0
+    SYNC ALL
+    SELECT CASE(THIS_IMAGE())
+    CASE (B)
+      CALL ATOMIC_DEFINE(ATOM=x[A],VALUE=100)
+    CASE (C)
+      CALL ATOMIC_DEFINE(ATOM=x[A],VALUE=200)
+    END SELECT
+    CALL ATOMIC_REF(ATOM=x[A],VALUE=xval1)
+    CALL ATOMIC_REF(ATOM=x[A],VALUE=xval2)
+    SYNC ALL
+    SYNC ALL
+    IF (THIS_IMAGE()==1) THEN
+      xfinal = x[A]
+      !
+      ! Permitted sequences: 0, 0
+      !                      0, final
+      !                      0, nonfinal
+      !                      nonfinal, nonfinal
+      !                      nonfinal, final
+      ! Prohibited sequences: nonfinal, 0
+      !                       final, 0
+      !                       final, nonfinal
+      DO i=1,NUM_IMAGES()
+        IF (xfinal[i]/=xfinal) ERROR STOP 'IMPOSSIBLE'
+        IF (xval1[i]==xfinal .AND. xval2[i]/=xfinal .OR. &
+            xval1[i]>0 .AND. xval2==0) THEN
+          PRINT *,'Inconsistent',xval1[i],xval2[i],'final',xfinal
+          ERROR STOP 'NG'
+        END IF
+      END DO
+      IF (THIS_IMAGE()==1) PRINT *,'ok'
+    END IF
+  END PROGRAM
+
+Corollary:
+  If a variable X on image A is being updated with ATOMIC_ADD of a
+  positive integer, by any number of images, any image observing the
+  value of X (atomically) shall receive a monotonically increasing
+  value.
+
+
+4. Inconsistency with multiple variables and single image update
+
+Normative Text:
+  If a variable X on image A is defined by an atomic subroutine on image A,
+  subsequently (not necessarily within the same segment) a variable Y is
+  defined by an atomic subroutine on image A, the changes to X and Y are
+  unordered when observed by another image B in an unordered segment.
+
+Note:
+  It can be reasonably argued that the existing hammer of "all interleaving
+  is processor dependent" covers this, but it takes a lot of work to get
+  that meaning out of those words.  It is probably better to say this
+  explicitly rather than rely on the user managing to interpret the words
+  correctly.  In any case, the "everything is PD" wording has to be changed
+  otherwise we have no guarantee of single-variable-consistency or even a
+  wishy-washy guarantee of progress.
+
+Corollary:
+  If a variable X on image A is defined by an atomic subroutine on image B,
+  and in an unordered segment a variable Y on image C is defined by an
+  atomic subroutine on image D, an observing image E that is atomically
+  referencing the values of X and Y may observe the changes in any order.
+
+Note: This is a slightly simpler version of example 1 in A.3.2.2 in N2040.
+
+Example:
+  PROGRAM inconsistency
+    USE ISO_FORTRAN_ENV
+    INTEGER,PARAMETER :: A=1, B=2
+    INTEGER(ATOMIC_INT_KIND) x[*],y[*]
+    INTEGER(ATOMIC_INT_KIND) xval,yval
+    x = 0
+    y = 0
+    SYNC ALL
+    SELECT CASE (THIS_IMAGE())
+    CASE(A)
+      CALL ATOMIC_DEFINE(ATOM=x[A],VALUE=100)
+      CALL ATOMIC_DEFINE(ATOM=y[A],VALUE=200)
+    CASE(B)
+      CALL ATOMIC_REF(ATOM=x[A],VALUE=xval)
+      CALL ATOMIC_REF(ATOM=y[A],VALUE=yval)
+      PRINT *,'x',xval,'y',yval
+    END SELECT
+  END PROGRAM
+
+  Standard-conforming output from this program is as follows:
+  (1) x 0 y 0
+  (2) x 0 y 200
+  (3) x 100 y 0
+  (4) x 100 y 200
+
+===END===

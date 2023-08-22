@@ -1,0 +1,447 @@
+To: J3                                                 08-256r1
+From: Bill Long, Aleksandar Donev
+Subject: Adding locks to the co-array core subset
+Date: 14 Aug 2008
+References: J3/08-126, J3/08-007r2 (WG5/N1723), J3/08-168r2
+
+
+NOTE: This paper supersedes and entirely replaces J3/08-168r2 passed
+at Meeting 184.
+
+
+Background:
+-----------
+
+Paper J3/08-126 is the critique of coarrays from the Rice University
+group submitted at meeting 183. A reply to that paper was formed
+following the meeting (see paper J3/08-167).  One major issue, the
+lack of a lock facility, was felt to be sufficiently important to have
+in the initial Fortran 2008 language.
+
+Specification, Syntax, and Edits are provided below.
+
+
+Specification:
+--------------
+
+Locks are scalar variables that have one of two values: locked or
+unlocked. The operations that change the value of a lock are atomic,
+so that multiple images might concurrently attempt to set its value to
+locked (acquire the lock) or unlocked (release the lock), but only one
+image will succeed.  Other parallel programming models contain
+comparable tools to manipulate locks.
+
+A lock variable permits fine-grain disjoint access to a data
+structure.  Critical sections, by contrast, permit disjoint access to
+a sequence of statements.  Using lock variables, one can scale the
+amount of potential concurrency with the size of a data structure by
+protecting sections of the data structure (e.g. nodes in a graph)
+individually with locks, if desired.
+
+Locks are scalar objects of an intrinsic opaque derived type,
+LOCK_TYPE, defined in the intrinsic module ISO_FORTRAN_ENV. This type
+is default initialized to unlocked. The purpose of locks is to
+coordinate execution among images by controlling access to shared data
+objects.
+
+New image control statements, LOCK and UNLOCK, are provided to alter
+the values of locks.  Execution of either statement includes the
+effect of executing a SYNC MEMORY statement allowing the LOCK and
+UNLOCK statements to be used for user-defined segment ordering.
+
+A value of a variable of type LOCK_TYPE shall not be changed except by
+default initialization or the execution of a LOCK or an UNLOCK
+statement. In particular, the value of a lock variable shall not be
+changed by assignment. Copying of locks will not be safe if the copy
+is not performed atomically. Vendors should have the freedom to
+implement LOCK_TYPE as is best on their platform.  For these reasons,
+the use of locks is essentially restricted to use in the LOCK and
+UNLOCK statements. Locks are required to be coarrays or subobjects of
+coarrays to ensure that no copy in/out will occur for locks during
+argument association.
+
+A lock variable is currently locked by an image if its value was set
+to locked by that image and has not been subsequently unlocked.
+
+Execution of a LOCK statement without an ACQUIRED_LOCK= specifier
+causes the <lock-variable> to be assigned the value of locked. If the
+lock variable is currently locked by a different image, and no error
+condition occurs, execution of the LOCK statement completes when the
+lock is released by the other image and acquired by this image.
+
+Execution of a LOCK statement with an ACQUIRED_LOCK= specifier polls
+the status of the lock without blocking. If the <lock-variable> is
+currently unlocked, such a statement causes the <lock-variable> to be
+assigned the value locked and the value of the ACQUIRED_LOCK variable
+to true. Otherwise, if there is no error condition, the
+<lock-variable> is not changed and the value of the ACQUIRED_LOCK
+variable is set to false.
+
+An error condition occurs if a LOCK statement specifies a lock
+variable that is currently locked by the executing image. 
+
+Execution of an UNLOCK statement causes the value of the
+<lock-variable> to be set to unlocked, if no error condition occurs.
+
+An error condition occurs if the value of the lock variable in an
+UNLOCK statement is unlocked, or if the lock variable is currently
+locked by a different image. The status can be used to distinguish
+the two cases.
+
+
+Example:
+
+--------
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+
+TYPE(LOCK_TYPE) :: queue_lock[*] ! Lock to manage the work queue
+INTEGER :: work_queue_size[*]
+TYPE(Task) :: work_queue(100)[*] ! List of tasks to perform
+
+TYPE(Task) :: job ! Current task working on
+INTEGER :: me
+
+me=THIS_IMAGE()
+DO
+   ! Process the next item in your work queue
+
+   LOCK(queue_lock) ! New segment A starts
+   ! This segment A is ordered with respect to
+   ! segment B executed by image me-1 below because of lock exclusion
+   IF(work_queue_size>0) THEN
+      ! Fetch the next job from the queue
+      job=work_queue(work_queue_size)
+      work_queue_size=work_queue_size-1
+   END IF
+   UNLOCK(queue_lock) ! Segment ends
+   ... ! Actually process the task
+
+   ! Add a new task on neighbors queue:
+   LOCK(queue_lock[me+1]) ! Starts segment B
+   ! This segment B is ordered with respect to
+   ! segment A executed by image me+1 above because of lock exclusion
+   IF(work_queue_size[me+1]<SIZE(work_queue)) THEN
+      work_queue_size[me+1]=work_queue_size[me+1]+1
+      work_queue(work_queue_size[me+1])[me+1]=job
+   END IF
+   UNLOCK(queue_lock[me+1]) ! Ends segment B
+
+END DO
+--------
+
+Syntax:
+-------
+
+<lock-stmt>   <<is>> LOCK ( <lock-variable> [, <lock-stat-list>] )
+
+<unlock-stmt> <<is>> UNLOCK ( <lock-variable> [, <sync-stat-list>] )
+
+<lock-variable> is <scalar-variable>
+
+Constraint: <lock-variable> shall be a scalar variable of type
+LOCK_TYPE defined in the intrinsic module ISO_FORTRAN_ENV.
+
+<lock-stat>  <<is>>  ACQUIRED_LOCK=<scalar-logical-variable>
+             <<or>>  <sync-stat>
+
+
+Edits:
+------
+
+------------------------------------
+
+[25] In 2.1 "Terms and definitions", add a new entry after the entry
+for "local variable":
+
+"2.1.122.2
+<<lock variable>>
+
+A scalar variable of type LOCK_TYPE (\ref{LOCK_TYPE}) defined in the
+intrinsic module ISO_FORTRAN_ENV."
+
+
+------------------------------------
+[28] In 2.2 "High level syntax" rule R214 "<action-stmt>" add two new
+entries alphabetically:
+
+"<<or>> <lock-stmt>"
+"<<or>> <unlock-stmt>"
+
+
+------------------------------------
+[59] In 4.5.2.1 "Derived-type definition / Syntax" after C432 add a
+new constraint:
+
+"C432a  (R425) If EXTENDS appears and the type being defined has an
+ultimate component of type LOCK_TYPE defined in the intrinsic module
+ISO_FORTRAN_ENV, its parent type shall have an ultimate component of
+type LOCK_TYPE."
+
+------------------------------------
+
+[115] After the main heading "6.2 Variable", add a subheading "6.2.1
+General".
+
+[116] At the end of the current "6.2 Variable", add a new subclause:
+
+"6.2.2 Lock variables
+
+A <<lock variable>> is a scalar variable of type LOCK_TYPE
+(\ref{LOCK_TYPE}) defined in the intrinsic module ISO_FORTRAN_ENV.  A
+lock variable can have one of two values: locked or unlocked.  The
+value of a lock variable can be changed with the LOCK and UNLOCK
+statements (8.5.4a). Locks shall be coarrays or subobjects of
+coarrays.
+
+Cxxx: A data entity that is or has an ultimate component of type
+LOCK_TYPE defined in the intrinsic module ISO_FORTRAN_ENV shall be
+a coarray.
+
+A lock variable shall not appear as:
+
+(1) the variable of an <assignment-stmt>,
+
+(2) an actual argument in a reference to a procedure if the associated
+dummy argument has the INTENT(OUT) attribute,
+
+(3) the <allocate-object> in an ALLOCATE statement in which SOURCE=
+appears, or
+
+(4) the selector in a SELECT TYPE or ASSOCIATE construct if the
+associate name of that construct appears in one of the above contexts.
+
+NOTE 6.1a
+Copying or changing the value of a lock other than via the LOCK and
+UNLOCK statements might not be safe if the copy or definition is not
+performed atomically and another image acquires or releases the lock
+without proper synchronization. Additionally, not allowing the copying
+of locks gives freedom to implement the opaque type LOCK_TYPE without
+affecting the semantics of programs. The requirement that lock
+variables be coarrays or subobjects of coarrays ensures that no
+copying occurs due to argument association and that they are
+efficiently accessible from remote images.
+[End NOTE]"
+
+------------------------------------
+[187:8.5.1p2] In the bullet list of 8.5.1 "Image control statements",
+after the entry that begins "CRITICAL ..." add a new entry:
+
+"LOCK or UNLOCK statement;"
+
+------------------------------------
+[191] After subclause 8.5.4 "SYNC MEMORY statement", add a new
+subclause:
+
+"8.5.4a LOCK and UNLOCK statements
+
+R862a <lock-stmt> <<is>> LOCK ( <lock-variable> [, <lock-stat-list>] )
+
+R862b <lock-stat> <<is>>  ACQUIRED_LOCK=<scalar-logical-variable>
+                  <<or>>  <sync-stat>
+
+R862c <unlock-stmt> <<is>> UNLOCK ( <lock-variable> [,
+<sync-stat-list>] )
+
+R862d <lock-variable>  <<is>>  <scalar-variable>
+
+C851a (R862d) A <lock-variable> shall be a lock variable (\ref{6.2.2
+Lock variable})
+
+The values of a lock variable denote the state of a lock.  A lock is
+acquired by setting the value of the lock variable to locked, and
+released by setting the value to unlocked.  A lock variable is
+currently locked by an image if its value was set to locked by that
+image and has not been subsequently set to unlocked.
+
+Successful execution of a LOCK statement without an ACQUIRED_LOCK=
+specifier causes the <lock-variable> to become defined with the value
+locked. If the lock variable is currently locked by a different image,
+execution of the LOCK statement completes when the lock is released by
+the other image and acquired by this image.
+
+If a <lock-variable> has the value unlocked, successful execution of a
+LOCK statement with an ACQUIRED_LOCK= specifier causes the
+<lock-variable> to become defined with the value locked and the value
+of the <scalar-logical-variable> to become defined with the value
+true. Otherwise, the <lock-variable> is not changed and the value of
+the <scalar-logical-variable> becomes defined with the value false.
+
+Successful execution of an UNLOCK statement causes the value of the
+<lock-variable> to be set to unlocked.
+
+An error condition occurs if the <lock-variable> in a LOCK statement
+is currently locked by the executing image. An error condition occurs
+if the <lock-variable> in an UNLOCK statement is not currently locked
+by the executing image.  If an error condition occurs during the
+execution of a LOCK or UNLOCK statement the value of <lock-variable>
+is not changed.
+
+NOTE 8.39a
+A lock variable is effectively defined atomically by a LOCK or UNLOCK
+statement. If LOCK statements on two images both attempt to acquire a
+lock, one will succeed and the other will either fail if an
+ACQUIRED_LOCK= specifier appears, or will wait until the lock is later
+released if an ACQUIRED_LOCK= specifier does not appear.
+[End NOTE]
+
+NOTE 8.39b
+An image might wait for a LOCK statement to successfully complete for
+a long period of time if other images frequently lock and unlock the
+same lock varaible.  This situation might result from executing LOCK
+statements with ACQUIRED_LOCK= specifiers inside a spin loop.
+[End NOTE]
+
+NOTE 8.39c
+The following example illustrates the use of LOCK and UNLOCK
+statements to manage a work queue:
+
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+
+TYPE(LOCK_TYPE) :: queue_lock[*] ! Lock to manage the work queue
+INTEGER :: work_queue_size[*]
+TYPE(Task) :: work_queue(100)[*] ! List of tasks to perform
+
+TYPE(Task) :: job ! Current task working on
+INTEGER :: me
+
+me=THIS_IMAGE()
+DO
+   ! Process the next item in your work queue
+
+   LOCK(queue_lock) ! New segment A starts
+   ! This segment A is ordered with respect to
+   ! segment B executed by image me-1 below because of lock exclusion
+   IF(work_queue_size>0) THEN
+      ! Fetch the next job from the queue
+      job=work_queue(work_queue_size)
+      work_queue_size=work_queue_size-1
+   END IF
+   UNLOCK(queue_lock) ! Segment ends
+   ... ! Actually process the task
+
+   ! Add a new task on neighbors queue:
+   LOCK(queue_lock[me+1]) ! Starts segment B
+   ! This segment B is ordered with respect to
+   ! segment A executed by image me+1 above because of lock exclusion
+   IF(work_queue_size[me+1]<SIZE(work_queue)) THEN
+      work_queue_size[me+1]=work_queue_size[me+1]+1
+      work_queue(work_queue_size[me+1])[me+1]=job
+   END IF
+   UNLOCK(queue_lock[me+1]) ! Ends segment B
+
+END DO
+[End NOTE]"
+
+------------------------------------
+[192:8.5.5p1+] After paragraph 1 of "STAT= and ERRMSG= specifiers in
+image execution control statements" add a new paragraph:
+
+"If the STAT= specifier appears, successful execution of the LOCK or
+UNLOCK statements causes the specified variable to become defined with
+the value zero.  If the STAT= specifier appears in a LOCK statement
+and the <lock-variable> is currently locked by the executing image,
+the specified variable becomes defined with the value of STAT_LOCKED
+(\ref{}). If the STAT= specifier appears in an UNLOCK statement and
+the <lock-variable> has the value unlocked, the specified variable
+becomes defined with the value of STAT_UNLOCKED (\ref{}). If the STAT=
+specifier appears in an UNLOCK statement and the <lock-variable> is
+currently locked by a different image, the specified variable becomes
+defined with the value STAT_LOCKED_OTHER_IMAGE.  The constants
+STAT_LOCKED, STAT_UNLOCKED, and STAT_LOCKED_OTHER_IMAGE are defined in
+the intrinsic module ISO_FORTRAN_ENV. If a STAT= specifier appears and
+any other error occurs during execution of a LOCK or UNLOCK statement,
+the specified variable becomes defined with a positive integer value
+that is different from STAT_LOCKED, STAT_UNLOCKED, and
+STAT_LOCKED_OTHER_IMAGE. If an error occurs during execution of a LOCK
+or UNLOCK statement that does not contain the STAT= specifier, error
+termination of execution is initiated."
+
+
+------------------------------------
+[192:8.5.5p2] In paragraph 2 of "STAT= and ERRMSG= specifiers in image
+execution control statements" replace
+
+"SYNC IMAGES, or SYNC MEMORY"
+
+with
+
+"SYNC IMAGES, SYNC MEMORY, LOCK, or UNLOCK"
+
+------------------------------------
+[397:13.8.2.13+] In the descriptions of the contents of the
+ISO_FORTRAN_ENV intrinsic module (13.8.2), add a new subclause
+following "IOSTAT_INQUIRE_INTERNAL_UNIT":
+
+"13.8.2.13a  LOCK_TYPE
+
+LOCK_TYPE is a derived type with private nonpointer, nonallocatable,
+noncoarray components. It does not have the BIND(C) attribute or type
+parameters, is not a sequence type, and is not extensible. Variables
+of type LOCK_TYPE are default initialized to the value representing
+unlocked. Variables of type LOCK_TYPE are used as <lock-variable>s in
+LOCK or UNLOCK statements (\ref{LOCK and UNLOCK statements}). The uses
+of variables of type LOCK_TYPE are restricted (\ref{6.2.2 Lock
+variables})."
+
+------------------------------------
+[398:3.8.2.18+] In the descriptions of the contents of the
+ISO_FORTRAN_ENV intrinsic module, add three new subclauses following
+"REAL32, REAL64, and REAL128":
+
+"13.8.2.18a STAT_LOCKED
+
+The value of the default integer scalar constant STAT_LOCKED is
+assigned to the variable specified in a STAT= specifier (8.5.5) of a
+LOCK statement if the lock specified by <lock-variable> is currently
+locked by the executing image.
+
+ 13.8.2.18b STAT_LOCKED_OTHER_IMAGE
+
+The value of the default integer scalar constant
+STAT_LOCKED_OTHER_IMAGE is assigned to the variable specified in a
+STAT= specifier (8.5.5) of an UNLOCK statement if the lock specified
+by <lock-variable> is currently locked by an image different from the
+executing image."
+
+
+------------------------------------
+[398:3.8.2.19+] In the descriptions of the contents of the
+ISO_FORTRAN_ENV intrinsic module, add three new subclauses following
+"STAT_STOPPED_IMAGE":
+
+"13.8.2.19a STAT_UNLOCKED
+
+The value of the default integer scalar constant STAT_UNLOCKED is
+assigned to the variable specified in a STAT= specifier (8.5.5) of an
+UNLOCK statement if the lock specified by <lock-variable> is currently
+not locked by any image."
+
+------------------------------------
+[454:16.6.5p1] In the list in 16.6.5 "Events that cause variables to
+become defined" add two new list items at the end:
+
+"(29) Execution of a LOCK statement containing an ACQUIRED_LOCK=
+     specifier causes the specified logical variable to become
+     defined. If the logical variable becomes defined with the value
+     true, the <lock-variable> in the LOCK statement also becomes
+     defined.
+
+(30) Successful execution of a LOCK statement that does not contain an
+     ACQUIRED_LOCK= specifier causes the <lock-variable> to become
+     defined.
+
+(31) Successful execution of an UNLOCK statement causes the
+     <lock-variable> to become defined."
+
+------------------------------------
+[456:16.6.7p1] In the list in 16.6.7 "Variable definition context",
+
+in list item (13) replace the final "." with ";"
+
+and add two new items at the end of the list:
+
+"(14) a <lock-variable> in a LOCK or UNLOCK statement;
+
+ (15) an ACQUIRED_LOCK= specifier in a LOCK statement."
+
+

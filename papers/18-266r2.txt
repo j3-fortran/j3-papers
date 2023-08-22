@@ -1,0 +1,135 @@
+To: J3                                                     J3/18-266r2
+From: Gary Klimowicz
+Subject: Add reductions to DO CONCURRENT
+Date: 2018-October-16
+
+Reference: 18-007: 11.1.7 (DO construct) and 16.9.161 (REDUCE)
+
+I Motivation
+------------
+Performing a reduction on the array elements computed
+in DO CONCURRENT can be inefficient for large arrays.
+The naive expression of a reduction is non-conforming:
+
+        real :: a(:)
+        real :: s
+        integer :: i
+
+        ...
+
+        ! With DO CONCURRENT, the use of 's' in the
+        ! loop below is not defined before referenced.
+        s = 0
+        do concurrent (i = 1:size(a))
+          s = s + (2 * a(i) - 1)
+        end do
+
+        print *, s
+        end
+
+Potential solutions using temporary arrays (used to
+accumulate intermediate results) followed by REDUCE are
+inefficient in the use of data and potential data
+management require in highly threaded environments.
+
+When the programmer is interested in performing a simple
+reduction of the data in the DO CONCURRENT, this overhead
+can exceed the gains from the computational parallelism.
+
+Also, with knowledge of the reduction, a processor could optimize
+DO CONCURRENT to be scaled to the number of available threads
+available at runtime (the number of which are not known to the
+programmer), chunking computations.
+
+
+
+II Use Cases
+------------
+        ! With current semantics, the code below is not
+        ! conformant. 's' is not defined in the iteration
+        ! before it is referenced.
+        s = 0
+        do concurrent (i = 1:size(a))
+          s = s + (2 * a(i) - 1)
+        end do
+
+        foo = a(1)
+        do concurrent (i = 2:size(a))
+          foo = MIN(foo, a(i))
+        end do
+
+We would like programs with semantics similar to the above
+to be conformant and still be able to exploit all available
+runtime parallelism.
+
+
+III What we have in mind
+------------------------
+The intent is to support an in-Fortran specification of some
+of the features of the OpenMP reduction clause.
+
+We propose a way of specifying scalar reduction variables
+and operators that are managed across the DO CONCURRENT
+block executions to accumulate scalar values from each
+iteration. This would be done with processor-specific
+synchronization.
+
+We propose something (example syntax only):
+
+        do concurrent concurrent-header concurrent-locality
+            ...
+        end do
+
+We propose extending concurrent-locality to include
+    REDUCE (reduce-variable-name : reduce-operator)
+
+The reduce-variable-name is treated with semantics similar
+to SHARED, except that the processor may make assumptions
+about how to parallelize the reduction to optimize or
+eliminate synchronized access to the reduce-variable-name.
+
+The reduce-operator is limited to the following associative
+intrinsic operators or functions:
+    +
+    *
+    .AND.
+    .OR.
+    MIN
+    MAX
+
+The reduce-variable can only appear on the left-hand-side
+of statements that look like
+        reduce-variable-name = reduce-variable-name &
+                                    reduce-operator expression
+or
+        reduce-variable-name = &
+              reduce-operator(reduce-variable-name, expression)
+
+
+This will:
+* Increase the usefulness of DO CONCURRENT
+* Increase opportunities to exploit SIMD and other
+  parallelism
+* Increase ability to optimize parallelism according to the
+  number of available threads
+* Make it easier to write conforming programs
+* Make it easier to check the programmer's intent about
+  the reduction
+* Reduce memory allocation needs or explicit data management
+  when offloading to target processors
+* Eliminate explicit process synchronization
+
+
+Straw votes or questions for discussion
+---------------------------------------
+1. Should we further restrict or expand the number of
+   operators?
+2. Should we have language that limits the s = s + ... form
+   of the reduction variable in the loop body?
+3. Should we allow multiple reductions per DO CONCURRENT?
+4. Should we consider something a bit more general, like a
+   SHARED_UPDATE locality specifier?
+5. Should this be limited to scalars, or also allow array
+   reductions?
+
+

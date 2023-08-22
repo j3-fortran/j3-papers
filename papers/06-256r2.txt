@@ -1,0 +1,194 @@
+
+                                                                  J3/06-256r2
+
+To: J3
+From: Malcolm Cohen
+Subject: Clause 12 niggles
+Data: 2006/08/16
+
+1. Introduction
+
+This paper fixes various technical niggles in clause 12.
+Note that many edits are against 06-256 not 06-007.
+
+2. CONTIGUOUS dummy pointers
+
+This needs integration with auto-targetting.  It states
+
+  "If the dummy pointer has the CONTIGUOUS attribute, the actual argument
+   shall have the CONTIGUOUS attribute."
+
+However, consider
+
+  REAL,INTENT(IN),POINTER,CONTIGUOUS :: p(:)
+
+This may be associated with an actual nonpointer.
+
+Subgroup recommends that in this case:
+ - that restriction should apply to pointer actual arguments;
+ - that restriction should apply to assumed-shape actual arguments;
+ - for nonpointer non-assumed-shape actual arguments, we should
+   require the argument to be known at compile time to be contiguous.
+
+The last of these is difficult to state comprehensively; however, the
+majority of useful cases can be stated.
+
+Edits to 06-256:
+[316:27-28] 12.5.1.8 Pointer dummy variables,
+  Delete sentence "If the dummy ... CONTIGUOUS attribute."
+[316:28+] Insert new paragraph
+  "If the dummy pointer has the CONTIGUOUS attribute and the actual
+   argument does not have the CONTIGUOUS attribute, the actual
+   argument shall satisfy the following conditions.
+     - Its base object shall either have the CONTIGUOUS attribute or
+       shall not be a pointer or assumed-shape array.
+     - It shall not be the real or imaginary part of an array of type
+       complex.
+     - Its designator shall not contain a <substring-range>.
+     - It shall not have a vector subscript.
+     - Only its final <part-ref> shall have nonzero rank.
+     - If that <part-ref> has a <section-subscript-list>, the
+       <section-subscript-list> shall satisfy these conditions:
+       - no <stride> shall appear;
+       - if any <section-subscript> is a <subscript>, it shall not
+         be followed by a <subscript-triplet>;
+       - all but the last <subscript-triplet> shall consist of a
+         single colon with no <subscript>.
+
+   Note 12.xx
+   This requires that the actual argument be obviously contiguous at
+   compile time.  Columns, planes, cubes and hypercubes of contiguous
+   base objects can be passed, for example:
+
+   ARRAY1 (10:20, 3)   ! passes part of the third column of ARRAY1.
+   X3D (:, i:j, 2)     ! passes part of the second plane of X3D (or the whole
+                       ! plane if i==LBOUND(X3D,2) and j==UBOUND(X3D,2).
+   Y5D (:, :, :, :, 7) ! passes the seventh hypercube of Y5D.
+   \end{note}"
+
+3. Allocatable dummy arguments and interp F90/125.
+
+There is a technical flaw in the description of TARGET for allocatable dummies,
+in that it contradicts what happens for INTENT(OUT).  This is fixed by the edit
+below.  Also, the description (in 06-255) contains conditions that don't apply
+to allocatable dummies; this is also fixed by the edits below.
+
+Edits to 06-256.
+
+[316:6] After "does not have the" insert "INTENT(OUT) or".
+{Fix the technical flaw.}
+
+[316:6-7] Delete ", and is ... CONTIGUOUS attribute".
+{Delete impossible condition.}
+
+[316:8-9] Delete "but is not ... vector subscript".
+{Delete impossible condition.}
+
+4. Allocatable dummy arguments + INTENT(OUT) + default initialization
+
+There is a technical flaw (in F2003) in the description of how these interact;
+see [315:34-39] in 06-007 -- the second sentence is nonsense (or wrong) for
+allocatable dummies.
+
+Edit to 06-256.
+
+[316:16-18] After "INTENT(OUT)," replace "the ... specified" with
+  "an allocated actual argument is deallocated on procedure invocation
+   (6.3.3.1)"
+(That is \ref{D6:Deallocation of allocatable variables} which is where
+ we actually say this for real.)
+Alternatively, we could just delete the sentence since it is said elsewhere...
+
+5. Associated actual argument
+
+In a few cases we are careful to say "argument-associated entity".
+Almost always, though, we say "associated actual argument" (or sometimes
+just "actual argument").
+
+This is definitely wrong, since in the case of pointer actuals the
+associated entity is not an actual argument.  Some of these cases mean
+"corresponding actual argument", but others mean "argument-associated entity".
+
+Also, "argument-associated entity" sounds horrible (in particular, it is
+not obvious that it is not referring to the dummy argument).
+
+Therefore, a new term "effective argument" (inspired by a similarly
+worded term in i/o) is proposed.
+All occurrences of "associated actual argument" are changed either to
+"actual argument" or "effective argument".
+
+Edit to 06-007.
+
+[312:3+] 12.5.1.3 Argument association, at the very end, append new paragraph
+    "The entity that is argument-associated with a dummy argument is called
+     its <<effective argument>>."
+
+Edits to 06-256.
+
+[312:2] "are associated with" -> "correspond to".
+
+[312:4] Delete "associated".
+
+[312:16] Delete "associated".
+
+[313:1] Delete "not" before "nonoptional".
+
+[313:6-7] "actual" -> "effective".
+
+[313:8] "is associated with" -> "corresponds to".
+
+[313:9] "actual" -> "effective".
+
+[313:12-13] "corresponding actual" -> "effective".
+
+[313:15] "actual" -> "effective".
+
+[313:18] "actual" -> "effective".
+
+[313:21] "corresponding actual" -> "effective".
+
+[313:23] "actual" -> "effective".
+
+[313:27] "corresponding actual" -> "effective".
+
+[314:12] "may" -> "shall". {Unrelated editorial fix.}
+
+[314:14-15] "argument associated entity" -> "actual argument", twice.
+
+[314:18,19] "actual" -> "effective", twice.
+
+[314:21] Move "ASYNCHRONOUS" to be first, so the list of attributes is
+         alphabetical.
+
+[315:3] "are associated with" -> "correspond to".
+
+[315:15] "are associated with" -> "correspond to".
+
+[316:15] "argument associated entity" -> "actual argument".
+
+[316:20] "are associated with" -> "correspond to".
+
+[317:1] Delete "associated".
+
+6. PURE constraint not compile-time checkable
+
+In 12.5.0 the penultimate constraint C1233 is pointless and uncheckable.
+
+It is uncheckable because a PURE procedure is permitted to be described by an
+interface block which says that it is not PURE (and indeed, is permitted to be
+referenced without an explicit interface except from certain contexts).
+
+It is completely pointless because C1279 ([334:8-9]) constrains a PURE
+procedure to have only PURE dummies - and one is not permitted to pass an
+impure actual to a pure dummy.  So this situation in C1233 cannot even arise.
+
+It has also not been integrated with procedure pointer components.
+
+Because of C1279, deleting this makes no extra programs conforming, and
+obviously has no effect on previously conforming programs (so no interp needed).
+
+Edit to 06-007.
+
+[310:19-20+2] Delete C1233 and Note 12.17.
+
+===END OF DOCUMENT===

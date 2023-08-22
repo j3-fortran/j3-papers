@@ -1,0 +1,357 @@
+                                                    J3 / 97-174R1
+
+Date:        13 May 1997
+To:          X3J3
+From:        R. Maine
+Subject:     Procedure variable/pointer examples
+
+On further deliberation, including consideration of
+full committee comments, /data has reached consensus on
+a declaration syntax for procedure pointers/variables.
+This syntax avoids the use of either "pointer" or
+"variable" as attributes.  Instead, the existing "external"
+attribute is used to distinguish externals from
+variables/pointers.
+
+There is still disagreement about the syntax proposed
+for assignment and comparison operations.
+
+I. Explicit interface
+
+  A. Variable-like operations.
+
+     program var
+
+       !-- The abstract interface.
+       interface procedure()
+         function real_func(x)
+           real, intent(in) :: x
+           real :: real_func
+         end function real_func
+         subroutine sub(x)
+           real, intent(in) :: x
+         end subroutine sub
+       end interface
+
+       !-- Some specific external procedures.
+       procedure(real_func), external :: bessel, gamma
+       procedure(sub), external :: print_real
+
+       !-- Some procedure variables, one initialized to null.
+       procedure(real_func) :: p, r = null()
+       procedure(sub) :: s
+
+       !-- A derived type with a proc component.
+       type struct_type
+         integer :: some_int
+         procedure(real_func) :: component
+       end type struct_type
+
+       !-- and a variable of that type.
+       type(struct_type) :: struct
+
+       !-- Give p a non-null value.
+       p = bessel
+
+       !-- Likewise for a structure component.
+       struct%component = bessel
+
+       !-- Test for equality.
+       if (p==struct%component) write(*,*) 'This should print.'
+
+       !-- Evaluate functions.
+       write (*,*) p(2.5)                 !-- bessel(2.5)
+       write (*,*) struct%component(2.5)  !-- Also bessel(2.5)
+
+       !-- Pass as an actual argument.
+       call integrate(p, 1., 2.)
+
+       !-- Invoke a function returning a proc value.
+       r = select_func(2, p, gamma)  !-- r now is gamma
+
+       !-- A fairly complicated composition.
+       call integrate(select_func(1,p,r), 1., 2.)
+
+       !-- Some subroutine operations.
+       s = print_real
+       if (s /= null()) call s(3.14)
+
+       contains
+
+         subroutine integrate(func, from, to)
+           procedure(real_func), intent(in) :: func
+           real, intent(in) :: from, to
+
+           if (func==null()) call abort('Oops.')
+           write (*,*) 'End values are ', func(from), func(to)
+           return
+         end subroutine integrate
+
+         function select_func(n, proc1, proc2)
+           integer, intent(in) :: n
+           procedure(real_func), intent(in) :: proc1, proc2
+           procedure(real_func) :: select_func
+
+           select case(n)
+           case(1)
+             select_func = proc1
+           case(2)
+             select_func = proc2
+           case default
+             select_func = null()
+           end select
+           return
+        end function select_func
+
+    end program var
+
+  B. Pointer-like operations.
+
+    program ptr
+
+       !-- The abstract interface.
+       interface procedure()
+         function real_func(x)
+           real, intent(in) :: x
+           real :: real_func
+         end function real_func
+         subroutine sub(x)
+           real, intent(in) :: x
+         end subroutine sub
+       end interface
+
+       !-- Some specific external procedures.
+       procedure(real_func), external :: bessel, gamma
+       procedure(sub), external :: print_real
+
+       !-- Some procedure pointers, one initialized to null.
+       procedure(real_func) :: p, r => null(), ptr_to_gamma
+       procedure(sub) :: s
+
+       !-- A derived type with a proc component.
+       type struct_type
+         integer :: some_int
+         procedure(real_func) :: component
+       end type struct_type
+
+       !-- and a variable of that type.
+       type(struct_type) :: struct
+
+       !-- Give p a non-null value.
+       p => bessel
+
+       !-- Likewise for a structure component.
+       struct%component => bessel
+
+       !-- Test for equality.
+       if (associated(p,struct%component)) &
+            write(*,*) 'This should print.'
+
+       !-- Evaluate functions.
+       write (*,*) p(2.5)                 !-- bessel(2.5)
+       write (*,*) struct%component(2.5)  !-- Also bessel(2.5)
+
+       !-- Pass as an actual argument.
+       call integrate(p, 1., 2.)
+
+       !-- Invoke a function returning a proc value.
+       !-- Can we pass gamma directly?
+       ptr_to_gamma => gamma
+       r => select_func(2, p, ptr_to_gamma)  !-- r now is gamma
+
+       !-- A fairly complicated composition.
+       call integrate(select_func(1,p,r), 1., 2.)
+
+       !-- Some subroutine operations.
+       s => print_real
+       if (associated(s)) call s(3.14)
+
+       contains
+
+         subroutine integrate(func, from, to)
+           procedure(real_func), intent(in) :: func
+           real, intent(in) :: from, to
+
+           if (.not. associated(func)) call abort('Oops.')
+           write (*,*) 'End values are ', func(from), func(to)
+           return
+         end subroutine integrate
+
+         function select_func(n, proc1, proc2)
+           integer, intent(in) :: n
+           procedure(real_func), intent(in) :: proc1, proc2
+           procedure(real_func) :: select_func
+
+           select case(n)
+           case(1)
+             select_func => proc1
+           case(2)
+             select_func => proc2
+           case default
+             select_func => null()
+           end select
+           return
+         end function select_func
+
+    end program ptr
+
+
+
+
+II. Implicit interface
+
+  A. Variable-like operations.
+
+     program var
+
+       !-- Some specific external procedures.
+       procedure(real), external :: bessel, gamma
+       procedure(), external :: print_real
+
+       !-- Some procedure variables, one initialized to null.
+       procedure(real) :: p, r = null()
+       procedure() :: s
+
+       !-- A derived type with a proc component.
+       type struct_type
+         integer :: some_int
+         procedure(real) :: component
+       end type struct_type
+
+       !-- and a variable of that type.
+       type(struct_type) :: struct
+
+       !-- Give p a non-null value.
+       p = bessel
+
+       !-- Likewise for a structure component.
+       struct%component = bessel
+
+       !-- Test for equality.
+       if (p==struct%component) write(*,*) 'This should print.'
+
+       !-- Evaluate functions.
+       write (*,*) p(2.5)                 !-- bessel(2.5)
+       write (*,*) struct%component(2.5)  !-- Also bessel(2.5)
+
+       !-- Pass as an actual argument.
+       call integrate(p, 1., 2.)
+
+       !-- Invoke a function returning a proc value.
+       r = select_func(2, p, gamma)  !-- r now is gamma
+
+       !-- A fairly complicated composition.
+       call integrate(select_func(1,p,r), 1., 2.)
+
+       !-- Some subroutine operations.
+       s = print_real
+       if (s /= null()) call s(3.14)
+
+       contains
+
+         subroutine integrate(func, from, to)
+           procedure(real), intent(in) :: func
+           real, intent(in) :: from, to
+
+           if (func==null()) call abort('Oops.')
+           write (*,*) 'End values are ', func(from), func(to)
+           return
+         end subroutine integrate
+
+         function select_func(n, proc1, proc2)
+           integer, intent(in) :: n
+           procedure(real), intent(in) :: proc1, proc2
+           procedure(real) :: select_func
+
+           select case(n)
+           case(1)
+             select_func = proc1
+           case(2)
+             select_func = proc2
+           case default
+             select_func = null()
+           end select
+           return
+        end function select_func
+
+    end program var
+
+  B. Pointer-like operations.
+
+    program ptr
+
+       !-- Some specific external procedures.
+       procedure(real), external :: bessel, gamma
+       procedure(), external :: print_real
+
+       !-- Some procedure pointers, one initialized to null.
+       procedure(real) :: p, r => null(), ptr_to_gamma
+       procedure() :: s
+
+       !-- A derived type with a proc component.
+       type struct_type
+         integer :: some_int
+         procedure(real) :: component
+       end type struct_type
+
+       !-- and a variable of that type.
+       type(struct_type) :: struct
+
+       !-- Give p a non-null value.
+       p => bessel
+
+       !-- Likewise for a structure component.
+       struct%component => bessel
+
+       !-- Test for equality.
+       if (associated(p,struct%component)) &
+            write(*,*) 'This should print.'
+
+       !-- Evaluate functions.
+       write (*,*) p(2.5)                 !-- bessel(2.5)
+       write (*,*) struct%component(2.5)  !-- Also bessel(2.5)
+
+       !-- Pass as an actual argument.
+       call integrate(p, 1., 2.)
+
+       !-- Invoke a function returning a proc value.
+       !-- Can we pass gamma directly?
+       ptr_to_gamma => gamma
+       r => select_func(2, p, ptr_to_gamma)  !-- r now is gamma
+
+       !-- A fairly complicated composition.
+       call integrate(select_func(1,p,r), 1., 2.)
+
+       !-- Some subroutine operations.
+       s => print_real
+       if (associated(s)) call s(3.14)
+
+       contains
+
+         subroutine integrate(func, from, to)
+           procedure(real), intent(in) :: func
+           real, intent(in) :: from, to
+
+           if (.not. associated(func)) call abort('Oops.')
+           write (*,*) 'End values are ', func(from), func(to)
+           return
+         end subroutine integrate
+
+         function select_func(n, proc1, proc2)
+           integer, intent(in) :: n
+           procedure(real), intent(in) :: proc1, proc2
+           procedure(real) :: select_func
+
+           select case(n)
+           case(1)
+             select_func => proc1
+           case(2)
+             select_func => proc2
+           case default
+             select_func => null()
+           end select
+           return
+         end function select_func
+
+    end program ptr
+

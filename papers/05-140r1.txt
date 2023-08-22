@@ -1,0 +1,129 @@
+
+                                                      J3/05-140r1
+
+Date:    09 Feb 2005
+To:      J3
+From:    Rich Bleikamp (/INTERP)
+Subject: Separators in list-directed output involving UDDTIO
+
+NUMBER: F03/0049
+TITLE: Separators in list-directed output involving UDDTIO
+KEYWORDS: list-directed output, separators, UDDTIO
+DEFECT TYPE: Interpretation
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following program:
+
+MODULE m
+  TYPE t
+    INTEGER i
+  END TYPE
+  INTERFACE WRITE(FORMATTED)
+    MODULE PROCEDURE formattedWriteT
+  END INTERFACE
+CONTAINS
+  SUBROUTINE formattedWriteT(dtv, unit, iotype, v_list, iostat, iomsg)
+    CLASS(t),         INTENT(IN)    :: dtv
+    INTEGER,          INTENT(IN)    :: unit
+    CHARACTER(LEN=*), INTENT(IN)    :: iotype
+    INTEGER,          INTENT(IN)    :: v_list(:)
+    INTEGER,          INTENT(OUT)   :: iostat
+    CHARACTER(LEN=*), INTENT(INOUT) :: iomsg
+
+    WRITE(unit, *) dtv%i, 'a'
+  END SUBROUTINE
+END MODULE
+
+PROGRAM foo
+  USE m
+  TYPE(t) :: t1 = t(5)
+  OPEN(10, FILE='foo.txt', ACCESS='SEQUENTIAL', FORM='FORMATTED', &
+       DELIM='NONE')
+  WRITE(10, *), 'xyz', t1, 'zyx'
+END PROGRAM
+
+10.9.2 of Fortran 2003 states that character sequences produced for
+list-directed output are not separated from each other by value
+separators when the delimiter mode is NONE.  The implication of this
+is obvious when the adjacent effective output list items are both of
+character type.  But when user-defined derived-type input/output 
+is involved, it is much less clear whether a separator should be 
+included in the output.
+
+In the example given, it is unclear whether the output should be:
+ xyz 5 azyx
+or:
+ xyz 5 a zyx
+
+1. Should a separator be inserted between two non-delimited character
+   sequences when one of the character sequences is written by a child
+   data transfer statement, and the other is written by a parent data
+   transfer statement, where both statements are list-directed?
+
+2. Should a separator be inserted between two non-delimited character
+   sequences when the character sequences are written by two different
+   child data transfer statements, where both statements are list-directed?
+
+3. Should a separator be inserted between two character sequences when
+   one of the character sequences is written by a child data transfer
+   statement, and the other is written by a parent data transfer 
+   statement, where one of the statements is list-directed and the 
+   other is format-directed?
+
+4. Should a separator be inserted between two character sequences when
+   the character sequences are written by two different child data 
+   transfer statements, where one of the statements is list-directed
+   and the other is format-directed?
+
+
+ANSWER:
+
+1) No. It is the intent of the standard that when both the parent and child
+   data transfer statements are both list-directed output statements, or both
+   are namelist output statements, the processor treats the first list item
+   appearing in a child data transfer statement as if that list item
+   had immediately followed the last list item processed by
+   the parent data transfer statement, as long as no other data transfers to
+   that unit occurred inbetween the processing of those two list items.
+   Therefore, in this case, the two character sequences are considered adjacent.
+
+2) No. It is the intent of the standard that when two different child
+   data transfer statements are both list-directed output statements, or both
+   namelist output statements, they write to the same unit, and no other
+   data transfers to that unit occur inbetween the two child data transfer
+   statements, the processor treats the first list item
+   appearing in the second child data transfer statement as if that list item
+   had immediately followed the last list item processed by the first child
+   data transfer statement.  Therefore, in this case, the two
+   character sequences are considered adjacent.
+
+3) It is processor dependent whether or not a separator appears between
+   two such character sequences.  In section 10.9.2, the phrase
+   "adjacent undelimited character sequences" refers to character sequences
+   produced by list directed output.  When one of the sequences is written
+   by a child or parent output statement that is not list directed, the 
+   exception described in the first paragraph of 10.9.2 does not apply.  
+   The other rules for inserting optional blanks around values in list directed
+   output allow the processor to insert optional leading and trailing blanks
+   around a list item.  The standard does not specify
+   when optional blanks are written; therefore, when
+   two adjacent list items (the values thereof) are written to an output
+   record, and only one of them was written by list directed I/O, the standard
+   does not specify whether or not any optional blanks appear
+   between those values in the output record. 
+
+4) It is processor dependent whether or not a separator appears between
+   two such character sequences.  See answer 3.
+
+
+EDITS:
+
+None.
+
+
+SUBMITTED BY: Rob James
+
+HISTORY: J3/05-140   m171 Submitted
+         J3/05-140r1 m171 Draft J3 Response

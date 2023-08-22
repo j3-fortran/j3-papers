@@ -1,0 +1,534 @@
+To:         J3 Members                                       J3/17-144r1
+From:       Van Snyder
+Subject:    Locality specs in DO CONCURRENT
+References: 17-007r1, 15-131r1, 16-199, 16-248, 17-156
+Date: 2017 May 23
+
+1. Discussion
+=============
+
+During the interval since meeting 210, three apparently persuasive
+arguments have been advanced against several proposals:
+
+o  Facilities that could in principle be provided by directives ought
+   not to be incorporated as features of the language.
+
+o  Features ought not to be added if the facilities they would provide
+   can be gotten using extant features.
+
+o  Vendors already have too much on their plates; therefore the size of
+   the present revision, and perhaps future ones as well, ought to be
+   limited by not entertaining features from the previous two
+   categories.
+
+Locality specifications are not simply in principle available as
+directives for some future hypothetical processor or preprocessor: they
+are already provided by OpenMP directives.  If one prefers not to use
+those directives, their effect can be gotten by variable declarations,
+IMPORT statements, and assignment statements within a BLOCK construct
+within a DO CONCURRENT construct.
+
+According to those arguments, and the apparent consensus of their
+advantages, locality specs ought to be deleted from the current
+revision.
+
+A future revision might simplify things by allowing every construct (as
+advocated in 97-114r2), or at least a DO CONCURRENT construct, to have a
+<block-specification-part> of its own without needing to encompass a
+BLOCK construct.
+
+Statement functions were objectionable at least in part because the
+characteristics of their dummy arguments are not declared, but rather
+appear as if by magic from a subset of the characteristics of objects of
+the same names in the enclosing scope, and there are complicated rules
+pertaining to their attributes.  Locality specs are based upon the same
+proposition, on steroids.  C1127 is particularly weird -- far more so
+than anything related to statement functions.  If it was objectionable
+for statement functions, there is no excuse to do it again in a
+grotesquely magnified way, and that is a further reason locality specs
+ought to be deleted from the current revision.
+
+Requiring to specify the locality of a variable, rather than defining
+the effect of declarations within BLOCK constructs within DO concurrent
+constructs, induces the need for six goofy constraints.  Rather, by
+defining the effect on locality of declarations within BLOCK constructs
+within DO concurrent constructs, variables that would be prohibited to
+have certain locality because they have some attribute simply don't have
+that locality if they have that attribute.
+
+Other defects in the existing specification eventually would inspire
+interpretations that would probably result in corrigenda.
+
+o  Semantics of variables in BLOCK constructs within DO CONCURRENT
+   constructs, that arise uniquely because they are within DO CONCURRENT
+   constructs, are not specified.
+   -  What is the locality of variables that are nonsaved construct
+      entities of BLOCK constructs?  The only sensible answer is "local"
+      (which is especially obvious in the case of automatic variables
+      that have an extent or length parameter value that depends upon an
+      index variable) but locality specs on the DO CONCURRENT statement
+      can't specify their locality.  It is absurd that a variable that
+      is a construct entity of a BLOCK construct within a DO CONCURRENT
+      construct is limited by the inter-iteration restrictions in
+      11.1.7.5p4 on variables with unspecified locality, because such a
+      variable doesn't exist in other iterations!
+   -  What is the locality of variables explicitly accessed by host
+      association using IMPORT statements within BLOCK constructs within
+      DO CONCURRENT constructs?  The only sensible answer is "shared."
+      What happens if they are specified to have local locality?
+   -  What is the effect of pointer or pointer component initialization
+      within a BLOCK construct if the <initial-data-target> has
+      different locality from the pointer?  The only sensible answer is
+      to prohibit it.
+   If these effects were to be specified with these most obviously
+   useful interpretations, which this proposal does, and which they
+   would even more obviously have if DO CONCURRENT constructs had
+   <block-specification-part>s of their own, it would become immediately
+   obvious that locality specs on the DO CONCURRENT statement are
+   -  more complicated than,
+   -  redundant to, and
+   -  inferior to
+   specifications within a BLOCK construct within a DO CONCURRENT
+   construct, which already exist without adding the baggage of locality
+   specifications.
+
+o  The locality of subobjects of variables is not specified.  Locality
+   is not an attribute.  Even among attributes, only a few are
+   automatically conferred on subobjects, and for those it is explicitly
+   specified.  For example, ASYNCHRONOUS is explicitly automatically
+   conferred on subobjects, but ALLOCATABLE is not.  (A list or table in
+   Clause 8 of attributes that are automatically conferred upon
+   subobjects would be helpful.)
+
+o  Automatically deallocating allocated allocatable subobjects of
+   variables with local locality at the end of each iteration is not
+   discussed.  This was probably overlooked because (a) C1127 prohibits
+   allocatable variables to have local locality, but does not prohibit
+   ones with local locality to have allocatable direct components, and
+   (b) no thought was given to BLOCK constructs within DO CONCURRENT
+   constructs, even though this possibility was discussed in three
+   papers that were ignored.
+
+o  Finalizing finalizable subobjects of variables with local locality at
+   the end of each iteration is not discussed.  This was probably
+   overlooked because (a) C1127 pointlessly prohibits local variables to
+   be of finalizable types (instead of specifying their semantics and
+   requiring their finalizers to be pure), but does not prohibit them to
+   have direct components of finalizable types, and (b) no thought was
+   given to BLOCK constructs within DO CONCURRENT constructs, even
+   though this possibility was discussed in three papers that were
+   ignored.
+
+o  Although variables with local locality are pointlessly prohibited by
+   C1127 to be of finalizable types (instead of specifying their
+   semantics and requiring them to be pure), variables with shared or
+   unspecified locality are allowed to be of finalizable types.  Their
+   final procedures are not obviously required to be pure, or at least
+   C1138 is not as obvious as C1037.  Paper 17-156 revises C1138.
+
+o  Defined operation and assignment procedures referenced within a DO
+   CONCURRENT construct are not obviously required to be pure, or at
+   least C1138 is not as obvious as C1037.  Paper 17-156 revises C1138.
+
+o  C1124 requires a variable in a <locality-spec> to be the name of a
+   variable in the innermost executable construct or scoping unit that
+   includes the DO CONCURRENT statement.  Therefore
+   -  an implicitly typed variable that appears only within the <block>
+      of a DO CONCURRENT construct cannot be specified to have locality;
+      it has unspecified locality, unless DEFAULT(NONE) appears, in
+      which case its existence is prohibited by C1129, and
+   -  a variable declared within a BLOCK construct, or an undeclared one
+      that appears only within the <block> of a BLOCK construct, within
+      a DO CONCURRENT construct, or is otherwise not accessible within
+      the DO CONCURRENT construct, cannot have specified locality.
+
+o  If DEFAULT(NONE) appears, C1129 prohibits the declaration of a
+   variable that is a construct entity of a BLOCK construct within a DO
+   CONCURRENT construct.  C1129 might have been intended to address the
+   appearance of a variable that is not a construct entity of a BLOCK
+   construct, in the <block> of that BLOCK construct, within a DO
+   CONCURRENT construct, but it does not do so.
+
+o  Requirements are put on variables depending upon their locality, but
+   the meaning of locality is not explained.  I.e., it is not specified
+   whether a variable with LOCAL or LOCAL_INIT locality has a separate
+   existence in each iteration of the DO CONCURRENT construct, or
+   whether a variable with SHARED locality is the same variable in every
+   iteration.  The latter is hinted in 11.7.5p3, which is silent about
+   associations.
+
+o  The effect of locality specifications using names of variables in
+   non-blank nonsaved common blocks is not specified.  In particular, if
+   it has local locality, is it still a common variable?  The word
+   "common" does not appear in subclause 11.1.7, and especially not in
+   11.1.7.5p2.  The situation with blank common is murky because,
+   although subclause 8.10.2.5 says that variables in blank common never
+   become undefined as the result of executing a RETURN or END
+   statement, there is no specification that blank common, or variables
+   in it, have the SAVE attribute.  Paper 17-150 addresses questions
+   concerning the relationship of blank common to the SAVE attribute.
+
+o  The effect of associating a pointer with a target that does not have
+   the same locality is neither prohibited nor explained.  It should be
+   prohibited.
+
+o  If a pointer and target are allowed to have different locality, it is
+   not obvious whether a pointer that is associated with a noncontiguous
+   section of an array with different locality can be supplied as an
+   actual argument corresponding to a contiguous INTENT(INOUT) dummy
+   argument.  In particular, what if the pointer is local but its target
+   is not?
+
+o  The effect of changing the association status of a pointer that has
+   shared locality other than by allocating or deallocating it is not
+   specified.
+
+o  A variable with local locality is prohibited to be a coarray but is
+   allowed to be of a type that has a coarray direct component -- which
+   is pointless because the component must be allocatable, but can't be
+   allocated because that would require an image control statement,
+   which is prohibited by C1137.
+
+o  The effect of locality specifications relating to an outer DO
+   CONCURRENT construct upon variables that appear within an inner DO
+   CONCURRENT construct is not specified.
+
+o  The locality of a variable associated with a <selector> by construct
+   association (ASSOCIATE, SELECT ...), either within or outwith a DO
+   CONCURRENT construct, is not specified.
+
+o  The effect of specifying shared locality for a variable and not
+   specifying the locality for a variable that is storage associated
+   with it is not specified.  The rules for shared and unspecified
+   locality are not obviously consistent.
+
+o  The effect of specifying shared locality for a variable and local
+   locality for a variable that is storage associated with it is not
+   specified.
+
+o  Requirements (and implied permissions) for variables with unspecified
+   locality appear to be defective in that a variable with unspecified
+   locality can be changed in one iteration and referenced in another
+   one, or allocated (and presumably deallocated) in more than one
+   iteration -- obvious race conditions if the variable turns out to be
+   shared but isn't so specified.  If we want to allow such things, we
+   need either MONITOR procedures or a form of CRITICAL construct that
+   synchronizes iterations of a DO CONCURRENT construct instead of
+   synchronizing images.
+
+Uniquely, there is no prohibition against repeating locality specs.
+LOCAL(X,X) and LOCAL(X), LOCAL(X) are prohibited, but LOCAL(X), LOCAL(Y)
+is allowed.  This might be considered to be an unusual feature, instead
+of a defect.
+
+2. Proposal
+===========
+
+Specify semantics of construct entities of BLOCK constructs that appear
+within DO CONCURRENT constructs.  Define locality as a consequence of
+the attributes of a variable and how it is used.  Define the meaning and
+effect of locality, not just the dependent restrictions.  Define the
+effects of locality on subobjects and associated variables.  Delete
+redundant, complicated, and confusing locality specifications.  Repair
+the other defects.
+
+No replacement for LOCAL_INIT is proposed.  Assignment statements
+provide that functionality, and their semantics are not changed.  Since
+before 1990 users have been asking for a way to initialize a variable
+dynamically in a declaration without conferring the SAVE attribute.  The
+AUTOMATIC attribute was explicitly proposed in early drafts for what
+became Fortran 90, in conjunction with allowing an initialization
+expression to be a specification expression.  That was also proposed as
+a means to specify default values for absent optional arguments.  If
+that is provided in some future revision, in addition to its obvious
+other utility, it would provide the functionality of LOCAL_INIT with
+slightly fewer pixels than an assignment statement.
+
+3. Edits
+========
+
+[xviii intro under "Execution control"] Replace "The locality ...
+explicitly specified" with "The effect of a BLOCK construct within a DO
+CONCURRENT construct is specified".
+
+[190:23 11.1.7.2 Form of the DO construct R1123] Delete
+"<concurrent-locality>" from the right-hand side of R1123.
+
+[191:2-6 11.1.7.2 Form of the DO construct R1129-R1130] Delete syntax
+rules R1129 <concurrent-locality> and R1130 <locality-spec>.
+
+[191:12-28 11.1.7.2 Form of the DO construct C1124-C1129] Delete
+constraints C1124, C1125, C1126, C1127, C1128, and C1129.  Insert the
+following constraint, which in 17-007r1 is in 11.1.7.5p5, but that
+paragraph is deleted below:
+
+"C1124 A DO CONCURRENT construct shall not contain an input/output
+       statement that has an ADVANCE= specifier."
+
+[194:17 C1138 11.1.7.5 Additional semantics for DO CONCURRENT
+constructs] Replace C1138 (cf. C1037) (17-156 has the same edit):
+
+"C1138 Any procedure referenced within a DO CONCURRENT construct,
+       including one referenced by a defined operation, assignment, or
+       finalization, shall be a pure procedure."
+
+[194:20+ C1139+ 11.1.7.5 Additional semantics for DO CONCURRENT
+constructs]
+
+Insert
+
+"C1139a An unsaved construct entity of a BLOCK construct within a DO
+        CONCURRENT construct shall not be a coarray and shall not have a
+        coarray ultimate component.
+
+{An allocatable coarray or coarray component cannot be allocated (or
+deallocated) during any iteration of the DO CONCURRENT construct because
+that is an image control statement, which is prohibited by C1137.  So
+there's no point to allow one to be declared.}
+
+[194:21-22 11.1.7.5p1 Additional semantics for DO CONCURRENT constructs]
+Replace the paragraph that begins "The locality of a variable...":
+
+"The locality of a variable that appears in a DO CONCURRENT construct is
+local, shared, or unspecified.  The locality of a subobject of a
+variable is the same as the locality of the variable.
+
+{A better term than "local locality" might be "iteration locality".}
+
+"An unsaved variable that is a construct entity of a BLOCK construct
+within a DO CONCURRENT construct has local locality.  A variable has
+local locality if it is construct associated, host associated, or
+pointer associated with a variable that has local locality in that DO
+CONCURRENT construct.  A variable with local locality has a separate
+instance during each iteration of that DO CONCURRENT construct.  Its
+locality within a contained DO CONCURRENT construct is not local.
+
+"A variable that appears in a DO CONCURRENT construct has shared
+locality if
+o  it or a subobject of it is storage associated, construct associated,
+   host associated, or pointer associated with a variable that has
+   shared locality in that construct,
+o  it or a subobject of it is the <initial-data-target> in the
+   declaration of a variable or the definition of the type of a variable
+   that has shared locality in that construct, or
+o  it does not have local locality in that construct and
+   -  it or a subobject of it is allocated or deallocated within that
+      construct, or
+   -  it or a subobject of it appears within that construct
+      *  in a variable definition context (19.6.7),
+      *  in a pointer association context (19.6.8),
+      *  as the <data-target> in a pointer assignment statement,
+      *  as an actual argument in a reference to a procedure if the
+         corresponding dummy argument does not have INTENT(IN) or the
+         procedure has implicit interface, or
+      *  as the <expr> in an assignment statement if it is of a type that
+         has a pointer ultimate component.
+A variable with shared or unspecified locality is the variable that has
+the same identifier in the innermost executable construct or scoping
+unit that contains the DO CONCURRENT construct, or it is associated with
+that variable; it has the same instance throughout all iterations of one
+execution of that DO CONCURRENT construct.
+
+{The reason for the last point under "appears within that construct" is
+that if the <expr> in an assignment statement has a pointer ultimate
+component, that pointer's target will become the target of the
+corresponding component of the <variable>, which has shared locality.
+Thereby, the <expr> has a pointer component that could have a target
+with shared locality, and therefore the variable must be required to
+have shared locality.}
+
+"  NOTE 11.10a
+   A variable that does not have local or shared locality cannot have
+   its value, definition status, allocation status, or pointer
+   association status changed during an iteration of the DO CONCURRENT
+   construct."
+
+{If the definitions of locality don't ensure what NOTE 11.10a says, and
+cannot be made to ensure it, replace "cannot" by "shall not" and make
+NOTE 11.10a a normative paragraph.}
+
+{Insert constraints to prohibit associating a pointer with a target that
+has different locality:}
+
+"C1139b A variable that has local locality shall not be of a type for
+        which an ultimate component has pointer component initialization
+        other than <null-init>.
+
+{An initial target is required to have the SAVE attribute, and therefore
+would result in a variable with local locality having a pointer
+component associated with a variable with either shared or unspecified
+locality.}
+
+"C1139c A pointer shall not appear within a DO CONCURRENT construct as
+        o  the <data-pointer-object> in a <pointer-assignment-stmt>
+           unless the <data-target> is
+           -  a variable that has the same locality that the
+              <data-pointer-object> has within that DO CONCURRENT
+              construct,
+           -  a reference to the intrinsic function NULL, or
+           -  a reference to a function that has a pointer result and
+              every actual argument meets the requirements of this
+              constraint or constraint C1139d, or
+        o  an actual argument that corresponds to a dummy argument that
+           has the POINTER attribute unless the dummy argument has
+           INTENT(IN), or every other actual argument meets the
+           requirements of this constraint or constraint C1139d.
+
+"C1139d A variable that has a pointer ultimate component shall not
+        appear within a DO CONCURRENT construct as
+        o  the <variable> in an assignment statement unless the <expr>
+           is
+           -  a variable that has the same locality that the <variable>
+              has in that DO CONCURRENT construct,
+           -  a constant expression in which every pointer ultimate
+              component is either nullified or has the same locality
+              that the <variable> has in that DO CONCURRENT construct,
+           -  a structure constructor in which every pointer ultimate
+              component becomes either nullified or associated with a
+              target that has the same locality that the <variable> has
+              in that DO CONCURRENT construct, and every nonpointer
+              ultimate component meets the requirements of this
+              constraint, or
+           -  a function reference in which every actual argument meets
+              the requirements of this constraint or constraint C1139c,
+              or
+        o  an actual argument that corresponds to a dummy argument that
+           is not known to have INTENT(IN) where the procedure is
+           referenced unless every other actual argument meets the
+           requirements of this constraint or constraint C1139c.
+
+  "NOTE 11.10b
+   Constraints C1139b-C1139d prevent a pointer from becoming associated
+   with a target that has different locality."
+
+{If C1139b-d do not prevent a pointer from becoming associated with a
+target that has different locality, instead of NOTE 11.10b, insert a
+paragraph:
+
+"During execution of a DO CONCURRENT construct, a pointer shall not
+become associated with a target whose locality within that construct is
+different from the pointer locality."}
+
+[194:23-34 11.1.7.5p2 Additional semantics for DO CONCURRENT constructs]
+Replace the list and its introduction (which begins "A variable that has
+LOCAL..."):
+
+"During each iteration, at the beginning of execution of the <block> of
+a BLOCK construct within a DO CONCURRENT construct, if a variable that
+is a construct entity of that BLOCK construct has local locality then
+
+o  if it is a pointer it has undefined pointer association status;
+
+o  if it is allocatable it is unallocated;
+
+o  otherwise it is undefined except that any its subobjects that have
+   default initialization are initialized, and its allocatable ultimate
+   components are unallocated."
+
+[194:35 11.1.7.5p2 Additional semantics for DO CONCURRENT constructs]
+Replace "LOCAL or LOCAL_INIT" with "local".
+
+[194:36-38 11.1.7.5p2 Additional semantics for DO CONCURRENT constructs]
+Delete the second sentence, viz. "If a variable ... completes." because
+variables with local locality are now construct entities of BLOCK
+constructs, and 19.6.6p1(23) says unsaved local variables of BLOCK
+constructs become undefined when execution of the BLOCK completes, and
+19.5.2.5p1(7) says pointers associated with them thereby become
+undefined.
+
+[194:37 11.1.7.5p2 Additional semantics for DO CONCURRENT constructs]
+Before "a pointer associated" insert "the pointer association status of"
+because it's the pointer's association status that becomes undefined;
+see 19.5.2.5p1(7).
+
+[194:38+ 11.1.7.5p2+ Additional semantics for DO CONCURRENT constructs]
+Insert a paragraph:
+
+"At the end of execution of the <block> of a BLOCK construct within each
+iteration of a DO CONCURRENT construct, each finalizable variable with
+local locality is finalized, each finalizable subobject of each variable
+with local locality is finalized, each allocated allocatable variable
+with local locality is deallocated, and each allocated allocatable
+subobject of each variable with local locality is deallocated."
+
+{The previous edit can probably be simplified.  In light of 7.5.6.3p4,
+9.7.3.2p3, and 9.7.3.2p8, it might not be needed (or could be simplified
+and made a NOTE.}
+
+[194:39-41 11.1.7.5p3 Additional semantics for DO CONCURRENT constructs]
+Delete the first sentence, viz. "If a variable has SHARED locality ...
+includes the DO CONCURRENT construct."  because this specification,
+corrected to account for associations, appears after the definition of
+shared locality above.
+
+[194:41 11.1.7.5p3 Additional semantics for DO CONCURRENT constructs]
+Replace "If it" with "If a variable with shared locality".
+
+[194:42 11.1.7.5p3 Additional semantics for DO CONCURRENT constructs]
+Replace "or deallocated" with ", deallocated, or its pointer association
+status is changed".
+
+[194:43 11.1.7.5p3 Additional semantics for DO CONCURRENT constructs]
+Insert "pointer" before "association status".
+
+[194:44 11.1.7.5p3 Additional semantics for DO CONCURRENT constructs]
+Before "inquired about" insert "changed or".  After "any other
+iteration." insert "If its pointer association status is changed during
+any iteration it has a pointer association status of undefined when
+execution of the construct completes."  Replace "SHARED" with "shared".
+
+[195:1-17 11.1.7.5p3 Additional semantics for DO CONCURRENT constructs]
+Delete requirements on unspecified locality at [195:2-17] because they
+all depend upon definition, allocation, deallocation, or change in
+pointer association status, which makes a variable have shared locality
+according to the definition above.  The only thing left for unspecified
+locality is reference, which is not affected by inter-iteration effects.
+
+[195:18 11.1.7.5p5 Delete the paragraph "A DO CONCURRENT construct shall
+not contain an input/output statement that has an ADVANCE= specifier."
+because it was made a constraint above.
+
+[516:11-12 19.4p1 Statement and construct entities] Delete "A variable
+that has LOCAL or LOCAL_INIT locality in a DO CONCURRENT construct is a
+construct entity." because a variable that has local locality is now a
+construct entity of a BLOCK construct.
+
+[516:36-37 19.4p6 Statement and construct entities] Delete 19.4p6, viz.
+"A variable that has LOCAL or LOCAL_INIT locality in a DO CONCURRENT
+construct has the scope of that construct.  Its attributes are specified
+in 11.1.7.5." because a variable that has local locality is now a
+construct entity of a BLOCK construct.
+
+[523:2+ 19.5.2.5p1(6)+ Events that cause the association status of
+pointers to become undefined] Insert a list item:
+
+" (6a) a BLOCK construct within a DO CONCURRENT construct begins
+       execution and the pointer is a construct entity of that BLOCK
+       construct, or a subobject of a construct entity of that BLOCK
+       construct and does not have default initialization;"
+
+{In light of 19.5.2.2, item (6a) might not be necessary.  It depends
+upon how "initial association status" is interpreted in 19.5.2.2 in
+relation to unsaved construct entities of BLOCK constructs within DO
+CONCURRENT constructs.}
+
+[523:22-23 19.5.2.5p1(13) Events that cause the association status of
+pointers to become undefined] Delete list item (13), viz. "An iteration
+of a DO CONCURRENT construct completes and the pointer is associated
+with a variable of that construct that has LOCAL or LOCAL_INIT
+locality." because 19.5.2.5p1(7) specifies this for construct entities
+of BLOCK constructs, and a variable that has local locality is now a
+construct entity of a BLOCK construct.
+
+[529:35-36 19.6.5p1(26) Events that cause variables to become defined]
+Delete item (26), viz. "In a DO CONCURRENT construct, a variable with
+LOCAL_INIT locality becomes defined at the beginning of each iteration."
+because LOCAL_INIT is herein deleted, because assignment statements work
+just fine.
+
+[531:30-31 19.6.6p1(18) Events that cause variables to become undefined]
+Delete list item (18), viz. "When execution of an iteration of a DO
+CONCURRENT construct completes, a construct entity of that construct
+which has LOCAL or LOCAL_INIT locality becomes undefined." because a
+variable with local locality is now a construct entity of a BLOCK
+construct, which becomes undefined according to 19.6.6p1(23).

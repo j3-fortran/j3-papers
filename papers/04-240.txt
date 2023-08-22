@@ -1,0 +1,118 @@
+
+                                                         J3/04-240
+
+Date:    11 Feb 2004
+To:      J3
+From:    Richard Maine
+Subject: Simplified KIND selection
+
+This is a proposal for the next standard after Fortran 2003.
+
+(I thought I recalled a requested format for such proposals,
+but my recollection doesn't seem to be good enough to find
+it at the moment.  I can reformat this if needed.)
+
+A recurring theme in user complaints is the complexity of
+the means of portably specifying kind values.  The
+selected_real_kind intrinsic is not a good match to
+typical application requirements.  It can be contorted to
+work, but the contortions make it obscure and nonintuitive.
+
+Rarely is it useful to specify precision requirements in
+decimal digits, particularly as Fortran processors don't
+tend to use decimal-based representations.  Furthermore,
+when requirements are expressed in decimal digits, they
+are typically requirements on the end results, which aren't
+the same thing as the requirements on the variables used in
+the internal computations.
+
+If you do go to the trouble of calculating the requirements on
+internal variables, you are going to get impractically many
+different precision requirements for different variables.  To
+avoid a mess of complicated generics, in practice this always
+needs to be simplified down to a working precision that is
+adequate for most of the code, with a few possible expections
+where higher precision is needed.
+
+In actual practice with existing processors, the real choice is
+just whether to use 32-bit, 64-bit, or 128-bit reals and that is
+how most programers tend to think of it.  It takes a fair amount
+of thought to turn a requirement for 64-bit reals into something
+like selected_real_kind(12,30), which is what I use.  The
+intention to select a 64-bit real is not at all obvious from
+looking at this.  Other users probably use slightly different
+values, which will cause problems if code ever is used on
+processors that have precisions near the boundaries of what
+the users specify.  Code intended to use the same precisions
+could then end up using different ones.
+
+We should certainly keep the current capability of
+selected_real_kind, both for compatibility with existing code and
+for those situations, rare though they are, where it might happen
+to reasonably fit an application.
+
+However, I think we should also provide a simpler, more direct
+way to specify what the users almost always need.  In a way, this
+is just syntactic sugar, but it is syntactic sugar that is useful
+for a very large fraction of the users.  The current form requires
+enough explanation that many users just don't use it, writing
+nonportable code instead.
+
+For now, I want to concentrate on the requirement.  There are
+multiple ways to meet this requirement.  We need to first agree
+that simpler kind specification is a requirement.  Note that
+I am not proposing that we change anything about how kinds
+work; I just think we need an alternative to selected_real_kind
+for selecting them portably.
+
+We should presumably do something comparable for integer kinds,
+just for consistency, though the need is smaller there (and
+a partial solution has been brought in through the back door
+or C interop; see below).
+
+The following are several posssible approaches to meeting the
+requirement.  I do not propose a straw vote on that level of
+detail yet.  These are listed just as ideas for thought.
+
+1. We could break down and specify kind numbers for some common
+   cases, perhaps the IEEE kinds, or perhaps more generally for
+   32-, 64-, and 128-bit real kinds.  I don't necessarily
+   advocate this, but it would certainly address the requirement.
+
+2. We could specify some standard parameter names for common
+   cases, possibly in the ISO_FORTRAN_ENV module and/or one
+   of the IEEE modules.
+
+   Interestingly, we have already done something like this for
+   integers, using the C interop back door.  I predict that
+   some Fortran users will use, for example, C_INT16_T for
+   reasons having nothing to do with C interoperability, but just
+   because it is a simpler and more intuitive way to specify
+   the kind for a 16-bit integer than selected_int_kind(4),
+   which is what I now use.  There isn't a similar C_REAL64_T.
+
+   This also largely matches current recommended practice of
+   defining parameter names in a module.  By standardizing it,
+   we would facilitate reuse and interoperability of codes
+   which now likely each define their own versions.
+
+   Standardization would also facilitate development of portable
+   habits in new programers who don't need the distraction of
+   writing a module using current selected_real_kind for their
+   first few programs.
+
+3. We could enhance selected_real kind (or add a separate
+   intrinsic) so that users could specify requirements in the
+   desired terms instead of having to translate into decimal
+   digits.  In particular, allow specification of the storage
+   size in bits so that a user can ask for a 64-bit real
+   instead of translating this requirement into 12 decimal
+   digits of precision.
+
+   I also once thought about asking for a way to specify
+   precision in bits (or some other base if you want to be
+   general, but binary is the most important one).  That would go
+   part way and could optionally be adopted as part of a solution.
+   But users most commonly express their requirements in terms
+   of the storage size instead of the mantisa size, so I think
+   that we should address storage size somehow.

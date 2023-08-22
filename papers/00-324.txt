@@ -1,0 +1,206 @@
+
+                                                          J3/00-324
+
+Date:       25 November 2000
+To:         J3
+From:       Van Snyder
+Subject:    Amendment to "Request for Interpretation of `prior
+specification'"
+References: 00-229
+
+NUMBER: ?
+TITLE: What do ``Prior Specification'' and ``defined previously'' mean?
+KEYWORDS: prior Specification, defined previously
+DEFECT TYPE: Clarification
+STATUS: J3 consideration in progress
+
+QUESTION
+
+What is a ``prior specification?''
+
+The last normative paragraph of section 7.1.6.1 of the Fortran 95
+standard, immediately before note 7.14 [94:38-41 in 97-007r2] states:
+
+``If an initialization expression includes a reference to an inquiry
+function for a type parameter or an array bound of an object specified in
+the same <specification-part>, the type parameter or array bound shall be
+specified in a prior specification of the <specification-part>.  The
+prior specification may be to the left of the inquiry function in the
+same statement.''
+
+The first two sentences of the last normative paragraph of section
+7.1.6.2 of the Fortran 95 standard, immediately before note 7.16
+[96:32-35 in 97-007r2] are similar, but refer to specification
+expressions.
+
+Unfortunately, there is no definition of ``prior specification.''
+Consider:
+
+1.  INTEGER :: P(complicated_expression_for_lower_bound_1:   &
+               & complicated_expression_for_upper_bound_1,   &
+               & complicated_expression_for_lower_bound_2:   &
+               & complicated_expression_for_upper_bound_2) = &
+               & RESHAPE( (/ 11, 21, 12, 22 /), SHAPE(P) )
+
+(Notice the reference to P in the <initialization>.)
+
+Some processors reason ``the `specification' of P is only the specifica-
+tion of its name, kind, rank and array bounds, and therefore is `prior'
+by the time the <initialization> is encountered,'' and accept this.
+
+Others reason ``the `specification' of P is the syntax term <entity-decl>
+defined by syntax rule R504 on page 47, which includes the <initializa-
+tion>, and it is therefore not `prior' until the <initialization> is
+completely specified,'' and do not accept this.
+
+By way of further examples, which of the following are standard
+conforming?
+
+2.  INTEGER(selected_int_kind(4)) :: A(KIND(A))
+3.  INTEGER :: A(2,2*SIZE(A,1)+1)
+4.  CHARACTER :: C(10)*(SIZE(C,1))
+5.  INTEGER :: P(10) = LBOUND(P,1)
+
+The paragraphs cited above are silent concerning inquiry functions that
+are not for type parameters or array bounds.  These include BIT_SIZE,
+DIGITS, EPSILON, MAXEXPONENT, MINEXPONENT, PRECISION, RADIX, RANGE and
+TINY.  The results of all of these are derived, however, from the types
+and kind type parameters of their arguments.
+
+Are the objects about which these functions inquire required to be
+specified in a prior specification of the <specification-part>, and is
+that specification allowed to be in the same statement so long as it is
+to the left of the inquiry function of which it is an argument?
+
+Which of the following are standard conforming?
+
+6:  INTEGER :: B = BIT_SIZE(B)
+7.  INTEGER :: B(BIT_SIZE(B))
+8.  INTEGER :: D = DIGITS(D)
+9.  INTEGER :: D(DIGITS(D))
+10. REAL :: X = EPSILON(X)
+
+One could construct obvious similar examples for the remainder of inquiry
+functions that do not inquire about type parameters or array bounds.
+
+RELATED QUESTION
+
+The second normative paragraph in subclause 5.1.2.1 [52:27-28 in
+97-007r2] states ``Any named constant that appears in the initialization
+expression shall have been defined previously in the same type
+declaration statement....''  The third normative paragraph after syntax
+rule R531 in subclause 5.2.9 [61:4-7 in 97-007r2] is similar.
+
+Does ``defined previously'' mean that all of the properties of the named
+constant shall have been defined previously, or that a referenced
+property of it shall have been defined previously?  E.g. if the KIND is
+needed, is it necessary for the value to have been defined?
+
+PREFERRED ANSWER(S)
+
+The result of an inquiry function that depends on the type and type
+parameters (e.g. DIGITS) of its argument can be referenced if the
+argument has appeared in a context that specifies the type and type
+parameters.  This makes examples 1 and 6-10 standard-conforming.  A bound
+may be referenced as soon as it is defined.  This makes examples 2-5
+standard-conforming.  Examples 5, 6, 8 and 10 remain standard-conforming
+if the PARAMETER attribute is specified.  If allowing example 3 is too
+difficult, the second rule could be relaxed to ``a bound cannot be
+referenced until all of the bounds are defined.''  If a property of an
+entity has been inquired about, it cannot later be respecified.  The
+value of an object can be referenced only after that object is completely
+specified.
+
+Note that
+
+11.  CHARACTER(len=*), PARAMETER :: P(len(P)) = (/ ('abc', i=1,len(P)) /)
+12.  CHARACTER(len=9) :: C(len(C))*(20)
+14.  INTEGER, PARAMETER :: P(P(3)) = (/ 1, 2, 4, 8 /)
+
+would not become standard-conforming.
+
+If all four of these rules are too difficult to implement, it would at
+least be useful if ``prior specification'' referred only to a prior
+<entity-decl>, but without including the <initialization> part; the
+utility of this interpretation is illustrated most vividly by  example 1.
+
+The presence of the word ``completely'' in the last sentence of the last
+normative paragraph of 7.1.6.2, and its absence elsewhere, indicates that
+this was the intent: ``If a specification function includes a reference
+to a value of an array element of an array specified in the same
+<specification-part>, the array shall be completely specified in prior
+specifications.''
+
+Unfortunately, there is at present no syntax term to which to direct this
+kind of reference.
+
+The type and kind type parameters are completely specified by the
+<type-spec>.  Since the cited paragraphs refer to ``specification'' but
+not to a syntax term, and the inquiry functions BIT_SIZE etc. mentioned
+above depend on the type and kind type parameters, it is reasonable to
+interpret examples 2, 7 and 9 to be standard-conforming.
+
+REMARK
+
+There is at least one Fortran 95 processor that accepts
+
+program test
+
+  INTEGER :: P(2,2) = &
+             & RESHAPE( (/ 11, 21, 12, 22 /), SHAPE(P) )
+
+  INTEGER(selected_int_kind(4)) :: A(KIND(A))
+  INTEGER :: B(2,2*SIZE(B,1)+1)
+  CHARACTER :: C(10)*(SIZE(C,1))
+  INTEGER :: D(10) = LBOUND(D,1)
+  INTEGER :: E = BIT_SIZE(E)
+  INTEGER :: G(BIT_SIZE(G))
+  INTEGER :: H = DIGITS(H)
+  INTEGER :: I(DIGITS(I))
+  REAL :: X = EPSILON(X)
+
+  INTEGER, PARAMETER :: PP(2,2) = &
+             & RESHAPE( (/ 11, 21, 12, 22 /), SHAPE(PP) )
+  INTEGER, PARAMETER :: DP(10) = LBOUND(DP,1)
+  INTEGER, PARAMETER :: EP = BIT_SIZE(EP)
+  INTEGER, PARAMETER :: HP = DIGITS(HP)
+  REAL, PARAMETER :: XP = EPSILON(XP)
+
+  print *, 'P(1,1), P(1,2), P(2,1), P(2,2) =', p(1,1), p(1,2), p(2,1),
+p(2,2)
+  print *, 'size(A) =', size(a), ', kind(A) =', kind(a)
+  print *, 'shape(B) =', shape(b)
+  print *, 'len(C) =', len(c), ', size(c,1) =', size(c,1)
+  print *, 'D(1) =', d(1), ', lbound(d,1) =', lbound(d,1)
+  print *, 'E =', e, ', bit_size(E) =', bit_size(e)
+  print *, 'size(G) =', size(g), ', bit_size(G) =', bit_size(g)
+  print *, 'H =', h, ', digits(H) =', digits(h)
+  print *, 'size(I) =', size(i), ', digits(I) =', digits(i)
+  print *, 'X =', x, ', epsilon(X) =', epsilon(x)
+
+  print *, 'Parameter == non-parameter = ', &
+  & all(p == pp) .and. all(d == dp) .and. e == ep .and. h == hp .and. x ==
+xp
+
+end program test
+
+Its output is:
+
+ P(1,1), P(1,2), P(2,1), P(2,2) = 11 12 21 22
+ size(A) = 2 , kind(A) = 2
+ shape(B) = 2 5
+ len(C) = 10 , size(c,1) = 10
+ D(1) = 1 , lbound(d,1) = 1
+ E = 32 , bit_size(E) = 32
+ size(G) = 32 , bit_size(G) = 32
+ H = 31 , digits(H) = 31
+ size(I) = 31 , digits(I) = 31
+ X = 1.19209290E-07 , epsilon(X) = 1.19209290E-07
+ Parameter == non-parameter =  T
+
+If the bounds of B are changed to B(2,2*SIZE(B,2)+1) the program is
+rejected.
+
+SUBMITTED BY: Van Snyder
+HISTORY: 00-229 m154 Submitted
+         00-324 m155 Amended

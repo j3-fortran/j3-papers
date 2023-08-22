@@ -1,0 +1,121 @@
+
+                                                       J3/03-151
+
+Date:      13 March 2003
+To:        J3
+From:      Nick Maclaren
+Subject:   Problem with evaluation of functions
+
+______________________________________
+Summary
+______________________________________
+
+In Fortran 66, it was generally agreed that functions could have side
+effects, though the standard was not entirely clear.  For example, the
+consensus was that pseudo-random number generators could be implemented
+as functions provided that no more than one call was made in any one
+statement.  Fortran 77 attempted to clarify the rules on function
+evaluation, but unfortunately made the situation worse, and there has
+been a heated and unproductive debate ever since.  The PURE qualifier
+might have been expected to help, but does not seem to have any useful
+effect for functions.
+
+The problem is with section 7.1.8.1, page 129 lines 11-15, where the
+effect of calling a function is to render all global entities that
+become defined by the evaluation of a non-PURE function undefined after
+an unspecified subset of calls to that function.  As the standard says
+in note 12.44, the existence of such definition of global entities is
+the essential difference between a non-PURE and PURE function.  So
+non-PURE functions are effectively useless in conforming code.
+
+Now, there is an alternative viewpoint, which is that the above reading
+is insane, so therefore clearly incorrect, and that the Fortran 66
+de-facto rules still hold.  This viewpoint is supported by the number of
+places elsewhere in the standard that specifies constraints on and the
+behaviour of side-effects in functions.  It is still held strongly and
+widely, as may be seen by the number of interfaces that are still being
+designed with non-PURE functions, and it is fair to say that the
+industry consensus tends to this viewpoint.
+
+There are two simple and consistent approaches:
+
+    1) To bite the bullet and specify that all functions must be PURE
+in design, whether or not they are declared as such.
+
+    2) To specify the calling of non-PURE functions in enough detail
+that they are useful in conforming code.
+
+The first approach is probably a mistake, because it would render a good
+many existing interface designs invalid, and makes it almost pointless to
+specify a Fortran to C interface for functions.  I believe that it could
+be done purely by adding text to footnotes, though.  I don't believe
+that the second approach is hard to do, subject to the following.
+
+The critical issue is NOT to specify when functions are called, because
+almost all well-designed non-PURE functions are written to be callable
+when they are needed and in any order.  The essential change is to
+restore the situation that calling them is defined behaviour, perhaps
+chosen from a processor-dependent and unspecified set of reasonable
+behaviours.
+
+While it would be possible to define the evaluation of functions to
+permit more than one call to interacting non-PURE functions to be made
+in a single statement, that would need a lot of changes.  You have
+doubtless discussed the problems many times in the past, so I shall not
+describe them.  However, it is simple to restore the Fortran 66
+consensus.
+
+The edits provided restore defined behaviour, without forbidding any
+optimisations (including extreme forms of inlining).  The approach I
+have taken is to say "all or nothing" - i.e. either a function reference
+gets optimised out of existence or the optimisation must emulate it
+accurately, but to place no constraints on when it must be called, or
+even whether two function calls in the same expression may be executed
+in parallel.  There is one minor constraint to permit pseudo-random
+number generators, functions that include diagnostic counts, and so on.
+
+WHATEVER is done, PLEASE clarify this situation.  25 years of confusion,
+flame wars and differing de-facto and de-jure interpretations is more
+than enough.
+
+______________________________________
+Edits
+______________________________________
+
+_____________
+129:12
+Append:
+"Such determination shall be made without reference to the body of
+the function."
+
+[[[ NOT FOR INCLUSION:  obviously, this does not apply to PURE
+functions, because the program cannot tell whether or not they have
+been evaluated or optimised out of existence!   Nor does it prevent
+even the most extreme inlining, but merely requires that inlining must
+also include all relevant side-effects.  All of this could be stated
+explicitly, if it were wanted, but I think it is clear. ]]]
+
+______________
+128:6
+Append to the end of the first sentence
+", nor shall the former evaluation cause any entity to become defined
+that also becomes defined by the latter evaluation."
+______________
+129:14-15
+Replace:
+"all entities that would have become defined in the execution of that
+reference become undefined at the completion of evaluation of the
+expression containing the function reference."
+by:
+"each entity that would have become defined in the execution of that
+reference shall either be unaffected by the function evaluation or shall
+have the state and value it would have had if the function reference had
+been executed."
+______________
+129:note 7.15
+Replace:
+"causes Z to become undefined."
+by:
+"shall either leave Z unchanged or shall cause Z to have the value that
+L or W would have set it to.  A processor need not make this choice
+consistently, not even when executing the same expression a second time."

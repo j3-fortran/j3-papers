@@ -1,0 +1,97 @@
+ 
+                                                          J3/04-229
+
+Date:    02 February 2004
+To:      J3 
+From:    Aleksandar Donev
+Subject: C Interoperability of strided arrays
+
+
+Title: C Interoperability of strided arrays
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: Fortran 2003 FCD
+
+Basic Functionality: 
+
+Allow for users to manipulate Fortran strided arrays (assumed-shape or
+array pointers) in C, and for Fortran to manipulate strided arrays from
+C. In particular, add a C_STRIDES intrinsic, in the same category as
+C_LOC, which will return a rank 1 array giving the strides of an
+possibly noncontiguous array along each dimension. Additionally, allow
+strided (noncontiguous arrays) arguments to C_LOC (they are forbidden
+at present), and specify that the address of the first element (I will
+refer to this as a base address) is returned. Also add a C_STRIDES
+argument to C_F_POINTER which can accept strides, to allow creating a
+Fortran array pointer to strided data from C. This proposal specifies
+that all strides are to be in bytes (although we are may switch to bits
+if all the other storage-related intrinsics we add are in bits). 
+
+Rationale: 
+
+There are many C (or other compatible languages) libraries which are
+capable of dealing with strided arrays, and have their own array
+descriptors. It is a shame that Fortran 2003 allows no easy way to pass
+strided arrays to C. Additionally, it is possible that users of such
+arrays would like to call some Fortran numerical routine. While this
+proposal does not allow for direct interoperability between Fortran's
+noncontiguous arrays (assumed-shape dummies and array pointers) and C
+constructs, it gives tools that can be used to create suitable
+wrappers. Only the C_STRIDES argument to C_F_POINTER adds functionality
+to what is already in Fortran 2003. For example, the base address can
+already be gotten by calling C_LOC for the first element of an array:
+
+base_addresss=C_LOC(LBOUND(A,1),LBOUND(A,2),...)
+
+Strides can be obtained by getting the C address of two consecutive
+elements of an array and performing pointer arithmetic in C. But it is
+not possible (to my knowledge) to create a Fortran array pointer to an
+array of 8-byte reals with a stride of 12 bytes (i.e. 4 bytes of
+padding between consecutive elements), and such arrays do occur in real
+life. 
+
+Estimated Impact: 
+
+This is indeed trivial to implement, since strides are stored in array
+descriptors anyway. It may be more difficult to describe, but we already
+fudge our way in C interop so we may just rely on "everyone knows what
+this means".
+
+Detailed Specification: 
+
+I will not give detailed specs here:
+
+A new intrinsic function C_STRIDES(ARRAY [, DIM]) is provided, similar
+to LBOUND/UBOUND, which returns the stride in bytes between two
+successive elements of the array along the given dimension, i.e., the
+distance in bytes between the storage locations of
+ARRAY(LBOUND(ARRAY,1),...,LBOUND(ARRAY,dim),...,LBOUND(ARRAY,rank)) and
+ARRAY(LBOUND(ARRAY,1),...,LBOUND(ARRAY,dim)+1,...,LBOUND(ARRAY,rank)).
+If the extent along dim is less than 2, the processor can return any
+number? I would recomment that no KIND argument be provided and the
+result be of type INTEGER(C_INT).
+
+The prohibition against noncontiguous arguments to C_LOC should be
+lifted and it be specified that the C address of the first element of
+the array in array element order is returned.
+
+An optional argument C_STRIDES should be added to C_F_POINTER, which
+can accept a rank-1 array giving the strides along each dimension
+(similar to the current SHAPE argument). The type should be specified
+to be of type INTEGER(C_INT), rather than any integer? In particular,
+the following essentially does q=>p:
+
+real, dimension(100,100), target :: a
+real, dimension(:,:), pointer :: p, q
+integer :: strides
+
+p=>a(1:100:3,5:50:2)
+
+! A round-about way of saying q=>p
+call c_f_pointer(cptr=c_loc(p), fptr=q,  &
+   shape=shape(p), strides=c_strides(p))
+
+History: 

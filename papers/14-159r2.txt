@@ -1,0 +1,306 @@
+To: J3                                                     J3/14-159r2
+From: Dan Nagle
+Subject: More reduce() (and co_reduce())
+Date: 2014 June 23
+
+Reference: 14-007r1, 14-130
+
+This paper tries to consolidate commonalities
+of REDUCE and CO_REDUCE in one place.  Edits are provided
+for 14-007, but not for 14-130 due to the state of flux of 14-130.
+If this passes (in some form), edits for 14-130 will be made
+at that time.
+
+Also, 14-007 uses the term OPERATION for the reduction function,
+where 14-130 uses the term OPERATOR.  This paper (and its possible
+future continuation paper) could be a vehicle to reconcile the usage.
+Here, OPERATION is used.
+
+The goal of REDUCE and CO_REDUCE is to replace
+
+ACC = <some-initial-value>
+DO I = LBOUND( ARRAY, DIM= 1), UBOUND( ARRAY, DIM= 1)
+   ACC = OPERATION( ACC, ARRAY( I))
+END DO
+
+or
+
+ACC = <some-initial-value>
+IF( THIS_IMAGE() == <some-image> )THEN
+   DO I = 1, NUM_IMAGES()
+      ACC = OPERATION( ACC, CO_ARRAY[ I])
+   END DO
+END IF
+! optionally broadcast the result
+
+with a single function reference.
+
+Note that the statement in the loop body could have been
+
+OPERATION( ARRAY( I), ACC) or OPERATION( CO_ARRAY[ I], ACC),
+
+respectively.  (That is, the ACC variable could be the first
+or second argument to the OPERATION function.)
+
+Note further that the OPERATION function above need not
+1. have an OPERATOR interface, or
+2. be pure, or
+3. be associative, or
+4. be commutative.
+
+Optimizing compilers might unroll these loops.  If vector instructions
+are available these loops might be vectorized, which could lead
+to out-of-order evaluation of scalar operands at either end
+of the loop.  However, there is a specified order of operations.
+
+Assuming that the size of the set is small and fixed, and if
+the OPERATION function has an operator interface, then the loops
+could be written as (given OPERATOR( .OP.) for example),
+
+ACC = ARRAY( 1) .OP. ARRAY( 2) .OP. ... .OP. ARRAY( N)
+
+and similarly for the CO_REDUCE case.  Subclause 7.1.6.3 gives
+the compiler latitude to evaluate the operations of the expression
+in any order.
+
+While elements of array operands are generally evaluated in any order,
+and images execute asynchronously, note that the counted DO-loop cannot
+be replaced by a DO CONCURRENT loop.  (See text at [179:20-22].)
+
+The advantages of REDUCE and CO_REDUCE are supposed to be
+
+1. succinctness of expression,
+and
+2. efficiency of execution.
+
+The succinctness of expression is simple:  The four (or more) statements
+of the loop and its preamble are replaced by one statement containing
+a single function reference, and no loop index is visible.
+If DIM= is present, there is an even greater simplification of replacing
+the outer loops over the remaining array extents, with more invisible
+loop indices.
+
+The efficiency of execution is (presumably) gained by concurrent
+execution and/or reordering and overlapping of the function evaluations.
+Again, if DIM= is present, there is greater opportunity
+for efficiency improvements due to independent reductions for each
+array element of the result.
+
+The models of REDUCE and CO_REDUCE are similar.  All operands
+form a set.  Two operands are removed from the set and applied
+as arguments to the OPERATION function.  The result of the function
+is returned to the set.  When the set has one element, its value
+is returned as the REDUCE or CO_REDUCE value.
+
+The specification for REDUCE says its set is taken in array-element
+order, and says the operands to OPERATION are adjacent elements.
+However, it does not say which pair of array elements are chosen first.
+Furthermore, while the specification says the sequence is
+in array element order, this doesn't appear in the normative text.
+The corresponding specification is missing from the CO_REDUCE
+specification and text.
+
+REDUCE also has an IDENTITY argument, whose value, if present, is
+returned in the case of a zero-sized array.  This case is not occurring
+with CO_REDUCE so it has no corresponding IDENTITY argument.  While
+the IDENTITY value provides a value when it is present, there is no
+default value when it is not.  Such a default is defined for existing
+reduction routines (SUM, PRODUCT, and similar) where the operation
+is known (so the appropriate identity value is known).
+
+The OPERATION function has two arguments of the type and kind
+of the values to be reduced, and returns a result of the same type
+and kind.  That the result is of the same type and kind as the arguments
+is implicit in the definition of the operation of REDUCE or CO_REDUCE.
+It is also implicit in the algebraic definition of an operation.
+
+Neither REDUCE nor CO_REDUCE say anything about which operand
+is applied to the first argument of OPERATION or the second.
+Also unmentioned is whether such a choice must be made consistently.
+Because OPERATION need not have an OPERATOR interface,
+the discussion in 7.1.6.1 about x_1 and x_2 is no help.  Also,
+the discussion in 12.4.3.4.2 relating operands to dummy arguments
+of functions is no help.
+
+To clarify these order-of-evaluation issues, add a new section
+to Clause 13, describing reduction operations.  There is also some
+advantage to specifying the common aspects of REDUCE and CO_REDUCE
+once rather than separately.
+
+Also, it will be useful if REDUCE and CO_REDUCE have an ORDERED={T/F}
+optional dummy arguments (absent = false) to specify whether
+the ordered versus unordered reductions (described below) is to be
+computed.
+
+To specify how reduction operations work add a new subclause
+to Clause 13, perhaps after 13.2 [320:30+] or after 13.4 [322:16+]
+and Note 13.5.
+
+Edits:
+
+{edits against 14-007}
+
+{define terms in Claus 1}
+
+[14:3+] add a term
+
+"1.3.108+
+<operand set>
+a set of data values subject to a reduction"
+
+[15:29+] add some terms
+
+"1.3.122+
+<reduction>
+a computation producing a data value from a set of data values
+
+1.3.122+.1
+<ordered reduction>
+a reduction where the data values are taken in a specified order
+
+1.3.122+.2
+<unordered reduction>
+a reduction where the data values are taken in a processor-dependent order"
+
+{add a new section after 13.2.4 - the location is arguable}
+
+[318:30+] add a section:  {this location sets x=2+}
+
+"13.x Reduction Operations
+
+13.x.1 Reduction Operands
+
+A reduction operation applies a binary operation to all elements of a set
+to produce a single result.  The elements of this set are called
+operands and the set is called the operand set.  All elements of the set
+have the same type and type parameters.
+
+13.x.2 Default Values of Reduction Operations
+
+The value of the reduction in the case where the operand set has zero
+elements may be specified as an optional default value, or if none is
+specified it may be the default initialization value of the type and
+kind of the operands.  If there is no default initialization for the
+type and kind of the operands, and if the type an intrinsic type,
+the default value is zero for numeric types, false for logical types,
+and zero-length character values for character types.  If the type
+is a derived type, the above values are applied to the ultimate
+components of the derived type.
+
+13.x.4 Reduction Operators
+
+A reduction operation is specified by an operator function.  It is
+a pure function taking two arguments of the type and type parameters
+as the elements of the operand set and returning a result of the same
+type and type parameters.  It need not have an OPERATOR interface.
+
+13.x.4 Types of Reduction Operations
+
+A reduction may be ordered or unordered.
+
+13.x.4.1 Unordered Reductions
+
+The operand set is considered an unordered set.  The processor selects
+two distinct operands of the operand set, associates one chosen operand
+with the first argument of the operation function
+and associates the second chosen operand with the second argument
+of the operation function.  The function is referenced and these operands
+are removed from the operand set.  The result of the function reference
+is returned to the operand set as a new operand.  The number of operands
+in the operand set has thus been reduced by one.  When the operand set
+has only one operand, its value is the result of the reduction.
+
+13.x.4.2 Ordered Reductions
+
+The operand set is considered an ordered set, with a unique integer
+index value in the range 1 through N, where N is the number
+of operands, associated with each operand.  The processor selects
+two adjacent operands, with consecutive index values, from the
+operand set.  The chosen operand with the lower index value is
+associated with the first argument of the operation function,
+and the chosen operand with the higher index value is associated
+with the second argument of the operation function.  The function is
+referenced and these chosen operands are removed from the operand set.
+The function result is returned to the operand set with an index value
+of either of the arguments.  The number of operands in the operand set
+has thus been reduced by one.  When there is only one operand remaining,
+its value is the result of the reduction.
+
+Above, "consecutive" means consecutive of the remaining index values.
+
+Note 13.<some number>
+
+An ordered reduction preserves the order of it operands,
+and so is useful when the operation is not commutative.
+An example of a useful non-commutative operation is a matrix
+multiplication.
+
+Note 13.<some number>+1
+
+Some useful operations are mathematically associative
+but not computationally associative.  Some useful operations are
+computationally associative but not mathematically associative.
+Some useful operations are neither mathematically associative nor
+computationally associative.  The operation of a reduction
+need not be associative.  Therefore, the applications
+programmer is cautioned that results may not be reproducible
+unless care is taken when defining the function that provides
+the operation.  Non-associative operations are allowed because
+some are useful, at the expense of allowing possibly non-reproducible
+computations.  Different compilers, different optimization options
+of the same compiler, different revisions of the same compiler,
+and different hardware may produce different values
+if the chosen operation is not associative."
+
+{update the reduce entry in Table 13.1}
+
+[324:(about half way down the page)]
+replace the REDUCE arguments with
+"(ARRAY, OPERATION, DIM [, MASK, IDENTITY, ORDERED])" or
+(ARRAY, OPERATION [, MASK, IDENTITY, ORDERED])"
+
+{update the entries for reduce arguments in 13.7.140}
+
+[383:38] after "of any type." add a sentence
+"The operand set consists of the elements of the array,
+taken in array element order."
+
+[384:1-4] replace the current OPERATION specification with
+"OPERATION shall be a function meeting the requirements
+           of 13.x.4 Reduction Operators"
+
+{update case-i}
+
+[384:12-17] replace the current text with
+"Case (i): The result of REDUCE( ARRAY, OPERATION [, IDENTITY =
+           IDENTITY, ORDERED = ORDERED] is the result
+           of an reduction operation where the operand set
+           consists of the elements of the array and the operation is
+           specified by the OPERATION function.  If ORDERED is
+           present with the value TRUE, it is an ordered reduction
+           13.x.4.2 Ordered Reductions.  Otherwise, it is
+           an unordered reduction 13.x.4.1 Unordered Reductions.
+           If present, IDENTITY provides the default value when there
+           are no elements in the operand set as specified
+           by 13.x.2 Default Values of Reduction Operations."
+
+{update case-ii}
+
+[384:18] replace "[, IDENTITY = IDENTITY]" with
+"[, IDENTITY = IDENTITY, ORDERED = ORDERED]"
+
+[384:19] replace "initial sequence is" with
+"operand set consists of"
+
+{update case-iii}
+
+[384:21-25] replace "IDENTITY = IDENTITY" with
+"IDENTITY = IDENTITY, ORDERED = ORDERED" four times
+
+{remark upon the processor dependencies introduced by all this}
+
+[483:10+] add a bullet item in the list:
+
+"the order operands are selected from the operand set
+and are associated with arguments of the operation function
+when computing an unordered reduction"

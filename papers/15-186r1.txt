@@ -1,0 +1,409 @@
+To: J3                                                     J3/15-186r1
+From:       Nick Maclaren
+Subject:    Ordering, Consistency, Atomics, and Progress
+Date: 2015 July 27
+References: 13-269, 15-139, 15-178, 15-185
+
+
+The revision to this paper has been to correct one error in two examples
+(Collective_One and Collective_Two), and add some clarificatory text.
+Otherwise, it is identical to the first version.
+
+
+
+Fundamental Question
+--------------------
+
+So far, we have not had a discussion about what the intended data
+consistency model is, and I know that different people on WG5 are making
+different assumptions.  This paper does not propose anything, but is an
+attempt to get some consensus on the intent.
+
+As the saying goes, "There ain't no Sanity Clause", and it is especially
+true for parallelism.  What is 'obviously true' or 'reasonable' for one
+reader is not so for others, and what seems to be a clear specification
+is often (even usually) interpretable in several different ways.  My
+couple of decades' experience of helping people with parallel problems
+indicates that such alternate interpretations are probably the main cause
+of hard-to-debug problems in real programs.
+
+We need to agree on the intended consistency model (sequential, causal
+or whatever), so that we can start closing the loopholes.  Speaking to
+other people in WG5, I know that different people have different mental
+models of the intent.
+
+Note that neither N2056 A.4.2 nor 15-139 consider the inter-facility
+consistency issues, and the problem of acausality, which are precisely
+the aspects that computer science was stuck on for so many decades.
+This is a HARD problem.
+
+Note: there may be errors in this paper, as I am beginning to go
+cross-eyed.  This issue is hard enough in the abstract, and is much
+worse in combinations with Fortran's existing serial specification.
+
+
+
+Atomics per se
+--------------
+
+The following examples may show why 15-139 will not help, even for
+simple use of atomics.  They are standard examples, and there are a
+great many more, so there is no point in addressing these specifically.
+In these cases, the interaction is with the basic rules of execution
+(i.e. serial between statements).  15-139 allows all of them to print
+the 'impossible' value, which will confuse almost all programmers.
+
+Note that the really nasty one is Atomic_Three, because it is hard to
+think of wording that excludes that and not the others, but there is
+just no chance of ordinary users getting their heads around acausal
+logic!
+
+
+    PROGRAM Atomic_One
+    ! Is this allowed to print '0' from both images?
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: temp
+        IF (NUM_IMAGES() /= 4) STOP
+        IF (THIS_IMAGE() <= 2) THEN
+            CALL ATOMIC_DEFINE(atom[THIS_IMAGE()+2],1)
+            CALL ATOMIC_REF(temp,atom[5-THIS_IMAGE()])
+            PRINT *, temp
+        END IF
+    END PROGRAM Atomic_One
+
+
+    PROGRAM Atomic_Two
+    ! Is this allowed to print '1' from both images?
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: temp
+        IF (NUM_IMAGES() /= 4) STOP
+        IF (THIS_IMAGE() <= 2) THEN
+            CALL ATOMIC_REF(temp,atom[5-THIS_IMAGE()])
+            CALL ATOMIC_DEFINE(atom[THIS_IMAGE()+2],1)
+            PRINT *, temp
+        END IF
+    END PROGRAM Atomic_Two
+
+
+    PROGRAM Atomic_Three
+    ! Is this allowed to print '1' from both images?  The difference
+    ! from Atomic_Two is that the value read from one atomic is used
+    ! to set the other.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: temp
+        IF (NUM_IMAGES() /= 4) STOP
+        IF (THIS_IMAGE() <= 2) THEN
+            CALL ATOMIC_REF(temp,atom[5-THIS_IMAGE()])
+            CALL ATOMIC_DEFINE(atom[THIS_IMAGE()+2],temp)
+            PRINT *, temp
+        END IF
+    END PROGRAM Atomic_Three
+
+
+Depending on the decisions taken about the issues described in 15-185,
+there may well be some ones arising from that.
+
+
+
+Collectives
+-----------
+
+The collectives are not image control statements, but Note 8.4 describes
+an assumed ordering.  However, it is not in normative text and its exact
+meaning is not clear.  In particular, whether non-blocking transfers can
+be used, what code movements are legal optimisations, whether transfers
+can be retried if there are lost network responses, and exactly which
+constructs require the completion of all outstanding transfers.  The
+issues can be exposed by using atomic subroutines, by using coindexing
+and SYNC MEMORY, and in other ways, but only the first is used here.
+
+The collectives are modelled on MPI, and should not be a problem in
+themselves.  If one ignores all of the issues mentioned above, there are
+two modes in which they work:
+
+    A) CO_BROADCAST needs just a send on SOURCE_IMAGE, and a receive on
+the other images; any collective with RESULT_IMAGE needs just a receive
+on RESULT_IMAGE and a send on the other images.  No other
+synchronisation is needed.
+
+    B) Collectives with neither SOURCE_IMAGE nor RESULT_IMAGE need a
+rendezvous (i.e. behave like what is now called a barrier).  That is
+still not formally required.
+
+This brings up the question of whether the logical requirements are
+visible in the ordering of atomic operations.
+
+Also, optimisation can perform quite large code movements; it can start
+a send as soon as the data are available and complete it only when the
+variable is next needed, and start a receive as soon as the variable is
+available and complete it only when the data is needed.
+
+In the following, the question is whether a processor is allowed to
+print either '0' or '1'.  Note that Collective_Six and Collective_Seven
+are causally inconsistent, but it is hard to think of any wording that
+forbids them from printing '1' but not Collective_Four and
+Collective_Five.
+
+
+    PROGRAM Collective_One
+! Does a collective imply any ordering?  The implication of Note 8.4
+! is that it does, and this must print '1' - but is that so?
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: data = 0, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) CALL ATOMIC_DEFINE(atom[3],1)
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 2) THEN    ! Correction - 1 was erroneous
+             CALL ATOMIC_REF(temp,atom[3])
+            PRINT *, temp
+        END IF
+    END PROGRAM Collective_One
+
+
+    PROGRAM Collective_Two
+! Collective_One, but not using RESULT_IMAGE.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: data = 0, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) CALL ATOMIC_DEFINE(atom[3],1)
+        CALL CO_SUM(data)
+        IF (THIS_IMAGE() == 2) THEN    ! Correction - 1 was erroneous
+             CALL ATOMIC_REF(temp,atom[3])
+            PRINT *, temp
+        END IF
+    END PROGRAM Collective_Two
+
+
+    PROGRAM Collective_Three
+! Is a collective allowed to not block?  The implication of Note 8.4
+! is that it is, and this may print either '0' or '1' - but is that so?
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: data = 0, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 2) CALL ATOMIC_REF(temp,atom[3])
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 1) THEN
+            CALL ATOMIC_DEFINE(atom[3],1)
+            PRINT *, temp
+        END IF
+    END PROGRAM Collective_Three
+
+
+   PROGRAM Collective_Four
+! Can a segment that precedes a 'send' see a value that is set after
+! a segment that succeeds a 'receive'?  This is an even less clear
+! form of Collective_One.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: data = 0, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            CALL ATOMIC_REF(temp,atom[3])
+            PRINT *, temp
+        END IF
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 2) CALL ATOMIC_DEFINE(atom[3],1)
+    END PROGRAM Collective_Four
+
+
+    PROGRAM Collective_Five
+! Collective_Four, but not using RESULT_IMAGE.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: data = 0, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            CALL ATOMIC_REF(temp,atom[3])
+            PRINT *, temp
+        END IF
+        CALL CO_SUM(data)
+        IF (THIS_IMAGE() == 2) CALL ATOMIC_DEFINE(atom[3],1)
+    END PROGRAM Collective_THREE
+
+
+    PROGRAM Collective_Six
+! Collective_Four, but using the atomic value as an argument to the
+! collective.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: data = 0, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) CALL ATOMIC_REF(data,atom[3])
+        CALL CO_SUM(data,2)
+        IF (THIS_IMAGE() == 1) THEN
+            CALL ATOMIC_DEFINE(atom[3],1)
+            PRINT *, data
+        END IF
+    END PROGRAM Collective_Six
+
+
+    PROGRAM Collective_Seven
+! Collective_Six, but not using RESULT_IMAGE.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom[*] = 0
+        INTEGER :: data = 0, temp
+        IF (NUM_IMAGES() /= 3) STOP
+        IF (THIS_IMAGE() == 1) CALL ATOMIC_REF(data,atom[3])
+        CALL CO_SUM(data)
+        IF (THIS_IMAGE() == 1) THEN
+            CALL ATOMIC_DEFINE(atom[3],1)
+            PRINT *, data
+        END IF
+    END PROGRAM Collective_Seven
+
+
+
+Events
+------
+
+Issues with these are described in 15-178.
+
+
+
+Image Failure
+-------------
+
+As there is no existing, portable specification that allows for recovery
+from 'system' failures, one can only speculate about the problems that
+will arise.  However, from my experience, The TS's basic assumption is
+unrealistic, and there will be more failures in the network and its
+interfaces than in the nodes themselves.  For example, I have seen all
+of the following in the network mechanisms that coarrays will be built
+upon on commodity systems:
+
+    A) A node stops responding for a long period, or stops responding to
+only some nodes, but then starts responding again.  Some of those nodes
+then regard it as failed but others do not.  The TS says nothing about
+whether image failure is consistent across the whole program.
+
+    B) Some of the inter-node links fail, but not others, often in
+topologically complicated ways.  This is completely outside the TS's
+model.
+
+    C) The 'master' node stops responding, which then causes very
+strange effects on other nodes.  For example, I/O to open files might
+continue, but I/O to the standard units and closing files might not.
+
+Coarrays also add a serious issue to do with what failure of a node
+means, because there are logically five kinds of activity associated
+with a node:
+
+    1) Executing statements.
+    2) Servicing ordinary data accesses from other nodes.
+    3) Servicing atomic data accesses from other node.
+    4) Accessing ordinary data on other nodes.
+    5) Accessing atomic data on other nodes.
+
+Any of those are liable to fail, or stop responding, independently.
+It is unclear which of them are intended to count as failure.
+
+
+
+Background
+----------
+
+A great deal of current hardware and software has some very weird
+properties, including such things as 'out of thin air' effects and
+apparent time reversal, and they really do occur in practice.  Those can
+also be caused by redundant networks, retry after transfer failure and
+so on.  Speaking to other people in the parallel development and support
+area, most of them had encountered similar issues, but resolved them by
+rewriting code to use different facilities or a different algorithm,
+sometimes repeating that for each new environment!
+
+The other aspect is that four decades of experience shows that atomics
+AS SUCH are not the issue.  The problems are (a) the consistency model,
+and (b) their interaction with other facilities. Introducing any form of
+parallelism necessarily requires specifying the serial ordering (or that
+it is unspecified) MORE precisely than is needed for serial execution;
+that 'gotcha' has caught out a great many specifications.
+
+The only successful specifications that I have seen have started with a
+precise consistency model, and defined the constraints in terms of that,
+which is the approach that C++ has taken.  Defining constraints in order
+to specify the consistency model has been attempted many times but, as
+far as I know, has never been done successfully.
+
+The following is copied from 15-178, but is replicated here to help
+readers.
+
+Up until the late 1960s, essentially all parallel experts believed that
+parallel correctness was merely a matter of getting the synchronisation
+right, but experience with the early parallel systems showed that was
+not even approximately true.  It was another decade before any real
+progress was made (Hoare in 1978 and Lamport in 1979) - that identified
+data consistency as the key concept, and one that could NOT be reduced
+to a synchronisation property.
+
+An indication of how deceptive this area is may be seen by the fact that
+it was only in the early 1990s that the theoreticians finally managed to
+understand the relationship between causality (i.e. that which is
+delivered by sychronisation) and the 'obvious' semantics.  See, for
+example:
+
+    http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.41.6403
+    http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.50.3356
+
+The situation is far nastier than it seems to be, because a lot of
+hardware and software optimisations allow apparent time reversal, causal
+violations, and 'out of thin air' effects, and that includes IBM POWER.
+These are often, but not always, caused by legal code movements,
+caching, retry, asynchronous access and so on.  Despite common belief,
+such effects cannot be excluded by ANY specification that limits itself
+to the semantics of a single object.
+
+None of the experts I know trust their own intuition, because it is so
+common that 'obviously correct' specifications contain serious flaws,
+often unusabilities or inconsistencies.  I have been following this area
+for 40 years, have 20 years practical experience of supporting parallel
+programmers, and am still learning new ways in which 'obvious truths'
+are incorrect.  Java has had threading since 1995, but its model was
+discovered to be badly flawed only in 2003 or so, and it had to be
+replaced in 2004.
+
+    http://www.cs.umd.edu/~pugh/java/memoryModel/
+
+
+
+Progress
+--------
+
+This is largely a red herring.  While specifying it precisely seems
+to be hard, there seems to be little difficulty in specifying it
+pragmatically.  There are two known, successful models:
+
+    A) MPI has specified it for the model where each image handles all
+data accesses, and requests for data, and there are several known
+implementation strategies.
+
+    B) The model that implements virtual shared memory using an
+asynchronous agent (e.g. a separate thread or interrupt) is widely used.
+On some systems, this can be provided by the hardware but, on most
+current systems, POSIX or similar threading will be used.
+
+The key to success of the second is that ALL accesses must be via that
+agent, and none must be direct accesses by the main execution thread.
+This is because all standard shared-memory specifications need both
+threads to participate in a synchronisation.
+
+Model A is adequate for all of Fortran 2008's image control statement
+based ordering, and N2020 requires model B for atomic data (including
+events and locks).  The requirement for all access to be via the agent
+is specified in 8.5.2p3.  There are two, fairly minor, implementation
+consequences for POSIX-based systems:
+
+    1) Atomic access to data must be done via the agent, even for data
+on the executing image.
+
+    2) All image control statements must synchronise with their agent,
+as well as with the other image(s).
+
+The normative text proposed in 15-139 seems plausible, but needs to end
+"...  until after that value is defined by image A and the value
+received by image C."

@@ -1,0 +1,149 @@
+
+                                                         J3/97-222r1
+
+Date:     August 15, 1997
+To:       J3	
+From:     /Interval_1
+Subject:  Assignment Operators
+
+Sparked by the work on intervals, we propose adding a new assignment
+operator (:=), changing the default meaning of the existing assignment
+operator (=), and providing a mechanism for specifying the old
+semantics for =. These changes to be part of the base standard (part
+I), therefore we request a new work item be created. Over the next
+several meetings, we can expect to settle on semantics, syntax and
+edits in the usual fashion. However, to simplify the process, we shall
+start with the syntax proposed in 97-199 for the time being.
+
+Requirement
+
+The Fortran Standard prohibits interline optimization (interpretation
+1, follows). With these additions to the Standard, the example
+transformations from that interpretation, as written will be Standard
+conforming; when written with := they will not be Standard
+conforming. As written, with the addition of the "magic switch" they
+will not be Standard conforming.
+
+Justification
+
+Fortran is intended as a language for high performance
+computation. Any processor used for high performance work is expected
+by users (and vendors) to routinely do interline optimization. The
+Standard's prohibiting such transformations relegates the Standard to
+formally applying to only uninteresting situations (that is
+effectively no optimization).
+
+By introducing new notation, we permit users to say precisely what
+they mean (thus allowing processors latitude where acceptable, and
+providing specific results where the user requires it). By changing
+the default to conform to common usage, we accommodate existing
+practice. By providing an escape hatch to return to pre-F2K semantics,
+we preserve compatibility.
+
+While no longer tied to interval arithmetic per se, the advantages of
+this scheme for intervals are even greater for intervals than for REAL
+kinds.
+
+Previous papers one may wish to keep in mind when pondering this topic
+are: 97-158 and 97-198. The informal term "macro" was intended to make
+the concept more clear; during committee debate it is clear that it
+did not. At this point we suggest "mathematical assignment" and "value
+assignment" as working names.
+
+NUMBER: 000001
+TITLE: Optimization of Fortran programs
+DEFECT TYPE: Interpretation
+STATUS: Published
+QUESTION: Given a fragment such as
+ 
+      10  SUM = A + B
+      20  D   = SUM + C
+ 
+does the standard allow the processor the freedom to replace this two
+statement fragment with any of the following single statements:
+ 
+     100  D = (A + B) + C
+     110  D = A + (B + C)
+     120  D = (A + C) + B
+     130  D = (B + A) + C
+     140  D = C + (B + A)
+ 
+ANSWER: The Fortran standard grants to processors an unlimited freedom
+to reorganize and modify programs, provided only that the execution
+"fulfills the interpretations herein" (1.4).  In sections 7.1.7.1,
+7.1.7.3, and elsewhere, specific additional freedoms are granted
+processors in expression evaluation.  Generally speaking, all of these
+freedoms support what is called "optimization", the altering of the
+program in some way that is thought to improve a specific property,
+often performance, of the program.
+ 
+In this particular case SUM, in statement 20, is not an expression,
+but a reference to the result of a previous assignment.  The
+additional freedoms granted for expression evaluation do not apply.
+Thus only those processors that can make the replacement and still
+"fulfill the interpretations herein" are permitted to do so.  For
+these processors the answer is yes, for all other processors the
+answer is no.
+ 
+The "interpretation herein" is that SUM is a primary (7.1.1.1) of the
+expression "SUM + C" and the reference to SUM requires its value
+(Section 6, first paragraph).  The determination of SUM's value was
+specified by assignment statement 10.  The result of that assignment,
+with its possible conversions of "A + B" to the type and type
+parameters of SUM, is the value of SUM.  This is the interpretation
+that must be fulfilled by conforming processors.
+ 
+A common optimization for this fragment is to replace it by statements
+such as 100, 130, etc.  where the calculation of A + B appears in
+parenthesis.  This replacement corresponds to the calculation of A + B
+in a temporary location (i.e., a register) and then accessing that
+temporary location instead of storing the result in SUM and then
+accessing that stored value.
+
+Discussion
+
+The C language has a concept of "sequence points". Loosely speaking, a
+sequence point is a barrier to optimization. The ":=" is intended to
+provide selective barrier. So
+
+	SUM = A + B
+	SUM2:= D+E
+      	D2   = SUM + C
+ 
+In this context, := would not inhibit transforms involving A,B, SUM,
+etc. However, if SUM2:=SUM+E, the computation of SUM shall complete
+before the assignment into the memory location corresponding to
+SUM2. It is also intended that := requires an actual storage to memory
+(somewhat akin to volatile in C), this can be helpful in careful
+coding on a machine with extended precision registers (of course, some
+users might very much like a way to state positively that they want
+SUM to be stored in such registers in preference to other
+variables. This proposal does not offer a hook for them per se).
+
+Some potential straw votes:
+Limit := to numeric types only (minimizes edits/hazards, but arguably
+inconsistent). Y|n|U 1-11-5 
+
+Apply to intrinsic types only? Y|n|u not taken (moot)
+
+Names "mathematical and value" assignment, symbolic and value, value
+and "plain" assignment 3-5-3-6 
+
+New  mathematical = "could" be defined rather differently than
+7.5/7.5.1 currently works. For example, it need not be the point at
+which a variable actually becomes defined or redefined. Would J3
+prefer that ":="  be as close to "=" as possible, or maximally
+permissive? (lazy vs. not) 10-1-3 
+
+
+We could handle the default switch via:
+Required processor dependent, compile "line option"/switch  14
+Introduce c$Pragma | c$dir or similar syntax                 2
+Hijack USE statement, e.g. USE pre-F2k-assignment            0 
+Undecided						     1
+Should we work on providing a way to specifically request *extra*
+precision for a specific variable (alas,  that might be another late
+arriving work item; probably a qualifier on the variable itself)
+subgroup doesn't  recommend this. 0-17-0 (noted that kind= for such a
+type could be provided already) 
+Interline optimization to be worked on at all 12-0-5

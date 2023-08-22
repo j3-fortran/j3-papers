@@ -1,0 +1,309 @@
+To: J3                                                     J3/21-121
+From: Malcolm Cohen
+Subject: Enum types edits
+Date: 2021-February-27
+
+
+1. Introduction
+
+This paper contains the edits for "Better interoperable enums".
+
+
+2. Better interoperable enums
+
+[intro] In "Data declaration", insert or append the sentence
+    "An interoperable enumeration can be given a type name."
+{Vague, but perhaps sufficient to draw people's attention to it.}
+
+[56:12+] 7.3.2.1 Type specifier syntax, <type-specifier>,
+         append new production
+    "<<or>> <enum-type-spec>"
+{Allow <enum-type-spec> in ALLOCATE and TYPE IS.}
+
+[56:16+] <declaration-type-spec>,
+  After "<<or>> TYPE(<derived-type-spec>)" insert new production
+    "<<or>> TYPE ( <enum-type-spec> )".
+{And in declarations.}
+
+UNRELATED EDITORIAL CHANGE:
+[56:27] "C707 (R702) ... comma."
+        Set this constraint in obsolescent font.
+{The thing it is talking about only occurs for "CHARACTER*something [,]".}
+
+[56:39] p2, append
+    "An <enum-type-spec> specifies the named enum type."
+{I have no idea why the equivalent of this is here for <derived-type-spec>
+ and <intrinsic-type-spec>, instead of being with the BNF terms which are
+ defined elsewhere, but that's how we wrote it.}
+
+[57:7] 7.3.2.2 TYPE type specifier, p1,
+       Change "of an intrinsic or derived type"
+       to "of an intrinsic, derived, or enum type"
+       making that whole paragraph read
+   "A TYPE type specifier is used to declare entities that are assumed-
+    type, or of an intrinsic, derived, or enum type."
+{Add enum types to the semantics of the TYPE type specifier.}
+
+[58:4] 7.3.2.3 CLASS type specifier, p5,
+       After "A nonpolymorphic entity is type compatible only with entities
+              of the same declared type"
+       insert
+   ", except that an entity of an interoperable enum type is also type
+    compatible with an expression of type integer if the expression has a
+    primary that is an enumerator of that enum type".
+{This is the compromise to maximise usability of the interoperable enum
+ type without sacrificing much of its type safety.}
+
+OPTIONAL EDITORIAL: in that subclause,
+    Move paras 5 and 6 and NOTE 1 to follow para 7 as a separate subclause
+    7.3.2.4 "Type compatibility", changing the refs for type compatibility
+    to this new subclause.
+{Type compatibility is important enough not to be buried inside a subclause
+ on the CLASS type specifier.}
+
+[72:15] 7.5.4.1 Component definition statement, C749,
+        After "previously defined derived type"
+        insert "or enum type"
+        making the whole constraint read
+   "C749 (R737) If neither the POINTER nor the ALLOCATABLE attribute is
+         specified, the declaration-type-spec in the component-def-stmt
+         shall specify an intrinsic type or a previously defined derived or
+         enum type."
+{Actually, I don't think it's possible to circularly define things with an
+ enum type, but it's simpler to keep the same define-before-use rule.}
+
+[88:1] 7.6 Enumerations and enumerators, change subclause title to
+    "Interoperable enumerations and enum types".
+{Not strictly necessary if we don't add true enumerations, but clearer
+ anyway.}
+
+[88:2-3] 7.6, replace entire first paragraph with
+    "An interoperable enumeration is a set of interoperable enumerators,
+     optionally together with an interoperable enum type. An <enum-def>
+     defined an interoperable enumeration. An interoperable enumerator is a
+     named integer constant; all the enumerators defined by a particular
+     <enum-def> have the same kind. An interoperable enum type is a user-
+     defined type that is not a derived type; it has no type parameter."
+{Terminology: "enum type" as it is not a simple enumeration. It is not a
+ derived type either, as those are structures.}
+
+[88:8] 7.6, R760 <enum-def-stmt>, append "[ :: <enum-type-name> ]".
+{Add the new syntax.}
+
+[88:12+] After constraint "C7111 (R761) If = appears in an enumerator,"
+         insert new rule and constraint
+    "R763a <enum-type-spec> <<is>> <enum-type-name>
+     C7111a An <enum-type-name> in an <enum-type-spec> shall be the name of
+            a previously defined enum type."
+
+[88:13-14] p2, in the first sentence, change
+    "For an enumeration, the kind is selected such that an integer type
+     with that kind is"
+to
+    "The kind type parameter of each enumerator defined by an <enum-def>
+     is the kind that is"
+{Sentence continues
+    "interoperable (18.3.1) with the corresponding C enumeration type".
+ This is clearer than the dubious concept of giving a kind value to a set.}
+
+[88:16+] After p2, insert new paragraph,
+    "If <enum-type-name> appears in an <enum-def>, the <enum-def> defines
+     the enum type with that name. An enum type is an interoperable type."
+{An enum type also obviously has the BIND(C) attribute, as BIND(C) appears
+ on the <enum-def-stmt>.}
+
+[89:1+] After p4 (before NOTE 4), insert new BNF, constraint and paragraph,
+   "R763b <enum-constructor> <<is>> <enum-type-spec> ( <expr> )
+
+    C7111b The <expr> in an <enum-constructor> shall be of type integer or
+           be a <boz-literal-constant>.
+
+    An enum constructor produces a scalar value of the specified type,
+    with the specified internal representation. The value of <expr>
+    shall be representable in objects of that type."
+{Provide the constructor. Note that <enum-type-spec> already requires the
+ type to have been defined previously, so we need no constraint for that.}
+
+[89:1+2] NOTE 4,
+         "Example of an enumeration definition"
+         -> "Example of an interoperable enumeration definition".
+{Improve clarity.}
+
+[89:2-] At the end of the subclause after the existing NOTEs,
+        insert a new NOTE 6:
+"
+NOTE 6
+Here is an example of a module that defines two interoperable enum types.
+
+\begin{alltt}
+Module enum_mod
+  Enum,Bind(C) :: myenum
+    Enumerator :: one=1, two, three
+  End Enum
+  Enum,Bind(C) :: flags
+    Enumerator :: f1 = 1, f2 = 2, f3 = 4
+  End Enum
+Contains
+  Subroutine sub(a) Bind(C)
+    Type(myenum),Value :: a
+    Print *,a ! Prints the integer value, as if it were Print *,Int(a).
+  End Subroutine
+End Module
+\end{alltt}
+
+Here is a simple program that uses that module and the enum constructor.
+
+\begin{alltt}
+Program example
+  Use enum_mod
+  Type(myenum) :: x = one           ! Assign enumerator to enum-type var.
+  Type(myenum) :: y = myenum(12345) ! Using the constructor.
+  Type(myenum) :: x2 = myenum(two)  ! Constructor not needed but valid.
+  Call sub(x)
+  Call sub(three)
+  Call sub(myenum(-Huge(one)))
+End Program
+\end{alltt}
+
+Here is an example of invalid usage.
+
+\begin{alltt}
+Program invalid
+  Use enum_mod
+  Type(myenum) :: z = 12345     ! Integer expr with no enumerator.
+  Call sub(999)                 ! Not type-compatible (constructor needed).
+  Call sub(f1)                  ! Wrong enum type.
+End Program
+\end{alltt}
+"
+
+[90:35+] 7.8 Construction of array values, C7116,
+         After "If <type-spec> specifies an intrinsic type"
+         insert "or enum type"
+         and later in the sentence change
+            "shall be of an intrinsic type"
+         to
+            "shall be of a type"
+         making the whole constraint read
+   "C7116 (R770) If type-spec specifies an intrinsic type or enum type,
+          each ac-value expression in the array-constructor shall be of a
+          type that is in type conformance with a variable of type
+          type-spec as specified in Table 10.8, or be a
+          boz-literal-constant."
+{Add enum types to the same rule as for intrinsic types. Alternatively we
+ could have a new constraint just for enum types, e.g.
+   "C7117a (R770) If <type-spec> specifies an enum type, each <ac-value>
+           shall be type-compatible with objects of that type."
+ but I think the obvious combination with intrinsic type is simpler.}
+
+[113:20+] 8.6.7 DATA statement, R849 data-stmt-constant, append production
+    "<<or>> <enum-constructor>"
+{Allow in DATA. It is likely easier to implement than to implement the
+ rejection thereof.}
+
+[113:23] C888,
+         After "If a data-stmt-constant is a structure-constructor"
+         insert "or enum-constructor"
+         making the whole constraint read
+   "C888 (R849) If a data-stmt-constant is a structure-constructor or
+         enum-constructor, it shall be a constant expression."
+{The necessary constraint.}
+
+[145:20+] 10.1.2.2 Primary, R1001 primary,
+          After "<<or>> <structure-constructor>"
+          insert "<<or>> <enum-constructor>"
+{Allow enum constructors in expressions.}
+
+[162:10+] 10.1.11 Specification expression, p2,
+          After "(6) a structure constructor where each component is a
+                     restricted expression,"
+          insert
+    "(6a) an enum constructor whose <expr> is a restricted expression,".
+{Allow in specification expressions.}
+
+[163:23+] 10.1.12 Constant expression, p1,
+          After item (3) "a structure constructor..."
+          insert new item
+    "(3a) an enum constructor whose <expr> is a constant expression,"
+{Allow in constant expressions.}
+
+[165:23+8+] 10.2.1.2 Intrinsic assignment statement,
+            in Table 10.8 "Intrinsic assignment type conformance",
+            after the "derived type" entry, add new entry
+   "enum type & same enum type, or integer; if of type integer, a primary
+                in <expr> shall be an enumerator of the enum type".
+{Qualified type conformance for assignment.}
+
+[168:1-] 10.2.1.3 Interpretation of intrinsic assignments,
+         After NOTE 5 "For nondefault character kinds..." insert a new para
+   "For an intrinsic assignment where the variable is of enum type, if
+    <expr> is of type integer, it is converted to the type of the variable
+    as if by the enum <enum-type-name> ( <expr )."
+{Specify the effects of assigning an integer to an enum type.}
+
+[201:8] 11.1.11.1 Purpose and form of the SELECT TYPE construct, C1164,
+        Between "The type-spec or derived-type-spec shall not specify a"
+        and "type"
+        insert "derived"
+        making the whole constraint read
+   "C1164 (R1156) The type-spec or derived-type-spec shall not specify a
+          derived type with the BIND attribute or the SEQUENCE attribute."
+{As noted earlier, an interoperable enum type has the BIND(C) attribute.}
+
+[239:2+] 12.6.3 Data transfer input/output list,
+         After p5 "A list item shall not be polymorphic..."
+         insert a new paragraph
+   "A list item that is of an interoperable enum type is treated as if it
+    were of type integer with the kind being the kind of its enumerators."
+{This is the big hammer that makes nearly all enum type i/o into integer
+ i/o.}
+
+OPTIONAL:
+[271:4] 13.7.2.1 General rules (in 13.7.2 Numeric editing), p1,
+        After the first sentence "The ... complex data."
+        insert new sentence
+   "As interoperable enum type data is treated as integer for the purposes
+    of input/output (12.6.3), the I, B, O, Z and G edit descriptors can
+    also be used to specify the input/output of enum type data."
+{Optional edit as the normative text that specifies this is elsewhere.}
+
+OPTIONAL:
+[285:5] 13.10.3.1 List-directed input forms, p3,
+        After "When the next effective item is of type integer"
+        insert "or of an interoperable enum type".
+{Sentence continues
+   ", the value in the input record is interpreted as if an Iw edit
+    descriptor with a suitable value of w were used."
+ This is optional as it follows from the normative text in 12.6.3.
+ It does, however, make things clearer.}
+
+[290:5-7] 13.11.3.3 Namelist input values, p2,
+Change
+    "except for a restriction on the form of input values corresponding to
+     list items of types logical, integer, and character as specified in
+     this subclause"
+to
+    "except for restrictions on the form of input values specified by this
+     subclause".
+{Remove unnecessary qualification of what restrictions appear here.}
+
+[290;26] p6,
+        After "When the next effective item is of type integer"
+        insert "or of an interoperable enum type".
+{Sentence continues
+   ", the value in the input record is interpreted as if an Iw edit
+    descriptor with a suitable value of w were used."}
+
+[486:11] 18.1 General (in 18 Interoperability with C), p2,
+    "enumerations" -> "interoperable enumerations".
+
+[538:10] Annex A,
+    "the kind type parameter of each enumeration and its enumerators"
+    -> "the kind type parameter of the enumerators of an interoperable
+        enumeration".
+{This is just wording cleanup, as seeing as how an enumeration has always
+ been just a set, "its kind" is somewhat dubious.}
+
+===END===
+
+

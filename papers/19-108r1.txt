@@ -1,0 +1,173 @@
+To: J3                                                     J3/19-108r1
+From:    Van Snyder & Dan Nagle
+Subject: Medium-grain parallelism
+Date: 2019-February-11
+Reference: 97-114r2, 18-237, 18-243
+
+
+
+Introduction
+============
+
+Fortran has fine-grain parallelism in the form of array operations,
+medium-grain parallelism in the form of DO CONCURRENT constructs, and
+coarse-grain parallelism in the form of coarrays.
+
+This paper proposes additional medium-grain parallelism structures,
+addressing the same use cases described in 18-237.
+
+18-243 was rejected by /JOR without plenary discussion.  Meeting minutes
+remark "not on work plan."
+
+Asynchronous subroutine execution was discussed at meeting 216.  The
+vote was (Y:8, N:0, U:5).  This suggests there is sentiment for support
+for medium-grain parallelism.  The asynchronous subroutine proposition
+was rejected at meeting 217 because it does not provide anything not
+already available using "existing parallel tools, posix, or OpenMP."
+This proposal addresses the desire for more support for medium-grain
+parallelism in different ways.
+
+Proposals
+=========
+
+1. Fork-Join construct
+----------------------
+
+A Fork-Join construct is a construct with blocks that can be executed in
+any order, or in parallel (e.g., in separate threads).  It has been
+pointed out that one can "fake" this by using a SELECT CASE construct
+within a DO CONCURRENT construct.  A Fork-Join construct would be
+syntactic sugar for this idiom.  Therefore, much of the processor
+infrastructure and editorial work needed to describe it are already in
+place.  A possible syntax might be
+
+  PARALLEL
+  FORK [ ( <logical-expr> ) ]
+    <block-specification-part> ! Same as LOCAL locality, right?
+    <block>
+  FORK [ ( <logical-expr> ) ]
+    <block-specification-part> ! Same as LOCAL locality, right?
+    <block>
+  ...
+  END PARALLEL or JOIN
+
+The rules for interaction between blocks are the same as the rules for
+interaction between iterations of a DO CONCURRENT construct.
+
+The purpose of [ ( <logical-expr> ) ] is to avoid starting a thread for
+a block for which the first action is to terminate execution of the
+block.  This isn't possible with a SELECT CASE construct within a DO
+CONCURRENT construct.
+
+Alternative syntax: "FORK [ IF ( <logical-expr> ) ]" (yeah, I know it
+smells like perl, but "[ IF ( <logical-expr> ) ] FORK" is weirder).
+
+2. Asynchronous blocks
+----------------------
+
+An asynchronously-executed block is the same as an inlined
+asynchronously-executed procedure.  When the sequence of execution
+reaches an asynchronous block, the processor can ignore the
+"asynchronous" advice, or it can create an independent sequence of
+execution (e.g., a thread) that executes the block asynchronously, and
+then proceed immediately to the first executable construct after the
+block.  To determine when execution of the block is complete, the block
+shall specify an event variable, for which any sequence of execution can
+wait.  A possible extension of the syntax of the BLOCK construct might
+be
+
+  [ ASYNCHRONOUS ( <event-variable> ) ] BLOCK
+    <block-specification-part>
+    <block>
+  END BLOCK
+
+Syntactic sugar for
+
+  ASYNCHRONOUS ( <event-variable> ) BLOCK
+    ASSOCIATE ( ... )
+      <block>
+    END ASSOCIATE
+  END BLOCK
+
+might be
+
+  [ ASYNCHRONOUS ( <event-variable> ) ] ASSOCIATE ( ... )
+    <block>
+  END ASSOCIATE
+
+Syntactic sugar for
+
+  ASYNCHRONOUS ( <event-variable> ) BLOCK
+    <block-specification-part>
+    ASSOCIATE ( ... )
+      <block>
+    END ASSOCIATE
+  END BLOCK
+
+might be
+
+  [ ASYNCHRONOUS ( <event-variable> ) ] ASSOCIATE ( ... )
+    <block-specification-part>
+    <block>
+  END ASSOCIATE
+
+The rules for interaction with asynchronous blocks for which one has not
+waited for the block's event are the same as the rules for interaction
+between iterations of a DO CONCURRENT construct.
+
+If a subprogram or block contains an asynchronous block, when it
+executes a RETURN, END, or END BLOCK statement, it is necessary to wait
+for all asynchronous blocks to complete execution, before the procedure
+(or construct) completes execution.  This imposes the same sort of
+book-keeping requirement as is needed to deallocate local allocatable
+variables.
+
+Asynchronous blocks were proposed in section 18 of 97-114r2.
+
+To avoid the appearance of a syntax conflict with the ASYNCHRONOUS
+statement that declares the ASYNCHRONOUS attribute for a variable, the
+constructs might instead be introduced by
+
+  BLOCK [, ASYNCHRONOUS ( <event-variable> ) ]
+
+and
+
+  ASSOCIATE ( ... ) [, ASYNCHRONOUS ( <event-variable> ) ]
+
+Caveats from Ada committee
+==========================
+
+Ada has a long history of parallel processing.  It was a requirement in
+the first "Strawman" requirements document in 1976.  The 1983 standard
+provided tasks.  Newer standards have provided other mechanisms, as
+described by Burns and Wellings in "Concurrent and Real Time Programming
+in Ada."
+
+The project editor for the Ada standard, and lead developer for Verdix
+Ada, Randy Brukardt, informed me that the Ada committee believes
+asynchronous subroutines and asynchronous blocks are bad ideas because
+they make it too easy to introduce race conditions that are very
+difficult to find.
+
+
+
+3. JoR Response
+---------------
+
+JoR believes these block-oriented features should not move forward,
+for the reasons given below.
+
+The block-oriented approach appears to lack the flexibility
+to respond to any of the following situations:
+
+1. a variable number of tasks are to be performed
+
+2. a variable number of resources are present on different nodes and/or
+   are available on different runs of the compiled program
+
+Therefore, we believe this proposed feature does not respond
+to the use-cases described in the papers proposing this work-list item.
+
+
+
+

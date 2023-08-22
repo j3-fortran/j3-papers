@@ -1,0 +1,520 @@
+                                                                08-205
+To: J3
+From: Van Snyder
+Subject: Another kind of defined I/O
+Date: 2008 June 10
+References: 08-007r2
+
+1.  Description
+
+In 1986 (were there paper numbers back then?) and again in 97-114, I
+proposed that programs be allowed to intercept I/O at a low level, and
+that this be specified on a connection-by-connection basis.  In 2003 we
+provided a type-by-type way to intercept I/O.
+
+Here's what I had in mind, fleshed out using up-to-date technology.
+
+Define two types in ISO_FORTRAN_ENVIRONMENT, say DEFINED_INPUT_UNIT and
+DEFINED_OUTPUT_UNIT.  Objects of these types can be used in OPEN, READ,
+WRITE, CLOSE, WAIT and FLUSH statements in the UNIT= specifier.  It
+doesn't seem useful to allow then in ENDFILE, BACKSPACE or REWIND
+statements.  It probably isn't useful to allow them in INQUIRE
+statements.
+
+DEFINED_INPUT_TYPE and DEFINED_OUTPUT_TYPE have the following deferred
+type-bound procedures:
+
+1.  Open
+2.  Start -- begin processing a READ or WRITE statement
+3.  Continue -- process a list item
+4.  Finish -- finish processing a READ or WRITE statement
+5.  Flush
+6.  Wait
+7.  Close
+
+Continue is a generic binding with deferred specifics for scalars
+for each intrinsic type and kind.
+
+They might have private components.
+
+OPEN requires ACCESS=STREAM and FORM=UNFORMATTED.  It could be extended
+to ACCESS=SEQUENTIAL or FORM=FORMATTED but the complication might not be
+worth it.
+
+POS= should be prohibited in data transfer statements; the complication
+of providing for it is almost certainly not worthwhile.
+
+The usage of each procedure other than the Continue ones is obvious.
+
+Programs can extend the Continue generic bindings to other types, kinds
+and ranks.
+
+If the program has extended the Continue binding for the rank of a list
+item, that specific is used.  Otherwise, the scalar one is invoked for
+each element of array list items.  If there is a binding for the type of
+a derived-type list item, it works like DIO.  The declared type of the
+unit is used to decide how far to break down list items, exactly as is
+done for DIO, except that the Continue routines are also defined for
+intrinsic types.
+
+In addition to allowing the new types in I/O statements, two more DIO
+interfaces are needed for user-defined unformatted I/O on user-defined
+units.  If the DIO routines are to use bindings other than the standard
+ones, they'll have to pop open the unit with a SELECT TYPE construct.
+
+There are at least three particular benefits:
+
+o  I/O list processing decomposes derived-type objects to their
+   ultimate components.  This can be tedious when using libraries such
+   as PVM or MPI.
+
+o  The requirements for asynchronous I/O are automatically
+   incorporated.
+
+o  Although several pages of standardese will be needed, for
+   implementors it ought to be a tiny tweak of DIO.
+
+Nonetheless, this is probably too big a project to do now -- and this
+paper is probably incomplete.  If we can get vendors' agreement to
+provide transparent inter-program data transport via I/O statements,
+this project is entirely unnecessary.
+
+2.  Edits
+
+[199: 9.4+] ------------------------------------------------------------
+Editor: Insert a new subclause:
+
+"9.4a Defined input/output
+
+"A <<defined input/output>> procedure allows a program to override the
+default processing of OPEN, CLOSE, or data transfer input/output
+statements, or the processing of individual list items in data transfer
+input/output statements.  There are two forms of defined input/output.
+One form is used if the unit specified in the input/output statement is
+an expression of type DEFINED_INPUT_UNIT (12.8.2.5a) or
+DEFINED_OUTPUT_UNIT (12.8.2.5b).
+
+"The other form is determined by the relationship between the type of
+list items and the {\tt dtv} arguments of procedures accessed by generic
+resolution, as described in 9.6.4.7.
+
+"The types of such units have type-bound procedures that are invoked
+when OPEN, CLOSE, or data transfer input/output statements are executed,
+as specified in subclauses 9.5.6, 9.5.7 and 9.6.4.
+
+"When the procedure is invoked, each specifier that appears is
+associated with a dummy argument that has the same name.  If a specifier
+that would be associated with an optional dummy argument does not
+appear, the dummy argument is not present.  If a specifier that would be
+associated with a nonoptional INTENT(IN) dummy argument does not appear,
+an entity having the default value specified in this subclause is the
+associated actual argument. If a specifier that would be associated with
+a nonoptional INTENT(OUT) dummy argument does not appear, a
+processor-dependent variable, different from any variable accessible in
+the scoping unit of the OPEN statement, is associated with the dummy
+argument.
+
+"The invoked procedure shall assign a value to the IOSTAT argument.  The
+value is interpreted as specified in 9.11.5.  If the value that is
+assigned is zero, the IOMSG argument shall not be changed."
+
+[200: 9.5.1: R901] -----------------------------------------------------
+Editor: Replace "<file-unit-number>" by "<unit-specifier>".
+
+[200: 9.5.1: R901+] ----------------------------------------------------
+Editor: Insert a syntax rule:
+
+"R901a <unit-specifier> <<is>> <file-unit-number>
+                        <<or>> <unit-expr>"
+
+[200: 9.5.1: C902+] ----------------------------------------------------
+Editor: Add a constraint:
+
+"C902a (R901a) The <unit-expr> shall be an expression of type
+       DEFINED_INPUT_UNIT or DEFINED_OUTPUT_UNIT from the
+       ISO_FORTRAN_ENV intrinsic module."
+
+[200: 9.5.1p2] ---------------------------------------------------------
+Editor: Replace first "<file-unit-number>" by "<unit-specifier>".
+
+[200: 9.5.1p2+] --------------------------------------------------------
+Editor: Add a paragraph:
+
+"A <unit-expr> specifies that procedures defined by the program are to
+be used for input/output."
+
+[202: 9.5.6.1p1] -------------------------------------------------------
+Editor: Insert "in which <unit-specifier> is <file-unit-number>"
+before "initiates".
+
+[202: 9.5.6.1p1+] ------------------------------------------------------
+Editor: Insert a new paragraph:
+
+"Executing an OPEN statement in which <unit-specifier> is <unit-expr>
+invokes the OPEN procedure bound to the <unit-expr>.  The OPEN procedure
+is not required to connect the specified file to the unit."
+
+[203: 9.5.6.2 R905] ----------------------------------------------------
+Editor: Replace "<file-unit-number>" by "<unit-specifier>".
+
+[203: 9.5.6.2 C904] ----------------------------------------------------
+Editor: Replace "<file-unit-number>" by "<unit-specifier>" twice.
+
+[203: 9.5.6.2 C906] ----------------------------------------------------
+Editor: Replace "<file-unit-number>" by "<unit-specifier>".
+
+[203: 9.5.6.2 C906+] ---------------------------------------------------
+Editor: Insert a constraint:
+
+"C906a (R905) If <unit-specifier> is <unit-expr> an ACCESS= specifier
+       shall appear with a <scalar-default-char-expr> that is an
+       initialization expression having the value STREAM and a FORM=
+       specifier shall appear with a <scalar-default-char-expr> that is
+       an initialization expression having the value UNFORMATTED.
+       Otherwise, a specifier that has a name different from the name of
+       a dummy argument of the OPEN procedure bound to the <unit-expr>
+       (12.8.2.5a, 12.8.2.5b) shall not appear."
+
+[205: 9.5.6.10p1] ------------------------------------------------------
+Editor: Replace "The value" by "If <unit-specifier> is
+<file-unit-number>, the value"
+
+[206: 9.5.7p1] ---------------------------------------------------------
+Editor: Insert "in which <unit-specifier> is <file-unit-number>"
+before "is used".
+
+[206: 9.5.7p1+] --------------------------------------------------------
+Editor: Insert a new paragraph:
+
+"Executing a CLOSE statement in which <unit-specifier> is <unit-expr>
+invokes the CLOSE procedure bound to the <unit-expr> (12.8.2.5a,
+12.8.2.5b)."
+
+[207: 9.5.7.2 R909] ----------------------------------------------------
+Editor: Replace "<file-unit-number>" by "<unit-specifier>".
+
+[207: 9.5.7.2 C908] ----------------------------------------------------
+Editor: Replace "<file-unit-number>" by "<unit-specifier>" twice.
+
+[214:9.6.3p7] ----------------------------------------------------------
+Editor: Replace the paragraph:
+
+"The following rules describing whether to expand an input/output list
+item are repeatedly applied in two stages to each expanded list item
+until none of the rules apply.  In the first stage, the defined
+input/output procedures described in 9.6.4.7 are considered.  The second
+stage is applied if the <unit-specifier> is <unit-expr>; the defined
+input/output procedures bound to the type of the unit and described in
+9.4a, 12.8.2.5a, and 12.8.2.5b are considered."
+
+Within the first list item insert "and the list item is not processed by
+a defined input/output procedure bound to the type of the unit" after
+"list item".
+
+Within the second list item replace "9.6.4.7" by "9.4a, 9.6.4.7" twice.
+
+Within the third list item replace "9.6.4.7" by "9.4a, 9.6.4.7".
+
+[215: 9.6.4p1] ---------------------------------------------------------
+Editor: Replace "WRITE or PRINT statement" by "WRITE statement in which
+<unit-specifier> is not <unit-expr>", or a PRINT statement,"
+
+[215: 9.6.4p1+] --------------------------------------------------------
+Editor: Insert a new paragraph:
+
+"The effect of executing a data transfer input/output statement is as if
+the following operations were performed in the order specified.  The
+first two operations are the same for all data transfer input/output
+statements:"
+
+Move 9.6.4p2 items(1-2) to here and delete 9.6.4p3 items(1-2).
+
+Insert a new paragraph and list:
+
+"If <unit-specifier> is <unit-expr> the remaining operations are:
+
+(3) Invoke the START procedure (12.8.2.5a, 12.8.2.5b) bound to
+    <unit-expr>.
+
+(4) For each effective list item, invoke the CONTINUE procedure bound to
+    <unit-expr>, with the effective list item associated with the VALUE
+    dummy argument.
+
+(5) Invoke the FINISH procedure (12.8.2.5a, 12.8.2.5b) bound to
+    <unit-expr>.
+
+(6) If an IOSTAT= specifier appears in the data transfer input/output
+    statement, determine whether an error or end-of-file condition has
+    occurred, as indicated by the value of the variable associated with
+    the IOSTAT argument of the START, CONTINUE or FINISH procedure.
+
+(7) If an error or end-of-file condition occurred, processing continues
+    as specified in 9.11."
+
+[215: 9.6.4p1 item (5)] ------------------------------------------------
+Editor: Insert "and the <unit-specifier> is not <unit-expr>" at the end
+of the item.
+
+[215: 9.6.4p1 item (5)(b)+] --------------------------------------------
+Editor: Insert a new item:
+
+  "(5.1) If <unit-specifier> is <unit-expr> invoke the START procedure
+         bound to <unit-expr> (12.8.2.5a, 12.8.2.5b)."
+
+[215: 9.6.4p1 item (6)] ------------------------------------------------
+Editor: Replace "Transfer" by "If <unit-specifier> is not <unit-expr>,
+transfer".  Append a sentence at the end: "Otherwise invoke the CONTINUE
+procedure (12.8.2.5a, 12.8.2.6a) bound to <unit-expr> as described in
+9.6.4.1.1."  Then add a new list item:
+
+"(6a) If  <unit-specifier> is <unit-expr> invoke the FINISH procedure
+      (12.8.2.5a, 12.8.2.6a) bound to <unit-expr>."
+
+[215: 9.6.4p1 item (8)] ------------------------------------------------
+Editor: Replace "Position" by "If <unit-specifier> is not <unit-expr>,
+position"
+
+[219: 9.6.4.7.1p1-2] ---------------------------------------------------
+Editor: Replace the paragraphs:
+
+"If a specific procedure in an appropriate generic interface with a
+<dtio-generic-spec> (12.4.3.2) as specified in 9.6.4.7.3 is selected as
+specified in 9.6.4.7.4, that procedure is invoked to process the
+entity."
+
+[220: 9.6.4.7.3p1] -----------------------------------------------------
+Editor: Replace "four" by "six" twioe.  Replace "One each ...
+unformatted output" by "One each for formatted input and formatted
+output, and two each for unformatted input and unformatted output".
+
+[220: 9.6.4.7.3p2] -----------------------------------------------------
+Editor: Replace "four" by "six".
+
+[220: 9.6.4.7.3p5] -----------------------------------------------------
+Editor: Replace "interface" by "interfaces".
+
+[221: 9.6.4.7.3p6+] ----------------------------------------------------
+Editor: Copy 9.6.4.7.3p6, changing the type for "unit" from "INTEGER" to
+"DEFINED_INPUT_UNIT".
+
+[220: 9.6.4.7.3p9] -----------------------------------------------------
+Editor: Replace "interface" by "interfaces".
+
+[221: 9.6.4.7.3p10+] ---------------------------------------------------
+Editor: Copy 9.6.4.7.3p6, changing the type for "unit" from "INTEGER" to
+"DEFINED_OUTPUT_UNIT".
+
+[221: 9.6.4.7.3p12] ----------------------------------------------------
+Editor: Insert a new list item after the first one:
+
+"o If the parent data transfer statement uses a <unit-expr> the value of
+   the {\tt unit} argument shall be that of the <unit-expr>."
+
+[396: 13.8.2.5+] -------------------------------------------------------
+Editor: Insert two new subclauses:
+
+12.8.2.5a DEFINED_INPUT_UNIT
+
+DEFINED_INPUT_UNIT is an extensible abstract derived type having private
+components and the following public deferred specific procedure
+bindings, with names the same as the following interfaces:
+
+  subroutine OPEN ( UNIT, ACTION, ASYNCHRONOUS, FILE, IOMSG, IOSTAT, &
+                    POSITION, STATUS )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(in) :: ACTION, ASYNCHRONOUS, POSITION, STATUS
+    character(len=*), intent(in), optional :: FILE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine OPEN
+
+  subroutine START ( UNIT, ASYNCHRONOUS, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(in) :: ASYNCHRONOUS
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine START
+
+  subroutine CONTINUE_DEFAULT_INTEGER ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    integer, intent(out) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DEFAULT_INTEGER
+
+  subroutine CONTINUE_DEFAULT_REAL ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    real, intent(out) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DEFAULT_REAL
+
+  subroutine CONTINUE_DOUBLE_PRECISION ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    double precision, intent(out) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DOUBLE_PRECISION
+
+  subroutine CONTINUE_DEFAULT_COMPLEX ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    complex, intent(out) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DEFAULT_COMPLEX
+
+  subroutine CONTINUE_DOUBLE_COMPLEX ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    complex(KIND=KIND(0.0d0)), intent(out) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DOUBLE_COMPLEX
+
+  subroutine CONTINUE_DEFAULT_CHAR ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(out) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DEFAULT_CHAR
+
+  subroutine CONTINUE_DEFAULT_LOGICAL ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    logical(len=*), intent(out) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DEFAULT_LOGICAL
+
+  subroutine FINISH ( UNIT, ASYNCHRONOUS, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(in) :: ASYNCHRONOUS
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine FINISH
+
+  subroutine FLUSH ( UNIT, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine FLUSH
+
+  subroutine WAIT ( UNIT, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine WAIT
+
+  subroutine CLOSE ( UNIT, STATUS, IOMSG, IOSTAT )
+    class(DEFINED_INPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(in) :: STATUS
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CLOSE
+
+There is a generic binding with the generic identifier CONTINUE, bound
+to the specific procedures CONTINUE_DEFAULT_INTEGER,
+CONTINUE_DEFAULT_REAL, CONTINUE_DOUBLE_PRECISION,
+CONTINUE_DEFAULT_COMPLEX, CONTINUE_DOUBLE_COMPLEX,
+CONTINUE_DEFAULT_CHARACTER, and CONTINUE_DEFAULT_LOGICAL.
+
+12.8.2.5b DEFINED_OUTPUT_UNIT
+
+DEFINED_OUTPUT_UNIT is an extensible abstract derived type having
+private components and the following public deferred specific procedure
+bindings, with names the same as the following interfaces:
+
+  subroutine OPEN ( UNIT, ACTION, ASYNCHRONOUS, FILE, IOMSG, IOSTAT, &
+                    POSITION, STATUS )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(in) :: ACTION, ASYNCHRONOUS, POSITION, STATUS
+    character(len=*), intent(in), optional :: FILE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine OPEN
+
+  subroutine START ( UNIT, ASYNCHRONOUS, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(in) :: ASYNCHRONOUS
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine START
+
+  subroutine CONTINUE_DEFAULT_INTEGER ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    integer, intent(in) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DEFAULT_INTEGER
+
+  subroutine CONTINUE_DEFAULT_REAL ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    real, intent(in) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DEFAULT_REAL
+
+  subroutine CONTINUE_DOUBLE_PRECISION ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    double precision, intent(in) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DOUBLE_PRECISION
+
+  subroutine CONTINUE_DEFAULT_COMPLEX ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    complex, intent(in) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DEFAULT_COMPLEX
+
+  subroutine CONTINUE_DOUBLE_COMPLEX ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    complex(KIND=KIND(0.0d0)), intent(in) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DOUBLE_COMPLEX
+
+  subroutine CONTINUE_DEFAULT_CHAR ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(in) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DEFAULT_CHAR
+
+  subroutine CONTINUE_DEFAULT_LOGICAL ( UNIT, VALUE, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    logical(len=*), intent(in) :: VALUE
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CONTINUE_DEFAULT_LOGICAL
+
+  subroutine FINISH ( UNIT, ASYNCHRONOUS, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(in) :: ASYNCHRONOUS
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine FINISH
+
+  subroutine FLUSH ( UNIT, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine FLUSH
+
+  subroutine WAIT ( UNIT, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine WAIT
+
+  subroutine CLOSE ( UNIT, STATUS, IOMSG, IOSTAT )
+    class(DEFINED_OUTPUT_UNIT), intent(inout) :: UNIT
+    character(len=*), intent(in) :: STATUS
+    character(len=*), intent(inout), optional :: IOMSG
+    integer, intent(out) :: IOSTAT
+  end subroutine CLOSE
+
+There is a generic binding with the generic identifier CONTINUE,
+bound to the specific procedures CONTINUE_DEFAULT_INTEGER,
+CONTINUE_DEFAULT_REAL, CONTINUE_DOUBLE_PRECISION,
+CONTINUE_DEFAULT_COMPLEX, CONTINUE_DOUBLE_COMPLEX,
+CONTINUE_DEFAULT_CHARACTER, and CONTINUE_DEFAULT_LOGICAL.

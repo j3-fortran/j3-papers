@@ -1,0 +1,276 @@
+
+                                                                J3/05-159
+
+Date:    8 February 2005
+To:      J3
+From:    Bill Long
+Subject: Interoperability of pointers, allocatables, and assumed-shape arrays
+
+Number:
+Title: Interoperability of pointers, allocatables, and assumed-shape arrays
+Submitted By: J3
+Status: For consideration
+
+Reference: 04-371r2
+
+Basic Functionality:
+
+Extensions to C Interop that allow arguments that are pointers,
+allocatables, and assumed-shape arrays to be interoperable.
+
+Rationale:
+
+C interoperability provides a mechanism to share array data between
+Fortran and C.  However, even with C interop, it is still necessary
+for users to implement a translation layer between C and Fortran
+assumed-shape array data structures.  Under some circumstances, it may
+even be necessary to make temporary copies of array data in this
+translation layer.
+
+In the translation layer, for each array-valued parameter in a
+BIND(C) procedure, a user needs to pass the address of the array
+as well as each value of the array shape as integer procedure
+parameters.  For BIND(C) procedures taking many array arguments,
+the resulting argument list can be exceptionally long.  In addition,
+data marshaling in the translation layer can be a performance hit.
+
+
+Estimated Impact:
+
+Small impact for the standard and probably small to moderate
+impact for the processors.
+
+
+Detailed Specification:
+
+The processor will be required to supply, for each companion C
+processor, a C header file and C functions (or macros) implementing
+the C prototypes shown below.  In C, descriptors for assumed-shape,
+allocatable, and Fortran pointer objects are represented by opaque
+types.  The C functions specified by these prototypes allow C
+programmers to create and destroy memory for descriptors, functions
+to get and set parameters in a descriptor, and functions to allocate
+and deallocate the memory described by the descriptors.
+
+Separate opaque types are defined for the assumed-shape, allocatable,
+and pointer cases. Type and function names containing _ASSUMED_ are
+used with assumed-shape arguments, names containing _ALLOC_ are used
+with allocatable arguments, and names containing _POINTER_ are used
+with pointer arguments. The rank may be specified as 0 for allocatable
+and pointer descriptors, in which case the corresponding Fortran
+object shall be a scalar. If the rank is 0, the pointers to the shape
+and stride arrays in the same reference are not used and may have any
+value. If the base_addr parameter in the FDesc_Alloc_Create or
+FDesc_Alloc_Reset functions is NULL, the resulting descriptor
+represents an unallocated object. If the base_addr parameter in the
+FDesc_Pointer_Create or FDesc_Pointer_Reset is NULL, the resulting
+descriptor represents an unassociated pointer.
+
+A C function calling a Fortran procedure with the BIND(C) attribute
+will pass a pointer to an array descriptor as the actual argument
+corresponding to an assumed-shape, allocatable, or pointer dummy
+argument.  Depending on the details of the processor's Fortran
+descriptors, the procedure may be required to merge additional
+information into the descriptor based on the declaration of the dummy
+argument, or to create a local representation based on the information
+in the descriptor.  If the dummy argument is deallocated, allocated,
+or has its pointer association status changed in the procedure, the
+descriptor shall be modified to reflect the new state of the argument.
+
+A C function that is called from a Fortran procedure will be passed a
+pointer to a descriptor of the type appropriate for the corresponding
+dummy argument in the interface for the called function.
+
+Such an argument must have interoperable type and type parameters.
+
+
+/**
+ * FDesc.h - name of include file declaring descriptor typedefs
+ *           and prototypes
+ */
+
+
+/**
+ *
+ * An opaque type for the size of extents.
+ *
+ * F_extent_t
+ *
+ */
+
+
+/**
+ * Opaque descriptor types. 
+ *
+ * FDesc_Alloc_t
+ * FDesc_Pointer_t
+ * FDesc_Assumed_t
+ *
+ */
+
+
+/**
+ * Allocation, deallocation and reset routines for descriptors
+ */  
+
+/**
+ * Create a descriptor and initialize its data.
+ *
+ * Memory for the descriptor must be freed by a subsequent call to 
+ * FDesc_Alloc_Destroy, FDesc_Pointer_Destroy, or FDesc_Assumed_Destroy.
+ *
+ * @param fdesc      contains address of descriptor on return.
+ * @param base_addr  the base address of the array or scalar object.
+ * @param elem_size  the size of an array element or scalar object (in bytes).
+ * @param rank       the rank of the array; 0 if object is scalar.
+ * @param shape      array[rank] containing the array shape.
+ * @param stride     array[rank] containing the distance between successive
+ *                   array elements for each dimension (in bytes).
+ * @return           0 if successful (nonzero on error).
+ */
+int FDesc_Alloc_Create(FDesc_Alloc_t * restrict fdesc,
+		       void * restrict base_addr,
+		       size_t elem_size,
+		       unsigned int rank,
+		       const F_extent_t shape[restrict],
+		       const size_t stride[restrict]	
+		       );
+
+int FDesc_Pointer_Create(FDesc_Pointer_t * restrict fdesc,
+			 void * base_addr,
+			 size_t elem_size,
+			 unsigned int rank,
+			 const F_extent_t shape[restrict],
+			 const size_t stride[restrict]
+			 );
+
+int FDesc_Assumed_Create(FDesc_Assumed_t * restrict fdesc,
+			 void * base_addr,
+			 size_t elem_size,
+			 unsigned int rank;   
+			 const F_extent_t shape[restrict]
+			 );
+
+/**
+ * Set the elements of a descriptor.
+ *
+ * @param fdesc      address of descriptor.
+ * @param base_addr  the base address of the array or scalar object.
+ * @param shape      array[rank] containing the array shape (in elements).
+ *                   If base_addr is NULL, the contents of shape are ignored 
+ *                   and the descriptor shape values are set to 0.
+ * @param stride     array[rank] containing the distance between successive
+ *                   array elements for each dimension (in bytes).
+ *                   If base_addr is NULL, the contents of stride are ignored
+ *                   and the descriptor stride values are set to 0.
+ * @return           0 if successful (nonzero on error).
+ */
+int FDesc_Alloc_Reset(FDesc_Alloc_t * restrict fdesc,
+		      void * restrict base_addr,
+		      const F_extent_t shape[restrict],
+		      const size_t stride[restrict]
+		      );
+
+int FDesc_Pointer_Reset(FDesc_Pointer_t * restrict fdesc,
+			void * base_addr,
+			const F_extent_t shape[restrict],
+			const size_t stride[restrict]
+			);
+
+/**
+ * Frees memory for a descriptor.
+ *
+ * @param fdesc      address of a descriptor.
+ * @return           0 if successful (nonzero on error).
+ */
+int FDesc_Alloc_Destroy(FDesc_Alloc_t * restrict fdesc);
+
+int FDesc_Pointer_Destroy(FDesc_Pointer_t * restrict fdesc);
+
+int FDesc_Assumed_Destroy(FDesc_Assumed_t * restrict fdesc);
+
+/**
+ * Routines to allocate and deallocate array or scalar object memory
+ */
+
+/** 
+ * Returns a value appropriate for use as base_addr in Create and 
+ * and Reset routines.
+ *
+ * @param size       amount of memory to allocate, in bytes.
+ * @return           pointer to allocated memory, or NULL if the
+ *                   memory allocation fails.
+ */
+void * FDesc_Alloc_Allocate(size_t size);
+
+void * FDesc_Pointer_Allocate(size_t size);
+
+void * FDesc_Assumed_Allocate(size_t size);
+
+/**
+ * Frees memory previously allocated with FDesc_Alloc_Allocate,
+ * FDesc_Pointer_Allocate, or FDesc_Assumed_Allocate. 
+ * FDesc_Alloc_Deallocate and FDesc_Pointer_Deallocate may be
+ * used to deallocate memory previously allocated by a Fortran
+ * procedure.
+ *
+ * @param fdesc      address of descriptor. The base_addr in the
+ *                   descriptor is set to NULL on return.
+ * @return           0 is successful (nonzero on error).
+ */
+int FDesc_Alloc_Deallocate(FDesc_Alloc_t * restrict fdesc);
+
+int FDesc_Pointer_Deallocate(FDesc_Pointer_t * restrict fdesc);
+
+int FDesc_Assumed_Deallocate(FDesc_Assumed_t * restrict fdesc);
+
+/**
+ * Accessors
+ */
+
+/** Returns true if the pointer is associated (false otherwise). */
+_Bool FDesc_Associated(FDesc_Pointer_t fdesc);
+
+/** Returns true if the object is allocated (false otherwise). */
+_Bool FDesc_Allocated(FDesc_Alloc_t fdesc);
+
+/** Returns the rank of the array described by a descriptor */
+int FDesc_Alloc_Rank(FDesc_Alloc_t fdesc);
+
+int FDesc_Pointer_Rank(FDesc_Pointer_t fdesc);
+
+int FDesc_Assumed_Rank(FDesc_Assumed_t fdesc);
+
+/**
+ * Return the address, shape, and stride information in a descriptor.
+ *
+ * @param fdesc      the descriptor.
+ * @param base_addr  contains the address of the array or scalar object on return.
+ * @param shape      array[rank] containing the array shape on return
+ *                   (in elements). If the rank is 0, shape is not returned.
+ * @param stride     array[rank] containing the distance between successive
+ *                   array elements for each dimension (in bytes) on return.
+ *                   If rank is 0, stride is not returned.
+ * @return           0 if successful (nonzero on error).
+ */
+int FDesc_Alloc_Get(FDesc_Alloc_t fdesc,
+		    void ** restrict base_addr,
+		    F_extent_t shape[restrict],
+		    size_t stride[restrict]
+		    );
+
+int FDesc_Pointer_Get(FDesc_Pointer_t fdesc,
+		      void ** base_addr,
+		      F_extent_t shape[restrict],
+		      size_t stride[restrict]
+		      );
+
+int FDesc_Assumed_Get(FDesc_Assumed_t fdesc,
+		      void ** base_addr,
+		      F_extent_t shape[restrict],
+		      size_t stride[restrict]
+		      );
+
+/** End of FDesc.h */
+
+History:  Submitted as paper 04-371r1, revised to 04-371r2 at meeting 169.

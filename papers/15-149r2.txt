@@ -1,0 +1,108 @@
+                                                             J3/15-149r2
+To:        J3
+From:      Van Snyder
+Subject:   Interpretation concerning actual arguments and ASYNCHRONOUS
+Date: 2015 February 26
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0135
+TITLE: Argument correspondence with VALUE and ASYNCHRONOUS
+KEYWORDS: VALUE, ASYNCHRONOUS, coindexed, contiguous
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following three programs and discussions:
+
+program P1
+  real :: X[*]
+  call S1 ( X [ 1 ] )
+contains
+  subroutine S1 ( A )
+    real, value, asynchronous :: A
+    a = 3
+  end subroutine S1
+end program P1
+
+Program P1 appears to violate C1238 which says
+  "An actual argument that is a coindexed object with the ASYNCHRONOUS
+   or VOLATILE attribute shall not correspond to a dummy argument that
+   has either the ASYNCHRONOUS or VOLATILE attribute."
+but the dummy argument is not associated with the actual argument so
+it is unclear why that should be the case.
+
+program P2
+  real :: X(3)
+  call S2A ( X )
+contains
+  subroutine S2A ( A )
+    real, asynchronous :: A(:)
+    call S2B ( A(1:3) )
+  end subroutine S2A
+  subroutine S2B ( A )
+    real, value, asynchronous :: A(:)
+    a = 3
+  end subroutine S2B
+end program P2
+
+This appears to violate C1239 which says
+  "If an actual argument is a nonpointer array that has the
+   ASYNCHRONOUS or VOLATILE attribute but is not simply contiguous
+   (6.5.4), and the corresponding dummy argument has either the
+   VOLATILE or ASYNCHRONOUS attribute, that dummy argument shall be an
+   assumed-shape array that does not have the CONTIGUOUS attribute."
+but again, it is unclear why that should matter for a VALUE dummy
+argument.
+
+program P3
+  real, target :: X(3)
+  real, pointer, asynchronous :: Y(:)
+  y => x
+  call S3 ( y )
+contains
+  subroutine S3 ( A )
+    real, value, asynchronous :: A(:)
+    a = 3
+  end subroutine S3
+end program P3
+
+This program appears to violate C1240 which says
+  "If an actual argument is an array pointer that has the ASYNCHRONOUS
+   or VOLATILE attribute but does not have the CONTIGUOUS attribute,
+   and the corresponding dummy argument has either the VOLATILE or
+   ASYNCHRONOUS attribute, that dummy argument shall be an array
+   pointer or an assumed-shape array that does not have the CONTIGUOUS
+   attribute."
+but it is unclear why this should matter for a VALUE dummy argument.
+
+Are those programs intended to be standard-conforming?
+
+ANSWER:
+
+Yes, all those programs were intended to be standard-conforming.
+There is no need for those constraints to apply to dummy arguments
+with the VALUE attribute, because a VALUE dummy argument is not
+associated with the actual argument but with an anonymous definable
+data object.
+
+Edits are supplied to correct the mistakes in the constraints.
+
+EDITS:
+
+[295:6] 12.5.2.4 Ordinary dummy arguments, C1238,
+  Between "VOLATILE attribute" and "."
+  insert  ", unless the dummy argument has the VALUE attribute".
+
+[295:9] Same subclause, C1239,
+        After "ASYNCHRONOUS attribute"
+        insert ", but does not have the VALUE attribute,".
+
+[295:13] Same subclause, C1240,
+         After "ASYNCHRONOUS attribute"
+         insert ", but does not have the VALUE attribute,".
+
+HISTORY: 15-xxx    m206  F08/0135 submitted
+
+----------------------------------------------------------------------

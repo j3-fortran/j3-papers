@@ -1,0 +1,140 @@
+
+                                                                 J3/06-352
+
+To: J3
+Date: November 2, 2006
+From: Aleksandar Donev
+Subject: BIND(C) for internal procedures
+References: J3/06-143, J3/06-202
+
+Following recent discussion on the J3 mailing list, I am resubmitting the
+integration request in 06-202, including new constraints to make it clear
+that an internal procedure can only be invoked if the host instance is
+still active, and also including an extended example in a Note showing
+the most common use.
+
+Discussion:
+__________
+
+We now internal procedures to be passed as actual arguments or to be the
+targets of procedure pointers. Integration demands that this be extended
+to work with C Interop, that is, a <proc-language-binding-spec> should be
+allowed for internal procedures, and also such procedures should be
+allowed as actual arguments to C_FUNLOC.
+
+We should spell out that an internal procedure must not be invoked after
+the host instance ceases to exist.
+
+We should not allow binding labels for internal procedures since the host
+environment of the internal procedure (required in order to execute it)
+is not established until runtime (and thus not known to the linker).
+There are two options for achieving this:
+1) Require that BIND(C,NAME="") be specified, i.e., no binding label be
+requested explicitly, or
+2) Do not allow a NAME= specifier and explain that there is no binding
+label for internal procedures.
+I give the edits here for both options. I vote for option 1 myself, since
+I would like to have the "no NAME= specifier" constraint apply only to
+INTERFACE blocks, and not to real procedures. This is similar to how we
+require NAME="" to be specified for PRIVATE module procedures, instead of
+saying they have no binding label.
+
+Edits:
+__________
+
+Note that no edits are needed for C_FUNLOC: Once we allow internal
+procedures to be interoperable, they can be actual arguments to
+C_FUNLOC.
+
+[309:8+] Add a new paragraph:
+"The program shall not invoke an internal procedure when its host
+environment does not exist."
+
+and a new Note [where should this be placed?]:
+
+Note 12.17a
+An internal procedure may not be invoked using a procedure pointer from
+either Fortran or C after the host instance completes execution. While
+the host instance is active, however, the internal procedure may
+be invoked from outside of the host procedure scoping unit if that
+internal procedure was passed as an actual argument or is the target
+of a procedure pointer.
+
+Assuming there exists a library procedure, written either in Fortran or
+C and callable from either Fortran or C, that calculates the integral
+of an arbitrary function f(x) over the interval [a,b]:
+
+INTERFACE
+   FUNCTION INTEGRATE(F,A,B) RESULT(INTEGRAL) BIND(C)
+      USE ISO_C_BINDING
+      INTERFACE
+         FUNCTION F(X) ! Integrand
+            USE ISO_C_BINDING
+            REAL(KIND=C_FLOAT), VALUE :: X
+            REAL(KIND=C_FLOAT) :: F
+         END FUNCTION
+      END INTERFACE
+      REAL(KIND=C_FLOAT), VALUE :: A, B ! Bounds
+      REAL(KIND=C_FLOAT) :: INTEGRAL
+   END FUNCTION INTEGRATE
+END INTERFACE
+
+one can write f(x) as an internal procedure with access to any host
+instance local variables necessary to actually calculate f(x):
+
+FUNCTION MY_INTEGRATION(N,A,B) RESULT(INTEGRAL)
+   ! Integrate f(x)=x^n over [a,b]
+   USE ISO_C_BINDING
+   INTEGER, INTENT(IN) :: N
+   REAL, INTENT(IN) :: A, B
+   REAL :: INTEGRAL
+   
+   INTEGRAL=INTEGRATE(MY_F,REAL(A,C_FLOAT),REAL(B,C_FLOAT))
+      ! This will call the internal function MY_F to calculate f(x)
+
+CONTAINS
+
+   FUNCTION MY_F(X) ! Integrand
+      USE ISO_C_BINDING
+      REAL(KIND=C_FLOAT), VALUE :: X
+      REAL(KIND=C_FLOAT) :: MY_F
+      MY_F=X**N ! N is taken from the host instance of MY_INTEGRATION
+   END FUNCTION
+
+END FUNCTION MY_INTEGRATION
+
+The function INTEGRATE should not save a function pointer to MY_F
+and use it after INTEGRATE has finished execution, because the host
+instance of MY_F may no longer exist. If such a pointer is saved,
+then it may only be used to invoke MY_F during the execution of the
+host instance of MY_INTEGRATION."
+
+[503:10+] Add a new item (20) to the list:
+"(20) Any variable of type C_FUNPTR whose target is an internal
+procedure becomes undefined when execution of the host instance of
+the internal procedure is completed by execution of a RETURN or END
+statement"
+
+Edits for binding label:
+
+Option 1:
+
+[326:21] Replace constraint C1240 (R1227) with:
+C1241 (R1227) If a <proc-language-binding-spec> is specified for an
+internal procedure, the NAME= specifier shall appear and it shall
+specify that the procedure has no binding label (15.4.1).
+
+Option 2:
+
+[326:19] In the constraint C1239 (R1227) replace "of an interface
+body" with "of an internal procedure or of an interface body"
+
+[326:21] Delete constraint C1240 (R1227)
+
+[481:10] Replace:
+"the procedure is not a dummy procedure or procedure pointer" 
+with
+"the procedure is not a dummy procedure, an internal procedure, or
+a procedure pointer"
+
+______________

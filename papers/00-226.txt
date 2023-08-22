@@ -1,0 +1,93 @@
+From: Kurt Hirchert                                            J3/00-226
+Subject: Revised Constructor Specification and Syntax        Meeting 153
+
+When WG5 dropped INITIAL procedures from our requirements, they replaced
+them with a proposal to allow functions to be used, in effect, as user-
+defined structure constructors.  The implied specification (never written
+down, to my knowledge) was
+
+1. Allow a (generic?) function name to be the same as a derived-type name
+   in the same scope.
+2. In cases where the syntax for a function reference and a structure
+   constructor overlap, resolve in favor of the function reference.
+
+In Fortran 90 and Fortran 95, this would have been quite adequate, but
+with the introduction of parameterized derived types, functions do a
+poor job of reproducing the syntax and functionality of structure
+constructors for values of parameterized types.  Thus, to stick with this
+approach, it would be necessary for us to either
+
+A. live with the deficiencies, or
+B. make significant extensions to generic procedure resolution (allowing
+   resolution on the basis of the _value_ rather than type of some
+   arguments).
+
+Since neither of these alternatives seems entirely satisfactory, I
+suggest a variant approach:
+
+In essence, I proposed to extend the interface block to allow it to
+establish defined structure constructors, analogous to the way it
+establishes defined operators and defined assignment, by allowing a
+<generic-spec> of the form TYPE(<type-spec>) [with suitable constraints].
+
+For a parameterless type, the difference would simply be to replace
+      INTERFACE typename
+with
+      INTERFACE TYPE(typename)
+and the reference would still look like
+      typename(argument_list)
+and be effectively equivalent to 
+      specific_name(argument_list)
+
+For a type with a KIND parameter, the KIND parameter is part of the
+constructor's identifier and, as usual, shall be specified by an
+initialization expression.  Thus, the INTERFACE statement might look
+like
+      INTERFACE TYPE(interval(KIND=4))
+the reference like
+      interval(4)('0.1')
+and the equivalent function reference
+      specific_name_4('0.1')
+Interfaces for each KIND value are specified separately.  If a type has
+multiple KIND parameters, each combination of values is separate.
+
+For a type with a non-KIND parameter, the parameter shall be specified
+as assumed in the interface and the value from the constructor is
+passed to the function as an extra argument at the beginning of the
+argument list.  Thus, an INTERFACE statement like
+      INTERFACE TYPE(matrix(*))
+might be referenced as
+      matrix(3)("identity")
+generating a function reference like
+      specific_name(3,"identity")
+If a type has multiple non-KIND parameters, the arguments are supplied
+in the order they appear in the type definition.  [I like the visual
+appearance of assumed type parameters, but a deferred type parameter
+might be closer semantically, so we might wish to change to that syntax
+instead.]
+
+Types with both KIND and non-KIND parameters work in the obvious way,
+using the KIND parameter(s) to identify the right generic and passing
+the non-KIND parameter(s) to the specific function.
+
+Specific functions in such an interface are constrained to return values
+with the correct type and KIND type parameters, and required (but not
+constrained) to get the non-KIND parameters right, too.
+
+Where ambiguity exists, defined structure constructors are used in
+preference to intrinsic structure constructors.
+
+Accessibility under use association is controlled by the type name, not
+TYPE(<type-spec>).
+
+Optionally, we could allow the <type-spec> to omit some or all of the
+type's type parameters, to allow specification of constructor syntax for
+which those type parameters are defaulted or determined by the type and
+type parameters of the values in the argument list.  Thus, for our
+interval type, we could have
+      INTERFACE TYPE(interval)
+allowing a reference of the form
+      interval(0.0d0,1.0d0)
+to be interpreted as
+      specific_name_8(0.0d0,1.0d0)
+Each combination of parameters specifies and a separate generic interface.

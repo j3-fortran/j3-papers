@@ -1,0 +1,107 @@
+To:      J3                                    13-300
+From:    Reinhold Bader
+Subject: Support for computational domains
+Date: 2013 August 11
+References: N1971, N1983
+
+Discussion:
+~~~~~~~~~~~
+
+The FORM SUBTEAM statement presently allows to establish subteams via
+purely algorithm-driven methods. However, for performance optimization
+purposes it would be very useful to be able to generate subteams
+optimized for specific machine architectures. For example, on a cluster
+of SMPs it will often be more efficient to use teams whose member images
+exactly match the cores in an SMP, most especially so if the Fortran
+run time is aware of the difference between communication (as well as
+synchronization) across and within SMPs. However, because further
+hierarchy levels usually exist and/or various ways of interoperating
+with other parallel paradigms should be possible, it is not considered
+sufficient to base team establishment on e.g., membership of images on
+a specific node.
+
+This paper suggests edits that add an optional argument DOMAIN to the
+FORM SUBTEAM statement; an illustrative example is also provided.
+
+
+EDITS to N1983:
+~~~~~~~~~~~~~~~
+
+[11:1+] add line
+
+"               or DOMAIN = scalar-int-expr"
+
+[11:3+] add line
+
+"C509    (R505) Only one of the specifiers NEW_INDEX or DOMAIN shall
+ appear in a <form-subteam-spec-list>"
+
+[11:4-5]  Replace "The value" by
+
+"If DOMAIN appears in the <form-subteam-spec-list>,
+ * it shall have a value between 1 and the processor-dependent default
+   integer value DOMAIN_LEVELS that is declared in the ISO_FORTRAN_ENV
+   intrinsic module and has the PROTECTED attribute,
+ * <subteam-id> shall be definable and is assigned a value between
+   1 and the number of created subteams; in a given FORM SUBTEAM
+   statement, this number decreases with an increase in the value of
+   DOMAIN,
+ * apart from this, the number and size of the created subteams is
+   processor dependent.
+
+ Otherwise, the value"
+
+[11:18-] Add
+
+"NOTE 5.2+
+ It is intended that the implementation generate subteams whose global
+ communication and synchronization efficiency decreases with an
+ increasing value of DOMAIN if this specifier is present. A FORM
+ SUBTEAM statement that uses the DOMAIN specifier might create subteams
+ of differing sizes, especially if it is executed only by a small
+ subset of the images in the original team."
+
+[33:5]   Replace "Example" by "Example 1".
+
+[33:40+] Add example that illustrates the use of the DOMAIN specifier.
+
+"Example 2: The following code sets up subteams that map to shared
+ memory nodes for all parallel computations. Because coarrays are only
+ used within a shared memory node, all communication and synchronization
+ can likely be handled in a more efficient manner than for the case that
+ cross-node traffic occurs; an implementation might even use hardware-
+ provided facilities for more efficiency.
+
+ PROGRAM work_decomposition
+   USE, INTRINSIC :: iso_fortran_env
+   IMPLICIT NONE
+   INTEGER :: my_level, my_domain_id, local_size
+   TYPE(team_type) :: team_domain
+
+   my_level = GET_DOMAIN("NODE","PHYSICAL_CORES")
+                      ! user-implemented integer function
+                      ! based on compiler documentation
+   IF (my_level < 1) ERROR STOP
+   FORM SUBTEAM(my_domain_id, team_domain, DOMAIN=my_level)
+   CHANGE TEAM(team_domain)
+     BLOCK
+       REAL, ALLOCATABLE :: a(:)[:]
+       LOGICAL, ALLOCATABLE :: continue[:]
+
+       local_size = ... ! may vary between different subteams
+                        ! but must be the same within a subteam
+       ALLOCATE(a(local_size)[*], continue[*])
+       continue = .true.
+       : ! set initial values of A
+       DO WHILE (continue)
+         : ! computations involving A and
+         : ! consistent update of "continue"
+       END DO
+       SYNC ALL
+       IF (this_image() == 1) THEN
+          : ! perform I/O of results A[m] stored on all images
+       END IF
+       DEALLOCATE(a, continue)
+     END BLOCK
+   END TEAM
+ END PROGRAM"

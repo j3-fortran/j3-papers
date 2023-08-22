@@ -1,0 +1,82 @@
+To: J3                                                     J3/22-113r1
+From: John Reid & Reinhold Bader & Malcolm Cohen
+Subject: Interp - corresponding coarrays in recursive procedure
+Date: 2022-March-03
+Reference: 18-007r1
+
+----------------------------------------------------------------------
+
+NUMBER: F18/039
+TITLE:  Corresponding coarrays in recursive procedures
+KEYWORDS: coarray, recursive, allocatable
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+
+QUESTION:
+
+Consider the following program:
+
+program recu_caf_1
+    call csub( 1 )
+contains
+    recursive subroutine csub ( depth )
+        integer :: depth
+        real, allocatable :: x[:]
+        integer :: k
+        
+        if (this_image() == depth) then
+            allocate(x[*], source=real(depth))
+        else if (depth < num_images()) then
+           call csub ( depth + 1 )
+        end if
+        if (allocated(x)) then
+           write(*, *) "image: ", this_image(), "depth: ", depth, &
+                    "x: ", (x[k],k = 1, num_images())
+        else
+           write(*, *) "image: ", this_image(), "depth: ", depth, &
+                    "x not allocated" 
+        end if                  
+    end subroutine
+end program
+
+Q1: Is program recu_caf_1 standard-conforming?
+    It establishes a single coarray on each image, but at different
+    recursion depths on each image, so the question is really whether
+    these correspond (each recursion level has its own set of unsaved
+    local variables).
+
+Q2: If the SAVE attribute is added to the declaration of coarray "x"
+    in the example, does that make the program standard-conforming?
+    (There is only one saved variable, shared with each recursion
+    level.)
+
+ANSWER:
+
+A1: No, unsaved local variables are different at each level, and it
+    was intended that coarrays at the same level correspond.
+    An edit is provided to clarify this.
+
+A2: Yes, the modified program is standard-conforming.
+
+EDITS to 18-007r1:
+
+[41:25] 5.4.7 Coarray, paragraph 2, append new sentence
+   "If a coarray is an unsaved local variable of a recursive
+    procedure, its corresponding coarrays are the ones at the same
+    depth of recursion on each image."
+
+[134:17] 9.7.1.2 Execution of an ALLOCATE statement, paragraph 3,
+         append new sentence
+"If the coarray is an unsaved local variable of a recursive procedure,
+ the execution of the ALLOCATE statement shall be at the same depth of
+ recursion on every active image in the current team."
+
+SUBMITTED BY: John Reid and Reinhold Bader
+
+HISTORY: 22-113   m226  Submitted
+         22-113r1 m226  Revised
+
+----------------------------------------------------------------------
+
+

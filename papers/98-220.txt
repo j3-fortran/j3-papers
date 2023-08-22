@@ -1,0 +1,183 @@
+
+                                                               J3/98-220
+
+Date:    01 November 1998
+To:      J3
+From:    Werner Schulz
+Subject: OOP in F2000: SELF and LIKE
+
+
+In 98-217 I introduced the special type declarations SELF and LIKE. In this
+paper I want to specify in more detail the purpose, semantics and rules
+associated with these constructs.
+
+Many OOP languages have a reserved word like self, this (in C++), current,
+etc. Fortran does not have reserved words, hence the seemingly circular SELF
+:: me syntax. 'me' can, of course, be chosen freely. It could even be SELF
+:: self.
+
+Why introduce a construct like SELF or LIKE?
+A class is the code that implements that defines the actions and variables
+of objects. It is necessary to be able to refer to the whole current object
+inside the class scope. In our everyday language we all use this concept all
+the time and nobody questions its immense usefulness. In the context of
+object-oriented programming we need the same capabilities. It is possible to
+implement OOP without a construct like SELF but the implementation becomes
+rather awkward and limited, often with severe handicaps for later
+extensions. The construct SELF was introduced in the first OOP language
+thirty years ago. The age speaks by itself for the construct.
+
+LIKE is another very useful construct but it is not so widely used in OOP
+languages. One reason is that certain problems of practical and theoretical
+nature were either unknown or overlooked. In Fortran 2000 we will have a
+proper definition of monomorphic and polymorphic objects (a distinction not
+found in all OOP languages). LIKE is added as a construct to allow
+programmers to express in an easy and safe manner an important class of
+procedures.
+I like to call SELF and LIKE dynamic type declarations (with respect to
+inheritance). This name should be become clearer after a few examples.
+
+In many practical problems one requires that at least one argument passed to
+the invoking object has exactly the same type. A special case are the
+so-called binary methods (or procedures), many of them we know better as
+binary operations like:
+        a + b,  a<b,  a==b,  etc. etc.
+Seen this way I think everybody will agree that binary methods are very
+common and very important. To express this case properly in an OOP language
+we need a construct like LIKE(me). Without it one has to accept either
+covariance with all its problems (and nobody currently has a proper solution
+to this problem which I cannot fully address here) or one has to exclude
+binary methods altogether. Neither of these two options is acceptable (C++
+chooses the second option and C++ programmers have to resort to various
+'dirty' tricks to achieve something similar.)
+
+I will give one example that should help to understand the issue. I will use
+again Point classes that implement Points of various dimension, the higher
+dimensional one inheriting from the lower one:
+
+class :: Point1D
+        self :: me
+        real :: x
+        function distance( P )
+            LIKE(me) :: P
+            real :: distance
+            distance = abs(x-P%x)
+        end function distance
+end class Point1D
+
+class :: Point2D
+        inherit :: Point1D
+        self :: me
+        real :: y
+        function distance( P )
+            LIKE(me) :: P
+            real :: distance
+            distance = sqrt( (x-P%x)**2 +(y-P%y)**2 )
+        end function distance
+end class Point2D
+
+The dummy argument in the distance function requires that the actual
+argument to the invoking object must be of the same type:
+        class(Point1D) :: A,B
+        class(Point2D) :: E,F
+        D = A%distance( B )  ! ok
+        D = E%distance( F )  ! ok
+        D = A%distance( F )  ! not ok
+        D = E%distance( B )  ! not ok
+
+The rules of inheritance without covariance require that the type of the
+dummy arguments of inherited procedures cannot be changed while the body of
+the procedure can be changed. That would make it impossible, for instance,
+to implement a distance function for two-, three-dimensional Points if we
+had
+started this way in the Point1D class:
+        function distance( P )
+            class(Point1D) :: P
+            ! etc.
+        end function distance
+
+IF we did allow a change of type for the dummy argument in the Point2D
+version of distance we would permit covariance and open a huge bag of
+problems (at least at this point in time).
+
+To avoid covariance but not use LIKE(me) we would have to add a distance2D
+function, a distance3D function, etc. and possibly use overloading to get
+back to the simple name distance. This is a huge waste of effort since it is
+very unlikely that we will ever require the distance between points of
+differing dimensions. It is just not
+the way we usually think. And there are many more cases in real programming
+problems where this situation occurs. The LIKE(me) constructs solves this
+very practical problem very elegantly and safely since the compiler can
+easily check for correctness under this extra condition:
+
+        Class procedures with a LIKE(self_name) type declaration for at
+least
+        one dummy argument cannot be invoked by polymorphic variables.
+
+This rule is added since we cannot guarantee at compile-time that the
+invoking object has the same type as the argument passed to it.
+
+In the case where we would permit a point of higher dimension and actually
+calculate only the distance between the points in the smallest common
+dimension we can use polymorphic dummy arguments which are perfect for this
+kind of situation. But then I would argue to use a different name, something
+like subspace_distance.
+
+To highlight the role played by LIKE further lets add a ColourPoint class
+(this a widely popular exercise):
+class :: ColourPoint2D
+        inherit :: Point2D
+        self :: me
+        integer :: colour
+end class Point2D
+
+In this case there is no need to change the distance function since no
+dimension was added. However, the LIKE(me) declaration now requires that a
+ColourPoint2D is passed as an argument:
+
+class(Point2D) :: A
+class(ColourPoint2D) :: R, S
+D = R%distance( A )   ! wrong argument passed, A is not ColourPoint2D
+D = R%distance( S )   ! ok
+
+The distance method defined in Point2D has changed the meaning of LIKE(me)
+when it is inherited by ColourPoint2D. There is nothing difficult about the
+LIKE(me)
+construct and it is very easy for compilers to check that two objects have
+the same type.
+
+Obviously there are some choices to be made by the programmer in these
+examples. Does he want ColourPoints and Points to be treated as distinctly
+as the above example just did or allow any combination of Point and
+ColourPoint when computing their distances? Then he should use the LIKE(me)
+construct for the first case and REF(Point2D) in the second case (but that
+would also allow to pass a Point3D object etc).
+(Actually there is a third possibility, so-called multi-methods but I don't
+have
+space here to give a detailed version. W Clodius mentions them in an earlier
+paper on OOP in 1997.)
+At least my version provides some excellent tools to express the intention
+as well as possible without difficult or unsafe syntax. Adding the LIKE
+construct would give Fortran 2000 a very clear advantage over many of its
+competitors.
+
+Some rules and semantic guides for SELF and LIKE:
+
+The syntax for SELF and LIKE is:
+        SELF :: self_name
+        LIKE(self_name), <attributes> :: <variable>
+
+SELF and LIKE are dynamic declarations with respect to inheritance. They
+change their type each time they are inherited from the type of the parent
+class to the type of the new child class.
+
+SELF and LIKE are referring to monomorphic objects.
+
+SELF can only be used inside the class scope, it is a short form for the
+entire current object.
+
+LIKE is also only usable inside the class scope and only for declaring the
+type of dummy arguments.
+Hence the attributes are limited to those available for dummy arguments.
+i.e. INTENT and TARGET
+LIKE cannot be used to declare dummy procedures.

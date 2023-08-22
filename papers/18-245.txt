@@ -1,0 +1,164 @@
+To: J3                                                     J3/18-245
+From:    Van Snyder
+Subject: In support of containers
+Date: 2018-September-13
+Reference: 03-285r1, 04-149, 04-345, 04-380r2
+
+Introduction
+============
+
+William Clodius has recently pointed out that containers need iterators.
+Others have pointed this out earlier.
+
+Use Cases
+=========
+
+If one needs to traverse a tree, or a graph, or a particular row or
+column of a sparse matrix, or ... one ought not need to know the
+representation of the container object.  It should be possible to
+iterate over the contents of a container, or an easily-identified subset
+of its contents (such as one row of a sparse matrix, or all the "purple"
+vertices of a graph), using an abstraction that has a form independent
+of a container's representation.
+
+Proposal
+========
+
+To provide an iterator abstraction, a new control construct ought to be
+provided that uses a new (to Fortran) variety of a procedure, commonly
+called an iterator.  In the simplest cases, syntax might be
+
+  ITERATE ( [ <type-spec> :: ] <iteration-variable> = &
+      <iterator-reference> )
+    <block>
+  END ITERATE
+
+or
+
+  ITERATE ( [ <type-spec> :: ] <data-pointer-object> => &
+      <iterator-reference> )
+    <block>
+  END ITERATE
+
+wherein <iteration-variable> or <data-pointer-object> is a construct
+entity that is NOT restricted to be a scalar integer.  The iterator
+result is assigned to the <iteration-variable> as if by intrinsic
+assignment, or pointer assigned to <data-pointer-object> as if by
+pointer assignment.  The <iterator-reference> has the same syntax as a
+function reference.
+
+The semantics are that the ITERATE statement initiates the iterator,
+which either provides the first element of the container (or a pointer
+associated with it) if there is one, or the iterator terminates.
+
+If the iterator does not terminate, the block is executed, and then the
+iterator is resumed.  If the iterator terminates, the <block> of the
+ITERATE construct is not executed and the ITERATE construct completes
+execution.
+
+It should be possible to change the container during execution of the
+ITERATE construct.  An example of the utility of this is a queue,
+wherein the iterator deques the head of the queue, while actions in the
+block might enque entities.  Whether this "makes sense" in a particular
+case is the responsibility of the container and its iterators, not the
+processor or the standard.
+
+Coroutines have the same but less structured use.  They have essentially
+the same internal structure as an iterator, the only differences being
+
+  (1) a coroutine does not have a result value:  The relationship of
+      coroutines to iterators is the same as the relationship of
+      subroutines to functions, and
+  (2) the invoking scope has a "handle" on the activation record of a
+      coroutine if it is invoked using a procedure pointer, or as a
+      type-bound procedure, while the activation record for an iterator
+      is "owned" by the ITERATE construct.
+
+Both coroutines and iterators should be provided.
+
+The PDF corresponding to this text file is the twelfth draft of a TS
+proposal I began developing in June 2010, after coroutines were dropped
+from the work plan in 2007.  It contains detailed specifications of
+coroutines, iterators, the ITERATE construct, and supporting statements
+and intrinsic functions.  Further use cases are described therein (in
+the introduction and as examples at the end), and in the referenced
+papers.
+
+Example Use Case
+================
+
+Here's a little bit of code that runs through a row of a sparse matrix
+and does stuff using the elements.  Elements in each row are linked in a
+circular list, with %rows indexing the last one (and elements of columns
+are in circular lists too).
+
+          k = eta%rows(ht_i)                ! Last element in row ht_i
+          if ( k /= 0 ) then                ! Row isn't empty
+            do
+              j = eta%e(k)%c                ! eta's column subscript
+              dhdt_1_tan(:,j)    = dhdt_tan(ht_i,:,j)    * eta%e(k)%v
+              d2hdhdt_1_tan(:,j) = d2hdhdt_tan(ht_i,:,j) * eta%e(k)%v
+              k = eta%e(k)%nr               ! Next element in the row
+              if ( k == eta%rows(ht_i) ) exit ! back to the last one?
+            end do
+          end if
+
+Here's how it would be with an iterator that returns a pointer of the
+type of eta%e:
+
+         iterate ( e => eta%row_iterate ( ht_i ) )
+           dhdt_1_tan(:,e%c)    = dhdt_tan(ht_i,:,e%c)    * e%v
+           d2hdhdt_1_tan(:,e%c) = d2hdhdt_tan(ht_i,:,e%c) * e%v
+         end iterate
+
+The version with the ITERATE construct doesn't need to know how eta is
+represented.
+
+Here's an example of how the iterator might be written
+
+         iterator Row_Iterate ( Eta, Row ) result ( E )
+             ! Reinhold's "persistent" attribute would be helpful here.
+             ! Equally helpful would be if the E component of Eta could
+             ! have the TARGET attribute:
+           class (sparse_t), intent(in), target :: Eta
+           integer, intent(in) :: Row
+           type (sparse_element_t), pointer :: E
+           integer :: K
+           k = eta%rows(row)                  ! Last element in the row
+           if ( k == 0 ) return               ! Row is empty
+           do
+             e => eta%e(k)
+             suspend
+             ! Come back here when the ITERATE construct resumes
+             k = eta%e(k)%nr                  ! Next element in the row
+             if ( k == eta%rows(row) ) return ! back to the last one?
+           end do
+         end iterator Row_Iterate
+
+When the iterator executes a SUSPEND statement, the ITERATE construct
+executes its body.  When the iterator executes a RETURN (or END)
+statement, the ITERATE construct completes.  When the ITERATE statement
+resumes the iterator (because the iterator didn't complete), execution
+of the iterator resumes after the SUSPEND statement that most recently
+suspended execution of the iterator (an iterator might have several
+SUSPEND statements).
+
+In case you want to dig this deep, here are the type definitions
+(without their type-bound procedure bindings):
+
+  type :: Sparse_Element_t ! One element in a sparse matrix
+    real(rp) :: V  ! Element's value
+    integer :: R   ! In which row is the element
+    integer :: C   ! In which col is the element
+    integer :: NR  ! Next element in same row
+    integer :: NC  ! Next element in same col
+  end type Sparse_Element_t
+
+  type :: Sparse_t ! Representation for a sparse matrix
+    ! Rows and columns are circular lists; last element indexes first
+    integer, allocatable :: Rows(:) ! Last element in each row
+    integer, allocatable :: Cols(:) ! Last element in each col
+    type(sparse_element_t), allocatable :: E(:) ! nonzero elements
+  end type :: Sparse_t
+
+

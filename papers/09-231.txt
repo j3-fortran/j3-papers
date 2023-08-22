@@ -1,0 +1,143 @@
+To: J3                                                 09-231
+From: Craig Rasmussen
+Subject: Answer to MPI Forum regarding MPI asynchronous operations
+Date: 2009 May 6
+References: 09-211, 09-192, N1761
+
+DISCUSSION
+
+09-192 officially asks WG5 for guidance on support of split phase
+communications.  Guidance is given on how to achieve the following:
+
+! initiate data transfer of boundary
+CALL MPI_IRecv(buffer(:,1),...,request,...)
+! do work on interior of the buffer while transfer is in progress
+CALL UPDATE_INTERIOR(buffer)
+! wait for the communication to finish
+CALL MPI_Wait(request,...)
+! reference buffer boundaries
+A = buffer(:,1)
+
+It is common to hide the MPI calls within other procedures so that
+the communication libraries can be changed.  Thus the calls to
+the MPI procedures are not required to be in the same scope as the
+simple example shown above.  Therefore, using block constructs
+with existing syntax (VOLATILE for example) cannot be used
+to limit the scope of the performance implications of using
+VOLATILE attribute.
+
+This paper provides a new attribute ASYNC_VAR for declaring variables
+involved in asynchronous operations.  This attribute would be useful
+for code beyond just MPI.  (There may be better names for the attribute
+other than ASYNC_VAR.)  The effect of using the ASYNC_VAR attribute
+is to inhibit certain optimizations like code motion and copy-in/copy-out
+with respect to a variable with the attribute.
+
+
+SYNTAX:
+-------
+Add a new <attr-spec> for type declarations:
+
+     ASYNC_VAR 
+
+Add a new ASYNC_VAR statement that specifies the ASYNC_VAR attribute
+for a list of objects.
+
+
+SEMANTICS:
+----------
+
+An entity with the ASYNC_VAR attribute is a variable that may be subject
+to asynchronous operations other than asynchronous Fortran I/O.
+ 
+The base object of a variable shall have the ASYNC_VAR attribute in a
+scoping unit if
+  - the variable appears in an executable statement or specification
+    expression in that scoping unit and
+  - any statement of the scoping unit is executed while the variable is
+    participating in any asynchronous operation affected by means other
+    than Fortran.
+
+An explicit interface is required for a subprogram with a dummy
+argument with the ASYNC_VAR attribute.
+
+A dummy variable with ASYNC_VAR attribute may not also have the VALUE
+attribute.
+
+An object with the ASYNC_VAR attribute may be associated with an object
+that does not have the ASYNC_VAR attribute, including by use (11.2.2) or
+host association (16.5.1.4).  Within a BLOCK construct, an object may
+have the ASYNC_VAR attribute even if it does not have the attribute
+outside the BLOCK construct. If an object has the ASYNC_VAR attribute,
+then all of its subobjects also have the ASYNC_VAR attribute.
+
+Restrictions on an actual argument in C1238, C1239, and C1240 also
+pertain to objects with the ASYNC_VAR attribute.  These constraints
+disallow operations that would force a processor to use copy-in/copy-out
+argument passing mechanisms.
+
+If a variable has the ASYNC_VAR attribute, then:
+-If it is referenced by means not specified by the program during
+the execution of a statement, then it shall not be defined or become
+undefined during the execution of that statement.
+-If it is defined or becomes undefined by means not specified by
+the program during the execution of a statement, then it shall not
+be referenced, defined, or become undefined during the execution of
+the statement, or become associated with a dummy argument that
+has the VALUE attribute during that segment.
+
+NOTE
+
+The ASYNC_VAR attribute specifies the variables that might be associated
+with a pending asynchronous operation implemented in C (or by other means
+other than Fortran) while the scoping unit is in execution.  This
+information could be used by the compiler to disable certain code motion
+optimizations.  In this respect, the ASYNC_VAR attribute is similar to 
+the ASYNCHRONOUS attribute. 
+
+EXAMPLE
+
+Example of the use of asynchronous message passing for abstracted
+MPI_irecv and MPI_wait routines.
+
+In C:  void MPI_irecv (void * buffer_desc, int req);
+       void MPI_wait (int req);
+
+In the Fortran MPI module:
+
+   interface
+      subroutine MPI_irecv (buffer, req) bind(c,name="MPI_irecv")
+         type(*), dimension(..), ASYNC_VAR :: buffer
+         integer(c_int), intent(out) :: req
+      end subroutine
+      subroutine MPI_wait (req) bind(c,name="MPI_wait")
+         integer(c_int), value :: req
+      end subroutine
+   end interface
+
+In user code:
+
+  integer :: request
+  real :: x(10,10), y(10)
+
+
+  ASYNC_ARG :: x
+
+  ! Start asynchronous transfer into the border region of x,
+  ! this call returns before the transfer has been completed
+  call MPI_irecv(x(1,:), req) ! border region is not contiguous
+
+  ! Update interior portion of x(2:10,:), doing computations
+  ! These can be optimized by the compiler, so long as the
+  ! borders are not touched by the optimizer
+
+  ! Wait for border region to arrive, this call only returns
+  ! once the transfer has been completed
+  call MPI_wait(req)
+
+  ! Now border region can be referenced
+  y = x(1,:)
+
+EDITS:
+
+TBD.

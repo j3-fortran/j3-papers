@@ -1,0 +1,101 @@
+To: J3                                                     J3/18-130
+From: Tom Clune
+Subject: Extending usability of deferred-length strings
+Date: 2018-February-14
+
+1. Introduction
+---------------
+
+Deferred length strings have proven to be a very useful and popular
+feature.  However, there remain several aspects in the language that
+currently require fixed-length strings or allocated deferred-length
+strings of sufficient length could/should be improved to work with
+unallocated deferred-length strings and allocated deferred-length
+strings of insufficient/incorrect length.
+
+
+2. Use cases
+------------
+
+2.1 IOMSG and ERRMSG
+
+Many Fortran statements optionally return status information in the
+form of strings (IOMSG and ERRMSG).  Use of these requires that the
+user provide a string of "sufficient" length, and there is no standard
+mechanism to determine the necessary length.  More preferable would be
+to allow these features to treat deferred-length-strings as if by
+intrinsic assignment.  Unallocated strings would be allocated and
+filled.  Allocated strings of insufficient length would be
+reallocated and then filled.
+
+
+
+
+2.2 Intrinsics that return strings
+
+Several intrinsic procedures (e.g., GET_COMMAND,
+GET_ENVIRONMENT_VARIABLE, ...) also have intent out string arguments.
+Unlike the features above, these at least typically have a mechanism
+to determine the necessary length.  A typical use is to then
+
+   CALL GET_ENVIRONMENT_VARIABLE('PATH', LENGTH=n)
+   ALLOCATE(CHARACTER(LEN=n) :: var
+   CALL GET_ENVIRONMENT_VARIABLE('PATH', VALUE=var)
+
+A natural simplification would be to allow unallocated,
+deferred-length strings to be passed to the intrinsic which would then
+perform the necessary allocation internally.  So users could do:
+
+   CHARACTER(LEN=:), ALLOCATABLE :: var, msg
+   CALL GET_ENVIRONMENT_VARIABLE('PATH', VALUE=var, ERRMSG=msg)
+
+If there is no error, then msg would be an empty string, i.e., as if
+by intrinsic assignment.
+
+Note: allocated deferred-length strings should be reallocated as-if by
+intrinsic assignment.
+
+
+2.3 Writes to internal files
+
+As with IOMSG and ERRMSG, there is no general mechanism for a user to
+determine how long a string is required for writes to internal files.
+A typical scenario is to either use a hopefully-large-enough fixed
+length string (or an allocated large-enough deferred-length string)
+and then trim:
+
+   ALLOCATE (CHARACTER(LEN=MAX_LEN) :: buffer)
+   WRITE(buffer, fmt) a, b, c
+   buffer = TRIM(buffer)
+
+Alternatively, IOSTAT can be used to iteratively increase the buffer
+size to provide a more robust mechanism:
+
+   INTEGER :: n, stat
+
+   n = MIN_LENGTH
+   stat = -1
+   DO WHILE (stat /= 0)
+      ALLOCATE (CHARACTER(LEN=MAX_LEN) :: buffer)
+      WRITE(buffer, fmt, IOSTAT=stat) a, b, c
+      IF (stat /= 0) DEALLOCATE(buffer)
+   END DO
+   buffer = TRIM(buffer)
+
+If the buffer could instead be an unallocated, deferred-length string
+then the implementation could be responsible for ensuring a string of
+sufficient length is allocated.  The implementation could either start
+with a large allocation or even use a strategy to progressively
+allocate larger strings until sufficiency is obtained.
+
+Question: Should allocated, deferred-length strings behave just as
+fixed-length strings, or should they be potentially reallocated as-if
+by intrinsic assignment.
+
+   
+
+3. Endorsement
+
+The Data subcommittee endorses this functionality.
+
+

@@ -1,0 +1,73 @@
+To: J3                                                07-195
+From: R. Bleikamp
+Subject: fixed form macro expansion
+Date: 2007 April 24
+
+The rules for macro expansion talk about 'lexical tokens', which are
+defined as:
+lexical token (3.2) : A sequence of one or more characters with a
+                      specified interpretation.
+
+A 'specified interpretation' makes sense in the context of
+Fortran statements, but is less clear in the context of a macro
+body (after writing this paper, i thinks its completely unclear
+what we mean).   See the example below.
+
+Possible approachs for defining a "lexical token" in a macro body
+assuming fixed form include:
+  1) assume the (expanded?) macro body is a sequence of fortran
+     statements, and do the lexical analysis based on that, OR
+  2) assume the macro body is in free form, and use spaces and
+     punctuation are token delimiters, OR
+  3) define a new syntax for tokens in a macro body (a purely textual
+     definition)
+- -
+The problem with (1) is that the macro body isn't actually a sequence
+of fortran statements, it merely needs to produce statements
+after macro expansion.  Also, this definition of lexical tokens seems
+to require more work from the compiler than might be desirable.
+Also, some likely expansions are non-intuitive, for example:
+
+      define macro :: foo(i)
+          = 1 , i
+      end macro
+      define macro bar (x)
+          DO 10 X
+          expand foo (37)
+      end macro
+      expand bar(x)
+
+The compiler can't tell if "DO 10 X" is one token, or 3 tokens,
+until after it expands "foo".  At that point, it can tell that
+we have a DO statement (and "DO 10 X" is 3 tokens).
+If "foo" expanded to " = 1", then "DO 10 X" is one token.
+
+I find this somewhat bizarre, even if it is a little perverse
+(but then fixed form is pretty bizarre).
+
+- -
+Approach (2) (macro bodies are free form, even if
+the source file is fixed form) is a bit cleaner, but will
+undoubtedly seem absurd to the user.  I'm not sure it fixes
+all the problems either.  In particular, will tokens such as
+ENDDO (or END DO) in a macro body cause a problem?
+- -
+Approach (3) (some new simple tokenizing rules for macro bodies)
+Seems easier to describe, understand and implement, but is not very
+Fortran like.  More like a pre-processer that supports macros.
+But I think (3) is by far the easiest to describe and understand.
+The rules can be very similar to free form, probably simpler.
+But have to handle tokens continued over a line boundry maybe?
+- -
+
+Recommendations: if approach (1) is desired (thats what the
+standard seems to do now), I think an example that shows how
+a wierd case is tokenized would be desirable.  I think approach 1 is
+acceptable to the user, requires fewer edits to the standard, but is
+clearly harder for the compiler to get right.
+
+
+Approach 3 seems the most desirable to me, but requires more edits
+to the standard.  I'm probably biased towards (3) since I've
+written one too many Fortran lexical scanners.
+

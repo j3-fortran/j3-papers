@@ -1,0 +1,877 @@
+
+                                             J3/06-170
+
+To: J3
+From: Malcolm Cohen
+Subject: Clause 5 rewrite change list
+Date: 2006/04/24
+References: 06-169.
+
+1. Introduction
+
+This paper contains a brief description of most of the changes I have made
+to clause 5.  Some rationale appears for some changes.
+
+The results of these changes appear in 06-169.
+
+2. Change list
+
+- Since c05 never did apply only to data objects, I've changed its title.
+
+- Added introductory section title "General".
+
+- Added introductory waffle about type and attributes etc. of procedures. 
+
+- Deleted Note 5.1 as it is completely trivial.  This was only slightly
+  noteworthy in F90, it is not at all noteworthy now.
+
+  Anyway, examples should be at the end of a section, not at the beginning
+  before we have even told the reader about what any of the syntax is or what
+  any of it means.
+
+- Added 5.1.1 "Syntax".
+
+- Added general stuff about specifying type under type declaration statement
+  (previously this was under <declaration-type-spec>) together with general
+  stuff about specifying attributes.
+
+- Moved the material from "Declaration type specifiers", together with the
+  BNF for <declaration-type-spec>, into c04 under a new section "Type
+  specifiers and type compatibility".  Also moved the definition of <type-spec>
+  to there, together with Note 5.2.  This is because c04 already uses this
+  stuff.  It also makes sense to put both kinds of type specifier together.
+
+- Amalgamated "CLASS=>ptr/alloc for components" and "CLASS=>ptr/alloc/dummy"
+  into "CLASS=>ptr/alloc/dummy", under "Type specifiers and ...".
+
+- Deleted "A function result may be declared to have the POINTER or ALLOCATABLE
+  attribute." as being unnecessary.  And unhelpful - it may be declared to have
+  other attributes, e.g. DIMENSION/ASYNCHRONOUS/TARGET/VOLATILE.
+
+- Made initialization into its own subsection.  Made the cross-ref back from
+  DATA refer to this rather than 5.1.
+
+- Deleted "The additional attributes that may appear in the attribute
+  specification of a type declaration statement further specify the nature of
+  the entities being declared or specify restrictions on their use in the
+  program.".  It's just waffle.  The attribute definitions say what they do!
+
+- Made the type declaration statement examples into a subsection.
+
+- New section "Attributes", hoisted all the attribute subsubsections to be
+  subsections of this.
+
+- Hmm, accessibility (PUBLIC/PRIVATE) is unlike most other attributes in that
+  it applies to an identifier not an object or procedure.  Grrr.
+  No change made.
+
+- Rewrote ALLOCATABLE attribute definition to say that an entity with it is a
+  variable.
+
+- Ditto ASYNCHRONOUS.
+
+- This only has BIND for data entities (it means variable or common block,
+  sigh).  We probably should add BIND for procedures here too.
+
+  The dichotomy between the two different BIND attributes is horrible.  We
+  should have given them different names!  Oh well.
+
+- Moved some of the language-binding-spec constraints into the BIND subsection,
+  viz the ones that are about BIND rather than about type-decl-stmt syntax.
+
+- The constraint
+    "\dcons{(\snref{attr-spec}) A \si{language-binding-spec} shall appear only
+     in the specification part of a module.}"
+  is arguably broken, since constraints on attributes apply no matter how they
+  are specified, and we want to allow BIND on COMMON blocks outside of modules.
+  Why, I don't know, but apparently we do.
+  Reworded as
+    "\dcons{A type declaration statement containing a
+     \si{language-binding-spec} shall appear only in the specification
+     part of a module.}"
+  I later reworded this even more!
+
+- The constraint
+    "\dcons{(\snref{type-declaration-stmt}) If a \si{language-binding-spec} is
+     specified, the entity declared shall be an interoperable variable
+     (\ref{D15:Interoperability between Fortran and C entities}).}"
+  is broken, since there can be multiple entities declared (so long as the
+  NAME= clause does not appear).
+
+  Reworded as
+    "\dcons{(\snref{type-declaration-stmt}) If a \si{language-binding-spec} is
+     specified, the \si{entity-decl}\st{-list} shall not contain any
+     procedure names.}"
+
+  And the other aspects of BIND are in the attribute description, where we have
+  new constraints.
+    "\dcons{An entity with the BIND attribute shall be a common block,
+     variable, or procedure.}
+
+     \dcons{A variable with the BIND attribute shall be interoperable
+     (\ref{D15:Interoperability between Fortran and C entities}).}"
+
+  Yes, a new constraint has appeared.  I believe it has no effect that was not
+  a consequence of the previous constraints in different places.
+
+- Prose "The BIND attribute implies the SAVE attribute..."
+  is broken, since the SAVE attribute is not allowed for procedures that are
+  not procedure pointers  (and we don't allow BIND for procedure pointers).
+  Fixed by inserting "for a variable or common block".
+  Yes, the section heading is "BIND attribute for data entities", but that
+  does not excuse gratuitous overstatements.
+
+- Deleted note
+    "Specifying the BIND attribute for an entity might have no discernable
+     effect for a processor that is its own companion processor."
+  as it is demonstrably FALSE!  Since BIND implies SAVE, it has a very
+  discernable effect!
+
+- "The rank or rank and shape is specified by the \si{array-spec}, if there is
+   one, in the \si{entity-decl}, or by the \si{array-spec} in the DIMENSION
+   \si{attr-spec} otherwise."
+  is broken, since array shapes can also be specified by other statements.
+  Sigh.  Yes, it mentions that, but at least some of the other statements just
+  have syntax with no mention of them conferring the DIMENSION attribute!  Grr.
+  I am going to fix this by changing ALL statements which can confer arrayness
+  to use <array-spec>, and constraining the <array-spec> to the right kind.
+  Then we can just refer to the defining <array-spec> in the DIMENSION
+  attribute description and have some chance of getting it right.
+  The fixed sentence simply reads
+    "The rank or rank and shape is specified by its \si{array-spec}."
+
+- Typical confusion
+    "\dcons{(\snref{explicit-shape-spec}) An explicit-shape array whose bounds
+     are not initialization expressions shall be declared only in a subprogram
+     or interface body.}"
+  is broken, since at the <explicit-shape-spec> level we cannot see what entity
+  is being declared.  Fixed to
+    "\dcons{(\snref{explicit-shape-spec}) An \si{explicit-shape-spec} whose
+     bounds are not initialization expressions shall appear only in a
+     subprogram or interface body.}"
+  Actually, this is a slight TECHNICAL CHANGE, since the requirement on
+  specification expressions in modules to be initialization expressions
+  is not currently a constraint.
+  I.e. we don't currently require this
+    MODULE fred
+      INTEGER :: n
+      REAL,DIMENSION(n) :: a(10),b(20)
+    END
+  to be diagnosed, even though it is invalid.
+
+- Deleted prose
+    "An array with the ALLOCATABLE attribute shall be declared with a
+     \si{deferred-shape-spec}\st{-list}."
+  since it is covered by a constraint, which I just moved into the
+  deferred-shape section and removed the cross-ref.
+
+- Deleted spurious indexing "\mindex{array!deferred-shape}" from the
+  allocatable array term definition (looks like a copy-and-paste error).
+
+- Broken prose
+    "The bounds of the array target or allocatable array are unaffected by any
+     subsequent redefinition or undefinition of variables involved in the
+     bounds' specification expressions."
+  (1) I don't know where "array target" comes from, we are talking about array
+      pointers and allocatable arrays.  (The only other occurrence of "array
+      target" in the whole standard is in c13, and that looks like it is
+      probably wrong too.)
+  (2) The expressions are *NOT* specification expressions!
+  Fixed ("target"->"pointer", deleted "specification").
+
+- Deleted redundant
+    "This attribute may also be specified by an EXTERNAL statement
+     (\ref{D12:EXTERNAL statement}), a \si{procedure-declaration-stmt}
+     (\ref{D12:Procedure declaration statement}) or an interface body that is
+     not in an abstract interface block (\ref{D12:Interface block})."
+
+- Merged
+    "\dcons{(\snref{type-declaration-stmt}) The INTENT ...
+     attributes may be specified only for dummy arguments.}
+  and
+    "\dcons{(\snref{type-declaration-stmt})
+     The INTENT attribute shall not be specified for a dummy procedure
+     without the POINTER attribute.}"
+  into
+    "\dcons{An entity with the INTENT attribute shall be a dummy data
+     object or a dummy procedure pointer.}"
+
+- Constraint
+    "\dcons{(\snref{intent-spec}) A pointer object with the INTENT~(IN)
+     attribute shall not appear as..." (in nullify etc.)
+  is broken, since it's obviously meant to apply also to procedure pointers.
+  And why is it limited to the syntax of <intent-spec>?  Which cannot see the
+  entity we're talking about?
+  Fixed to "A pointer with ...".
+
+- Depluralised "PARAMETER ... entities that are named constants".
+
+- Prose
+    "The \si{object-name} has the value specified by the
+     \si{initialization-expr} that appears on the right of the equals; if
+     necessary, the value is converted according to the rules of intrinsic
+     assignment (\ref{D7:Interpretation of intrinsic assignments}) to a value
+     that agrees in type, type parameters, and shape with the
+     \si{object-name}."
+  is broken.  The <object-name> is a piece of syntax, it doesn't have a value.
+  And the conversion stuff just duplicates the text about initialization.
+  Fixed to
+    "The entity has the value specified by its \si{initialization-expr},
+     converted, if necessary, to the type, type parameters and shape of the
+     entity."
+
+- Prose
+    "An entity with the \mindex{attribute!SAVE} \tdef{SAVE attribute}, in the
+     scoping unit of a subprogram, retains its association status, ..."
+  is broken.  A common block is an entity, and it doesn't have an association
+  status or any of the above.
+
+- Constraint "The SAVE attribute shall not be specified for an object that is
+  ... a procedure" is broken in two ways;
+  (1) An object is not a procedure and a procedure is not an object,
+  (2) The SAVE attribute ***IS*** permitted for a procedure pointer.
+  Rewrote as
+    "\dcons{An entity with the SAVE attribute shall be a common block,
+     variable, or procedure pointer.}
+
+     \dcons{The SAVE attribute shall not be specified for a dummy argument,
+     a function result, an automatic data object, or an object that is in
+     a common block.}
+  (The first one chops out procedures other than procedure pointers, macros,
+  named constants, modules, etc.)
+
+- In DATA, replaced
+    "confirmed by a SAVE statement or a type declaration statement containing
+     the SAVE attribute."
+  by
+    "confirmed by explicit specification."
+  It's not important how it gets it!
+
+- In SAVE statement, deleted
+    "\dcons{(\snref{proc-pointer-name}) A \si{proc-pointer-name} shall be the
+     name of a procedure pointer.}"
+  since it is now covered by the general constraint.
+
+- Changed
+    "\dcons{ If the TARGET attribute is specified, the POINTER, EXTERNAL,
+     INTRINSIC, or PARAMETER attribute shall not be specified.}
+  to
+    "\dcons{An entity with the TARGET attribute shall be a variable.}
+
+     \dcons{An entity with the TARGET attribute shall not have the POINTER
+      attribute.}"
+
+- Replaced
+    "\dcons{(\snref{type-declaration-stmt}) If the VALUE attribute is
+     specified, the PARAMETER, EXTERNAL, POINTER, ALLOCATABLE, DIMENSION,
+     VOLATILE, INTENT(INOUT), or INTENT(OUT) attribute shall not be
+     specified.}
+
+     \dcons{(\snref{type-declaration-stmt}) If the VALUE attribute is
+     specified, the length type parameter values shall be omitted or
+     specified by initialization expressions.}
+
+     \dcons{(\snref{type-declaration-stmt}) The VALUE attribute shall not
+     be specified for a dummy procedure.}"
+  by
+    "\dcons{An entity with the VALUE attribute shall be a scalar dummy data
+     object.}
+
+     \dcons{An entity with the VALUE attribute shall not have the
+     ALLOCATABLE, INTENT(INOUT), INTENT(OUT), POINTER, or VOLATILE attributes.}
+
+     \dons{If an entity has the VALUE attribute, any length type parameter
+     value in its declaration shall be omitted or specified by an
+     initialization expression.} 
+  NB: I'm sorry if people are going to miss the randomly specified constraints
+  of attribute incompatibilities, but I feel it is more important to say what
+  we mean (like "is a variable") rather than to obfuscate it.  If people want
+  a cross-ref table of attribute incompatibilities (like the Russians do),
+  someone can draw it up and add it as a non-normative annex.
+
+- Replaced <deferred-shape-spec-list> in the ALLOCATABLE statement with
+  <array-spec> (so that the DIMENSION attribute description works more
+  easily).  Thought about adding a constraint
+    "\dcons{(\snref{allocatable-stmt}) An \si{array-spec} in an
+     \si{allocatable-stmt} shall be a \si{deferred-shape-spec}\st{-list}.}"
+  then thought better of it since it is already covered under the ALLOCATABLE
+  attribute.
+
+- Rewrote part of the PARAMETER statement to correct number and article.
+
+- Moved
+    "A scalar entity of derived type is a \tdef{structure}. If a derived 
+     type has the SEQUENCE property, a scalar entity of the type is a 
+     \tdef{sequence structure}."
+  from the "TYPE" section (which is about declaration type specifiers) to
+  the "Derived types" section where it belongs.  (It is only cross-reffed
+  once, in c02.)
+
+- In c02, changed
+    "A scalar object of such a derived type is called a <<structure>>"
+  to
+    "A scalar object of derived type is called a <<structure>>".
+  We are talking about all derived types, not a particular set (so "such" is
+  unnecessary).  And this makes the language more uniform.
+
+- In aa, changed the definition of attribute from
+    "A property of a data object that may be specified in a type declaration
+     statement (\snref{type-declaration-stmt})."
+  to
+    "A property of an entity that determines its uses."
+
+  Since procedures have attributes too, like PUBLIC/PRIVATE/EXTERNAL/INTRINSIC
+  etc.  I suppose we could say "Attributes of data objects can be specified in
+  type declaration statements.", but why bother?
+
+- In aa, fixed the defn of type decl stmt from
+    "An INTEGER, REAL, DOUBLE PRECISION, COMPLEX,
+     CHARACTER, LOGICAL, or TYPE (\sinr{type-name}) statement."
+  to
+    "An INTEGER, REAL, DOUBLE PRECISION, COMPLEX, CHARACTER, LOGICAL,
+     TYPE (\sinr{type-name}), or CLASS (\sinr{type-name}) statement."
+  Grr.
+
+- In c05, changed
+    "(\snref{type-declaration-stmt}) If the POINTER attribute is
+     specified, the ALLOCATABLE, TARGET, EXTERNAL, or INTRINSIC attribute
+     shall not be specified.}"
+  to
+    "An entity with the POINTER attribute shall not have the ALLOCATABLE,
+     EXTERNAL, INTRINSIC, or TARGET attribute."
+
+- Changed
+    "\dcons{(\snref{type-declaration-stmt}) The PARAMETER attribute shall not
+     be specified for a dummy argument, a pointer, an allocatable entity, a
+     function, or an object in a common block.}"
+  to
+    "\dcons{An entity with the PARAMETER attribute shall not be a dummy
+     argument, a pointer, an allocatable entity, a procedure, or an object in a
+     common block.}"
+  to
+    "\dcons{An entity with the PARAMETER attribute shall not be a variable or a
+     procedure.}"
+
+
+- Changed
+    "\dcons{(\snref{type-declaration-stmt}) The \si{initialization} shall
+     appear if the statement contains a PARAMETER attribute (\ref{D5:PARAMETER
+     attribute}).}"
+  to
+    "\dcons{(\snref{type-declaration-stmt}) The \si{initialization} shall
+     appear if the statement contains the PARAMETER keyword (\ref{D5:PARAMETER
+     attribute}).}".
+
+- Changed
+    "\dcons{(\snref{attr-spec}) The PROTECTED attribute is permitted only in
+     the specification part of a module.}"
+  to
+    "\dcons{(\snref{attr-spec}) The PROTECTED keyword is permitted only in
+     the specification part of a module.}".
+
+- Changed
+    "\dcons{(\snref{type-declaration-stmt}) If the PROTECTED attribute is
+     specified, the EXTERNAL, INTRINSIC, or PARAMETER attribute shall not be
+     specified.}"
+  to
+    "\dcons{(\snref{type-declaration-stmt}) If the PROTECTED keyword appears,
+     the EXTERNAL, INTRINSIC, or PARAMETER keyword shall not appear.}".
+
+- Took the BNF refs off
+    "\dcons{If the name of a generic intrinsic procedure is explicitly..."
+  since they were irrelevant, and one was wrong (the name of the entity not
+  being visible from <attr-spec>).
+
+- Changed
+    "\dcons{(\snref{entity-decl}) The * \si{char-length} option is permitted
+     only if the type specified is character.}"
+  to
+    "\dcons{(\snref{entity-decl}) If the type specified is not character,
+     * \si{char-length} shall not appear.}".
+
+- Changed
+    "\dcons{A type declaration statement containing a
+      \si{language-binding-spec} shall appear only in the specification
+      part of a module.}"
+  to
+    "\dcons{A variable with the BIND attribute shall be declared in the
+     specification part of a module.}".
+  (And removed the corresponding text under the BIND statement.)
+
+- Changed
+    "\dcons{(\snref{bind-stmt}) If a \si{bind-entity} is a common block,
+     each variable of the common block shall be interoperable
+     (\ref{D15:Interoperability of scalar variables},
+     \ref{D15:Interoperability of array variables}).}"
+  to
+    "\dcons{Each variable of a common block with the BIND attribute shall be
+     interoperable.}".
+  I am not convinced that giving low-level refs are better than a single
+  higher-level one here, so I've just deleted them (the higher-level ref
+  now appears in the previous constraint).
+
+- Deleted
+    "\dcons{(\snref{type-declaration-stmt}) If the PROTECTED keyword appears,
+the EXTERNAL, INTRINSIC, or PARAMETER keyword shall not appear.}"
+  Since it was always covered by
+    "\dcons{The PROTECTED attribute is permitted only for a procedure pointer
+     or named variable that is not in a common block.}".
+
+- Problematic:
+    "\dcons{The PROTECTED attribute is permitted only for a procedure pointer
+     or named variable that is not in a common block.}"
+  is ambiguous: is it permitted for a procedure pointer that is in a common
+  block?  Obviously we did not mean that...
+  Furthermore, since subobjects of PROTECTED variables have the PROTECTED
+  attribute, it is FALSE!
+  Split into two:
+    "\dcons{An entity with the PROTECTED attribute shall be a procedure pointer
+     or variable.}
+
+     \dcons{An entity with the PROTECTED attribute shall not be in a common
+     block.}".
+
+- Wrong again;
+    "\dcons{A pointer object that has the PROTECTED attribute and is accessed
+     by use association shall not appear as..."
+  is broken because we intend the restrictions to apply to procedure pointers
+  too.  Deleted "object".
+
+- Reworded C504
+    "\dcons{(\snref{entity-decl}) If a \si{type-param-value} in a
+     \si{char-length} in an \si{entity-decl} is not a colon or an
+     asterisk, it shall be a \si{specification-expr}.}"
+  This is broken, because <specification-expr> is not a possibility
+  for <type-param-value>.
+  I would change this to
+    "\dcons{(\snref{entity-decl}) A \si{type-param-value} in a
+     \si{char-length} in an \si{entity-decl} shall be a colon,
+     asterisk, or specification expression.}
+  but ... see next item!
+
+- Consider
+    "A \si{specification-expr} in an \si{array-spec}, in a
+     \si{type-param-value} in a \si{declaration-type-spec} corresponding to a
+     length type parameter, or in a \si{char-length} in an \si{entity-decl}
+     shall be an initialization expression unless it is ..."
+  {nit: how can a <declaration-type-spec> correspond to a length type
+   parameter?}
+  This is BROKEN, since the COMMON statement does not use <array-spec>.
+  Worse, <specification-expr> only appears at
+    [71:14] C501 re <type-param-value> in <declaration-type-spec>.
+    [72:12] C504 re <type-param-value> in <entity-decl> (<char-length>).
+    [74:14-19] This text, not in the syntax.
+    [78:19-20] R512 and R513 bounds in <explicit-shape-spec>.
+    [125:10] This is the definition of <specification-expr>.
+    [288:3] C1279 adding an additional requirement to <specification-expr>
+            for an elemental subprogram.
+  As we can see, it only appears in the syntax in <array-spec>.
+  Therefore this is even more BROKEN since it does not appear in
+  <type-param-value> at all (it uses <scalar-int-expr> instead).
+
+  Wow.  So much rewriting needed, so little time.
+  Much of this breakage is caused by PDTs.  Insufficient integration...
+
+  (i) Changed COMMON to use <array-spec> and added constraint
+    "\dcons{(\snref{common-block-object}) An \si{array-spec} in a
+     \si{common-block-object} shall be an \si{explicit-shape-spec}\st{-list}.}"
+
+  (ii) The "right" solution is to separate out <type-param-value>s that are
+       specifications from the runtime occurrences.  Sigh.
+
+  OK, for now I'm going to bodge it.  Correct and obscure is better than
+  incorrect and nonsense.
+
+  Changed <type-param-value> BNF to:
+    "<type-param-value> <<is>> :
+                        <<or>> *
+                        <<or>> <specification-expr>
+                        <<or>> <scalar-int-expr>
+
+     Constraint: <scalar-int-expr> shall not be a <specification-expr>."
+  Note the constraint is here just to get an unambiguous parse.
+  Now we can leave the rest alone, horribly worded as they are.
+
+  Well, reworded it:
+    "A \si{specification-expr} in an \si{array-spec}, in a
+     \si{type-param-value} in a \si{declaration-type-spec} corresponding to a
+     length type parameter, or in a \si{char-length} in an \si{entity-decl}
+     shall be an initialization expression unless it is ..."
+  as
+    "A \si{specification-expr}
+     shall be an initialization expression unless it is ..."
+  Since <specification-expr> already *IS* only in those places!  That is the
+  point of having it!
+
+  Also changed
+    "If the data object being declared depends on the value of a
+     \si{specification-expr} that is not an ..."
+  to
+    "If an array bound or type parameter of a data object depends on the value
+     of a \si{specification-expr} that is not an ...".
+  Since I'm not convinced that there necessarily is a data object being
+  declared.  Anyway, I think it reads better.
+
+- Note 5.1
+    "An automatic object shall neither appear in a SAVE or DATA statement nor
+     be declared with a SAVE attribute nor be initially defined by an
+     \si{initialization}."
+  reworded as
+    "An automatic object shall not have the SAVE attribute and shall not be an
+     object in a common block."
+  Note: I deliberate left out the initialized bit, since (non-default)
+        initialization => SAVE, and there is nothing wrong with default init.
+  Note: I added the common block bit just to make the sentence more
+        interesting.  I hope it's true.
+
+- Reworded
+    "If an \si{entity-decl} contains \si{initialization} and the
+     \si{object-name} does not have the PARAMETER attribute, the entity is a
+     variable with \tdef{explicit initialization}."
+  to
+    "The appearance of \si{initialization} in an \si{entity-decl} for an entity
+     without the PARAMETER attribute specifies that the entity is a variable
+     with \tdef{explicit initialization}."
+
+  And changed "<object-name>" to "variable" throughout the rest of that
+  paragraph and the next.
+
+- Reworded
+    "The presence of \si{initialization} implies that \si{object-name} is
+     saved, except for an \si{object-name} in a named common block or an
+     \si{object-name} with the PARAMETER attribute.  The implied SAVE
+     attribute may be reaffirmed by explicit use of the SAVE attribute in the
+     type declaration statement, by inclusion of the \si{object-name} in a
+     SAVE statement (\ref{D5:SAVE statement}), or by the appearance of a SAVE
+     statement without a \si{saved-entity}\st{-list} in the same scoping unit."
+  as
+    "Explicit initialization of a variable that is not in a common block
+     implies the SAVE attribute, which may be confirmed by explicit
+     specification."
+  (We invented the term 2 paragraphs ago, why not use it?
+   And it is certainly not important *how* the SAVE attribute is explicitly
+   conferred.)
+
+- Deleted
+    "An \mindex{array!automatic} \tdef{automatic array} is an explicit-shape
+     array that is declared in a subprogram or interface body, is not a dummy
+     argument, and has bounds that are not initialization expressions."
+  because we never use this term outside of two comments and Annex C, and
+  in those cases our definition of "automatic object" and "array" suffice.
+
+  Actually, I think that much of Annex C could be deleted without harm; after
+  all, we never read it ourselves ... but that is a question for another day.
+
+- Change
+    "The number of sets of bounds specified is the rank."
+  to
+    "The rank is equal to the number of \si{explicit-shape-spec}s."
+  (This is more like how we say it in the other cases.)
+
+- Changed
+    "The lower bound is \si{lower-bound}, if present, and 1 otherwise."
+  to
+    "If \si{lower-bound} appears it specifies the lower bound; otherwise the
+     lower bound is 1."
+
+- Deleted
+    "An array with the POINTER attribute shall be declared with a
+     \si{deferred-shape-spec}\st{-list}."
+  because it is covered by an almost immediately following constraint.
+
+- Reworded
+    "The bounds of the array pointer or allocatable array are unaffected by any
+     subsequent redefinition or undefinition of variables involved in the
+     bounds' expressions."
+  to
+    "The bounds of the array pointer or allocatable array are unaffected by any
+     subsequent redefinition or undefinition of variables on which the bounds'
+     expressions depend."
+  to avoid the nebulous word "involved".
+
+- Reworded (assumed-size arrays)
+    "The rank equals one plus the number of \si{explicit-shape-spec}s."
+  to
+    "The rank is equal to one plus the number of \si{explicit-shape-spec}s."
+  to make the wording more like the other array types.
+
+- Reworded
+    "The bounds of the first $n-1$ dimensions are those specified by the
+     \si{explicit-shape-spec}\st{-list}, if present, in the
+     \si{assumed-size-spec}."
+  to
+    "If an \si{explicit-shape-spec}\st{-list} appears, it specifies the bounds
+     of the first rank $- 1$ dimensions."
+  ("n" is totally undefined, what was meant here was the rank.)
+  And change
+    "The lower bound of the last dimension is \si{lower-bound}, if present,
+     and 1 otherwise."
+  to
+    "If \si{lower-bound} appears it specifies the lower bound of the last
+     dimension; otherwise that lower bound is 1."
+
+- Changed
+    "The INTENT~(OUT) attribute for a nonpointer dummy argument specifies that
+     it shall be defined before a reference to the dummy argument is made
+     within the procedure and any actual argument that becomes associated with
+     such a dummy argument shall be definable.  On invocation of the
+     procedure, such a dummy argument becomes undefined except for components
+     of an object of derived type for which default initialization has been
+     specified."
+  to
+    "The INTENT~(OUT) attribute for a nonpointer dummy argument specifies that
+     the dummy argument becomes undefined on invocation of the procedure,
+     except for any subcomponents that are default-initialized
+     (\ref{D4:Default initialization for components}).  Any actual argument
+     associated with such a dummy argument shall be definable."
+  because
+  (1) sentence 1 was arguably broken - it didn't properly take into account
+      default initialization.  To the extent it was true, it was a mere
+      consequence of the result of undefinition.
+  (2) It's better to specify what it does rather than how to use it!
+  (3) It's subcomponents not just components that get default-initialized.
+  (4) Rather than just give an "exception", give the cross-ref that explains
+      how it works.  Maybe there should also be a cross-ref to c16 where even
+      more explanation appears?
+
+  And, after that paragraph, add note
+    "\begin{note}
+     If an actual argument associated with a non-pointer INTENT~(OUT) dummy
+     argument is finalizable it will be finalized before undefinition and
+     default initialization of the dummy argument (\ref{D4:Final subroutines}).
+     \end{note}"
+  Since there is otherwise no mention of the finalization implications.
+  They seem noteworthy somehow.
+
+- Rewrote
+    "The INTENT~(INOUT) attribute for a nonpointer dummy argument specifies
+     that it is intended for use both to receive data from and to return data
+     to the invoking scoping unit.  Such a dummy argument may be referenced or
+     defined.  Any actual argument that becomes associated with such a dummy
+     argument shall be definable.  The INTENT~(INOUT) attribute for a pointer
+     dummy argument specifies that it is intended for use both to receive a
+     pointer association from and to return a pointer association to the
+     invoking scoping unit.  Any actual argument associated with such a
+     pointer dummy shall be a pointer variable."
+  as
+    "The INTENT~(INOUT) attribute for a nonpointer dummy argument specifies
+     that any actual argument associated with the dummy argument shall be
+     definable.  The INTENT~(INOUT) attribute for a pointer dummy argument
+     specifies that any actual argument associated with the dummy argument
+     shall be a pointer variable."
+  because
+  (1) It cannot specify the user's thought processes - it is better to say
+      what it does, not how we imagined it would be used.
+  (2) That's it, just deleting witter.
+
+- Added, right at the top of INTENT, our intention:
+    "An INTENT~(IN) dummy argument is suitable for receiving data from the
+     invoking scoping unit, an INTENT~(OUT) dummy argument is suitable for
+     returning data to the invoking scoping unit, and an INTENT~(INOUT) dummy
+     argument is suitable for use both to received data from and to return data
+     to the invoking scoping unit."
+  Now that I've re-noticed note 5.10, I am not convinced we even need to say
+  this much!  But I've left it in for now.
+
+- Added new note under INTENT
+    "\begin{note}
+     The INTENT attribute for an allocatable dummy argument applies to both the
+     allocation status and the definition status.  An actual argument
+     associated with an INTENT(OUT) allocatable dummy argument is deallocated
+     on procedure invocation (\ref{D6:Deallocation of allocatable variables})."
+     \end{note}".
+  since it behooves us to mention this in the definitive subclause on INTENT.
+  It is only a note since sentence 1 follows by logic, and sentence 2 is
+  covered by the referenced subclause.
+
+- In Note 5.10, changed
+    "INTENT~(INOUT) is not equivalent to omitting the INTENT attribute.  The
+     argument corresponding to an INTENT~(INOUT) dummy argument always shall
+     be definable, ..."
+  to
+    "INTENT~(INOUT) is not equivalent to omitting the INTENT attribute.  The
+     actual argument corresponding to an INTENT~(INOUT) dummy argument is
+     always required to be definable, ..."
+  because: better English.
+
+- Changed
+    "The \mindex{PRESENT intrinsic} PRESENT intrinsic function may
+     be used to determine whether an actual argument has been associated with
+     a dummy argument having the OPTIONAL attribute."
+  to
+    "The \mindex{PRESENT intrinsic} PRESENT intrinsic function can
+     be used to determine whether an optional dummy argument is associated with
+     an actual argument."
+  because
+  (1) "can" because it is possible, not "may" (permitted).
+  (2) "has been" -> "is", because the PRESENT intrinsic has not retired.
+  (3) reversed because one uses PRESENT on the dummy, not on the actual.
+
+
+- In Note 5.6 (new numbering), changed
+    "The name of such a C identifier may include ..."
+  to
+    "The name of such a C identifier might include ..."
+  Since we are talking about possibility, not permission.
+
+- Change
+    "A data pointer shall neither be referenced nor defined unless it is
+     pointer associated with a target object that may be referenced or
+     defined."
+  to
+    "A data pointer shall not be referenced unless it is pointer associated
+     with a target object that is defined.  A data pointer shall not be defined
+     unless it is pointer associated with a target object that is definable."
+  because: it was ambiguous.
+
+- Change
+    "An entity with the \mindex{attribute!SAVE} \tdef{SAVE attribute}, in the
+     scoping unit of a subprogram, retains its association status, allocation
+     status, definition status, and value after execution of a RETURN or END
+     statement unless it is a pointer and its target becomes undefined
+     (\ref{D16:Events that cause the association status of pointers to become
+     undefined}(\ref{I16:RETURN or END})).  It is shared by all instances
+     (\ref{D12:Instances of a subprogram}) of the subprogram."
+  and
+    "An entity with the SAVE attribute, declared in the scoping unit of a
+     module or submodule, retains its association status, allocation
+     status, definition status, and value after a RETURN or END statement is
+     executed in a procedure that accesses the module or submodule unless it
+     is a pointer and its target becomes undefined."
+  to
+    "The SAVE attribute specifies that a variable retains its association
+     status, allocation status, definition status, and value after execution
+     of a RETURN or END statement unless it is a pointer and its target becomes
+     undefined (\ref{D16:Events that cause the association status of pointers
+     to become undefined}(\ref{I16:RETURN or END})).
+     If it is a local variable of a subprogram it is shared by all instances
+     (\ref{D12:Instances of a subprogram}) of the subprogram."
+  because: eliminate unnecessary redundancy and trivial wording variations.
+
+- Change
+    "The SAVE attribute may appear in declarations in a main program and has
+     no effect."
+  to
+    "The SAVE attribute has no effect on entities declared in a main program."
+  because:
+    (a) it's the SAVE keyword that appears.
+    (b) it does have an effect: multiple specification remains invalid,
+        it is just that it does not affect the entities involved.
+
+- In SAVE statement, changed:
+    "\dcons{(\snref{save-stmt}) If a SAVE statement with an omitted saved
+     entity list occurs in a scoping unit, no other explicit occurrence of the
+     SAVE attribute or SAVE statement is permitted in the same scoping unit.}"
+  to
+    "\dcons{(\snref{save-stmt}) If a SAVE statement with an omitted saved
+     entity list appears in a scoping unit, no other appearance of the
+     SAVE \si{attr-spec} or SAVE statement is permitted in that scoping unit.}"
+  because
+    (a) "appear...", not "occur...".
+    (b) It is the <attr-spec> that is prohibited.
+    (c) "explicit" just confuses the issue.  Giving the syntax elucidates.
+
+- In SAVE statement, DELETED
+    "For a common block declared in a SAVE statement, the values in the common
+     block storage sequence (\ref{D5:Common block storage sequence}) at the
+     time a RETURN or END statement is executed are made available to the next
+     scoping unit in the execution sequence of the program that specifies the
+     common block name or accesses the common block.  If a named common block
+     is specified in the scoping unit of the main program, the current values
+     of the common block storage sequence are made available to each scoping
+     unit that specifies the named common block.  The definition status of
+     each object in the named common block storage sequence depends on the
+     association that has been established for the common block storage
+     sequence.".
+  because:
+     This is unnecessary verbiage.  We already have rules about common blocks.
+     This just reiterates some of them (or the consequences of some of them).
+
+- In SAVE statement, DELETED
+    "A SAVE statement may appear in the specification part of a main program
+     and has no effect."
+  because
+    (a) it is FALSE.
+    (b) to the extent it is true, it is covered by the SAVE attribute.
+
+- In DATA statement,
+    "This statement is used to specify explicit initialization(...)."
+  ->
+    "This statement specifies explicit initialization(...)."
+  because
+    We don't know what it is used for, but we know what it specifies!
+
+- In VOLATILE (attribute), changed
+    "A pointer with the VOLATILE attribute may additionally have its
+     association status and array bounds changed by means not
+     specified by the program."
+  to
+    "A pointer with the VOLATILE attribute may additionally have its
+     association status, dynamic type and type parameters, and array bounds
+     changed by means not specified by the program."
+  because:
+    That's what we say for ALLOCATABLE VOLATILE.  I cannot believe we want
+    to say anything different for POINTER VOLATILE.
+    (OK, so maybe someone wants to interp this, but I'm just going to fix it.)
+
+- In IMPLICIT,
+    changed "accessible to the host scope" to "accessible in the host scope".
+
+- Changed
+    "\dcons{(\snref{namelist-stmt}) The \sinr{namelist-group-name} shall not be
+     a name made accessible by use association.}"
+  to
+    "\dcons{(\snref{namelist-stmt}) The \sinr{namelist-group-name} shall not be
+     a name accessed by use association.}".
+  because: That's how we say it (usually, anyway).
+
+- In storage association,
+    change "provide for control of" to "provide control of".
+
+- Change
+    "For a nonzero-sized array, the use of the array name unqualified by a
+     subscript list in an EQUIVALENCE statement has the same effect as using
+     an array element designator that identifies the first element of the
+     array."
+  to
+    "For a nonzero-sized array, the use of the array name unqualified by a
+     subscript list as an <equivalence-object> has the same effect as using
+     an array element designator that identifies the first element of the
+     array."
+  because: It is not meant to apply to any other uses, e.g.
+    in "A(SIZE(A)-1)", the A in SIZE(A) is not the same as A(1)!
+
+- In COMMON, change
+    "The form \si{variable-name}~(\si{explicit-shape-spec}\st{-list}) declares
+     \si{variable-name} to have the DIMENSION attribute and specifies the
+     array properties that apply."
+  to
+    "The form \si{variable-name}~(\si{array-spec}) specifies the DIMENSION
+     attribute for that variable."
+  and make it a paragraph on its own (the next sentence is about derived types,
+  nothing to do with arrays at all).
+
+- In DATA, change
+    "\dcons{(\snref{data-stmt-object}) A variable whose designator is included
+     in a \si{data-stmt-object}\st{-list} or a \si{data-i-do-object}\st{-list}
+     ..."
+  to
+    "\dcons{(\snref{data-stmt-object}) A variable whose designator appears as
+     a \si{data-stmt-object} or a \si{data-i-do-object} ..."
+  because:
+    (i) the designator appears, it's not "included".
+    (ii) I don't believe it's meant to apply to things like KIND(X).
+
+- Change
+    "A nonpointer array whose unqualified name appears in a
+     \si{data-stmt-object}\st{-list} is equivalent to a complete sequence of
+     its array elements ..."
+  to
+    "A nonpointer array whose unqualified name appears as a
+     \si{data-stmt-object} or \si{data-i-do-object} is equivalent to a complete
+     sequence of its array elements ..."
+  because:
+    it was BROKEN.  In "A(SIZE(A))", the A in SIZE(A) is not a sequence of
+    array elements.
+
+===END===

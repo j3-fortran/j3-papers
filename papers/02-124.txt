@@ -1,0 +1,164 @@
+
+                                                    J3/02-124
+
+Date:     February 8, 2002
+To:       J3
+From:     Dick Hendrickson
+Subject:  Update to 01-386  Questions about associated in CH 8
+
+This is a slight update of 01-386 which was not acted on at the last
+meeting.
+
+1)  I think we need a note describing the differences between
+ASSOCIATE and EQUIVALENCE, HOST association, pointers, and dummy
+argument association.  The ASSOCIATE concept seems to share some
+of all of these, but isn't really the same as any of them.
+
+Possible we need to describe how the association really works--Is sort
+of
+like pointer association where the address of the target gets copied
+into
+the address part of the pointer?
+
+In an e-mail, attached below, Malcolm says ASSOCIATION has none of the
+dummy argument like restrictions.  IE the compiler must do enough
+analysis to get everything right.
+
+2)  I think section 2.4.3.1 needs to declare associate-name as a data
+object.  I don't see anything in 8.1.4 that does this.
+
+3)  We need to rework R612 and its constraints.  As it is now, there is
+no
+syntax rule that describes what
+
+associate-name%part-ref is.
+
+This may work out naturally if we do something for number 2)
+
+We also need to make sure that we disallow using the associate name as
+the middle name of a structure.  Something like
+       associate (x=> b%c)
+       a%x%d = 0                  !not a%b%c%d
+
+4)  We need to describe the relation between the associate-name and
+the real thing in the associate block.
+
+Suppose I do something like
+     associate (assoc_name => poly_thing)
+       ...
+       !do something to poly_thing that gives it a new type
+       !maybe deallocate and then reallocate
+
+Is this illegal?  I think it should be, but what covers it.
+
+Similar question for allocatable or pointer selectors.
+
+     associate (assoc_ptr => ptr, assoc_alloc => alloc )
+          ptr => something_else
+          deallocate (alloc) ; allocate (alloc(10, 10) )
+...
+      end associate
+Are those forms illegal, or does magic happen to assoc_ptr and
+assoc_alloc?
+
+Or something like
+
+    associate (a_array => array(1:10) )
+         do i = 1,10
+              a_array(i) = array( some subscript expression ) + 1
+        enddo
+   end associate
+
+Must the compiler do some sort of subscript analysis to make sure the do
+loop is done properly (i.e. associate is like equivalence), or can it
+assume the user guarantees there is no overlap (i.e. associate is like
+dummy arguments) and do full scale optimization?
+
+Malcolm sasy the compiler must get it right.
+
+5)  Can the association produce something that is illegal in some
+contexts?
+
+Something like
+     associate (assoc => poly_function(B_2D,C_3D))  !B_2D is of type
+point,
+                                                    !C_3D is of type 3D
+point which extends point
+
+where "assoc" will either be a 2D point or a 3D point depending on what
+poly_function does.  If 3D point extends 2D point types then can I have
+something like
+
+       if (expr) z = assoc%Z
+
+when poly_function returns a 2D point data type?  Naturally expr would
+have
+to be false.
+
+-------------
+e-mail from Malcolm
+
+Well, I'll try to answer a few questions and stuff in my own time (as
+in not in work time); I can manage that even if I don't have time to
+go over meeting papers (and the standard) very much.
+
+> So, which is ASSOCIATE like?  If I do something (real dumb) like
+>
+>    ASSOCIATE (Z => X(I:J:K), ZZ => X(L:M:N) )
+>        ZZ(...) = Z(...)*X(...)
+>    END ASSOCIATE
+>
+> Can the compiler assume that Z and ZZ are guaranteed by the
+> programmer to be independent and the references to X don't
+> overlap ZZ?  I couldn't find words that told me either way.
+
+It's the case of the dog that didn't bark in the night.
+
+> Maybe the fact that there is nothing prohibiting multiple
+> references to the same object via assocate means it is allowed
+> and the compiler must be pessimistic enough to get it right.
+
+That's correct.
+
+There are explicit words in ch12 which make
+  CALL S(a,b)
+where A and/or B is written to, into a guarantee that A and B are
+disjoint, by making a non-disjoint program non-standard-conforming.
+
+> Do you have any quick insights?  Either way I think some text
+> needs to be added, but maybe just a note or example.
+
+Something like
+
+***BEGIN NOTE:
+"Note: In
+
+   SUBROUTINE s(a,b)
+     a = 0
+     PRINT *,b
+   END
+
+the processor may assume that A and B do not overlap, because that would
+not be a standard-conforming program (12.4.1.7).  And so, in
+   CALL s(x(i),x(j))
+the processor knows that I should not be equal to J.
+
+However, in
+
+   ASSOCIATE(a=>x(i),b=>x(j))
+     a = 0
+     PRINT *,b
+   END ASSOCIATE
+
+the processor shall not make that assumption, because I being equal
+to J does not make the program non-conforming.
+***END NOTE.
+
+I think this is a little too obscure for an inline note myself; we don't
+tend to call out things as being standard-conforming unless there are
+confusing words which might make the user think that.  I don't think
+this
+is the case myself, so I'd suggest putting it into Annex C.
+
+But I'd not object strongly to putting it in as an inline note, not that
+I have any say in the matter right now!

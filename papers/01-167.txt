@@ -1,0 +1,202 @@
+
+                                                       	J3/01-167
+
+Date:		     21 March 2001
+From:		     Toon Moene
+To:		     J3
+Subject:	   Unresolved issues 144, 240, 242, 248, 254, 264.
+References:	01-007
+
+			---oooOOOooo---
+
+1. Unresolved issue 144 on page 20.
+
+/Interop decided that this was better treated in a future paper
+dealing with unresolved issues 160 and 239 on page 270.
+
+			---oooOOOooo---
+
+2. Unresolved issue 240 on page 234.
+
+The issue discusses the possibility to define the main program by means
+other than Fortran.  This possibility should be mentioned here.
+It would also have impact on subclause 2.1 where it says that
+"A program shall contain exactly one <main-program> <program-unit>".
+
+Edits:
+
+[233:37] Add
+
+"The main program may be specified by means other than Fortran;
+ in that case the program shall not contain a <main-program> <program-unit>.
+
+ Note
+
+ If the main program is not provided by means of Fortran, the processor
+ and its companion processor will perform suitable initialization of
+ both the Fortran and C runtime environment."
+
+[9:11] Replace
+
+"A program shall contain exactly one <main-program> <program-unit>."
+
+with
+
+"A program shall contain at most one <main-program> <program-unit>.
+
+ Note
+
+ A program should not have a <main-program> <program-unit> if the
+ main program is provided by means other than Fortran (see 11.1)"
+
+[234:1-10] Delete
+
+			---oooOOOooo---
+
+3. Unresolved issue 242 on page 270.
+
+This issue is concerned with "calling the main program" in and
+from both Fortran and C.  The standard should not allow the Fortran
+<main-program> <program-unit> be callable from C, nor should it be
+possible to call the C "main" function from Fortran or C.
+
+We think that it is already impossible to invoke the main program,
+if it is specified in Fortran, from either Fortran or C:
+
+a. A <main-program> <program-unit> cannot be invoked from within a
+   Fortran program, because it is neither a SUBROUTINE or a FUNCTION.
+b. Because syntactically (11.1) it cannot have a <binding-label-spec>,
+   it is not interoperable with any C procedure - therefore it cannot
+   be invoked from a C routine.
+
+To prevent invoking C "main" from Fortran, we suppose the following.
+
+I could not find words in the C standard that prohibit the calling
+of "main" from (another) C function; however, this does not have
+to concern us here.
+
+Edits:
+
+[270:33] Add
+
+"A Fortran subprogram shall not have a <binding-label-spec> equal to that
+ of the C "main" function."
+
+[270:34-37] Delete
+
+			---oooOOOooo---
+
+4. Unresolved issue 248 on page 388.
+
+This issue raises the question of providing access to errno.
+
+We think that the standard offers sufficient means to write and
+invoke C routines to query and set errno (C standard 7.5); therefore,
+we propose not to add any specific changes to the standard to
+enable this.
+
+[388:19-21] Delete.
+
+			---oooOOOooo---
+
+5. Unresolved issue 254 on page 389.
+
+The editor asks whether the description of interoperability between
+Fortran and C strings can be improved, in light of paragraph 3.6
+of paper 00-121.
+
+Paper 00-121 is Bill Mitchell's "A user's perspective of proposed C
+interoperability in the current draft of the next Fortran standard"
+based on his experience writing Fortran wrapper functions for the
+OpenGL library standard (February 2000).
+
+Bill raises two issues in paragraph 3.6 (that deals with character
+string function results):
+
+a. Given a "char *c_func(void)" that returns a string of 10 characters,
+   which of the two invocations are legal:
+
+   CHARACTER(LEN=10) :: str1
+   str1 = c_func()
+
+   or
+
+   CHARACTER(LEN=1), DIMENSION(10) :: str2
+   str2 = c_func()
+
+   or
+
+   none of the above ?
+
+b. When c_func actually allocates its return value, you don't know
+   its length in advance (same goes for an INTENT(OUT) character
+   string argument).  How do we deal with that from the Fortran end ?
+
+Concerning a., we think that neither of the two examples will work as
+intended (even after adding the required interface for c_func) because
+c_func is returning a C_PTR and not an array.  However, one can write
+a wrapper function that returns a CHARACTER(LEN=10) result, by copying
+the C character array into the (Fortran) RESULT variable.
+
+For b. the solution is, as Bill describes, to have two wrappers: One
+that gets the string that c_func returns, determines its length and uses
+that in the wrapper routine to allocate the resulting CHARACTER(LEN=*)
+RESULT of the wrapper function, which subsequently copies the C character
+array into the RESULT variable.
+
+The basic difficulty in mixing C character arrays and Fortran CHARACTER(LEN=)
+variables is, that of the first ones only the pointer to the first
+character is known and its length is not known independently, whereas Fortran
+strings are characterised by their contents and length.  So if one
+provides wrapper routines for a C library returning pointers to character
+arrays, and wants to preserve Fortran CHARACTER semantics on the Fortran
+side (i.e. without resorting to CHARACTER(LEN=*), POINTER), one has to
+make copies.
+
+Edits:
+
+[389:19] Add
+
+"Although C character arrays interoperate with Fortran character strings,
+a common idiom in C cannot be adequately dealt with: returning pointers
+to static character arrays or character arrays allocated by the called
+routine, unless the caller passes a Fortran string that is "large enough",
+i.e.  which, from the Fortran side, allows all characters to be accessed.
+Obviously, in that way one cannot know the true length of the string
+without searching for the trailing C null character.
+
+As a corollary, a C function that returns a pointer to a character array as
+its function value cannot be invoked from Fortran in a way that results in
+the contents of the string being transferred to a Fortran character string,
+because there is no argument association between the C character array and
+the Fortran string.  The only way to deal with this is to write a wrapper
+routine that does the copy into the (Fortran) RESULT variable."
+
+[389:21-24] Delete.
+
+			---oooOOOooo---
+
+6. Unresolved issue 264 on page 59.
+
+The editor asks if "type compatibility" in the C standard doesn't
+just simply mean that "two enumeration types are compatible if
+(and only if) they specify enumeration constants with the same names
+and same values in the same order".  It is something defined by the
+C standard, not the C processor.  Therefore the first sentence in
+Note 4.63 is incorrect.  The Fortran standard sets a requirement for
+the "companion C processor" in specifying that it has to obey an
+additional constraint.
+
+Edits:
+
+[59:18] Replace
+
+"The C standard requires a processor to make two enumeration types
+ compatible only if they"
+
+with
+
+"The C standard specifies that two enumeration types are compatible
+ only if they"
+
+[59:23-31] Delete.

@@ -1,0 +1,104 @@
+To: J3                                                     J3/23-196
+From: Malcolm Cohen
+Subject: Access to module entities
+Date: 2023-June-14
+
+
+1. Introduction
+
+This arises out of the "namespace for modules" suggestions.
+The most useful part of those suggestions was a syntax for what
+might be termed "remote access" to a module entity.
+
+The same syntax could also be used to access enumerators of enumeration
+types, somewhat similar to one of C++'s facilities.
+
+
+2. Remote access to module entities
+
+We already have renaming on the USE statement to manage name clashes
+between entities imported from modules. If such an entity is only used
+a small number of times, there is a disadvantage that the renaming may
+be a long way from the usage.
+
+Several syntaxes have been suggested for such an access, e.g.
+    modulename ` entityname (back-quote)
+    modulename # entityname
+    modulename :: entityname
+    modulename % entityname
+
+These have problems:
+    back-quote eats a special character
+    octothorpe ditto
+    double-colon is ambiguous with array element vs array section notation
+    module names are not inherited via use association, so % only gives
+    one-level-back of access, which is not good enough.
+
+However, something like %% (double percent) seems to work.
+We can, I think, specify that module names flow through use and host
+association for the purpose of %% only.
+
+Here is an example of use,
+
+    Module m1
+        Real f(3),a
+    End Module
+    Module m2
+        Real b
+    Contains
+        Integer Function f()
+            f = 12345
+        End Function
+    End Module
+    Subroutine s
+        Use m1
+        Use m2
+        ...
+        m1%%f = [ -0.5, 0.0, 0.5 ]
+        Print *,m2%%f()
+    End Subroutine
+
+The example demonstrates using the feature to access otherwise-ambiguous
+entities from modules.
+
+An open question is whether remote access should bypass restrictions
+introduced by ONLY. This would be useful in some circumstances, but may
+be confusing.
+
+That is, should
+
+    Subroutine s
+        Use m1,Only:a
+        Use m2,Only:b
+        ...
+        m1%%f = 999 ! Should this be allowed?
+        ...
+
+Current thinking is that it should Not be allowed.
+
+Here is an example of more remote module access; it is very contrived
+to show how it works even when module names and variable names would
+clash if they were both "class (1) names".
+
+    Module mfarthest
+        Integer x
+    End Module
+    Module mfar
+        Use mfarthest
+    End Module
+    Module mnear
+        Use mfar
+        Type t
+            Real x
+        End Type
+        Type(t) mfarthest
+    End Module
+    Program not_a_problem
+        Use mnear
+        mfarthest%x = 2     ! accesses component x in variable mfarthest
+        mfarthest%%x = 3    ! accesses variable x in module mfarthest
+    End Program
+
+===END===
+
+

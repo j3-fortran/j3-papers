@@ -1,0 +1,124 @@
+To: J3                                                     J3/19-112
+From: Van Snyder
+Subject: Protected types
+Date: 2019-January-16
+
+Reference: 04-167, 04-370r1, 14-165r1, 18-265
+
+The Problem
+===========
+
+Assume a collection of data that are connected by pointers and a public
+pointer to access one, that gives access to the others, e.g., a linked
+list, a tree, ....
+
+Assume the code is large.
+
+Assume there are numerous places in the code where the collection is
+examined by using a pointer to "step through" the objects.
+
+Assume a new style directive is handed down that requires protection
+against changing such objects except within the module where their type
+is defined.
+
+Present solution
+================
+
+This would presently require to replace all examination of the objects
+with procedures, which would have a cost proportional to the size of the
+program, not the magnitude of the change.
+
+Alternative solution
+====================
+
+Allow to attach a PROTECTED attribute to the definition of the type,
+meaning that objects of the type cannot be changed except within the
+module where the type is defined.
+
+Module variables can have the PROTECTED attribute, but this does not
+protect variables accessed by pointer association, or as dummy
+arguments.
+
+Example
+=======
+
+module M
+
+  type, protected :: List_Item_t
+    character(42) :: Name = ""
+    integer :: Age = 0
+    type(list_item), pointer :: Next => null()
+  end type List_Item_t
+
+  type(list_item_t), public, protected :: First => null()
+
+contains
+
+....
+
+end module M
+
+program P
+
+  use M, only: First, List_Item_t
+  type(list_item_t), pointer :: List_Item
+
+! Code to fill the list
+...
+! Print the list
+
+  list_item => first
+  do while ( associated(list_item) )
+    if ( list_item%name == "Van Snyder" ) list_item%age = 39
+    print *, trim(name), " is age ", list_item%name
+  end while
+
+end program P
+
+The processor ought to issue an error message about changing
+list_item%name.
+
+Relationship to protected components
+====================================
+
+Paper 18-165 does not propose to allow a specification that PROTECTED is
+the default accessibility of components.  Assuming it were to do so, a
+"not protected" attribute would be necessary.  Maybe PUBLIC would work. 
+The PROTECTED attribute for module variables is described in subclause
+8.5.15 in 18-007r1.  It is not an <access-spec>, so it might seem a bit
+weird to use PUBLIC to contradict a default PROTECTED attribute.
+
+Assuming a specification that PROTECTED is the default accessibility of
+components is provided, the problem described in the previous section
+would be addressed.  Rather than the type being protected, all its
+components would be protected.
+
+It's not obvious that protected components could be made to solve all
+the problems that would be solved by a PROTECTED type attribute.
+
+It would be desirable, at least for economy of description, to define
+EVENT_TYPE, LOCK_TYPE, and a proposed NOTIFY_TYPE to be protected types.
+It is not obvious this could be accomplished by specifying that all
+their components are protected.
+
+See 14-165r1.
+
+C441b therein allows an object of protected type to be the <variable> in
+a statement specifier, provided the <variable> is required to be of a
+protected type that is defined in an intrinsic module.  This provides a
+loophole for EVENT_TYPE, LOCK_TYPE, and a proposed NOTIFY_TYPE.
+
+The description of C441f therein needs to have "that does not have
+INTENT(IN)" appended.
+
+History
+=======
+
+As far as I can tell by looking at 2004 and 2005 spreadsheets, there was
+no "protected components" proposal for Fortran 2008.  The proposal for
+protected types, 04-167, had a "hate dislike like love" score of
+0-0-11-0.  It had an ABC priority score of 0-4-8.  It was dropped from
+the work plan proposal during meeting 169, based upon priority.  It
+appears in 04-370r1.xls, but not in 04-370r2.xls.
+
+

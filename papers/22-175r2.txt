@@ -1,0 +1,200 @@
+To: J3                                                     J3/22-175r2
+From: John Reid 
+Subject: Remote polymorphic subobjects
+Date: 2022-July-20
+References: 22-007r1
+
+Discussion
+----------
+
+Existing constraints suggest an implementation would never need to
+query the dynamic type of an object on another image.
+
+R911 is
+
+"R911 data-ref is part-ref [ % part-ref ] ..."
+
+C917 states
+
+C917 (R911) Except as an actual argument to an intrinsic inquiry 
+      function or as the designator in a type parameter inquiry, a 
+	  data-ref shall not be a coindexed object that has a polymorphic 
+	  allocatable potential subobject component."
+	  
+This implies that the following program does not conform to the standard
+
+Example 1	  
+module mod_traj
+  type :: body
+     real :: mass = 1.0
+  end type body
+  type, extends(body) :: charged_body
+     real :: charge = 0.1
+  end type charged_body
+  type :: traj
+     class(body), allocatable :: particle(:)
+  end type traj
+end module mod_traj
+program test_traj
+  use mod_traj
+  type(traj) :: to_heaven[*]
+  class(traj), allocatable :: x
+  if (this_image() == num_images()) &
+    allocate( charged_body :: to_heaven%particle(this_image()) )
+  sync all
+  if (this_image() == 1) then
+     allocate(x, source=to_heaven[num_images()]) ! Breaks C917
+     select type(y => x%particle)
+     type is (charged_body)
+        write(*, *) 'size(y) = ',size(y)
+     end select
+   end if	 
+end program test_traj
+
+If the module is not changed but the program is changed to 
+
+Example 2
+program test_traj
+  use mod_traj
+  type(traj) :: to_heaven[*]
+  class(body), allocatable :: x(:)
+  if (this_image() == num_images()) &
+    allocate( charged_body :: to_heaven%particle(this_image()) )
+  sync all
+  if (this_image() == 1) then
+     allocate(x, source=to_heaven[num_images()]%particle) 
+        ! Accesses the type of particle
+     select type(x)
+     type is (charged_body)
+        write(*,*) " size(x)" ,size(x)
+     end select
+  end if
+end program test_traj
+
+no constraint is violated but there is access to the type of a remote 
+object. 
+
+With a polymorphic pointer component the constraint C918 is applicable.
+
+C918 Except as an actual argument to an intrinsic inquiry function or as 
+     the designator in a type parameter inquiry, if the rightmost 
+	 part-ref is polymorphic, no other part-ref shall be coindexed.
+	   
+This implies that the following program does not conform to the standard.
+
+Example 3
+module mod_traj
+  type :: body
+     real :: mass = 1.0
+  end type body
+  type, extends(body) :: charged_body
+     real :: charge = 0.1
+  end type charged_body
+  type :: traj
+     class(body), pointer :: particle(:) => null()
+  end type traj
+end module mod_traj
+
+program test_traj
+  use mod_traj
+  type(traj) :: to_heaven[*]
+  class(body), allocatable :: x(:)
+  if (this_image() == num_images()) &
+    allocate( charged_body :: to_heaven%particle(this_image()) )
+  sync all
+  if (this_image() == 1) then
+     allocate(x, source=to_heaven[num_images()]%particle) ! Breaks C918
+     write(*,*) "size(x) is ", size(x)
+   end if
+ end program test_traj
+
+
+If the module is not changed but the program is changed to 
+
+Example 4
+program test_traj
+  use mod_traj
+  type(traj) :: to_heaven[*]
+  class(traj), allocatable :: x
+  if (this_image() == num_images()) then
+    allocate( charged_body :: to_heaven%particle(this_image()) )
+  end if
+  sync all
+  if (this_image() == 1) then
+     allocate(x, source=to_heaven[num_images()]) 
+	 ! Needs access to the type of a subobject
+     select type(y => x%particle)
+     type is (charged_body)
+        write(*, *) 'size(y) ',size(y)
+     end select
+  end if
+end program test_traj
+
+no constraint is violated but there is access to the type of a remote 
+object. 
+
+The list of intrinsic inquiry functions includes SAME_TYPE_AS and
+EXTENDS_TYPE_OF, so those intrinsics should be excluded in constraints
+C917 and C918 to avoid a requirement of knowing the dynamic type on a
+remote image.
+
+Rewording is also needed needed to cover examples 2 and 4 above and 
+their generalizations.
+
+
+Edits to 22-007r1:
+
+[27:28+, 4.3.3. Fortran 2018 compatibility]
+
+
+  After paragraph 2, insert a new paragraph:
+
+  "Fortran 2018 allowed some access to a polymorphic object on a 
+  different image in a manner that required that implementation to 
+  determine the dynamic type of the object.  This document does not 
+  permit such access."
+
+
+[133:13, 9.4.2 Structure components, Constraint C917] 
+
+  After "intrinsic inquiry function", add 
+
+  "other than SAME_TYPE_AS, EXTENDS_TYPE_OF, ",
+  
+and change 
+
+"a data-ref shall not be a coindexed object that has a polymorphic 
+allocatable potential subobject component."
+
+to
+
+"if a data-ref has a part-ref that is coindexed, any part-ref to its 
+ right shall not be polymoyphic. That part-ref and any part-ref to its 
+ right shall not have a polymorphic allocatable potential subobject 
+ component or a polymorphic pointer component."
+  
+  leading to the whole constraint reading 
+
+C917 (R911) Except as an actual argument to an intrinsic inquiry
+     function other than SAME_TYPE_AS, EXTENDS_TYPE_OF or as the
+     designator in a type parameter inquiry, if the data-ref has a
+     part-ref that is coindexed, any part-ref to its right shall not 
+	 be polymoyphic. That part-ref and any part-ref to its right shall 
+	 not have a polymorphic allocatable potential subobject component 
+	 or a polymorphic pointer component."
+	  
+[133:16, 9.4.2 Structure components, Constraint C918] 
+
+  After "intrinsic inquiry function", add 
+
+  "other than SAME_TYPE_AS, EXTENDS_TYPE_OF, "
+
+  leading to the whole constraint reading 
+
+  "Except as an actual argument to an intrinsic inquiry function other
+  than SAME_TYPE_AS, or EXTENDS_TYPE_OF, or as the designator in a
+  type parameter inquiry, if the rightmost part-ref is polymorphic, no
+  other part-ref shall be coindexed."
+
+  shall not be polymorhpc or have a polymorphic allocatable potential 
+	  subobject component or a polymorphic pointer component."

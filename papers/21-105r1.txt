@@ -1,0 +1,265 @@
+To: J3                                                     J3/21-105r1
+From:    John Reid
+Subject: Interpretation F18/015
+Date: 2021-February-28
+Reference: 18-007r1, 20-130.txt, 20-132.txt, 21-105
+
+
+INTRODUCTION
+
+This is the revised version of Interpretation F18/015 with the changes
+detailed in J3/21-105 incorporated. Questions Q4, Q5, and Q6 and their
+answers have been added and the replacement Fortran code has been 
+revised. 
+
+------------------------------------------------------------------
+NUMBER: F18/015
+TITLE: Example in C.6.8 is wrong
+KEYWORDS: failed images
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 meeting
+
+The example code for failed images in C.6.8 raises several issues about
+its correctness.
+
+
+QUESTION:
+
+Q1.
+
+   A: In the example in C.6.8, the assignments
+        me[k] = failures(i)
+        id[k] = 1
+      are made by image 1 and the assignments
+        me = THIS_IMAGE ()
+        id = MERGE (1, 2, me<=images_used)
+      are made by image k in unordered segments. Was this intended?
+
+   B: In the example in C.6.8, the assignment
+           me[k] = failures(i)
+      is made by image 1 and me[k] is referenced on other images in
+      the FORM TEAM statement in unordered segments. Was this
+      intended?
+
+Q2.
+
+    Suppose the program in C.6.8 is executed by 11 images, so 1 is
+    intended to be a spare. If image 9 in the initial team fails
+    immediately before it executes the first FORM TEAM statement, then
+    image 10 in the initial team, which executes FORM TEAM with a
+    team-number == 1 and NEW_INDEX == 10 (== me), will have specified
+    a NEW_INDEX= value greater than the number of images in the new
+    team.  Should there be a test for this in the code?
+
+Q3.
+
+   A: If a replacement image has failed, its image index will be the
+      value of an element of the array failures, a replacement for it
+      will be found, and the replacement will be placed in team 1. Was
+      this intended?
+
+   B: The value of images_used increases each time the setup loop is
+      executed.  However, the array failures will contain the image
+      indices of all the failed images and allocate all of them fresh
+      replacements. Was this intended?
+
+Q4.
+   
+    The variable images_used is incremented only on image 1 but is 
+    referenced by other images near the beginning and end of DO setup. 
+    Was this intended?
+
+Q5.
+
+    The intention is that on each cycle of the DO iter loop, a 
+    calculation is performed on the worker images and if any of them 
+    fail during this, the calculation is resumed from a checkpoint with 
+    the failed images replaced by spares. On resumption, the variable 
+    read_checkpoint has the value true on all the old worker images
+    to indicate that they should access the checkpoint data. On a 
+    replacement image, this variable will still have its initial value 
+    of false. Was this intended?
+
+Q6.
+
+    The code for choosing the number of spares does not correspond to 
+    the comment for it. Was this intended?
+
+
+ANSWER:
+
+1-A: No. An image control statement that provides segment ordering is
+     needed.
+
+1-B: No.
+
+2: This is quite a low-probability event, so exiting with the error
+   condition seems appropriate.
+
+3-A: No.
+ 
+3_B: No. It was intended to allocate replacements only for the newly
+     failed images.
+
+Furthermore, the example contains more errors than in the list above.
+Therefore an edit is provided that replaces the entire example with
+a complete rewrite, involving correction of additional errors, a
+better choice of names, and more comments.
+
+4: No. The problem near the end of DO setup may be avoided by replacing 
+the statement
+    IF (THIS_IMAGE () > images_used) done = done[1]  
+by
+    IF (team_number == 2) done = done[1] 
+The problem near the beginning of DO setup may be avoided by making the 
+variable images_used a coarray and referencing images_used[1]. This
+will need the addition of a SYNC ALL statement just before the 
+statement 
+    outer : DO
+to ensure that the correct value is used on all images on the
+first iteration of the loop. 
+
+5. No. The variable read_checkpoint is not needed and should be 
+removed. The initial entry is just the special case of the checkpoint 
+data being null so that the calculation needs to be started. 
+
+6. No. In the line
+  images_spare = MAX(NUM_IMAGES()/100,0,MIN(NUM_IMAGES()-10,1))
+"10" should be "9".   
+
+Some of the noteworthy additional changes are:
+ - declarations separated out and many comments added or changed;
+ - logical variable START added to distinguish the first execution of
+   the outer do loop when READ_CHECKPOINT should be false;
+ - rename ME to LOCAL_INDEX and ID to TEAM_NUMBER;
+ - code added to calculate the local indices of team 2;
+ - THEN keyword added to ELSE IF (done) statement. 
+
+EDITS to 18-007r1:
+
+[543:42-545:17] C.6.8 Example involving failed images,
+                Replace the entire example with the code below.
+                Note that many lines and comments are broken to keep
+                them within 70 columns, these should be joined up or
+                reformatted in the actual standard.
+"
+
+PROGRAM possibly_recoverable_simulation
+  USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY:TEAM_TYPE, STAT_FAILED_IMAGE
+  IMPLICIT NONE
+  INTEGER, ALLOCATABLE :: failures (:) ! Indices of the failed images.
+  INTEGER, ALLOCATABLE :: old_failures(:) ! Previous failures.
+  INTEGER, ALLOCATABLE :: map(:) ! For each spare image k in use, 
+             ! map(k) holds the index of the failed image it replaces.
+  INTEGER :: images_spare ! No. spare images.
+                          ! Not altered in main loop.
+  INTEGER :: images_used [*] ! On image 1, max index of image in use.!!
+  INTEGER :: failed ! Index of a failed image.
+  INTEGER :: i, j, k ! Temporaries
+  INTEGER :: status ! stat= value
+  INTEGER :: team_number [*] ! 1 if in working team; 2 otherwise.  
+  INTEGER :: local_index [*] ! Index of the image in the team.
+  TYPE (TEAM_TYPE) :: simulation_team
+  LOGICAL :: done [*] ! True if computation finished on the image.
+
+  ! Keep 1% spare images if we have a lot, just 1 if 10-199 images,
+  !                                             0 if <10.
+  images_spare = MAX(NUM_IMAGES()/100,0,MIN(NUM_IMAGES()-9,1))
+  images_used = NUM_IMAGES () - images_spare
+  ALLOCATE ( old_failures(0), map(images_used+1:NUM_IMAGES()) )
+  SYNC ALL (STAT=status)                                          
+
+  outer : DO
+    local_index = THIS_IMAGE ()
+    team_number = MERGE (1, 2, local_index<=images_used[1])        
+    SYNC ALL (STAT = status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+    IF (IMAGE_STATUS (1) == STAT_FAILED_IMAGE) &
+        ERROR STOP "cannot recover"
+    IF (THIS_IMAGE () == 1) THEN
+    ! For each newly failed image in team 1, move into team 1 a
+    ! non-failed image of team 2.
+       failures = FAILED_IMAGES () ! Note that the values
+                   ! returned by FAILED_IMAGES increase monotonically.
+       k = images_used
+       j = 1
+       DO i = 1, SIZE (failures)
+          IF (failures(i) > images_used) EXIT ! This failed image and
+          ! all further failed images are in team 2 and do not matter.
+          failed = failures(i)
+          ! Check whether this is an old failed image.
+          IF (j <= SIZE (old_failures)) THEN
+             IF (failed == old_failures(j)) THEN
+                j = j+1
+                CYCLE ! No action needed for old failed image.
+             END IF
+          END IF
+          ! Allow for the failed image being a replacement image.
+          IF (failed > NUM_IMAGES()-images_spare) failed = map(failed)
+          ! Seek a non-failed image
+          DO k = k+1, NUM_IMAGES ()
+            IF (IMAGE_STATUS (k) == 0) EXIT
+          END DO
+          IF (k > NUM_IMAGES ()) ERROR STOP "cannot recover"
+          local_index [k] = failed
+          team_number [k] = 1
+          map(k) = failed
+       END DO
+       old_failures = failures
+       images_used = k 
+       ! Find the local indices of team 2
+       j = 0
+       DO k = k+1, NUM_IMAGES ()
+            IF (IMAGE_STATUS (k) == 0) THEN
+            j = j+1 
+            local_index[k] = j
+          END IF
+       END DO
+    END IF
+    SYNC ALL (STAT = status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+    !
+    ! Set up a simulation team of constant size.
+    ! Team 2 is the set of spares, so does not participate.
+    FORM TEAM (team_number, simulation_team, NEW_INDEX=local_index, &
+               STAT=status)
+    IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
+
+    simulation : CHANGE TEAM (simulation_team, STAT=status)
+      IF (status == STAT_FAILED_IMAGE) EXIT simulation
+      IF (team_number == 1) THEN
+         iter : DO
+           CALL simulation_procedure (status, done)                  
+           ! The simulation_procedure:
+           !  - sets up and performs some part of the simulation;
+           !  - starts from checkpoint data if these are available;  
+           !  - stores checkpoint data for all images from time to   
+           !  - time and always before return;                       
+           !  - sets status from its internal synchronizations;
+           !  - sets done to .TRUE. when the simulation has completed.
+           IF (status == STAT_FAILED_IMAGE) THEN
+              EXIT simulation
+           ELSE IF (done) THEN
+              EXIT iter
+           END IF
+         END DO iter
+      END IF
+    END TEAM (STAT=status) simulation 
+
+    SYNC ALL (STAT=status)
+    IF (team_number == 2) done = done[1]                             
+    IF (done) EXIT outer
+  END DO outer
+  IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) &
+    PRINT *,'Unexpected failure',status
+END PROGRAM possibly_recoverable_simulation
+"
+
+SUBMITTED BY: John Reid
+
+HISTORY: 19-182   m219  Submitted
+         19-182r3 m219  Revised draft - Passed by J3 meeting
+         19-228   m220  Failed J3 letter ballot #35
+         20-105   m221  Revised answer - Passed by J3 meeting
+
+

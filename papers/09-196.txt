@@ -1,0 +1,99 @@
+To:       J3                            09-196
+From:     Robert Corbett
+Subject:  RFI:  deallocation and wholeness
+Date: 2009 April 20
+
+Section 6.7.3.3 of 09-007r1 (133, 30-31) states
+
+    If a pointer appears in a DEALLOCATE statement,
+    it shall be associated with the whole of an
+    object that was created by allocation.
+
+I recall having been told that "the whole of an object that
+was created by an allocation" means that all of the storage
+associated with the allocated object is referenced by the
+pointer.  That view was recently confirmed to me by two
+members of the committee and contradicted by another.  New
+features added in Fortran 2003 make the meaning of the
+phrase even less clear.
+
+The example I recall seeing some years ago was
+
+     PROGRAM MAIN
+       POINTER A(:), P
+       ALLOCATE(A(1))
+       P => A(1)
+       DEALLOCATE(P)
+     END
+
+The program was said to be standard conforming because all
+of the elements allocated for the array A are referenced by
+the pointer P in the DEALLOCATE statement.
+
+Even in the context of Fortran 95, the meaning of the phrase
+is unclear for more complicated examples.  Consider the
+program
+
+     PROGRAM MAIN
+       TYPE T
+         REAL A(0)
+         CHARACTER C
+       END TYPE
+       TYPE(T), POINTER :: A
+       CHARACTER, POINTER :: P
+       ALLOCATE(A)
+       P => A%C
+       DEALLOCATE(P)
+     END
+
+This program fails at run-time with several implementations.
+
+With the addition of type extensions and type-bound procedures
+in Fortran 2003, many new complications arise.  For example,
+it is not clear if the program
+
+     PROGRAM MAIN
+       TYPE T
+         CHARACTER C
+       END TYPE
+       TYPE, EXTENDS(T) :: XT
+       END TYPE
+       TYPE(XT), POINTER :: A
+       TYPE(T), POINTER :: P
+       ALLOCATE(A)
+       P => A%T
+       DEALLOCATE(P)
+     END
+
+is standard conforming.  Even if that example is considered
+standard conforming, it is unclear if the program
+
+     MODULE M
+       TYPE T
+         CHARACTER C
+       END TYPE
+       TYPE, EXTENDS(T) :: XT
+       CONTAINS
+         FINAL FINAL
+       END TYPE
+     CONTAINS
+       SUBROUTINE FINAL(X)
+         TYPE(XT) X
+       END SUBROUTINE
+     END
+
+     PROGRAM MAIN
+       USE M
+       TYPE(XT), POINTER :: A
+       TYPE(T), POINTER :: P
+       ALLOCATE(A)
+       P => A%T
+       DEALLOCATE(P)
+     END
+
+is standard conforming.
+
+What does the phrase "the whole of an object that was created
+by an allocation mean?  Does it mean that all of the storage
+elements associated with the object are referenced by the
+pointer?

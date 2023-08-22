@@ -1,0 +1,157 @@
+
+                                                      J3/98-111r2
+
+Date:      19 February 1998
+To:        J3
+From:      interval subgroup
+Subject:   4d:  control of I/O rounding
+Reference: ANSI/IEEE 754-1985
+
+-------------------------------------------------------------------
+Changes since the February 20 version of this document:
+   1. RN was added for "simulated round to nearest"
+   2. "Default" was added to the description of the RP specifier.
+   3. RU, RD, RZ, and RN shall correspond to IEEE upward rounding,
+      downward rounding, round to zero, and round to nearest on
+      machines that support IEEE 754 conversions.
+   4. Directed rounding applies only to "formatted I/O" (The word
+      "file" was deleted from this phrase.)
+   5. An additional IEEE inquiry intrinsic is proposed.
+   6. A rationale was added.
+   7. The list of potential straw votes was modified.
+   8. The INQUIRE and OPEN statement modifications were put back,
+      for regularity and since users could find functionality in
+      them.
+   9. The concepts of "decimal value" and "binary value" have been
+      clarified.
+-------------------------------------------------------------------
+
+Rationale:
+   This paper is a refinement of the preliminary specs that were
+   passed in in NCITS/J3-144.  The paper also proposes syntax.
+   These specs
+   1. Provide a feature necessary for development of an industrial
+      quality interval arithmetic module.
+   2. Provide a mechanism, presently unavailable, by which processors
+      can conform to the base conversion aspects of IEEE arithmetic.
+      This mechanism is such that a minimal functionality is also
+      provided in a consistent way on processors that choose not to
+      conform to IEEE base conversion specifications.
+-------------------------------------------------------------------
+
+The basic idea is to add new rounding control facilities modeled
+after BN and BZ. They will control the way a processor must round
+real and complex values for F, E, EN, ES, D, and G formatting, both
+on input and on output.
+
+There are 5 modes provided:
+RU          Round up
+RD          Round down
+RZ          Round to zero
+RN          Simulated round to nearest
+RP          Processor dependent default rounding
+
+The intent is to mimic  IEEE 754-1985 rounding modes with RU, RD, RZ,
+and RN, but not actually require IEEE arithmetic or specify accuracy.
+
+This feature deals with explicit base conversion, while the term
+"value" as applied to a real constant (4.3.1.2 of the Fortran 2000
+draft, January, 1998) implies that implicit conversion from a decimal
+character string has already occurred.  Here, the term "decimal
+value" shall mean the exact decimal number as given by the character
+string, while the term "internal value" shall mean the number actually
+stored (typically in binary form) in the machine.  For example, in
+dealing with the decimal constant 0.1, the decimal value is the
+exact mathematical quantity 1/10, which may be represented on a
+binary machine with 3 binary digits with the internal value
+(0.110)_2 * 2**(-3) = 3/32.
+
+The decimal value resulting from internal to decimal conversion
+when the RU specifier is in effect shall be greater than or equal to
+the internal value that has been converted. Similarly, the internal
+value resulting from decimal to internal conversion when the RU
+specifier is in effect shall be greater than or equal to the decimal
+value that has been converted. The decimal value resulting from
+internal to decimal conversion when the RD specifier is in effect
+shall be less than or equal to the internal value that has been
+converted. Similarly, the internal value resulting from decimal to
+internal conversion when the RD specifier is in effect shall be less
+than or equal to the decimal value that has been converted. The
+decimal value resulting from internal to decimal conversion when the
+RZ specifier is in effect shall be equal to the internal value that
+has been converted or closer to zero than the internal value that
+has been converted. Similarly, the internal value resulting from
+decimal to internal conversion when the RZ specifier is in effect
+shall be equal to the decimal value that has been converted or
+closer to zero than the decimal value that has been converted. The
+decimal value or internal value resulting from the I/O conversion
+when the RN specifier effect shall correspond to "round to nearest,"
+but need not actually be round to nearest on machines that do not
+support the IEEE standard. The decimal or internal value resulting
+from the I/O conversion when the RP specifier shall be a processor
+dependent default. RP may correspond to one of the other four
+modes.
+
+On machines that support IEEE rounding on conversions, RU shall
+correspond to upward rounding, RD shall correspond to downward
+rounding, RZ shall correspond to round to zero, and RN shall correspond
+to  "round to nearest," as specified in 5.6 of ANSI/IEEE 754-1985.
+
+Directed rounding only applies to formatted I/O.
+
+There are five areas that need to be changed.
+
+OPEN
+Add a new connect-spec (R905)
+ROUND = scalar-default-char-expression
+The expression shall be one of "RU", "RD", "RZ", "RN", or "RP".
+
+This specifies the initial rounding for a file connection.
+
+If no ROUND= is present, the rounding mode is processor dependent.
+The actual mode could be one of the above five modes, or a different
+mode.
+
+INQUIRE
+Add a new  inquire-spec (R924)
+ROUND = scalar-default-char-variable
+Lets you find out the rounding mode in effect.
+Returns one of the above strings, or "UNDEFINED" if not specified
+on the OPEN
+
+READ/WRITE
+Add round-edit-desc to the format control-edit-desc (R1010) with
+the five above possible values. It wraps around when a closing
+parenthesis is reached just like other control edit descriptors.
+
+Like BN, once you start using a rounding mode in a format there is
+no way to return to the default. Note: RP, although a
+processor-dependent default, is not necesssarily the same as the
+mode that is in effect if no mode is specified.
+
+DERIVED TYPE I/O
+The current rounding mode is one more item (like BN, SS...) that
+needs to be saved when a user derived type I/O routine is entered
+and restored when it exits.
+
+IEEE INQUIRY
+An additional inquiry function, IEEE_SUPPORT_IO([X]), should be added
+to module IEEE_ARITHMETIC, as in 15.8.1 of Fortran 2000
+(January, 1998 draft).  IEEE_SUPPORT_IO should return .TRUE. if and
+only if IEEE base conversion is supported as described in
+ANSI/IEEE 754-1985, section 5.6 through the modes RU, RD, RZ, and
+RN described above.
+
+===================================================================
+Potential straw votes.
+
+1)  Should INQUIRE return UNDEFINED if the unit wasn't opened for
+    formatted I/O?
+
+2)  What should the mode be when a user derived type I/O routine is
+    entered?  Suggestion: The mode specified in the OPEN statement
+    corresponding to the pending I/O, and UNDEFINED if the mode was
+    not specified in that statement.
+
+3)  Is this paper adequate for final specs?  Is it adequate for syntax?
+

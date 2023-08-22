@@ -1,0 +1,418 @@
+
+                                                           J3/98-133
+
+Date:    17 February 1998
+To:      J3
+From:    Malcolm Cohen
+Subject: Object Orientation Tutorial - R6a Inheritance
+
+
+Reprinted from Fortran Forum, Vol 16 No 3 December 1997, ACM Press, NY.
+
+1. Introduction
+---------------
+
+The ISO Fortran working group, WG5, has determined that some object-oriented
+facilities should be added to the next revision of the Fortran standard.
+The proposed facilities are described as consisting of the following parts:
+(1) single inheritance
+(2) polymorphism (dynamic dispatch)
+(3) constructors/destructors
+
+This article focuses on the proposed inheritance facility, which is the
+furthest developed of the three at this point.
+
+2. Overview
+-----------
+
+The inheritance facility provides the following features:
+(1) type extension: this lets us build new types by adding components
+    to old types.
+(2) polymorphic variables: this gives us variables whose type may vary,
+    in a controlled way, at runtime.
+(3) type enquiry: this lets us enquire as to the actual type of a polymorphic
+    variable at runtime.
+
+3. Type Extension
+-----------------
+
+Type extension lets the programmer add extra components to an existing
+(extensible) derived type in a convenient fashion.  Two new keywords are
+used: "EXTENSIBLE" to declare a base type that may be extended, and "EXTENDS"
+to declare a new type that extends an existing base type.
+
+For example:
+
+TYPE,EXTENSIBLE :: point_2d
+  REAL x,y
+END TYPE
+
+is a base type, that is, a type that can be extended.  Base types and extended
+types cannot have the SEQUENCE attribute.  Base types may be empty (i.e. have
+no components) and extended types need not add any new components (i.e. they
+may be a simple repackaging of the original type).
+
+TYPE,EXTENDS(point_2d) :: point_3d
+  REAL z
+END TYPE
+
+is an extended type.  Types can be extended anywhere the base type is
+accessible.
+
+Components of point_3d are the inherited "x" and "y", and the additional "z"
+component.  There is also a "point_2d" component which names the inherited
+components as a whole.  Note that when extending a type, you cannot add
+component names that clash with any names in the parent type.
+
+Declaration of variables of these types is as usual, e.g.:
+
+TYPE(point_2d) p2
+TYPE(point_3d) p3
+
+These two variables have components as follows:
+  P2 -- P2%X and P2%Y
+  P3 -- P3%X, P3%Y, P3%Z, and also P3%POINT_2D which names the inherited part.
+
+4. Polymorphic Variables
+------------------------
+
+Polymorphic variables have a declared type, but can contain an object of that
+type or of any type extended from the declared type.  They are declared with
+the object keyword, e.g.
+
+OBJECT(point_2d) polly
+
+Because the runtime type of a polymorphic variable is not fixed, the variable
+must either be a dummy argument or have the pointer attribute.
+
+Only the components of the declared type are directly accessible through the
+polymorphic variable name; if the runtime type is extended, a pointer can be
+used to access the extra components.
+
+For example, with the variable POLLY (declared above) one can directly access
+the X and Y components (with POLLY%X and POLLY%Y).  If POLLY's runtime type
+is OBJECT_3D, one can access the Z component with:
+
+TARGET polly
+OBJECT(point_3d),POINTER :: p3
+p3 => polly
+print *,p3%z
+
+4.1 Polymorphic Dummy Arguments
+-------------------------------
+
+Polymorphic dummy arguments take on the type of the associated actual
+argument.  An explicit interface is required for a procedure with a
+polymorphic dummy argument.
+
+For example,
+  REAL FUNCTION azimuth(p)
+    OBJECT(point_2d) p
+    !
+    ! The angle between the X axis and the point in the X-Y plane.
+    !
+    azimuth = ATAN2(p%y,p%x)
+  END FUNCTION
+
+The AZIMUTH function accepts arguments of type POINT_2D or a type extended
+from POINT_2D (e.g. POINT_3D).
+
+  REAL FUNCTION elevation(p)
+    OBJECT(point_3d) p
+    !
+    ! The angle between the X-Y plane and the point in the 3rd dimension
+    !
+    elevation = ATAN2(p%z,azimuth(p))
+  END FUNCTION
+
+The ELEVATION function accepts arguments of type POINT_3D or any type
+extended from POINT_3D.  It may be called with an OBJECT(point_2d) argument,
+and in this case it is the runtime type of the argument which must satisfy
+the above rule.  For example,
+
+  OBJECT(point_2d) p2
+  ...
+  PRINT *,elevation(p2) ! This is ok if P2 is actually a POINT_3D entity
+                        ! at the time of the call.
+
+4.2 Polymorphic Pointers
+------------------------
+
+Polymorphic pointers take on the type of the target in a pointer assignment
+statement.  If allocated with an ALLOCATE statement, the created object is
+of the declared type.
+
+For example,
+
+  TYPE(point_3d),TARGET :: x
+  OBJECT(point_2d),POINTER :: p2
+  ALLOCATE(p2) ! This creates a POINT_2D entity
+  p2 => x      ! P2 now refers to a POINT_3D entity
+
+4.3 Arrays
+----------
+
+Polymorphic arrays are homogeneous - i.e. each element has the same runtime
+type.  This means that type signatures (needed to determine the type at
+runtime of an object) are only stored once per polymorphic variable, not
+for every object itself.  It also means that normal array subscripting is
+possible.
+
+However, in those cases where a heterogeneous collection is required,
+the usual "array of pointers" circumlocution may be used.
+
+For example, to have an array of mixed point_2d and point_3d (or indeed
+anything extended from point_2d) objects:
+
+TYPE point_2d_object
+  OBJECT(point_2d),POINTER :: object
+END TYPE
+TYPE(point_2d_object) x(100)
+! Each element of X can point to an object of type POINT_2D or any type
+! extended from POINT_2D, independently of the other elements of X.
+
+5. Type Enquiry
+---------------
+
+Two new intrinsic functions are provided for determining the actual type of
+a polymorphic variable at runtime: SAME_TYPE_AS and EXTENDS_TYPE_OF.
+
+SAME_TYPE_AS(POLY,MOLD) returns .TRUE. if and only if the runtime type of
+POLY is the same as that of MOLD.
+
+EXTENDS_TYPE_OF(POLY,MOLD) returns .TRUE. if and only if the runtime type of
+POLY is the same as that of MOLD, or is of a type that is extended from that
+of MOLD.
+
+For example, given
+  OBJECT(point_2d) polly
+  TYPE(point_2d) mold2
+The enquiry
+  SAME_TYPE_AS(polly,mold2)
+will be .TRUE. if POLLY refers to a POINT_2D object and .FALSE. if POLLY
+refers to a POINT_3D object.
+
+Note that the MOLD argument need not be polymorphic, but if it is, the test
+is against the runtime type of MOLD, not the declared type.
+
+Example:
+  SUBROUTINE print_elevation(p)
+    OBJECT(point_2d) p
+    TYPE(point_3d) mold3
+    IF (EXTENDS_TYPE_OF(p,mold3)) THEN
+      PRINT *,elevation(p)
+    ELSE
+      ! This routine considers two-dimensional points to be at elevation zero.
+      PRINT *,0.0
+    END IF
+  END SUBROUTINE
+
+6. Example: List Processing
+---------------------------
+
+This example of a singly-linked linear list module shows how the inheritance
+facilities can be used to provide a general data-structuring facility.
+
+This list facility provides heterogeneous lists with no change needed when
+adding additional data types.  All the internal list structure is private to
+prevent direct manipulation (and the concomitant possibility of damage) by
+user code.
+
+6.1 Module Structure
+--------------------
+There are two visible types: HEAD and LINK.  HEAD is the list type, each
+entity of this type is a list.  LINK is the list element type, each
+entity of this type can be placed in a list.
+
+The module procedures that are provided are:
+  ADD - add an element to a list
+  REMOVE - remove an element from a list
+  FIRST - return a pointer to the first element of a list
+  NEXT - return a pointer to the next element of a list
+  MEMBER - determine whether an element is in a particular list
+
+6.2 Module Source
+-----------------
+
+      MODULE list_module
+        TYPE,EXTENSIBLE :: head
+          PRIVATE
+          TYPE(listinfo),POINTER :: info => NULL()
+         END TYPE
+
+Each list is headed by a HEAD object, which is made extensible so that the
+user may add list-specific information if they wish.  The INFO component is
+hidden from the user and initialised to NULL() to indicate an unused list.
+
+        TYPE,PRIVATE :: listinfo
+          OBJECT(link),POINTER :: first => NULL()
+        END TYPE
+
+This private type contains the list information used by the list-processing
+routines.
+
+        TYPE,EXTENSIBLE :: link
+          PRIVATE
+          OBJECT(link),POINTER :: next => NULL()
+          OBJECT(listinfo),POINTER :: info => NULL()
+        END TYPE
+
+The list element type.  Each element contains a pointer to the next element
+and a pointer to the list information structure.
+
+      CONTAINS
+        SUBROUTINE add(list,element) ! Add an item to the beginning of a list
+          OBJECT(head),INTENT(IN) :: list
+          OBJECT(link),POINTER :: element
+          IF (.NOT.ASSOCIATED(list%info)) ALLOCATE(list%info)
+          IF (ASSOCIATED(element%info)) CALL remove(element)
+          element%next => list%info%first
+          element%info => list%info
+          IF (.NOT.ASSOCIATED(element%next)) list%info%first => element
+        END SUBROUTINE
+
+Add an item to the beginning of a list.  The list information is automatically
+created if it does not exist.  If the element is already part of a list it
+is removed.
+
+        FUNCTION first(list) ! The first item in a list
+          OBJECT(head),INTENT(IN) :: list
+          OBJECT(link),POINTER :: first
+          IF (ASSOCIATED(list%info)) THEN
+            first => list%info%first
+          ELSE
+            first => NULL()
+          END IF
+        END FUNCTION
+
+Return a pointer to the first element of a list, or a null pointer if the
+list is empty or unused.
+
+        FUNCTION next(element) ! The next item in a list
+          OBJECT(link),INTENT(IN) :: element
+          OBJECT(link),POINTER :: next
+          next => element%next
+        END FUNCTION
+
+Return a pointer to the next element of a list, or a null pointer if there
+are no more elements in the list.
+
+        LOGICAL FUNCTION member(list,element) ! Is an item in a list?
+          OBJECT(head),INTENT(IN) :: list
+          OBJECT(link),POINTER :: element
+          member = ASSOCIATED(list%info,element%info)
+        END FUNCTION
+
+An enquiry function.
+
+        SUBROUTINE remove(element)
+          OBJECT(link) element
+          IF (ASSOCIATED(element%info)) THEN
+            IF (ASSOCIATED(element%info%first,element)) THEN
+              element%info%first => element%next
+            ELSE
+              ptr => element%info%first
+              DO WHILE (.NOT.ASSOCIATED(ptr%next,element))
+                ptr => ptr%next
+              END DO
+              ptr%next => element%next
+            END IF
+            NULLIFY(element%info,element%next)
+          END IF
+        END SUBROUTINE
+
+Removes an element from a list, without deallocating its storage.
+
+      END MODULE
+
+6.3 Using the Module
+--------------------
+
+This example uses the list module to create a list containing integer and
+real values.
+
+      MODULE my_list_module
+        USE list_module
+        TYPE,EXTENDS(link) :: integer_element
+          INTEGER value
+        END TYPE
+        TYPE,EXTENDS(link) :: real_element
+          REAL value
+        END TYPE
+        TYPE,EXTENDS(head) :: mylist
+          CHARACTER*10 name
+        END TYPE
+
+First we define the types we wish to put into the list, and a list header
+that contains the name of the list.
+
+      CONTAINS
+        SUBROUTINE print_list(list)
+          TYPE(mylist) list
+          OBJECT(link),POINTER :: elt
+          TYPE(integer_element),POINTER :: ielt
+          TYPE(real_element),POINTER :: relt
+          PRINT *,'Contents of list ',list%name
+          elt => first(list)
+          DO WHILE (ASSOCIATED(elt))
+            IF (SAME_TYPE_AS(elt,ielt)) THEN
+              ielt => elt
+              PRINT *,'      Integer:',ielt%value
+            ELSE IF (SAME_TYPE_AS(elt,relt)) THEN
+              relt => elt
+              PRINT *,'      Real:',relt%value
+            ELSE
+              PRINT *,'      Unrecognised list element'
+            END IF
+            elt => next(elt)
+          END DO
+        END SUBROUTINE
+      END MODULE
+
+We also provide a subroutine to display the contents of the list.
+The type enquiry functions are used to determine which values to display.
+
+Finally, here is the example program:
+
+      PROGRAM example
+        USE my_list_module
+        TYPE(mylist) numbers
+        CHARACTER C
+        TYPE(integer_element),POINTER :: ielt
+        TYPE(real_element),POINTER :: relt
+        numbers%name = 'Numbers'
+        !
+        ! Read the list from the user
+        !
+input:  DO
+          WRITE (*,1,ADVANCE='no')
+1         FORMAT("Enter I for integer, R for real, E for end-of-list: ")
+          READ *,C
+          SELECT CASE (C)
+            CASE ('I')
+              ALLOCATE(ielt)
+              WRITE(*,2,ADVANCE='no')
+2             FORMAT("Enter integer value: ")
+              READ *,ielt%value
+              CALL add(numbers,ielt)
+            CASE ('R')
+              ALLOCATE(relt)
+              WRITE(*,3,ADVANCE='no')
+3             FORMAT("Enter integer value: ")
+              READ *,relt%value
+              CALL add(numbers,relt)
+            CASE ('E')
+              EXIT input
+          END SELECT
+        END DO
+        !
+        ! Since this is an example, all we do is print the list contents
+        !
+        CALL print_list(numbers)
+      END PROGRAM
+
+References
+----------
+J3/97-183r2 Inheritance Specifications
+  -- mostly useful for the explanatory material.
+J3/97-196r2 Inheritance Syntax and Clarification of Specifications

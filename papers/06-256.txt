@@ -1,0 +1,154 @@
+
+                                                                    J3/06-256
+
+To: J3/B
+From: Malcolm Cohen
+Subject: Clause 12 niggles
+Data: 2006/07/31
+
+1. Introduction
+
+This paper lists various technical niggles with clause 12.
+Mostly without suggested edits.
+
+2. CONTIGUOUS dummy pointers
+
+This needs integration with auto-targetting.  It states
+
+  "If the dummy pointer has the CONTIGUOUS attribute, the actual argument
+   shall have the CONTIGUOUS attribute."
+
+However, consider
+
+  REAL,INTENT(IN),POINTER,CONTIGUOUS :: p(:)
+
+This may be associated with an actual nonpointer.
+
+Q1. Should the actual argument be required to be a POINTER or assumed-shape
+    array?
+A1. No!
+
+Q2. Should that restriction apply to pointer and assumed-shape actual
+    arguments?
+A2. Yes.
+
+Q3. What about all the other cases?
+A3-safe. We should allow this when the actual argument is known at compile
+         time to be contiguous.
+A3-unsafe. We should make a runtime requirement for the actual argument to be
+           contiguous.
+
+Comment: It is a pity that we don't have a term for "known to be contiguous
+         at compile time", especially since we have used the concept implicitly
+         (in what we disallow from having the CONTIGUOUS attribute).
+
+Note: The actual argument is always an "object" (perhaps designated by a
+      pointer reference, but that case is easy - it is required to have the
+      CONTIGUOUS attribute, right?).  So the answer really does boil down to
+      the missing terminology assuming we want a sensible answer.
+
+Possible answer: Allow all nonpointer non-assumed-shape arrays that are not
+                 array sections.  This disallows some obviously-contiguous
+                 cases, but at least it catches the trivial ones.
+
+For subgroup discussion.
+
+3. Allocatable dummy arguments and interp F90/125.
+
+These don't seem to be completely integrated.
+The text ([314:18-315:15]) certainly doesn't mention them.
+
+Most of this text does not make much sense for allocatable dummies either.
+
+Possible problems are:
+  (i) scalar TARGET allocatable dummy, actual TARGET allocatable:
+      the text states that any pointers associated with the actual become
+      associated with the dummy, but I don't think that is true for INTENT(OUT)
+      since the actual is deallocated on invocation.
+ (ii) it is inconsistent to have the association state be perfectly defined for
+      scalar allocatables but completely processor-dependent for allocatable
+      arrays.  These should be treated the same.
+
+Actually, because I misread the scalar case, 06-255 proposes making both of
+them processor-dependent.  Having thought a bit more about this, I would
+instead propose making both of them completely specified, and with the
+INTENT(OUT) niggle clearly spelled out.
+
+For subgroup discussion (the results of this discussion should maybe go into
+a revision of 06-255 instead of this paper).
+
+4. Allocatable dummy arguments + INTENT(OUT) + default initialization
+
+See [315:34-39].
+The second sentence is nonsense (or wrong) for allocatable dummies.
+It needs to be rewritten (probably in 06-255).
+
+5. Associated actual argument
+
+In a few cases we are careful to say "argument-associated entity".
+Almost always, though, we say "associated actual argument".
+
+This is definitely wrong, since in the case of pointer actuals the
+associated entity is not an actual argument.  It is possible that some
+of these cases mean "corresponding actual argument", but surely almost
+all of them must mean "argument-associated entity".
+
+Since "argument-associated entity" sounds horrible, I propose defining
+"associated actual argument" to mean it, viz
+
+  [312:3+] 12.5.1.3 Argument association, at the very end, append new
+           paragraph
+
+    "The entity that is argument-associated with a dummy argument is called
+     its <<associated actual argument>>.
+     Note 12.xx
+     If the dummy argument is not a pointer but its corresponding actual
+     argument is a pointer, this is not an actual argument in the reference
+     but is nonetheless referred to as the associated actual argument."
+
+And go through the rest of 12.5.1.x checking all uses of the term "actual
+argument".
+
+Alternative fix:
+  An alternative would be to invent a completely new term, e.g. "effective
+  argument" for the argument-associated entity, and use that instead.
+
+Alternative**2 fix:
+  Or to invent a new term for the textual actual argument, reserving actual
+  argument to mean that which gets argument associated.  Not recommended at
+  this point because I cannot think of a particularly good term.
+
+For subgroup discussion.
+
+6. PURE constraint not compile-time checkable
+
+In 12.5.0 (FIX!) the penultimate constraint C1233 is not only pointless but
+uncheckable.
+
+It is uncheckable because a PURE procedure is permitted to be described by an
+interface block which says that it is not PURE (and indeed, is permitted to be
+referenced without an explicit interface except from certain contexts).
+
+It is completely pointless because C1279 ([334:8-9]) constrains a PURE
+procedure to have only PURE dummies - and one is not permitted to pass an
+impure actual to a pure dummy.  So this situation in C1233 cannot even arise.
+
+One might also think C1233 stupid since it has not been integrated with
+procedure pointer components - it only applies to named procedures.
+Apparently it's ok to pass a nonpure procedure to a PURE procedure providing
+one does so via a procedure pointer component - huh?
+
+Given all these defects, C1233 and its following note really ought to go.
+Because of C1279, deleting this junk makes no extra programs conforming,
+and obviously has no effect on previously conforming programs.
+
+Given the lack of effect (other than to fix brokenness in the standard),
+there does not seem to be any need for an interp.
+
+[310:19-20+2] Delete C1233 and Note 12.17.
+
+7. Lots more
+
+More niggles deferred to 06-256r1.
+
+===END OF DOCUMENT===

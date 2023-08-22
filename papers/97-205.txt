@@ -1,0 +1,91 @@
+
+                                                             J3/97-205
+
+Date:        1 Aug 1997
+To:          J3
+From:        R. Maine
+Subject:     Pointer lower bounds and zero size
+
+I sent out the following as an email message some time ago,
+but got very little response.  I think this needs fixing, so
+I'll put it into a meeting paper.
+
+In entering the approved f2k edits, one technical discrepancy has
+me stumped.  I do have a recommendation, but it constitutes a
+technical change, not just editorial.
+
+Perhaps its because I never have understood the mess we made of
+zero-sized arrays (sure seems to take a lot of special case rules
+to fit somone's idea of "consistency").  Anyway, that issue was
+settled and I'm not trying to re-argue it.  I'm just trying to
+make sure that we stay as consistent as possible with the
+now-established rules.
+
+The passed edits for pointer lower bounds in paper 96-154 say
+that in a case like
+     P(2:) => T(4:3)   !-- Note that the r.h.s is zero-sized.
+The lower bound of P becomes 1.  This is inconsistent with
+assumed shape dummy arguments.  According to 5.1.2.4.2, in a
+corresponding case like
+    CALL SUB(T(4:3))
+    ....
+    SUBROUTINE SUB(P)
+    DIMENSION P(2:)
+the lower bound of P is 2.  There is no special case for zero
+extents.
+
+Note that the LBOUND intrinsic does *NOT* return the lower bound
+(an oddity I find incredible, but I agreed not to re-raise the
+question).  The formalism that we, in our wisdom, established for
+the assumed shape argument case, is that the lower bound is 2
+here, but that LBOUND returns 1 anyway.  (Don't trust me - read
+it; thats what we unambiguously say).
+
+Simillarly even for explicit-shape arrays, come to think of it.
+If I declare
+   REAL :: Z(4:3)
+the actual lower bound of Z is 4, not 1.  (But LBOUND returns 1).
+
+I think we should make the pointer case correspond.  The actual
+lower bound would be 2, even though LBOUND would return 1.  No
+additional words are needed in the description of LBOUND; it
+always returns 1 for dimensions that have zero extent, regardless
+of the actual lower bound.  We could then take out the special
+words about zero extents in paper 96-154 in the pointer
+assignment statement description; it would need none, just like
+the section 5.1.2.4.2 on assumed-shape arrays needs none.
+
+Note that it is fairly difficult to see where the actual lower
+bound, as opposed to the result of LBOUND, ever matters, but we
+still should be consistent in its definition.  There is only a
+distinction when the extent is zero, which pretty much limits the
+kinds of things that can be done to tell the difference.  You
+can't reference an element of a zero-sized array (there aren't
+any).  Perhaps a section...let's see.  Yes, I can do it that way.
+If X is a zero-sized vector with an actual lower bound of 2, then
+
+   X(:1)
+
+is equivalent to X(2:1) which is a legal zero-sized slice.  But
+if X is a zero-sized vector with an actual lower bound of 1, then
+
+   X(:1)
+
+is equivalent to X(1:1), which is illegal.  Thus the actual lower
+bound does make a difference, even though LBOUND returns a 1 for
+both of these cases.  Note that section 6.2.2.3.1 says that
+omitted subscripts are equivalent to the lower or upper bounds
+(*NOT* the result of LBOUND or UBOUND).
+
+My conclusion: lets make the pointer case like the other cases.
+If the user specifies a lower bound, then that's the lower
+bound...period; no exceptions.  The special case for zero extents
+lies in the result of LBOUND rather than in the "actual" lower
+bound.  (And yes, several places in the standard do define things
+in terms of the result of LBOUND).
+
+I can write the words for this...in fact its easy...I just take
+out the special case.  But I need X3J3 to agree with the
+technical decision.  Either way "works"; this one just seems most
+consistent.
+

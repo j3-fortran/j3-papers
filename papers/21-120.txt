@@ -1,0 +1,261 @@
+To: J3                                                     J3/21-120
+From: Malcolm Cohen
+Subject: Simpler enumeration types specs and syntax
+Date: 2021-February-25
+
+
+1. Introduction
+
+This paper is a revision of part 3 of 21-110 (r0).
+
+Over the last year it seems that our approach to "true enumeration types"
+has become too complicated, and unnecessarily so. This paper provides the
+specs and syntax for the basic functionality, without inhibiting future
+extension.
+
+The possible additional syntax mentioned in 21-110 section 3 has been
+deleted (see 21-110 if interested). This is not core functionality and
+could be added in F202y or later without difficulty.
+
+Notable changes since 21-110 section 3 are:
+    - addition of SELECT CASE
+    - addition of primitive i/o
+    - the NEXT and PREVIOUS functions could be specified to have a STAT
+      argument instead of clamping. A straw vote may be taken if desired.
+
+2. Simpler true enumerations
+
+2.1 Requirements
+
+A true enumeration type is a new type, not a renaming of integer.
+The enumerators are of this type.
+No requirement should be placed on the internal representation.
+The operations of First, Last, Next, and Previous are available.
+Relational operations between objects of the same enumeration type are
+available.
+Explicit conversion to/from type Integer is available.
+No arithmetic or other operations.
+Primitive input/output should be available, without inhibiting future
+addition of sophisticated input/output.
+
+2.2 Specifications
+
+(a) The enumeration type is a user-defined type that is not a structure
+    type, i.e. it is rather like a derived type but has no components.
+
+Comment: It behaves somewhat like a derived type with a hidden anonymous
+         component. Either we split derived types into structure types and
+         other types, or we just add a new kind of type. The latter seems
+         easier, involving less terminology change to the standard.
+
+(b) No polymorphic entities with a declared type of an enumeration type.
+
+(c) Variables of the type can take on only values of the type, or be
+    undefined. Values of the type are the enumerators only.
+
+(d) An intrinsic constructor of the type provides conversion from type
+    Integer only. The INT intrinsic provides conversion to type Integer.
+
+(e) Strict type safety, viz the enumerators are of that type.
+
+(f) No DO loop or other such; that functionality is available, though with
+    extra verbosity, using integers and conversions.
+
+(g) Enumerators come without any enhanced namespace management, i.e. their
+    names are normal class one names.
+
+(h) The Next et al operations are provided intrinsically, not type-bound.
+
+(i) Enumeration variables are initially undefined, like other variables.
+
+(j) Relational operations order by the order of definition of the
+    enumerators, e.g. the first one defined is less than all the others.
+
+(k) SELECT CASE can be used.
+
+(l) Formatted input/output of enumeration type values using their ordinals
+    is available. To avoid inhibiting future improvements, list-directed
+    and namelist i/o should not be permitted.
+
+Comments:
+    (11) Extending an enumeration could be useful, but at this time that
+         would be an unnecessary frippery. We need to focus on having a
+         solid and reliable basic feature.
+    (12) Similarly, a DO index of an enumeration type would sometimes be
+         useful, but is an unnecessary frill at this stage.
+    (13) I note that enumerators as class one names is not only simpler
+         but what WG5 asked us to do in the first place.
+    (13) Fortran already has basic namespace management (USE ONLY and
+         renaming). Some ideas for extensions to that have already been
+         floated (for a future revision, possibly F202y); we should not
+         preempt that with a complicated feature here.
+    (14) Intrinsic operations and functions are already generic and don't
+         conflict with user-defined operations and functions. Making the
+         operations on enumerations type-bound would be likely to inhibit
+         future namespace management features.
+    (15) Being able to specify an initial value would be useful, but is not
+         core functionality.
+    (16) The removal of "sophisticated" i/o is both to simplify the changes
+         to the standard, and to reduce implementation effort.
+
+2.3 Syntax
+
+<enumeration-type-def> <<is>> <enumeration-type-stmt>
+                                <enumeration-enumerator-stmt>
+                                [ <enumeration-enumerator-stmt> ]...
+                              <end-enumeration-type-stmt>
+
+<enumeration-type-stmt> <<is>>
+    ENUMERATION TYPE [ [ , <access-spec> ] :: ] <enumeration-type-name>
+
+Constraint: The <access-spec> shall only appear in the specification part
+            of a module.
+
+<enumeration-enumerator-stmt> <<is>>
+    ENUMERATOR [ :: ] <enumerator-name-list>
+
+<end-enumeration-type-stmt> <<is>>
+    END ENUMERATION TYPE [ <enumeration-type-name> ]
+
+Constraint: If <enumeration-type-name> appears on an END ENUMERATION TYPE
+            statement, it shall be the same as on the ENUMERATION TYPE
+            statement.
+
+The <access-spec> on an ENUMERATION TYPE statement specifies the
+accessibility of the <enumeration-type-name> and the default accessibility
+of its enumerators. The accessibility of an enumerator may be confirmed or
+overridden by an <access-stmt>.
+
+An enumeration type is a user-defined type that is not a structure type.
+
+Comment: See above comments re terminology.
+
+An entity of enumeration type is declared using the TYPE specifier, just as
+if it were a derived type.
+
+The name of the type operates as a constructor; it takes an integer and
+returns a value of the type. As the type has no named component, there is
+no keyword form of the constructor. The constructor returns the enumerator
+value with the ordinal number of the integer value given. The integer
+value shall be positive and less than or equal to the number of enumerators
+of the type.
+
+Conversion to Integer: INT(enumeration value) = the ordinal number of the
+    enumerator in the type definition. The constructor typename(integer)
+    returns the enumeration value with that ordinal number; integer shall
+    be in the range 1...N, where N is the number of enumerators.
+
+Relationals: Noted that a.rel.b has the same value as INT(a).rel.INT(b).
+
+An entity of enumeration type shall not appear in a list-directed data
+transfer statement or in a NAMELIST specification. In a formatted i/o
+statement, an entity of enumeration type shall be processed by an integer
+data edit descriptor I, B, O, or Z. The input value shall be in range.
+
+The operations First, Last, Next and Previous shall be provided as follows.
+
+First: typename(1).
+
+Last: HUGE(any enumeration value).
+
+Next, Previous: New intrinsic functions with those names.
+
+    To avoid producing bad values, either
+        (a) there is an optional STAT argument, and without STAT,
+            PREVIOUS(first) and NEXT(last) cause error termination;
+        (b) the functions clamp, i.e.
+                PREVIOUS(first) = first
+                NEXT(last) = last
+    Note: A straw vote taken a year ago indicated that the STAT form was
+          preferable to the clamp form. This paper considers that the clamp
+          form is easier to implement and no less easy to use (both require
+          a similar amount of extra logic to handle looping), and so the
+          clamp form is recommended.
+
+Comment: We could choose different names here. PREV is shorter and okay.
+         If we want to avoid names likely to already be in use (not that
+         there is any problem with that usually), PREDECESSOR and SUCCESSOR
+         would be suitable if a bit long. PRED and SUCC are horrible but
+         acceptable.
+
+
+2.4 Example
+
+Module enumeration_mod
+  Enumeration Type :: v_value
+    Enumerator :: v_one, v_two, v_three
+    Enumerator v_four
+  End Enumeration Type
+  Enumeration Type :: w_value
+    Enumerator :: w1, w2, w3, w4, w5, wendsentinel
+  End Enumeration Type
+Contains
+  Subroutine sub(a)
+    Type(v_value),Intent(In) :: a
+    Print 1,a ! Acts similarly to Print *,Int(a).
+1   Format('A has ordinal value ',I0)
+  End Subroutine
+  Subroutine wcheck(w)
+    Type(w_value),Intent(In) :: w
+    Select Case(w)
+    Case(w1)
+      Print *,'w 1 selected'
+    Case (w2:w4)
+      Print *,'One of w2...w4 selected'
+    Case (wendsentinel)
+      Stop 'Invalid w selected'
+    Case Default
+      Stop 'Unrecognized w selected'
+    End Select
+  End Subroutine
+End Module
+
+Program example
+  Use enumeration_mod
+  Type(v_value) :: x = v_one
+  Type(v_value) :: y = v_value(2)   ! Explicit constructor producing v_two.
+  Type(v_value) :: z,nz             ! Initially undefined.
+  Call sub(x)
+  Call sub(v_three)
+  z = v_value(1)                    ! First value.
+  Do
+    If (z==Huge(x)) Write (*,'(A)',Advance='No') ' Huge:'
+    Call sub(z)
+    nz = Next(z)
+    If (z==nz) Exit
+    z = nz
+  End Do
+End Program
+
+Program invalid
+  Use enumeration_mod
+  Type(v_value) :: a, b
+  a = 1         ! INVALID - wrong type (INTEGER).
+  b = w1        ! INVALID - wrong enumeration type.
+  Print *,a     ! INVALID - list-directed i/o not available.
+End Program
+
+Module example2
+  Use enumeration_mod
+  Type vw
+    Type(v_value) v
+    Type(w_value) w
+  End Type
+Contains
+  Subroutine showme(ka)
+    Type(vw),Intent(In) :: ka
+    Print 1,ka
+1   Format(1X,'v ordinal is ',I0,', w ordinal is ',I0)
+  End Subroutine
+End Module
+
+Program invalid2
+  Use example2
+  Type(vw) badx
+  Namelist/kaas/ badx       ! INVALID - not permitted in NAMELIST.
+  Print *, badx             ! INVALID - list-directed i/o not available.
+End Program
+
+===END===
+
+

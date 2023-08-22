@@ -1,0 +1,92 @@
+
+                                                      J3/05-256
+
+Date:    2005/08/11
+To:      J3
+From:    Malcolm Cohen
+Subject: Assumed-size arguments with INTENT(OUT)
+
+NUMBER: F03/0045
+TITLE: Finalization and assumed-size arguments with INTENT(OUT)
+KEYWORDS: finalization, INTENT(OUT), assumed size, dummy argument
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following program:
+
+MODULE m
+  TYPE t
+    INTEGER :: i
+  CONTAINS
+    FINAL :: finalizeT
+  END TYPE
+CONTAINS
+  ELEMENTAL SUBROUTINE finalizeT(f)
+    TYPE(t), INTENT(INOUT) :: f
+    f%i = 10
+  END SUBROUTINE
+END MODULE
+
+SUBROUTINE xyz (d)
+  USE m
+  TYPE(t), INTENT(OUT) :: d(*)
+END SUBROUTINE
+
+PROGRAM foo
+  USE m
+  EXTERNAL xyz
+  TYPE(t) :: a(10) = t(5)
+  CALL xyz(a(2))
+END PROGRAM
+
+4.5.5.2 of Fortran 2003 states:
+    When a procedure is invoked, a nonpointer, nonallocatable object
+    that is an actual argument associated with an INTENT(OUT) dummy
+    argument is finalized.
+
+For assumed-size arguments, this situation is similar to that of
+default initialization with INTENT(OUT).  Default initialization is
+prohibited for INTENT(OUT), assumed-size dummy arguments by C544.  A
+similar restriction on finalization may have been overlooked.
+
+Was this program intended to be standard-conforming?
+
+ANSWER:
+
+No, this program was not intended to be standard-conforming.  An edit
+is supplied to correct this oversight.
+
+DISCUSSION:
+
+The unstated philosophy of assumed-size arrays in the standard is that
+no action is allowed on an assumed-size array which would need to be
+applied elementally to the whole array.  That is why no whole array
+assignment is allowed, for example.
+
+In accordance with this philosophy,
+(1) types with ultimate allocatable components also need to be excluded
+    from being INTENT(OUT) assumed-size, as procedure invocation in this
+    case requires deallocation of all the allocated components.
+
+(2) polymorphic INTENT(OUT) assumed-size arrays should also be excluded,
+    as they might have finalisation, default initialisation or
+    allocatable components.
+
+This interp subsumes Fortran 2003 interp #0060.
+
+EDITS:
+
+All edits refer to 04-007.
+
+[80:9]  Before "of a type", insert
+        "polymorphic, of a finalizable type, of a type with an
+         ultimate allocatable component, or".
+
+SUBMITTED BY: Rob James
+
+HISTORY: 05-136    m171  Submitted, passed by J3 meeting
+         05-170    m172  Passed J3 letter ballot #11
+         N1622     m172  Failed WG5 ballot N1629
+         05-256    m173  Revised

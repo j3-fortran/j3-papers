@@ -1,0 +1,110 @@
+To: J3                                                     J3/18-277r1
+From: Bill Long, Jon Steidel
+Subject: Put with notify
+Date: 2018-October-18
+
+
+
+I Introduction
+
+A capability called "put with notify" is popular in the SHMEM
+community as a very efficient, narrowly focused, synchronization
+technique for data transfers between images. The basic idea is to
+combine a "put" (definition of a variable on a different image) with a
+notification mechanism that allows the receiving image to know that
+the data has arrived.  While long requested for coarrays in Fortran,
+there was previously no simple syntax to allow for two things (the put
+and the notify) on the left side of an assignment.  
+
+Fortran 2018 introduced specifiers as part of an image selector. The 
+addition of a notify-specifier to an image selector, and a NOTIFY WAIT
+statement could solve this problem. For example,
+
+    x[10, NOTIFY=nx] = y
+
+where nx is a coarray declared of type(NOTIFY_TYPE).  The NOTIFY_TYPE
+is defined in the intrinsic module ISO_FORTRAN_ENV and has properties
+similar to type EVENT_TYPE.
+
+The effective notify operation is to the nx variable on the same image
+as specified by the image selector.  On image 10,
+
+    NOTIFY WAIT (nx)
+    [here it is safe to reference x and get the new value]
+
+
+II Use-cases
+ 
+It is common for an image, i, to wait until another image, j, has 
+updated a coarray on image i before image i continues execution. This
+can currently be implemented using locks.  For example,
+
+!   On some image other than 10
+    x[10] = y
+    POST EVENT (nx [10])
+
+!  On image 10
+    EVENT WAIT (nx)
+    z = x
+
+It could be implemented more efficiently using a put with notify 
+mechanism:
+
+!  On some image other than 10
+   x[10, NOTIFY=nx] = y
+
+! On image 10
+   WAIT NOTIFY (nx)
+   z = x
+
+The put with notify version differs from the EVENT version in that the
+notify can be incorporated into the same data packet as the value of y. 
+Also the synchronization is only on this particular transfer, and not
+all outstanding memory operations on this image.  The put with 
+notify operation does not constitute segment ordering, and the NOTIFY 
+WAIT statement is not an image control statement.  The notify variable
+semantics are like those of atomic operations with regard to segment
+ordering.
+
+If x is an array "waiting" for data to be transferred to separate
+elements from one or more images, the NOTIFY WAIT could have an
+optional UNTIL_COUNT= clause similar to EVENT WAIT.
+
+! On images other than image 10
+  x(i)[10, NOTIFY=nx] = y
+
+! On image 10
+  NOTIFY WAIT (nx, UNTIL_COUNT=size(x))
+  z(:) = x(:)
+
+
+III Requirements
+
+A new type NOTIFY_TYPE, similar to EVENT_TYPE would be defined in the
+intrinsic module ISO_FORTRAN_ENV.  Like an EVENT_TYPE, it would have 
+an integer count component which is atomically incremented. Variables
+of type NOTIFY_TYPE would be coarrays.
+
+Alternative: Consider using type EVENT_TYPE for the type of notify
+variables, instead of inventing a new type NOTIFY_TYPE. The internal
+structure of the EVENT_TYPE and NOTIFY_TYPE are the same.
+
+An optional NOTIFY= specifier would be added to the image selector.
+This form of image selector is allowed only as part of the designator
+for the variable of an assignment statement.  The effective notify
+operation is to the nx variable on the same image as specified by the
+image selector. A notify operation atomically increments the notify
+variable count on the specified image by one. A notify operation does
+not constitute segment ordering.
+
+A NOTIFY WAIT statement with syntax similar to an EVENT WAIT statement
+would be added with an optional UNTIL_COUNT= specifier. Successful
+execution of a NOTIFY WAIT statement decrements the count of the 
+notify variable by one, or by the specified UNTIL_COUNT= count, if 
+specified.  An NOTIFY WAIT statement would have optional STAT= and 
+ERRMSG= specifiers with the semantics of those on an EVENT WAIT 
+statement. A NOTIFY WAIT statement is not an image control statement.
+
+
+
+

@@ -1,0 +1,114 @@
+To:      J3                                        J3/14-105r1
+From:    Reinhold Bader & Steve Lionel
+Subject: Corrections to A.2.1
+Date: 2014 February 13
+References: N1996, N1999, 13-347r2
+
+Discussion:
+~~~~~~~~~~~
+
+As noted in N1999, there are some minor issues with the EVENT_QUERY
+example; furthermore there is the following more serious
+problem: the program may not terminate because worker images that
+received non-empty work items from the last "master" iteration will
+continue their "worker" loop and then hang in the EVENT WAIT. This
+is resolved by worker images deregistering themselves at the master
+once the first empty work item arrives. The master will terminate
+once all worker images are deregistered.
+
+A potential problem with image control statements not working
+properly after the first image failure may need resolution for
+this program to continue working if an image fails. Furthermore,
+it is not clear how EVENT WAIT should behave on a non-failed image
+in the face of an image failure - this is however considered outside
+the scope of this paper.
+
+
+Edits:
+~~~~~~
+
+
+Replace [37:20] - [38:44] by
+
+"PROGRAM
+  USE, INTRINSIC :: iso_fortran_env
+  USE :: mod_work
+          ! provides TYPE(work), create_work_item,
+          ! repeat_work_item, process_item,
+          ! WORK_ITEM_EMPTY
+  TYPE(event_type) :: submit[*]
+  TYPE :: asymmetric_event
+     TYPE(event_type), ALLOCATABLE :: event(:)
+     LOGICAL, ALLOCATABLE :: available(:)
+  END TYPE
+  TYPE(asymmetric_event) :: confirm[*]
+  TYPE(work) :: work_item[*]
+  INTEGER :: count, i, status, work_status
+
+  IF (this_image() == 1) THEN
+!
+!    set up master-side data structures
+     ALLOCATE(confirm%event(2:num_images()))
+     ALLOCATE(confirm%available(2:num_images()), SOURCE = .TRUE.)
+     DO i = 2, num_images()
+        EVENT POST (confirm%event(i))
+     END DO
+!
+!    work distribution loop
+     master : DO
+        image : DO i = 2, num_images()
+           IF (.NOT. confirm%available(i)) CYCLE image
+           CALL event_query(confirm%event(i), count, status)
+           IF (status == STAT_FAILED_IMAGE) THEN
+               confirm%available(i) = .FALSE.
+               CYCLE image
+           ELSE IF (status /= 0) THEN
+               ERROR STOP
+           END IF
+           IF (count > 0) THEN ! avoid blocking if processing on worker
+                               ! is incomplete
+              EVENT WAIT (confirm%event(i), STAT=status)
+              IF (status == STAT_FAILED_IMAGE) THEN
+                 confirm%available(i) = .FALSE.
+                 CYCLE image
+              ELSE IF (status /= 0) THEN
+                 ERROR STOP
+              END IF
+
+              work_item[i] = create_work_item()
+
+              EVENT POST (submit[i], STAT=status)
+              IF (status == STAT_FAILED_IMAGE) THEN
+                 CALL repeat_work_item()
+                 ! previous item re-created in next iteration
+                 confirm%available(i) = .FALSE.
+                 CYCLE image
+              ELSE IF (status /= 0) THEN
+                 ERROR STOP
+              END IF
+           END IF
+        END DO image
+        IF ( .NOT. any(confirm%available) ) EXIT master
+     END DO master
+  ELSE
+!
+!    work processing loop
+     worker : DO
+        EVENT WAIT (submit)
+        CALL process_item(work_item, work_status)
+        IF (work_status == WORK_ITEM_EMPTY) &
+                    confirm[1]%available(this_image()) = .FALSE.
+        ! Notify master that work is done, but check for
+        ! master having failed
+        EVENT POST (confirm[1]%event(this_image()), STAT=status)
+        IF (status /= 0) THEN
+           ERROR STOP
+        END IF
+        IF (work_status == WORK_ITEM_EMPTY) EXIT worker
+     END DO worker
+  END IF
+END PROGRAM"
+
+
+
+

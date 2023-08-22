@@ -1,0 +1,134 @@
+To: J3                                            11-253
+Subject: Comment GB51 on TS 29113
+From: Craig Rasmussen
+Date: 2011 October 11
+References: WG5/N1869, WG5/N1880, WG5/N1881
+
+Discussion:
+
+UK comment GB51 asks that a subclause be added illustrating calls to
+MPI.  This paper demonstrates how MPI could use the following features
+from TS 29113: assumed type, assumed rank, assumed length, and
+optional dummy arguments.
+
+Since the interfaces shown here have not been formally adopted by the
+MPI Forum, the text explains what could be done in MPI, not what has
+been done.
+
+Edits to N1869:
+
+Following A.2.4, add the following subclause:
+
+A.2.4a Example of the mapping of MPI interfaces to Fortran
+
+The Message Passing Interface (MPI) has several functions for
+exchanging data between MPI processes.  This example shows the usage
+of \cf{MPI_Send} and is similar to the \cf{EXAMPLE_Send} in subclause
+A.1.2; however it uses assumed rank for the send buffer rather than
+assumed size.  It also shows the usage of assumed-length character
+dummy arguments as well as optional dummy arguments.
+
+MPI_Send has the C prototype,
+
+{{{CODE SECTION
+int MPI_Send(void *buf, int count, MPI_Datatype datatype,
+             int dest, int tag, MPI_Comm comm);
+}}}
+
+where \cf{MPI_Datatype} and \cf{MPI_Comm} are opaque handles.  Most
+MPI C functions return an error code, which in Fortran is the last
+dummy argument to the corresponding subroutine and can be made
+optional.  Thus, the use of a Fortran subroutine requires a wrapper
+function, declared as
+
+{{{CODE SECTION
+void MPI_Send_f(CFI_cdesc_t *buf, int count, MPI_Datatype_f datatype,
+                int dest, int tag, MPI_Datatype_f comm, int *ierror);
+}}}
+
+where it is assumed that \emph{in C} there is a conversion between the
+C handles of type \cf{MPI_Datatype} and \cf{MPI_Comm} and their
+respective Fortran handles of type \cf{MPI_Datatype_f} and
+\cf{MPI_Comm_f}.  Conversion of the \cf{CFI_cdesc_t *buf} argument to
+a contiguous \cf{void *} buffer is also be done in the wrapper
+function.
+
+Similarly, the wrapper function for \cf{MPI_Comm_set_name} could have
+the C prototype,
+
+{{{CODE SECTION
+void MPI_Comm_set_name_f(MPI_Comm comm, CFI_cdesc_t *comm_name,
+                         int *ierror);
+}}}
+
+The Fortran handle types and interfaces can be defined in the module,
+\cf{MPI_f08}. For example,
+
+{{{CODE SECTION
+module MPI_f08
+...
+type, bind(C) :: MPI_Comm
+   integer(c_int) :: MPI_VAL
+end type MPI_Comm
+
+interface
+  subroutine MPI_Send(buf,count,datatype,dest,tag,comm,ierror) &
+    bind(C, name="MPI_Send_f")
+    use, intrinsic :: iso_c_binding
+    import :: MPI_Datatype, MPI_Comm
+    type(*), dimension(..), intent(in) :: buf
+    integer(c_int), value, intent(in) :: count, dest, tag
+    type(MPI_Datatype), intent(in) :: datatype
+    type(MPI_Comm), intent(in) :: comm
+    integer(c_int), optional, intent(out) :: ierror
+  end subroutine MPI_Send
+end interface
+
+interface
+  subroutine MPI_Comm_set_name(comm,comm_name,ierror) &
+    bind(C, name="MPI_Comm_set_name_f")
+    use, intrinsic :: iso_c_binding
+    import :: MPI_Comm
+    type(MPI_Comm), intent(in) :: comm
+    character(kind=c_char, len=*), intent(in) :: comm_name
+    integer(c_int), optional, intent(out) :: ierror
+  end subroutine MPI_Comm_set_name
+end interface
+...
+end module MPI_f08
+}}}
+
+Example invocations from Fortran are
+
+{{{CODE SECTION
+use, intrinsic :: iso_c_binding
+use :: MPI_f08
+
+type(MPI_Comm) :: comm
+real :: x(100)
+integer :: y(10,10)
+real(kind(1.0d0)) :: z
+integer :: dest, tag, ierror
+...
+! assign values to x, y, z and initialize MPI variables
+...
+
+! set the name of the communicator
+call MPI_Comm_set_name(comm, "Communicator Name", ierror)
+
+! send values in x, y, and z
+call MPI_Send(x, 100, MPI_REAL, dest, tag, comm, ierror)
+call MPI_Send(y(3,:), 10, MPI_INTEGER, dest, tag, comm)
+call MPI_Send(z, 1, MPI_DOUBLE_PRECISION, dest, tag, comm)
+}}}
+
+The first example sends the entire array \cf{x} and includes the
+optional error argument return value.  The second example sends a
+noncontiguous subarray (the third row of \cf{y}) and the third example
+sends a scalar \cf{z}.  Note the differences between the calls in this
+example and those in A.1.2.
+
+
+In 6.11, last line: Replace "A.2.4" with "A.2.5" and "C.11.13"
+with "C.11.14".
+

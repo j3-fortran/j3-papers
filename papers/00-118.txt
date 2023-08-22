@@ -1,0 +1,293 @@
+
+                                                     J3/00-118
+
+Date:     16th February 2000
+To:       J3
+From:     Malcolm Cohen
+Subject:  Issues with NAME= and BINDNAME=
+
+1. Interface Bodies
+-------------------
+
+It is disallowed to have more than one BINDNAME= in an interface body, but
+is
+apparently considered to be ok to have a NAME= as well as a BINDNAME=.  If
+this is so, which one wins?  The Fortran processor only gets to pick one
+"label" to call (if it could pick more than one then there would be no
+justification for limiting the number of BINDNAME=).
+
+I suggest that either NAME= or BINDNAME= should be specified, but not both.
+
+A quick fix would be:
+
+[266:12] After "<bind-spec>"
+         insert "and shall not contain a NAME= <bind-spec> as well as a
+                 BINDNAME= <bind-spec>".
+{Forbid NAME= and BINDNAME= together.}
+
+However, see section 4 below for an improved resolution of this problem.
+
+2. BIND(C) Variables
+--------------------
+
+Also,
+  REAL,BIND(C,BINDNAME='_x',BINDNAME='_y') :: variable
+is disallowed, but
+  REAL,BIND(C,NAME='x',BINDNAME='_y') :: variable
+is allowed (even though it would have exactly the same effect as the
+disallowed version with a C processor that mapped a C name of "x" to
+a linker name of "_x").
+
+This has the same problem noted for interface bodies - which one of NAME=
+and BINDNAME= wins the fight?  (References from the Fortran code to the
+variable only get to pick one name!)
+
+I suggest that either NAME= or BINDNAME= should be specified, but not both.
+
+Hmm, I notice that after resolving this issue, one may only have a single
+<bind-spec> in any BIND(C,<bind-spec-list>) except in a FUNCTION statement
+or SUBROUTINE statement.
+
+[79:10-11] Replace with
+"Constraint: A <bind-spec-list> shall consist of no more than one
+<bind-spec>."
+
+However, see section 4 below for an improved resolution of this problem.
+
+3. Typo/Editorial
+-----------------
+
+[79:9] Replace "nore" with "more".
+{Typo}
+
+[266:42] Replace "some" with "a".
+{Editorial: I don't think the special meaning of "some" is required here.
+ In any case, "a" is used in the parallel text for variables at [78:40],
+ and I cannot see why it should be different for procedures.}
+
+4. Ineffectual Constraint
+-------------------------
+
+The constraint [266:11-12] does not work because <prefix-spec> has no
+<language-binding-spec>, neither directly nor indirectly.
+
+This is because we have duplicated the entire BIND(C...) BNF of
+<language-binding-spec> instead of re-using it, presumably to make writing
+some of the constraints a little easier (since some constraints apply only
+to variables and others only to procedures).
+
+The best way to fix this is probably to use <language-binding-spec> instead
+of repeating its BNF definition, and to tidy up the constraints.
+
+The edits below are *instead* of the edits in sections 1 and 2 above,
+but the edit in section 3 above still needs to be done...
+
+[79:11+] Insert
+         "Constraint: A <bind-spec-list> may contain more than one
+<bind-spec>
+                      only in a <function-stmt> or <subroutine-stmt> that is
+                      not part of an interface body."
+          Constraint: A <bind-spec-list> shall not be specified in a
+                      <function-stmt> or <subroutine-stmt> of an abstract
+                      interface body (12.3.2.1) or an interface body for a
+                      dummy procedure."
+{1-Only allow more than one <bind-spec> for "real" functions/subroutines,
+ 2-Move constraint from [266:2-3] to here.}
+
+[265:40] Replace "BIND (C [, <bind-spec-list> ])"
+         with "<language-binding-spec>".
+
+[266:1] Replace "BIND" with "<language-binding-spec>".
+[266:2-3] This was moved (qua wording change) to [79:11+] (see above).
+[266:4] Replace "The BIND <prefix-spec>" with "A <language-binding-spec>".
+{Why were we spelling this thing differently every other line anyway?  If
+there was some subtle point here I sure missed it.}
+
+[266:11-12] Delete constraint.
+{Covered by the new constraint at [79:11+].}
+
+[266:42] Replace "The BIND <prefix-spec>" with "A <language-binding-spec>".
+
+5. Issue 151 Discussion Incomplete
+----------------------------------
+
+[266:10+] Insert
+"The potential issue of using a C_PTR to a module procedure (should we be
+ allowed to have BIND(C) module procedures) is exactly the same as the case
+ of using a C_PTR to an external procedure that contains a common block
+ or a USE statement.  I.e. We must resolve what happens or what is allowed
+ with C_PTRs anyway, allowing BIND(C) module procedures would not make this
+ worse."
+
+6. Declarative Inconsistency
+----------------------------
+
+Our syntax for the BIND(C) attribute currently allows
+  BIND(C) FUNCTION F()
+and
+  LOGICAL(KIND=1) BIND(C,BINDNAME='_x@32',BINDNAME='_x@64') FUNCTION G()
+
+but forbids
+  FUNCTION F()
+  BIND(C) F
+and
+  FUNCTION G()
+  LOGICAL(KIND=1),BIND(C,BINDNAME='_x@32',BINDNAME='_x@64') :: G
+
+because the BIND statement and attribute are limited to variables.
+
+That is il-LOGICAL, Captain.
+
+It is easy enough to explain RECURSIVE, ELEMENTAL and PURE - there are
+no such attributes or statements (only <prefix-spec>s).  (Actually, even
+here there are a few grumbles!)
+
+It is going to be really tough to explain that even though we have identical
+syntax for BIND(C) constructions as a <prefix-spec> and an <attr-spec>, we
+just decided not to allow the use of the latter for procedures.  No
+technical
+reason as far as I can see; they even look complicated like <type-spec>, so
+users really are going to think they can do it.
+
+It doesn't even seem terribly difficult to describe this possibility in the
+standard, viz something like
+
+[65:42] Delete.
+{Improved replacement appears below.}
+
+[78:40-41] Replace ", as described in 16.2.7" with
+           "(16.2.7) or that a procedure interoperates with a C function
+            (16.2.6)"
+
+[79:12+] Insert
+         "Constraint: The BIND attribute for a variable other than a
+function
+                      result is permitted only in the specification part of
+a
+                      module."
+
+[79:14] After "BIND attribute" insert "for a variable or common block".
+
+[79:15+] Move [266:42-43] (as modified by section 4) to here.
+
+Sv?
+
+7. Informative note 12.35 considered uninformative
+--------------------------------------------------
+
+[266:42-43] says that the BIND prefix "shall not be specified for a
+procedure
+that does not interoperate with some C function (16.2.6)."
+
+Note 12.35 at [266:44-47] goes on to say
+   "If ... [list of conditions omitted] ..., the procedure does not
+    interoperate with any C function."
+
+Only 4 conditions are listed, which is way short of the number of conditions
+that cause a procedure not to interoperate with any C function.  This is
+hugely misleading.
+
+Given that this is directly after a pointer to the correct place, this note
+is not being useful either.  We ought not to duplicate the correct list of
+conditions in the note, particularly as the definitive list is still being
+worked on and will change (and so the note would have to change too, ugh).
+As I see it either
+(1) The note should read something like
+    "For example, <one or two conditions> would prevent the procedure from
+     interoperating with any C function."
+    i.e.
+    - start with "for example" to indicate to the reader that the list is
+not
+      complete, and
+    - avoid giving a long list which would give the impression of being
+      complete.
+    As for a possible "<one or two conditions>", I would pick
+    "having a POINTER or ALLOCATABLE dummy argument"
+or
+(2) struck altogether as being entirely unnecessary.  This is what I favour.
+
+[266:44-47] Delete.
+
+8. BINDNAME still considered harmful
+------------------------------------
+
+I note that even leaving NAME= off still defines a "binding label" which
+is obtained by lowercasing the Fortran name.  There is still no
+interaction between "binding label" (or anything else for that matter)
+and the BINDNAME= stuff, other than a few constraints about how many
+BINDNAME= one can put in a BIND(C) clause.  BTW, I think it is a pity
+that "binding label" was picked for "companion processor label" when it
+would most obviously be useful for the label known by the binder/linker.
+
+In the following I'll use "C name" for the name that the companion processor
+knows something by, "linker label" for the name that the linker knows it by
+and the function "Cmangle(...)" for the algorithm used by the C processor
+to produce the linker label from a C name.  I'll also use "UnMangle(...)"
+for the inverse of Cmangle(...).  [NB: For multiple C processors, multiple
+Cmangle-UnMangle pairs may exist, but this does not change the exposition
+materially so I'll ignore it for now.  Also, UnMangle might not produce a
+useable "C name" - this just acts to reduce the number of "C names"
+available for use from a particular C processor and again, I'll gloss
+over it.]
+
+Obviously (ha!) the intentions with the various possibilities of NAME= and
+BINDNAME= for a variable (or a procedure reference) are:
+ - no NAME= or BINDNAME=: the C name is lowercase(Fortran name),
+                          the linker label is Cmangle(lowercase(Fortran
+name))
+ - NAME='xyz', no BINDNAME=: the C name is 'xyz'
+                             the linker label is Cmangle('xyz')
+ - BINDNAME='abc', no NAME=: the C name is UnMangle('abc')
+                             the linker label is 'abc'
+
+And for a function definition, we additionally have:
+ - NAME='xyz',BINDNAME='abc': one C name is 'xyz'
+                              another C name is UnMangle('abc')
+                              one linker label is 'abc'
+                              another linker label is Cmangle('xyz')
+ - BINDNAME='xyz',BINDNAME='zzz': one C name is UnMangle('xyz')
+                                  another C name is UnMangle('zzz')
+                                  one linker label is 'xyz'
+                                  another linker label is 'zzz'
+
+It certainly seems obvious that the presence of one or more BINDNAME= must
+suppress the default C name and linker label, since when referencing a
+(variable or procedure) only one linker label can be used by the Fortran
+processor, and when defining a procedure one might wish to avoid a name
+clash.
+
+So for a concrete example with 1 C processor whose Cmangle(name)=='_'//name,
+we might could use one of the following to access a C variable:
+  REAL,BIND(C) :: X
+  REAL,BIND(C,NAME='x') :: Y
+  REAL,BIND(C,BINDNAME='_x') :: Z
+...these all have the same effect, that of accessing the C variable whose
+C name is "x" and whose linker label is "_x".
+
+And if we wanted instead to interoperate with an unsupported C processor
+with a different mangling scheme, say name//'@32', we would do
+  REAL,BIND(C,BINDNAME='x@32') :: Z
+(the other two possibilities being non-functional because the Fortran
+compiler
+would apply the wrong mangling rules to it).
+
+But we could define a subroutine callable from either, by
+  BIND(C,NAME='hello',BINDNAME='hello@32') SUBROUTINE hi
+or
+  BIND(C,BINDNAME='_hello',BINDNAME='hello@32') SUBROUTINE hi
+
+****To sum up
+
+I produced the above based on what is in the draft and the explanations
+given
+at various meetings as to the purpose of BINDNAME=.  No doubt if I've gotten
+it wrong someone will explain why it has to be some other way.
+
+Anyway,...
+Much of the above would be suitable for an Annex C explanation of what
+implementors are meant to do with BINDNAME (and what users can do for
+that matter).  I believe that we really do need to tie down the semantics
+of BINDNAME= to at least this level of detail; anything less would be a
+serious disservice to our readers.
+
+===END

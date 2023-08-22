@@ -1,0 +1,114 @@
+To: J3                                                     J3/18-143
+From: Gary Klimowicz
+Subject: Add reductions to DO CONCURRENT
+Date: 2018-February-15
+
+Reference: 18-007: 11.1.7 (DO construct) and 16.9.161 (REDUCE)
+
+Introduction
+------------
+To do a reduction on the array elements of a DO CONCURRENT,
+one must construct a temporary array variable to hold the
+values you want to reduce, and then perform the reduction
+outside the DO CONCURRENT.
+
+For hybrid computing environments, this can involve a substantial
+amount of data movement. When we the user is most interested in
+performing a simple reduction of the data in the DO CONCURRENT,
+the data overhead can exceed the gains from the computational
+parallelism.
+
+We propose a way of specifying scalar reduction variables that are
+managed across the DO CONCURRENT block executions to accumulate one
+or more scalar values from each executed block.
+
+We believe this will
+* Increase expressiveness of DO CONCURRENT
+* Increase opportunities for parallelism
+* Reduce memory allocation needs
+* Reduce need for memory copy when offloading to target processors
+
+This is an in-Fortran specification of many of the features of
+the OpenMP reduction clause.
+
+Rough Idea
+----------
+The syntax proposed below is provided to add some concreteness to
+the explanation of the proposed semantics.
+
+In section 11.1.7.2, rule 1123, add 'concurrent-reduction' after
+'concurrent-locality'.
+
+'concurrent-reduction' would be zero or more 'reduction-spec's.
+A 'reduction-spec' would specify a reduction variable, its
+initial value, an operation to perform to pairs of values, and
+the variable that would participate in the reduction.
+
+Putting on fuzzy glasses, it could look something like this:
+    REDUCE ( result-variable-name = initial-value, operation, &
+            reduction-variable-name)
+
+As each block execution of the DO CONCURRENT completes, values of
+the reduction-variable are combined with the result-variable
+using the specified operation.
+
+Like the index-name variables, the result-variable-name cannot
+appear in any LOCAL or LOCAL_INIT specification for the same DO
+CONCURRENT statement. I think this must be SHARED locality, if
+I understand it correctly.
+
+Like the names in the locality-spec, the result-variable-name and
+the reduction-variable-name shall be the names of variables in
+the innermost executable construct or scoping unit that includes
+the DO CONCURRENT statement. They cannot be the same variable.
+
+The reduction-variable-name is allowed to appear in the LOCAL or
+LOCAL_INIT specification for the DO CONCURRENT statement.
+
+The operation (as in REDUCE) is a pure, associative function with
+exactly two arguments whose type and type parameters match the
+result-variable-name and reduction-variable-name. It would also
+make sense for the operation to be a Fortran operator, like +,
+*, .AND., .OR., etc.
+
+
+Silly Example
+-------------
+For concreteness, here's an example with comments to indicate
+the additional semantics.
+
+
+subroutine f
+integer, parameter :: N = 100
+real :: A(N), B(N),
+real :: SUMSQ, THE_THING
+
+...
+! SUMSQ = 0
+do concurrent (I = 1:N) REDUCE(SUMSQ = 0, +, THE_THING)
+    THE_THING = (A(N)+B(N)) ** 2
+    ! SUMSQ = SUMSQ + THE_THING
+end do
+! SUMSQ has the sum of squares of all a[i]+b[i].
+
+end f
+
+
+
+Naive Semantics
+---------------
+The semantics is *as if* the construct were executed as follows,
+with the order of execution of the assignments to the
+result-variable-name undefined. (The ellipses are to indicate
+that more than one reduction is allowed in a DO CONCURRENT,
+so similar statements would also be executed for the second
+and subsequent REDUCE clauses.)
+
+    result-variable-name = initial-value ...
+    DO CONCURRENT (concurrent-control-list, mask-expression)
+        block ! where reduce-variable-name is set
+        result-variable-name &
+            = operation (result-variable-name, reduce-variable-name) ...
+    END DO CONCURRENT
+
+

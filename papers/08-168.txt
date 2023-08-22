@@ -1,0 +1,500 @@
+To: J3                                                    08-168
+From: Bill Long, Aleksandar Donev
+Subject: Adding locks to the co-array core subset
+Date: 2008 April 28
+References: J3/08-126, J3/08-007r2 (WG5/N1723)
+
+Background:
+-----------
+
+Paper 08-126 is the critique of coarrays from the Rice University
+group submitted at meeting 183. A reply to that paper was formed
+following the meeting (see paper J3/08-16x).  One major issue, the
+lack of a lock facility, was felt to be sufficiently important to have
+in the initial Fortran 2008 lanugage. In anticipation of a formal
+public comment on this topic, Sepcification, Syntax, and Edits are
+provided below.
+
+
+Specification:
+--------------
+
+Locks are scalar variables that have one of two values: locked or
+unlocked. The operations that change the value of a lock are atomic,
+so that multiple images might concurrently attempt to set its value to
+locked (acquire the lock) or unlocked (release the lock), but only one
+image will succeed.  OpenMP, UPC, and other programming models contain
+tools to manipulate locks.
+
+A lock variable permits fine-grain disjoint access to a data
+structure.  Critical sections, by contrast, permit disjoint access to
+a sequence of statements.  Using lock variables, one can scale the
+amount of potential concurrency with the size of a data structure by
+protecting sections of the data structure (e.g. nodes in a graph)
+individually with locks, if desired.
+
+Locks are scalar objects of an intrinsic opaque derived type, LOCK_T,
+defined in the intrinsic module ISO_FORTRAN_ENV. This type is
+default-initialized to unlocked. Typically, locks will be declared to
+be coarrays.
+
+New image control statements, LOCK and UNLOCK, are provided to alter
+the values of locks.  Execution of either statement includes the
+effect of executing a SYNC MEMORY statement.
+
+A lock variable is currently locked by an image if its value was set
+to locked by that image and has not been subsequently unlocked.
+
+Execution of a LOCK statement without a SUCCESS= specifier causes the
+<lock-variable> to be assigned the value of locked. If the lock
+variable is currently locked by a different image, and no error
+condition occurs, execution of the LOCK statement completes when the
+lock is released by the other image and acquired by this image.
+
+Execution of a LOCK statement with a SUCCESS= specifier causes the
+<lock-variable> to be assigned the value locked and the value of the
+SUCCESS variable to true, if it was currently unlocked. Otherwise, the
+<lock-variable> is not changed and the value of the SUCCESS variable
+is set to false.
+
+The <lock-variable> in a LOCK statement shall not be currently locked
+by the image executing the LOCK statement.
+
+An error condition occurs if a LOCK statement specifies a lock
+variable that is currently locked by the executing image.
+
+Execution of an UNLOCK statement causes the value of the
+<lock-variable> to be set to unlocked. The <lock-variable> shall be
+currently locked by the executing image.
+
+An error condition occurs if the value of the lock variable in an
+UNLOCK statement is unlocked, or if the variable is currently locked
+by a different image.
+
+
+Example:
+
+--------
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+
+TYPE(LOCK_T) :: queue_lock[*] ! Lock to manage the work queue
+INTEGER :: work_queue_size[*]
+TYPE(Task) :: work_queue(100)[*] ! List of tasks to perform
+
+TYPE(Task) :: job ! Current task working on
+INTEGER :: me
+
+me=THIS_IMAGE()
+DO
+   ! Process the next item in your work queue
+
+   LOCK(queue_lock) ! New segment A starts
+   ! This segment A is ordered with respect to
+   ! segment B executed by image me-1 below because of lock exclusion
+   IF(work_queue_size>0) THEN
+      ! Fetch the next job from the queue
+      job=work_queue(work_queue_size)
+      work_queue_size=work_queue_size-1
+   END IF
+   UNLOCK(queue_lock) ! Segment ends
+   ... ! Actually process the task
+
+   ! Add a new task on neighbors queue:
+   LOCK(queue_lock[me+1]) ! Starts segment B
+   ! This segment B is ordered with respect to
+   ! segment A executed by image me+1 above because of lock exclusion
+   IF(work_queue_size[me+1]<SIZE(work_queue)) THEN
+      work_queue_size[me+1]=work_queue_size[me+1]+1
+      work_queue(work_queue_size[me+1])[me+1]=job
+   END IF
+   UNLOCK(queue_lock[me+1]) ! Ends segment B
+
+END DO
+--------
+
+One could view the execution of a CRITICAL construct as being
+controlled by a single, program-wide lock variable associated with
+that construct. This is, in fact, a likely implementation.  It is
+sometimes useful, and also more scalable, to have the capability of
+requiring mutual exclusion of the execution of a CRITICAL construct
+only among a subset of the images, based on a data structure they
+share.  This could be accomplished explicitly by placing the construct
+block between a LOCK and UNLOCK statement pair, instead of CRITICAL /
+END CRITICAL statements. Alternatively, and more structured, the lock
+controlling execution of the construct could be specified as part of
+an extended syntax for the CRITICAL statement. This capability is
+provided as an extension of the locking capability.
+
+Execution of a CRITICAL statement that specifies a lock variable has
+the effect of the execution of a LOCK statement that specifies the
+same lock variable and no other specifiers. The lock variable shall
+not be currently locked by the executing image.  Execution of the
+corresonding END CRITICAL statement has the effect of the execution of
+an UNLOCK statement that specifies that lock variable. If a second
+image executes a CRITICAL statement that specifies the same lock
+variable, execution of its block is delayed until the image currently
+holding the lock releases it.
+
+Unlike the case of a CRITICAL construct without a lock variable, more
+than one CRITICAL construct may specify the same lock variable, in
+which case the execution of any of the set of blocks is restricted to
+a single image.  It is also possible for two images to specify
+different lock variables for a particular CRITICAL construct, allowing
+for concurrent execution of the block by those two images.
+
+
+Example:
+
+--------
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+
+TYPE(LOCK_T) :: queue_lock[*] ! Lock to manage the work queue
+INTEGER :: work_queue_size[*]
+TYPE(Task) :: work_queue(100)[*] ! List of tasks to perform
+
+TYPE(Task) :: job ! Current task working on
+INTEGER :: me
+
+me=THIS_IMAGE()
+DO
+   ! Process the next item in your work queue
+
+   CRITICAL(queue_lock) ! New segment A starts
+      ! This segment A is ordered with respect to
+      ! segment B executed by image me-1 below because of lock
+      exclusion
+      IF(work_queue_size>0) THEN
+         ! Fetch the next job from the queue
+         job=work_queue(work_queue_size)
+         work_queue_size=work_queue_size-1
+      END IF
+   END CRITICAL ! Segment ends
+   ... ! Actually process the task
+
+   ! Add a new task on neighbors queue:
+   CRITICAL(queue_lock[me+1]) ! Starts segment B
+      ! This segment B is ordered with respect to
+      ! segment A executed by image me+1 above because of lock
+      exclusion
+      IF(work_queue_size[me+1]<SIZE(work_queue)) THEN
+         work_queue_size[me+1]=work_queue_size[me+1]+1
+         work_queue(work_queue_size[me+1])[me+1]=job
+      END IF
+   END CRITICAL ! Ends segment B
+
+END DO
+--------
+
+Syntax:
+-------
+
+<lock-stmt>   <<is>> LOCK ( <lock-variable> [, <lock-stat-list>] )
+
+<unlock-stmt> <<is>> UNLOCK ( <lock-variable> [, <sync-stat-list>] )
+
+<lock-variable> is <scalar-variable>
+
+Constraint: <lock-variable> shall be a scalar variable of type
+LOCK_T defined in the intrinsic module ISO_FORTRAN_ENV.
+
+<lock-stat>  <<is>>  SUCCESS=<scalar-logical-variable>
+             <<or>>  <sync-stat>
+
+
+<critical-stmt> <<is>> [ <critical-construct-name> : ] CRITICAL [
+(<lock-variable>) ]
+
+<lock-variable>  <<is>>  <scalar-variable>
+
+Constraint: <lock-variable> shall be a scalar variable of type
+LOCK_T defined in the intrinsic module ISO_FORTRAN_ENV.
+
+
+Edits:
+------
+
+------------------------------------
+[28] In 2.2 "High level syntax" rule R214 "<action-stmt>" add two new
+entries alphabetically:
+
+"<<or>> <lock-stmt>"
+"<<or>> <unlock-stmt>"
+
+------------------------------------
+[174:8.1.6p1] In R819 of "CRITICAL construct" append after "CRITICAL"
+
+"[ ( <lock-variable> ) ]"
+
+------------------------------------
+[174:8.1.6p1] Following R819 of "CRITICAL construct" add a new syntax
+rule and constraint:
+
+"R819a  <lock-variable>  <<is>>  <scalar-variable>
+
+ C813a (R819a) A <lock-variable> shall be of type LOCK_T defined in
+ the intrinsic module ISO_FORTRAN_ENV."
+
+
+------------------------------------
+[175:8.1.6p3] At the beginning of paragraph 3 of "CRITICAL construct"
+replace
+
+"The processor"
+
+with
+
+"If a <lock-variable> does not appear in the CRITICAL statement, the
+processor"
+
+------------------------------------
+[175:8.1.6p3] Move the second two sentences of paragraph 3 of
+"CRITICAL construct", "The image shall not execute ... is therefore a
+segment (8.5.1)." to the end of paragraph 2 of the same subclause.
+
+
+------------------------------------
+[175:8.1.6p3+] After paragraph 3 of "CRITICAL construct", add a new
+paragraph:
+
+"If a <lock-variable> appears in the CRITICAL statement, the construct
+is executed as if the CRITICAL statement were replaced by a LOCK
+statement with the same <lock-variable> and no other specifiers, and
+the END CRITICAL statement were replaced with an UNLOCK statement with
+the same <lock-variable>. Execution of a CRITICAL construct that
+specifies a lock-variable on one image is ordered relative to the
+execution of a CRITICAL construct the specifies the same lock variable
+on a different image. These may be different constructs."
+
+
+------------------------------------
+[175:8.1.6Note8.10+] At the end of "CRITICAL construct", add a new
+Note:
+
+"NOTE 8.10a
+The following example illustrates the manipulation of a shared work
+queue using locked CRITICAL constructs:
+
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+
+TYPE(LOCK_T) :: queue_lock[*] ! Lock to manage the work queue
+INTEGER :: work_queue_size[*]
+TYPE(Task) :: work_queue(100)[*] ! List of tasks to perform
+
+TYPE(Task) :: job ! Current task working on
+INTEGER :: me
+
+me=THIS_IMAGE()
+DO
+   ! Process the next item in your work queue
+
+   CRITICAL(queue_lock) ! New segment A starts
+      ! This segment A is ordered with respect to
+      ! segment B executed by image me-1 below because of lock
+      exclusion
+      IF(work_queue_size>0) THEN
+         ! Fetch the next job from the queue
+         job=work_queue(work_queue_size)
+         work_queue_size=work_queue_size-1
+      END IF
+   END CRITICAL ! Segment ends
+   ... ! Actually process the task
+
+   ! Add a new task on neighbors queue:
+   CRITICAL(queue_lock[me+1]) ! Starts segment B
+      ! This segment B is ordered with respect to
+      ! segment A executed by image me+1 above because of lock
+      exclusion
+      IF(work_queue_size[me+1]<SIZE(work_queue)) THEN
+         work_queue_size[me+1]=work_queue_size[me+1]+1
+         work_queue(work_queue_size[me+1])[me+1]=job
+      END IF
+   END CRITICAL ! Ends segment B
+
+END DO
+[End NOTE]"
+
+
+------------------------------------
+[187:8.5.1p2] In the bullet list of 8.5.1 "Image control statements",
+after the entry that begins "CRITICAL ..." add a new entry:
+
+"LOCK or UNLOCK statement;"
+
+
+------------------------------------
+[191] After subclause 8.5.4 "SYNC MEMORY statement", add a new
+subclause:
+
+"8.5.4a LOCK and UNLOCK statements
+
+R862a <lock-stmt> <<is>> LOCK ( <lock-variable> [, <lock-stat-list>] )
+
+R862b <lock-stat> <<is>>  SUCCESS=<scalar-logical-variable>
+                  <<or>>  <sync-stat>
+
+R862c <unlock-stmt> <<is>> UNLOCK ( <lock-variable> [, <sync-stat-list>] )
+
+
+A <lock-variable> represents two values of a lock: locked and
+unlocked. A lock is acquired by setting its value to locked, and
+released by setting its value to unlocked.  A lock variable is
+currently locked by an image if it value was set to locked by that
+image and has not been subsequently set to unlocked.
+
+Execution of a LOCK statement without a SUCCESS= specifier causes the
+<lock-variable> to be assigned the value of locked. If the lock
+variable is currently locked by a different image, execution of the
+LOCK statement completes when the lock is released by the other image
+and acquired by this image.
+
+If a <lock-variable> has the value unlocked, execution of a LOCK
+statement with a SUCCESS= specifier causes the <lock-variable> to be
+assigned the value locked and the value of the SUCCESS variable to
+true. Otherwise, the <lock-variable> is not changed and the value of
+the SUCCESS variable is set to false.
+
+The <lock-variable> in a LOCK statement shall not be currently locked
+by the image executing the LOCK statement.
+
+Execution of an UNLOCK statement causes the value of the
+<lock-variable> to be set to unlocked. The <lock-variable> shall be
+currently locked by the executing image.
+
+NOTE 8.39a
+A lock variable is effectively defined atomically by a LOCK or UNLOCK
+statement. If LOCK statements on two images both attempt to acquire a
+lock, one will succeed and the other will either fail, if a SUCCESS=
+specifier was provided, or will wait until the lock is later released.
+[End NOTE]
+
+NOTE 8.39b
+The following example illustrates the use of LOCK and UNLOCK
+statements to manage a work queue:
+
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+
+TYPE(LOCK_T) :: queue_lock[*] ! Lock to manage the work queue
+INTEGER :: work_queue_size[*]
+TYPE(Task) :: work_queue(100)[*] ! List of tasks to perform
+
+TYPE(Task) :: job ! Current task working on
+INTEGER :: me
+
+me=THIS_IMAGE()
+DO
+   ! Process the next item in your work queue
+
+   LOCK(queue_lock) ! New segment A starts
+   ! This segment A is ordered with respect to
+   ! segment B executed by image me-1 below because of lock exclusion
+   IF(work_queue_size>0) THEN
+      ! Fetch the next job from the queue
+      job=work_queue(work_queue_size)
+      work_queue_size=work_queue_size-1
+   END IF
+   UNLOCK(queue_lock) ! Segment ends
+   ... ! Actually process the task
+
+   ! Add a new task on neighbors queue:
+   LOCK(queue_lock[me+1]) ! Starts segment B
+   ! This segment B is ordered with respect to
+   ! segment A executed by image me+1 above because of lock exclusion
+   IF(work_queue_size[me+1]<SIZE(work_queue)) THEN
+      work_queue_size[me+1]=work_queue_size[me+1]+1
+      work_queue(work_queue_size[me+1])[me+1]=job
+   END IF
+   UNLOCK(queue_lock[me+1]) ! Ends segment B
+
+END DO
+[End NOTE]"
+
+------------------------------------
+[192:8.5.5p1+] After paragraph 1 of "STAT= and ERRMSG= specifiers in
+image execution control statements" add a new paragraph:
+
+"If the STAT= specifier appears, successful execution of the LOCK or
+UNLOCK statements casues the specified variable to become defined with
+the value zero.  If an error condition occurs during execution of
+either of these statements, the variable becomes defined with a
+processor-dependent positive integer value.
+
+NOTE 8.39a
+An error condition occurs if a LOCK statement specifies a lock
+variable that is currently locked by the executing image. An error
+condition occurs if the value of the lock variable in an UNLOCK
+statement is unlocked, or if the variable is currently locked by a
+different image. An error condition may also occur if the implicit
+SYNC MEMORY operation that occurs as part of the LOCK or UNLOCK
+statement fails.
+[End NOTE]"
+
+
+------------------------------------
+[192:8.5.5p2] In paragraph 2 of "STAT= and ERRMSG= specifiers in image
+execution control statements" replace
+
+"SYNC IMAGES, or SYNC MEMORY"
+
+with
+
+"SYNC IMAGES, SYNC MEMORY, LOCK, or UNLOCK"
+
+
+------------------------------------
+[397:13.8.2.13+] In the descriptions of the contents of the
+ISO_FORTRAN_ENV intrinsic module (13.8.2), add a new subclause
+following "IOSTAT_INQUIRE_INTERNAL_UNIT":
+
+"13.8.2.13a  LOCK_T
+
+LOCK_T is a derived type with private nonpointer, nonallocatable,
+noncoarray components. Variables of type LOCK_T are use as
+<lock-variable>s in LOCK and UNLOCK statements (\ref{LOCK and UNLOCK
+statements}) or CRITICAL statements (\ref{CRITICAL statement})."
+
+
+------------------------------------
+[453:16.6.3p1] In the list in 16.6.3 "Variables that are initially
+defined"
+
+in list item (6) replace the final "." with ";"
+
+and add to the end of the list:
+
+"(7) variables of type LOCK_T defined in the intrinsic module
+ISO_FORTRAN_ENV."
+
+------------------------------------
+[454:16.6.5p1] In the list in 16.6.5 "Events that cause variables to
+become defined" add two new list items at the end:
+
+"(29) Execution of a LOCK statement containing a SUCESS= specifier
+     causes the specified logical variable to become defined. If the
+     logical variable becomes defined with the value true, the
+     <lock-variable> in the LOCK statement also becomes defined.
+
+(30) Execution of a LOCK statement that does not contain a SUCCESS=
+     specifier causee the <lock-variable> to become defined.
+
+(31) Execution of an UNLOCK statement causes the <lock-variable> to
+     become deifned.
+
+(32) Execution of a CRITICAL statement containing a <lock-variable>
+     causes the <lock-variable> to become defined.
+
+(33) Execution of an END CRITICAL statement that terminates a critical
+     construct whose CRITICAL statement contains a <lock-variable>
+     causes that <lock-variable> to become defined."
+
+------------------------------------
+[456:16.6.7p1] In the list in 16.6.7 "Variable definition context",
+
+in list item (13) replace the final "." with ";"
+
+and add two new items at the end of the list:
+
+"(14) a <lock-variable>;"
+
+ (15) a SUCCESS= specifier in a LOCK statement."
+
+

@@ -1,0 +1,202 @@
+To:         J3 Members                                       J3/16-120
+From:       Van Snyder
+Subject:    Several units for one file, nonadvancing, asynchronous, etc.
+Reference:  15-226, 14-174r1 (UK-12), 16-007
+Date: 2016 January 25
+
+1. Introduction
+===============
+
+[211:24-25 9.5.4p4 and 212:31 9.5.6.1p8 in 15-007r2] 9.5.4p4 says it is
+processor dependent whether a file can be connected to more than one
+unit at the same time.  9.5.6.1p8 prevents it.  Which one is it?  Since
+the permission was added by work item UK-12 (14-174r1) we can presume it
+is intended to be allowed.
+
+Once you open a can of worms, you need a bigger can to put them back.
+
+Connecting several units to a file is not mentioned in the introduction.
+
+If a file is connected to more than one unit, how do asynchronous output
+and nonadvancing output work?  Are their behaviors processor dependent,
+or should these actions be prohibited?
+
+8.1.6.5p5 says that if records are written to a file connected for
+sequential access during more than one iteration of a DO CONCURRENT
+construct, the ordering between records is processor dependent.  This is
+posed by reference to a file, not a unit, so if a file is connected to
+more than one unit, there is no new problem.  The subclause is silent
+concerning the relationship between DO CONCURRENT and asynchronous
+output.  Asynchronous is probably OK because 9.6.2.5p3 says asynchronous
+transfers are "read, written, and processed as they would have been if
+the data transfers were synchronous.
+
+The description of the NUMBER= specifier says it assigns the unit number
+of the connected file.  It doesn't say which unit number is assigned if
+more than one is connected.  The simplest answer is that it is processor
+dependent.  A complicated additional feature is to allow (but not
+require) a rank-one allocatable array, which is thereby allocated with a
+size equal to the number of units attached to the file (zero if there
+are none), and each element is assigned the external unit number for one
+of those units.
+
+2. Edits
+========
+
+[xvi Introduction, under Input/output] Insert a sentence: "Whether a
+file can be connected to more than one unit is processor dependent
+instead of prohibited."
+
+{That 8.1.6.5p5 prohibits writing to the same record or position in
+different iterations suggests it should be prohibited to write to the
+same record or position using different units that are connected to the
+same file.  Should the effect instead be processor dependent?  Does this
+need an interp?  /JOR needs to ponder this.}
+
+[212:31 9.5.6.1p8] Replace "an OPEN ... executed" with "it is processor
+dependent whether an OPEN statement on that file with a different unit
+may be executed."
+
+[509:18] Replace "9.5.4" with "9.5.4, 9.5.6".
+
+{Alternative to the previous two edits:}
+
+[212:31 9.5.6.1p8] Delete the paragraph that begins "If a file is
+already connected...."
+
+[220:18+ 9.6.2.4p1+] Insert a paragraph:
+
+"The effect of nonadvancing output using different units connected to
+the same file is processor dependent."
+
+[221:11+ 9.6.2.5p5+] Insert a paragraph:
+
+"The effect of asynchronous output using different units connected to
+the same file is processor dependent."
+
+509:35+] Insert an item:
+
+"o the effect of nonadvancing or asynchronous output using different
+   units connected to the same file (9.6.2.4, 9.6.2.5);"
+
+3. Edits for INQUIRE by file
+============================
+
+[243:14 9.10.2.18p1] Insert a sentence before the one that begins "If
+there is no unit...": "If more than one unit is connected, which
+external unit number is assigned to the <scalar-int-variable> is
+processor dependent."
+
+[510:10+] Insert a list item:
+
+" o the external unit number assigned to the <scalar-int-variable> in
+    the NUMBER= specifier in an INQUIRE by file statement if more than
+    one unit is connected to the file (9.10.2.18);"
+
+4. Alternative edits for INQUIRE by file
+========================================
+
+[240:29 R931 NUMBER=] Replace <scalar-int-variable> with
+<unit-variable>.
+
+[240:44+ R931+] Insert a syntax rule:
+
+"R931a <unit-variable> <<is>> <int-variable>"
+
+[241:7+ C949+] Insert a constraint:
+
+"C949a (R931a) The <unit-variable> shall be a scalar or a rank-one
+       allocatable array."
+
+[243:13 9.10.2.18p1] Replace "Execution" with
+
+"If the <unit-variable> is allocatable and the statement is an INQUIRE
+by file statement then
+
+  1.  if the <unit-variable> is allocated and its size is different from
+      the number of units connected to the file it becomes unallocated;
+
+  2.  if the <unit-variable> is unallocated, it is allocated with a size
+      equal to the number of units connected to the file and a lower
+      bound of one; and
+
+  3.  each element of the <unit-variable> is assigned the external unit
+      number of a diffent one of the units connected to the file; the
+      order of the units assigned is processor dependent.
+
+If the <unit-variable> is allocatable and the statement is an INQUIRE
+by unit statement then
+
+  1.  if the <unit-variable> is allocated and its size is not one it
+      becomes unallocated;
+
+  2.  if the <unit-variable> is unallocated, it is allocated with one
+      element and a lower bound of one; and
+
+  3.  the only element of the <unit-variable> is assigned the value of
+      the <file-unit-number>.
+
+If the <unit-variable> is not allocatable, execution"
+
+[243:14 9.10.2.18p1] Insert a sentence before the one that begins "If
+there is no unit...": "If more than one unit is connected, which
+external unit number is assigned to the <scalar-int-variable> is
+processor dependent."
+
+[243:16+ 9.10.2.18p1+] Insert a note:
+
+"NOTE 9.59a
+  If the <unit-variable> is allocatable and no unit is connected to the
+  file, the size of the <unit-variable> is zero and its lower bound is
+  one."
+
+{Maybe the note isn't much additional help.}
+
+[509:10+] Insert two items:
+
+" o the external unit number assigned to the <unit-variable> in the
+    NUMBER= specifier in an INQUIRE by file statement if more than one
+    unit is connected to the file and the <unit-variable> is not
+    allocatable (9.10.2.18);"
+
+" o the order of the external unit numbers assigned to the
+    <unit-variable> in the NUMBER= specifier in an INQUIRE by file
+    statement if more than one unit is connected to the file and the
+    <unit-variable> is allocatable (9.10.2.18);"
+
+5. Entirely different strategy
+==============================
+
+Rather than allowing, as a processor option, to connect more than one
+unit to a file, allow it only if the connections are on different
+images.
+
+6. Edits for entirely different strategy
+========================================
+
+[xvi Introduction, under Input/output] Insert a sentence: "Whether a
+file can be connected to a unit on more than one image is processor
+dependent instead of prohibited."
+
+{That 8.1.6.5p5 prohibits writing to the same record or position in
+different iterations suggests it should be prohibited to write to the
+same record or position using units that are connected to the same file
+on different images.  Should the effect instead be processor dependent?
+Would it be OK to allow it, provided the writes occur in ordered
+segments?  If we decide to allow it, I have no idea where to put it.
+Does this need an interp?  /JOR and/or /HPC need to ponder this.}
+
+[211:24-25 9.5.4p4] Replace the sentence beginning "It is processor..."
+with: "A file shall not be connected to more than one unit at the same
+time on one image.  Whether a file may be connected at the same time to
+units on different images is processor dependent."
+
+212:31 9.5.6.1p8] After the first "unit" insert "on an image".  After
+"executed" insert "on that image".  Maybe append a redundant sentence:
+"Whether a file may be connected at the same time to units on different
+images is processor dependent."
+
+[509:18] Replace the item:
+
+"  o Whether a file may be connected at the same time to units on
+     different images."

@@ -1,0 +1,127 @@
+To: J3                                                 09-238
+From: Nick Maclaren
+Subject: Existing Interoperability Problems
+Date: 2009 June 03
+References:
+
+
+I have started writing up some "exception handling" issues introduced by
+the Interoperability TR, and discovered some problems in the existing
+wording that have little to do with the TR.  I think that they should
+be fixed in the current standard - they are certainly not changes.
+
+There are other things that need fixing, but exactly how to fix them
+will depend on the TR, so I have not included them here.  For example,
+C_F_POINTER is ambiguous about whether a C pointer with an interoperable
+type that has a valid value (either null or not) that does not point to
+an object is acceptable.  But that boat is rocked by allowing
+ALLOCATABLE variables to be interoperable.
+
+
+
+Inter-procedural transfers and C++
+----------------------------------
+
+Like it or lump it, interoperability is as much about C++ as anything
+else.  To say that interoperating with C++ is undefined behaviour is
+neither acceptable to the vendors and customers nor technically
+justifiable.  The following is the technical issue:
+
+    1) C++ specifies almost complete interoperability with most of C;
+indeed, almost all current compilers are dual-mode C and C++ ones, and
+the common subset can be compiled in either mode.
+
+    2) The first paragraph of 15.1 and the second of 15.5.1 make it very
+clear that the sole requirement on a companion processor is that its
+interfaces can be defined in terms of C, and not that it must
+necessarily be implemented entirely in C.  If that were not so, MPI
+would be excluded!
+
+Because of this, the Fortran and C++ standards together define
+interoperability, provided only that all interfacing is done using C.
+
+
+C has one such facility (setjmp/longjmp), and C++ adds another
+(throw/catch); they have different constraints and semantics.  The
+former is forbidden by Fortran (15.5.1 paragraph 5), but the latter is
+not.  It should be forbidden by a Note.
+
+EDITS (A)
+
+[441:2+ 15.5.1p5] Add:
+
+    NOTE 15.x
+    This restriction applies to all mechanisms that can be used to cause
+    a transfer from one procedure instance to one of the procedure
+    instances that called it other than by simply returning, such as by
+    throwing and catching an exception in C++.
+
+END EDITS
+
+
+
+IEEE Aspects
+------------
+
+15.5.3 contains some restrictions, but is so ambiguous that it the
+combination of IEEE support and using a companion processor is currently
+unspecified.  If anyone disagrees, please can they tell me what more is
+currently specified, because I can't work it out!
+
+
+C99 7.6 paragraph 2 says about modes:
+
+    Certain programming conventions support the intended model of use
+    for the floating-point environment:
+
+    -- a function call does not alter its caller's floating-point
+       control modes, clear its caller's floating-point status flags,
+       nor depend on the state of its caller's floating-point status
+       flags unless the function is so documented;
+
+    -- a function call is assumed to require default floating-point
+       control modes, unless its documentation promises otherwise;
+
+Well, that's not what Fortran specifies in 14.4, 14.5 and 14.6.  Even
+worse, C99 supports only the rounding mode.  The obvious question is
+whether a processor that supports the IEEE features and a companion
+processor, but where the combination falls over horribly, is conforming.
+
+
+I baulk at describing C99's mishandling of the IEEE flags, but the
+executive summary is that they can almost always be set spuriously, need
+not be set even when they appear to be required and become undefined at
+almost all interfaces.
+
+15.5.3 says that they are processor dependent on entry to a 'C'
+function, but nothing about what they are on return or when such a
+function calls Fortran.
+
+Equally problematically, Fortran has chosen a dynamic hierarchical model
+for the floating-point status (14.3-14.6), but C has chosen a static
+global one.  Once one has a call chain that mixes C and Fortran in
+arbitrary ways, the contradictions become insoluble.
+
+To take a simple example, if Fortran has the OVERFLOW flag set and calls
+C, the C code clears the flags and returns, and the OVERFLOW flag is
+then unset in the Fortran, is the processor conforming?  I can say for
+certain that there would be almost no chance of getting a vendor's
+support centre to accept that as a bug with the current wording!
+
+
+The following may be regarded as overkill, but I don't think that it is.
+It just makes the whole mess processor dependent.
+
+EDITS (B)
+
+[441:23 15.5.3p3] Replace:
+
+    "The values of the floating-point exception flags on entry to a
+    procedure defined by means other than Fortran are processor
+    dependent."
+
+by:
+
+    "The value of the floating-point status becomes processor dependent
+    whenever a Fortran procedure invokes or returns to a procedure
+    defined by means other than Fortran, or conversely."

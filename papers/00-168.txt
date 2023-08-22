@@ -1,0 +1,116 @@
+
+                                                          J3/00-168
+
+Date:       2000/05/08
+To:         J3
+From:       William Mitchell
+Subject:    Fortran pointer from C pointer
+References: 00-007, 00-121, 00-149, 00-150
+
+Several deficiencies in C interoperability were presented in 00-121.  Many
+of these were resolved in 00-149 and 00-150, and some were determined to
+be impossible to address, however three important issues were determined to
+be "too hard" to address at this time.  These are:
+
+- Provide a means by which a character string of unknown length can be
+returned
+from a C function, both as an argument and as a function result.
+
+- Provide a means by which an array allocated in a C function can be
+returned
+to a calling Fortran procedure.
+
+- Provide a means by which a C pointer to a function can be returned to
+Fortran
+and assigned to a procedure pointer.
+
+All of these issues can be easily solved by providing a means of
+constructing a
+Fortran pointer from a C pointer.  This paper proposes that a function be
+added to the ISO_C_BINDING module to provide this functionality.  The
+function
+takes a C pointer, a mold to determine the result type, and, if the result
+is an array, a shape and returns a Fortran pointer associated with the same
+target as the C pointer.  The author is not married to the name
+CPTR_TO_FPTR.
+
+Edits to 00-007:
+
+[387:46]
+  Add:
+
+The CPTR_TO_FPTR function provides a means of defining a Fortran pointer
+that
+is associated with the same target as a C pointer.
+
+CPTR_TO_FPTR(CPTR,MOLD [,SHAPE])
+
+   Description.  Constructs a pointer associated with the same target as
+CPTR
+                 and with the characteristics of MOLD.
+
+   Class.  Transformational function.
+
+   Arguments.
+
+   CPTR             shall be a scalar of type C_PTR
+
+   MOLD             shall be a pointer and may be of any type or may be a
+                    procedure pointer.  Its pointer association status may
+be
+                    undefined, disassociated or associated.  If its status
+is
+                    associated, the target need not be defined with a value.
+
+   SHAPE (optional) shall be of type integer, rank one, and constant size.
+It
+                    shall be present if and only if MOLD is an array
+pointer.
+                    Its size shall be equal to the rank of MOLD.  It shall
+not
+                    have an element whose value is negative.
+
+   Result Characteristics.  The result is of the same type and type
+parameters
+                            as MOLD.
+
+   Case (i):  If MOLD is a scalar pointer, the result is a scalar pointer.
+
+   Case (ii):  If MOLD is an array pointer, the result is an array pointer
+               of shape SHAPE.
+
+   Case (iii):  If MOLD is a procedure pointer, the result is a procedure
+                pointer with an implicit interface.
+
+   Result Value.  The result is associated with the same target as CPTR.
+
+NOTE 16.x
+
+The following example illustrates how to access a C character string that
+was allocated and set by a procedure with the prototype
+
+void getstring(char *string, int *nchar)
+
+by using either a pointer to scalar character string of appropriate length
+or an array of characters of length one.
+
+USE ISO_C_BINDING
+INTERFACE
+   BIND(C,NAME="getstring") SUBROUTINE GETSTRING(STRING,NCHAR)
+   USE ISO_C_BINDING
+   TYPE(C_PTR) :: STRING ! NOTE it is not VALUE
+   INTEGER(C_INT), INTENT(OUT) :: NCHAR
+   END SUBROUTINE GETSTRING
+END INTERFACE
+TYPE(C_PTR) :: C_STRING
+INTEGER(C_INT) :: NCHAR
+CHARACTER(LEN=:,KIND=C_CHAR), POINTER :: SCALAR_STRING
+CHARACTER(LEN=1,KIND=C_CHAR), POINTER, DIMENSION(:) :: ARRAY_STRING
+CALL GETSTRING(C_STRING,NCHAR)
+ALLOCATE(SCALAR_STRING(NCHAR))
+SCALAR_STRING => CPTR_TO_FPTR(C_STRING,SCALAR_STRING)
+ALLOCATE(ARRAY_STRING(NCHAR))
+ARRAY_STRING => CPTR_TO_FPTR(C_STRING,ARRAY_STRING,(/NCHAR/))
+
+[388:5-6]
+  Delete Note 16.7

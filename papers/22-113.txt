@@ -1,0 +1,67 @@
+To: J3                                                     J3/22-113
+From: John Reid & Reinhold Bader
+Subject: Interp - corresponding coarrays in recursive procedure
+Date: 2022-February-02
+Reference: 18-007r1
+
+QUESTIONS:
+
+Consider the following program
+
+
+program recu_caf_1
+    call csub( 1 )
+contains
+    recursive subroutine csub ( depth )
+        integer :: depth
+        real, allocatable :: x[:]
+        integer :: k
+        
+        if (this_image() == depth) then
+            allocate(x[*], source=real(depth))
+        else if (depth < num_images()) then
+           call csub ( depth + 1 )
+        end if
+        if (allocated(x)) then
+           write(*, *) "image: ", this_image(), "depth: ", depth, &
+                    "x: ", (x[k],k = 1, num_images())
+        else
+           write(*, *) "image: ", this_image(), "depth: ", depth, &
+                    "x not allocated" 
+        end if                  
+    end subroutine
+end program
+
+
+Question 1: Is it intended that program recu_caf_1 conform to the 
+standard? It creates a single coarray that is accessible on image i 
+only at recursion depth i.
+
+Question 2: Assume that the SAVE attribute is added to the declaration
+            of coarray "x" above. Does the modified program conform
+            to the standard?
+            
+
+ANSWERS:
+
+Q1:  No, it was not intended to permit unsaved procedure-local 
+     coarrays allocated at different recursion levels on different
+     images to correspond. An edit is provided to prohibit this.
+     
+Q2:  Yes, this program is conforming. Due to the SAVE attribute, 
+     only one instance of the coarray exists, and it is immaterial
+     on which level of recursion the allocation on any particular 
+     image is performed. 
+     
+     
+EDIT to 18-007r1: 
+
+[134:17] In 9.7.1.2 Execution of an ALLOCATE statement, at the end of 
+para 3, add
+"If the coarray is an unsaved local variable in a recursive procedure,
+the execution of the ALLOCATE statement shall be at the same depth of 
+recursion on every active image in the current team."
+
+
+
+

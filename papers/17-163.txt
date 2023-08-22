@@ -1,0 +1,165 @@
+                                                            J3/17-163
+To: J3
+From: Malcolm Cohen
+Subject: LOCK_TYPE and EVENT_TYPE requirements
+Date: 2017 June 18
+
+
+1. Introduction
+
+The requirements on LOCK_TYPE and EVENT_TYPE require any variable of those
+types to be a coarray (or a subobject thereof).  Presumably because one
+cannot do anything useful with them otherwise.  However, because the
+constraints fall short of requiring the entity to be a variable, there are
+several useless things that can still apparently be done.
+
+Existing compilers differ on whether these useless things are valid.
+
+Secondly, the wording in the constaints uses the term "subcomponent".
+This is inappropriate for a constraint since whether something is a
+subcomponent varies at execution time.  The appropriate term must surely
+be "potential subobject component".
+
+
+2. Examples
+
+Consider:
+  MODULE unusable
+    USE iso_fortran_env
+    TYPE(lock_type),EXTERNAL :: FUN
+  END MODULE
+  PROGRAM useless
+    USE unusable
+    PRINT *,'Is this valid?'
+    ! No reference to FUN.
+  END PROGRAM
+
+Since any actual function would need to have a result that is a variable,
+and that variable is not permitted to be a coarray, the declaration of FUN
+cannot be consistent with any possible Fortran function.  It is not
+unlikely that a compiler would reject a declaration of an impossible
+procedure, even if the program unit otherwise conforms to the standard.
+(I would have to study the standard very carefully to say definitively
+whether the useless program is conforming; my initial opinion is that it
+is not, as no interpretation is established for FUN, i.e. it would be
+caught by our "last resort" requirement.)
+
+Consider:
+  PROGRAM also_useless
+    USE iso_fortran_env
+    TYPE(lock_type),PARAMETER :: unlockable = lock_type()
+    PRINT *,'Huh?',STORAGE_SIZE(unlockable)
+  END PROGRAM
+
+It is not possible to pass UNLOCKABLE as an actual argument to any
+nonintrinsic procedure, as such a dummy argument would be a variable, and
+therefore required to be a coarray, and thus the actual argument would
+also be required to be a coarray.  But no requirement seems to have been
+violated by the also_useless example.
+
+Finally, consider:
+  PROGRAM unnecessarily_verbose
+    USE iso_fortran_env
+    TYPE(lock_type),PARAMETER :: unlocked = lock_type()
+    TYPE mylock
+      TYPE(lock_type) :: lock = unlocked
+    END TYPE
+    TYPE(mylock) x[*]
+    LOCK(x)
+    PRINT *,'HELLO',this_image()
+    UNLOCK(x)
+  END PROGRAM
+
+Again, this appears to violate no obvious requirement, but opinions
+differ as to whether it is valid.
+
+Examples using EVENT_TYPE left as an exercise for the reader.
+
+Post-finally, consider the example:
+  MODULE post_final
+    USE iso_fortran_env
+    TYPE t
+      PROCEDURE(lock_type),NOPASS,POINTER :: funptr => null()
+    END TYPE
+  END MODULE
+
+It is hard to work out whether this is conforming or not.  Certainly no
+target procedure for the funptr component can exist, which surely must
+mean it is not conforming (the same as the first example).
+
+
+3. Course of action
+
+In any case we should fix the editorial issue.
+
+There are three possible courses of action:
+
+(1) Do nothing.  Named constants of these types would be valid, even
+    though essentially useless and potentially confusing.  Functions
+    returning these types would be probably invalid but compiler are
+    likely to differ.
+
+    Note: This is not "do nothing to the standard", because this case
+          is crying out for an explanatory NOTE so that implementors
+          know what to do.  They are already in disagreement over
+          LOCK_TYPE, and so likely to extend that to EVENT_TYPE.
+
+(2) Clearly prohibit functions returning these types, but continue to
+    permit named constants.  A note explaining that named constants are
+    valid would be a good idea.
+
+(3) Explicitly require named entities of these types to be variables, and
+    thus coarrays.  Technically this appears to be an incompatibility with
+    Fortran 2008 for LOCK_TYPE, so a compatibility clause addition would
+    be needed (unless someone can find normative text that somehow
+    prohibits it!).
+
+In cases (2) and (3) we should require components of these types to be
+data components.
+
+The edits below are for case (3), as that is what seems to be the most
+sensible option (and likely what we intended from the start).
+
+
+4. Edits to N2123 (17-007r1)
+
+[31:3+] 4.3.3 Fortran 2008 compatibility, end of subclause (after p5),
+        Insert new paragraph
+  "Fortran 2008 permitted a named constant to have declared type
+   LOCK_TYPE, or have a noncoarray potential subobject component
+   with declared type LOCK_TYPE; this document does not permit that."
+{TECHNICAL CHANGE: incompatibility with F2008}
+
+[441:32-] 16.10.2.10 EVENT_TYPE, between p2 and C1603, insert constraint
+  "C1602a A named entity with declared type EVENT_TYPE, or which has a
+          noncoarray potential subobject component with declared type
+          EVENT_TYPE, shall be a variable.  A component of such a type
+          shall be a data component."
+{Clarification + TECHNICAL CHANGE.}
+
+[441:33] Same subclause, C1603,
+    Change "subcomponent"
+    To     "potential subobject component",
+making the whole constraint read:
+   "C1603 A named variable with declared type EVENT_TYPE shall be a
+          coarray.  A named variable with a noncoarray potential subobject
+          component of type EVENT_TYPE shall be a coarray.".
+{Editorial.}
+
+[443:17-] 16.10.2.19 LOCK_TYPE, between p2 and C1606, insert constraint
+  "C1605a A named entity with declared type LOCK_TYPE, or which has a
+          noncoarray potential subobject component with declared type
+          LOCK_TYPE, shall be a variable.  A component of such a type
+          shall be a data component."
+{Clarification + TECHNICAL CHANGE.}
+
+[443:18] Same subclause, C1606,
+    Change "subcomponent"
+    To     "potential subobject component",
+making the whole constraint read:
+   "C1606 A named variable with declared type LOCK_TYPE shall be a
+          coarray.  A named variable with a noncoarray potential subobject
+          component of type LOCK_TYPE shall be a coarray."
+{Editorial.}
+
+===END===

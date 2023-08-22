@@ -1,0 +1,312 @@
+To: J3                                                     J3/18-108
+From: Tom Clune
+Subject:  Use case for generic programming
+Date: 2018-February-03
+
+The contents of this paper are in paper J3/##-###.xxx
+
+Introduction:
+-------------
+
+Large applications parallelized via domain-decomposition often contain
+high-level interfaces to support common communication patterns.  Such
+patterns include gather, allgather, scatter, reduction, and guard cell
+(halo) updates.  Low-level communications libraries such as MPI make
+it relatively straightforward to implement any particular case, and
+coarrays provide even simpler expressions.
+
+
+Typically, parallel applications must support these core communication
+abstractions for a variety of types, kinds, and ranks.  With the
+exception of redcution operations, the algorithms are non-numerical
+and are ultimately about data movement.  Yet even so implementing the
+logic for the required variety of TKR combinations results in
+significant code duplication.  When changes and bug-fixes are
+introduced, developers must carefuly propagate them to complete set of
+procedures.
+
+Fortran currently lacks a straightforward mechanism to support such
+nearly identical procedure implementations.  One common alternative
+used by developers is to leverage a preprocessor such as CPP/FPP or
+m4.  With CPP/FPP, one typically needs 3 levels of nested includes to
+cover the variant operation, type+kind, and rank of the specific case.
+The Fortran INCLUDE statement is inadequate for this task due to the
+necessity of token-concaten conditional compilation for the bits of
+logic that _do_ change.  M4 can achieve this in a single
+self-contained file but (1) is less familiar to most Fortran
+developers, (2) lacks direct compiler support, and (3) requires
+excessive use of quoting mechanisms to deal with "bare" commas in
+Fortran syntax.  CPP/FPP is a bit friendlier but requires distributing
+the nesting across multiple files making the resulting code rather
+difficult to understand.
+
+
+Note: To provide a generic name for a collection of related procedures
+of the sort discussed above, a similar, albeit, smaller problem
+arises.  Users desire a feature to ensure that each specific name for
+a family of related procedures is captured within an INTERFACE
+statement.  Because of the smaller amount of involved code, these
+lists are often just maintained manually.  But some M4 approaches have
+automated this aspect.
+
+
+Although this overload pattern arises in high-level communication
+support, similar code-specific solutions have emerged in many complex
+scientific applications.  As a whole, this pattern is probably the most
+common nontrivial divergence from pure Fortran in many communities,
+and therefore has unsurprisingly generated numerous requests for a
+native (and presumably more-elegant) Fortran solution.
+
+The Fortran 2018 assumed rank and SELECT RANK features may reduce the
+complexity in some cases, but at best only slightly.
+
+Unlimited polymorphic intities from Fortrann 2003 are also of limited
+benefit, though technically the feature could be used.  Various local
+variables need to have the same type as the targeted arrays,
+necessitating dynamic allocation.  But the more serious issue is the
+need to work with specific types when interfacing to external
+libraries.  (And even coarrays generaly requires non-polymorphic
+entities for off-image references.)
+
+A simpler and more coherent approch is strongly desired.
+
+
+A Real world example from NASA's GEOS Earth system model:
+----------------------------------------------------------
+
+An example of the ArrayGather.H bottom level include file from NASA
+GEOS model is shown below.  Intermediate include files have already
+established values for TYPE_ and RANK_, while the "overload.macro"
+include file generates other tokens that depend on the values of TYPE_
+and RANK_.  E.g., the token DIMENSIONS_ is expanded to be the empty
+string for scalars or "(:)" for rank 1, (:,:), for rank 2. etc.
+
+There are many other similar file for the other communication patterns
+that need to be overloaded: ArrayScatter, ArraySum, ArrayHalo,
+Broadcast, Send, Recv, and SendRecv.  
+
+
+
+! $Id$
+
+#ifdef NAME_
+#undef NAME_
+#endif
+
+#ifdef NAMESTR_
+#undef NAMESTR_
+#endif
+
+#define NAME_ ArrayGather_
+#define NAMESTR_ 'ArrayGather_'
+
+#include "overload.macro"
+
+  subroutine SUB_(local_array, global_array, grid, mask, depe, hw, rc)
+    TYPE_(kind=EKIND_), intent(IN   ) :: local_array DIMENSIONS_
+    TYPE_(kind=EKIND_), intent(  OUT) :: global_array DIMENSIONS_
+    type (ESMF_Grid)      :: grid
+    integer, optional,  intent(IN   )   :: mask(:)
+    integer, optional,  intent(IN   )   :: depe
+    integer, optional,  intent(IN   )   :: hw
+    integer, optional, intent(OUT)     :: rc
+    
+! Local variables
+
+    integer                               :: status
+    character(len=ESMF_MAXSTR)            :: IAm='ArrayGather'
+
+    type (ESMF_DELayout)  :: layout
+    type (ESMF_DistGrid)  :: distGrid
+    integer,               allocatable    :: AL(:,:)
+    integer,               allocatable    :: AU(:,:)
+    integer, allocatable, dimension(:) :: recvcounts, displs, kk
+    integer                                       :: nDEs
+    integer                                       :: sendcount
+    
+    integer                                       :: I, J, K, II
+#if (RANK_ != 1)
+    integer                                       :: LX, JJ
+#endif
+    integer                                       :: de, deId
+    integer                                       :: I1, IN
+    integer                                       :: ibeg,iend
+    integer                                       :: gridRank
+#if (RANK_ > 1)
+    integer                                       :: J1, JN
+    integer                                       :: jbeg,jend
+#endif
+    integer                                       :: ISZ, JSZ
+    integer                                       :: destPE, myhw
+    TYPE_(kind=EKIND_), allocatable               :: var(:)
+    integer                               :: deList(1)
+    type(ESMF_VM) :: vm
+    
+! Works only on 1D and 2D arrays
+! Note: for tile variables the gridRank is 1 
+! and the case RANK_=2 needs additional attention 
+
+    ASSERT_(RANK_ <= 2)
+
+    if(present(depe)) then
+      destPE = depe 
+    else
+      destPE = MAPL_Root
+    end if
+
+    if(present(hw)) then
+      myhw = hw
+    else
+      myhw = 0
+    end if
+
+    call ESMF_GridGet(GRID,dimCount=gridRank,rc=STATUS);VERIFY_(STATUS)
+    call ESMF_GridGet(GRID,distGrid=distGrid,rc=STATUS);VERIFY_(STATUS)
+    call ESMF_DistGridGet(distGRID, delayout=layout,rc=STATUS)
+    VERIFY_(STATUS)
+    call ESMF_DELayoutGet(layout, deCount =nDEs, localDeList=deList, &
+        rc=status)
+    VERIFY_(STATUS)
+    deId = deList(1)
+    call ESMF_DELayoutGet(layout, vm=vm, rc=status)
+    VERIFY_(STATUS)
+
+    allocate (AL(gridRank,0:nDEs-1),  stat=status)
+    VERIFY_(STATUS)
+    allocate (AU(gridRank,0:nDEs-1),  stat=status)
+    VERIFY_(STATUS)
+
+    call ESMF_DistGridGet(distgrid, &
+         minIndexPDe=AL, maxIndexPDe=AU, rc=status)
+    VERIFY_(STATUS)
+
+    allocate (recvcounts(nDEs), displs(0:nDEs), stat=status)
+    VERIFY_(STATUS)
+
+    if (deId == destPE) then
+       allocate(VAR(0:size(GLOBAL_ARRAY)-1), stat=status)
+       VERIFY_(STATUS)
+    else
+       allocate(VAR(0), stat=status)
+       VERIFY_(STATUS)
+    end if
+
+    displs(0) = 0
+#if (RANK_ > 1)
+    if (gridRank == 1) then
+       J1 = lbound(local_array,2)
+       JN = ubound(local_array,2)
+    endif
+#endif
+    do I = 1,nDEs
+       J = I - 1
+       de = J
+       I1 = AL(1,J)
+       IN = AU(1,J)
+#if (RANK_ > 1)
+       if (gridRank > 1) then
+          J1 = AL(2,J)
+          JN = AU(2,J)
+       end if
+       recvcounts(I) = (IN - I1 + 1) * (JN - J1 + 1)
+#else
+       recvcounts(I) = (IN - I1 + 1)
+#endif
+       if (de == deId) then
+          sendcount = recvcounts(I)      ! Count I will send
+          ibeg = 1+myhw
+          iend = IN-I1+1+myhw
+#if (RANK_ > 1)
+          jbeg = 1+myhw
+          jend = JN-J1+1+myhw
+#endif
+       endif
+       displs(I) = displs(J) + recvcounts(I)
+    enddo
+
+    if (present(mask) .or. myHW == 0) then
+       call MAPL_CommsGatherV(layout, local_array, sendcount, &
+                         var, recvcounts, displs, destPE, status)
+    else
+#if (RANK_ > 1)
+       call MAPL_CommsGatherV(layout, local_array(ibeg:iend,jbeg:jend), &
+                      sendcount, var, recvcounts, displs, destPE, &
+                          status)
+#else
+       call MAPL_CommsGatherV(layout, local_array(ibeg:iend), sendcount, &
+                           var, recvcounts, displs, destPE, status)
+#endif
+    end if
+    VERIFY_(STATUS)
+
+    if (deId == destPE) then
+       if (present(mask)) then
+          ISZ = size(mask)
+
+#if (RANK_ == 2)
+          JSZ = size(GLOBAL_ARRAY,2)
+#else
+          JSZ = 1
+#endif
+
+          allocate(KK (0:nDEs-1        ), stat=status)
+          VERIFY_(STATUS)
+          KK = DISPLS(0:nDEs-1)
+
+          do I=1,ISZ
+             K = MASK(I)
+             II = KK(K)
+#if (RANK_ == 1)
+             GLOBAL_ARRAY(I) = VAR(II)
+#else
+             LX = AU(1,K) - AL(1,K) + 1 
+             do J=1,JSZ
+                GLOBAL_ARRAY(I,J) = VAR(II+LX*(J-1))
+             end do
+#endif
+             KK(MASK(I)) = KK(MASK(I)) + 1 
+          end do
+
+          deallocate(KK, stat=status)
+          VERIFY_(STATUS)
+       else
+#if (RANK_ == 1)
+          global_array = var ! ALT: I am not sure if this is correct
+#else
+          do I = 0,nDEs-1
+             I1 = AL(1,I)
+             IN = AU(1,I)
+             J1 = AL(2,I)
+             JN = AU(2,I)
+
+             K = displs(I)
+             do JJ=J1,JN
+                do II=I1,IN
+                   global_array(II,JJ) = var(K)
+                   K = K+1
+                end do
+             end do
+          end do
+#endif
+       end if ! if (present(mask))
+    end if
+
+    deallocate(VAR, stat=status)
+    VERIFY_(STATUS)
+    deallocate(recvcounts, displs, AU, AL, stat=status)
+    VERIFY_(STATUS)
+
+    call ESMF_VmBarrier(vm, rc=status)
+    VERIFY_(STATUS)
+    RETURN_(ESMF_SUCCESS)
+  end subroutine SUB_
+
+#undef NAME_
+#undef NAMESTR_
+
+#undef DIMENSIONS_
+#undef RANK_
+#undef RANKSTR_
+#undef VARTYPE_
+
+

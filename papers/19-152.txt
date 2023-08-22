@@ -1,0 +1,122 @@
+To: J3                                                     J3/19-152
+From: Tom Clune
+Subject: BOUNDS and RANK attributes
+Date: 2019-February-13
+
+1. Introduction
+
+
+In some generic cases, it is essential to allow declaration of
+auxiliary variables whose attributes depend on the attributes of other
+variables.  This paper addressses the DIMENSION attribute in this
+context.
+
+2. Use cases
+
+A simple motivating use case is to provide a swap macro that could
+work with a pair of variables of any rank that have the same shape.
+An FPP macro for to do this for two real arrays of the same shape
+could look something like:
+
+#define SWAP(A,B) \
+    ASSOCIATE(x=>A,y=>B); \ ! Establish associations to avoid naming issues
+        BLOCK; \
+            REAL, BOUNDS(shape(x)) :: temp; \
+            temp = x; \
+            x = y; \
+            y = temp; \
+        END BLOCK; \
+    END ASSOCIATE
+
+
+
+BOUNDS(upper) is an attribute that indicates a fixed-shape array whose
+shape is upper and whose lower bounds are 1 in each dimension.
+
+BOUNDS(lower:upper) is an attribute that indicates a fixed shape array
+with the specified lower and upper bounds.
+
+BOUNDS(lower:) is an attribute that indicates an assumed shape dummy
+array whose lower bounds are given by lower.
+
+Upper and lower must be rank-1 integer arrays with constant size.  If
+both are specified, they must have the same size.  If unspecified, the
+lower bounds of the variable are 1 for all dimensions.  If the size is
+0, then the declaration is for a scalar variable.
+
+
+E.g.,
+
+SUBROUTINE DO_IT(X, Y)
+   REAL, INTENT(IN) :: X(3:,4:)
+   
+   REAL, BOUNDS(SHAPE(X)) :: Z1
+   REAL, BOUNDS(0*SHAPE(X):SHAPE(X)+1) :: Z2
+
+END SUBROUTINE DO_IT
+
+Here, LBOUND(z1) returns [1,1], and LBOUND(z2) returns [0,0].
+
+
+
+While the BOUNDS attribute above supports explicit-shape arrays,
+another feature is needed for deferred shape cases.  For example, we
+may desire to associate a pointer with an entity of unknown rank:
+
+#define SWAP_USING_RANK(A,B) \
+    ASSOCIATE(x=>A,y=>B); \ ! Establish associations to avoid naming issues
+        BLOCK; \
+            REAL, ALLOCATABLE, RANK(RANK(x)) :: temp; \
+            temp = x; \
+            x = y; \
+            y = temp; \
+        END BLOCK; \
+    END ASSOCIATE
+
+
+The RANK(n) attribute is used to declare a variable of rank n.  The 
+variable is of deferred shape unless n is zero, in which case it is a
+scalar.
+
+RANK(n) can also be used to declare a deferred-shape dummy array.
+
+
+Example 1:
+
+The following two declarations are equivalent:
+REAL, ALLOCATABLE, RANK(3) :: Y
+REAL, ALLOCATABLE :: Y(:,:,:)
+
+
+Example 2:
+
+The following declares an deferred-shape dummy array of rank 4:
+
+REAL, RANK(4) :: Y
+
+
+The RANK attribute will often be used in conjunction with the RANK
+intrinsic:
+
+REAL, ALLOCATABLE :: X(:,:)
+REAL, ALLOCATABLE, RANK(RANK(X)) :: Y ! has rank 2
+REAL, ALLOCATABLE, RANK(RANK(X)+1) :: Z ! has rank  3
+
+Note: RANK(0) provides a consistent syntax for declaring scalars:
+
+REAL :: X
+REAL, RANK(X) :: Y ! is a scalar
+
+
+
+
+3. Proposed formal requirements
+
+
+4. Proposed formal specifications
+
+5. Proposed syntax
+
+===END===
+
+

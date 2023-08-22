@@ -1,0 +1,386 @@
+
+                                                      J3 / 97-169
+
+Date:        6 May 1997
+To:          X3J3
+From:        R. Maine
+Subject:     Procedure Variables
+
+
+This paper proposes alternative specs and syntax for procedure
+pointers, item R.3 on the F2k requirements list of X3J3/97-010.
+
+Papers X3J3/96-142 and X3J3/96-146 were passed by X3J3 as the
+specifications for this requirement.  Paper X3J3/97-103 collected
+the passed specifications and added a proposed syntax for this
+item, but that paper was tabled at meeting 140 after some
+discussion.
+
+During the discussion, there was some concern expressed that
+the pointer attribute unnecessarily complicated the syntax.
+A suggestion to reconsider the question of procedure pointers
+versus procedure variables was made.
+
+The required functionality can be expressed in either form, but
+/data had recommended the procedure pointer formulation "because
+it more naturally offers the null pointer or null association
+concept."  I consider that concept to be critical to the
+proposal.  An application needs to be able to initialize a
+procedure (pointer/variable) to a disassociated state and then
+subsequently test whether or not it has been associated with a
+target procedure.  The pointer formulation naturally inherits
+these concepts.
+
+On reconsideration, I think that the concept of a null value
+could be incorporated into a procedure variable approach,
+resulting in a simpler, cleaner syntax.  Thus, this paper
+is presented as an alternative to the proposal in the
+former paper X3J3/97-103.
+
+1. EXISTING SYNTAX
+
+F90, and indeed f77, already allows one form of procedure
+variable in all but name.  This is a dummy procedure.  I can't
+quite discern whether the standard ever refers to a dummy
+procedure argument as a variable, but it appears to meet the
+definition in 2.4.3.1.1.  It can have a value (the actual
+procedure) and it can become defined and redefined during
+execution of a program (by associating it with different actual
+arguments).  This strikes me as directly comparable to the case
+of a dummy integer argument associated with contant actual
+arguments.  We still refer to such a dummy integer argument as a
+variable, even though there is a restriction against its value
+being changed during execution of the procedure (12.5.2.1).
+
+Once we define the general concept of a procedure variable, I
+don't see how we will be able to avoid recognizing the existing
+dummy arguments as a specific case.
+
+I propose that we recognize the existing procedure dummy
+arguments as one form of procedure variable.  The INTENT
+attribute will be allowed for them.  It appears to me that all
+the existing words about INTENT apply directly to procedure dummy
+arguments.  Current f90 code leaves the INTENT of dummy procedure
+arguments unspecified, which means that "the dummy data object
+may be defined if the actual argument is definable" (12.5.2.1).
+In f90 code, the actual argument corresponding to dummy a
+procedure is never definable.
+
+Note that this applies to dummy procedures with explicit
+interfaces and those with implicit interfaces.
+
+2. THE VARIABLE ATTRIBUTE
+
+The declaration of a local variable that is not a dummy argument
+should have essentially the same syntax as the declaration of a
+local variable that is a dummy argument or endless confusion will
+result.  The only differences should be those directly relating
+to the "dummy argumentness".  For example a dummy argument
+appears in the dummy argument list, a variable that is not a
+dummy argument cannot have an INTENT, and a few simillar
+restrictions.
+
+If we take an existing f90 dummy procedure declaration and remove
+the name from the dummy argument list, then it becomes valid f90
+syntax for declaring a specific external procedure.  We therefore
+cannot use this precise syntax for declaring a local non-dummy
+procedure variable.  We need some way to distinguish the
+declaration of a procedure variable from that of a specific
+external procedure.
+
+After much floundering around to come up with the right term to
+use for declaring something to be a variable, the obvious finally
+occurred to me.  I propose that we introduce the VARIABLE
+attribute.  As with other attributes, it can be specified in an
+attribute statement or as an <attr-spec> in a type declaration
+statement.  For consistency, we might as well allow it to be
+specified for non-procedure variables as well, although it is
+always superfluous there because it is implied by the absence of
+the PARAMETER attribute.  VARIABLE is the counterpoint to
+PARAMETER (with should have been spelled CONSTANT, but that's an
+old issue).  In some ways, a specific external procedure is like
+a procedure constant.  (One could make a distinction that it is
+not in general known until link time, rather than compile time).
+
+The following are some samples of procedure variable declaration.
+
+  Explicit interface:
+
+     interface
+       subroutine sub(x,y)
+         real :: x,y
+       end subroutine sub
+     end interface
+     ...
+     variable sub
+
+  Implicit interface, with external attribute explicitly specified:
+
+     real, external, variable :: f
+     external :: s
+     variable :: s
+
+  Implicit interface, with external attribute implied:
+  (ugly, but we already allow it for the dummy argument case)
+
+     variable :: f, s
+     ...
+     call s(f())
+
+All of the above would be legal forms for declaring either dummy
+procedure arguments or non-dummy local procedure variables.  The
+only distinction is whether or not the variable name appears in
+the dummy argument list.  Note that, except for the VARIABLE
+attribute, all of the above are already legal f90/f95 forms for
+declaring dummy procedures.
+
+I propose to retain and expand the f90/f95 limitations on the use
+of the form where the external attribute is implied.  From
+12.3.2.2
+
+  "If an external procedure name or a dummy procedure name is
+   used as an actual argument, its interface shall be explicit or
+   it shall be explicitly declared to have the EXTERNAL
+   attribute."
+
+This would, of course, be extended to apply to procedure
+variables other than dummy arguments (for all the same reasons
+that it is needed for dummy arguments).  I propose to also extend
+this restriction to include procedure variables that appear on
+either side of a procedure assignment statement (see below).
+Otherwise it becomes impossible to tell whether the assignment
+statement in contexts like
+
+    subroutine sub(x,y)
+      x = y
+    end
+
+is a procedure assignment or not; this would be evil.
+
+3. NAMED ABSTRACT INTERFACES
+
+A previous straw vote was unanimously in favor of the concept
+(though not necessarily the exact syntax) of a named or abstract
+interface.  Without some such thing, it is awkward to devise a
+syntax for declaring procedure components.  Abstract interfaces
+also avoid the necessity to replicate the complete text of an
+interface body for every relevant variable.
+
+I use the term "abstract interface" because such an interface
+body defines the interface without attaching it to any particular
+variable or procedure.  We could also use the term "named
+interface".
+
+Note that the procedure interface name is purely syntactic.  We
+specifically avoid attaching semantic significance to the name.
+In particular, it does not act like a type.  You can declare two
+different procedure variables with different procedure interface
+names and they are still compatible as long as the
+charactersitics of the interfaces are the same.  It would be
+difficult to disallow this without changing the feature of
+f90/f95 that allows a procedure to have different interface
+bodies in different scopes, as long as their characteristics
+agree.  (In particular, the dummy argument names need not agree).
+
+Interface names can be imported by USE or host association.
+
+Paper X3J3/97-103 presented 2 syntax alternatives for defining
+abstract interfaces.  Those syntaxes apply equally well to
+procedure pointers or procedure variables because the pointer
+attribute is not part of the interface specification.  The proposal
+below is a modification of syntax alternative 2 from X3J3/97-103.
+The main modification is to put the "ABSTRACT" (or "model") keyword
+on the INTERFACE statement instead of as a prefix to the
+subroutine or function statement.  This slightly simplifies
+the specification of abstract implicit interfaces.  I have also
+changed the keyword from "model" to "abstract".  Either or both
+of these modifications can be rescinded if J3 prefers the form as
+described in X3J3/97-103.
+
+An abstract interface block is introduced by the statement
+
+  ABSTRACT INTERFACE
+
+and is terminated by the statement
+
+  END ABSTRACT INTERFACE
+
+Shorter alternatives are solicited.
+
+An abstract interface block contains interface bodies identical
+in syntax to those allowed in existing interface blocks.  The
+only difference is semantic - the procedure names specified for
+the interface bodies are not the names of specific procedures,
+but are instead interpreted as abstract interface names.
+
+An abstract interface block may also define names for implicit
+interfaces.  To define a name for an implicit subroutine interface,
+use the syntax
+
+  external [::] <interface-name>
+
+To define a name for an implicit interface function, use the syntax,
+
+  <type-spec>, external :: <interface-name>
+
+Sample of an abstract interface block
+
+  abstract interface
+
+    !-- Defines an interface name "sub" for an explicit interface.
+    subroutine sub(x,y)
+      real :: x,y
+    end subroutine sub
+
+    !-- "s" is an implicit subroutine interface.
+    external :: s
+
+    !-- "f" is an implicit real function interface.
+    real, external :: f
+
+  end abstract interface
+
+
+4. PROCEDURE DECLARATION STATEMENT
+
+A procedure declaration statement has a syntax modeled after a
+type declaration statement for a derived type.  The keyword
+PROCEDURE is used instead of TYPE and an interface name is used
+instead of a derived type name.  For example, the statement
+
+  PROCEDURE(fun) :: a, b, c
+
+declares three procedure variables, all having the interface named
+fun.  Possibly relevant attributes are POINTER, SAVE, OPTIONAL,
+and INTENT.  Note that EXTERNAL is not allowed (because it would
+be a form of redundancy that we already disallow elsewhere).
+
+The programmer may use either this single-line syntax or the form
+of section 1 above where each attribute is specified separately.
+This is directly comparable to the choice allowed for
+non-procedure variables.
+
+5. PROCEDURE COMPONENT DEFINITION
+
+Component definition statements would be enhanced to add the forms
+
+   PROCEDURE(<interface-name>) :: <component-decl-list>
+
+   EXTERNAL :: <component-decl-list>
+
+   <type-spec>, EXTERNAL :: <component-decl-list>
+
+
+The form using a named interface is allowed for any named
+interface.  The other two forms apply only to implicit interface
+procedure components.
+
+Note that procedure component definitions specify only the
+interface, never a specific procedure.  This is directly
+comparable to other derived type components in that the
+derived type definition cannot specify a constant as a component.
+
+An alternative is to require the use of the named interface form
+for all procedure components, but that is subject to criticism of
+requiring extra complexity (the definition of an interface name)
+for simple cases.
+
+An alternative in the opposite direction is to also allow
+an interface body nested within a derived type definition to
+define an explicit interface component.  The seems like enough of
+a mess, however, to justify requiring a separate name definition
+for the interface.  If J3 prefers to allow it, the nested form
+does "work" as an additional option.
+
+Example:
+
+  TYPE my_object_type
+    TYPE(my_type) :: x
+    PROCEDURE(my_interface) :: my_procedure
+    PROCEDURE(another_interface) :: another_proc = null()
+    EXTERNAL :: s
+    REAL, EXTERNAL :: f
+  END TYPE
+
+
+6. PROCEDURE VARIABLE REFERENCES
+
+Basic forms of procedure variable reference are already defined
+for the specific case of dummy procedures.  Those same forms
+all apply to non-dummy procedure variables.
+     
+In addition, it is proposed to extend procedure reference syntax
+to allow the procedure to be specified as a structure component, e.g.
+     CALL PARENT%PROC_COMPONENT(ARGS)
+On the other hand, we do not recommend a similar extension for
+functions that return procedure values.  E.g., we would require
+     PP = PPF(ARGS1)
+     CALL PP(ARGS2)
+rather than extending to allow
+     CALL PPF(ARGS1)(ARGS2)
+This is consistent with data-object arrays, which can be
+subscripted, substringed, etc.  as components, but not as
+function results.
+
+7. PROCEDURE ASSIGNMENT
+
+A procedure assignment statement has the syntax
+
+  <var> = <expr>
+
+where <var> is a procedure variable.  The <expr> may be a
+procedure variable, a specific procedure, or a reference to a
+function that returns a procedure result.  The <var> and
+<expr> must have the same charactersistics.
+
+8. PROCEDURE COMPARISON
+
+Two procedure expressions can be compared with the == and /=
+operations.  The expressions are equal if they refer to the
+same procedure with the same activation environment (for
+recursive procedures) or if they are both null (see below).
+
+There is no necessity for an intrinsic like ASSOCIATED to
+test for procedure equality because there is never any ambiguity.
+(Pointers need the associated intrinsic because of the necessity
+to distinguish between comparison of the pointers and comparison
+of their targets).
+
+8. NULL()
+
+The NULL intrinsic is extended to procedure values.  As with the
+pointer version of NULL, the result type depends on context.  The
+contexts where this form of NULL may appear exactly parallel
+those of the pointer form (see table 7.2 in section 7.1.4.1).
+Specificall, this form of the NULL intrinsic can appear on the
+RHS of a procedure assignment, as initialization for an object
+in a declaration, as default initialization for a component,
+in a structure constructor, in a DATA statement, and as an
+actual argument.
+
+The optional argument of the NULL intrinsic can be procedure-valued,
+in which case it specifies the characteristics of the result.
+The optional argument is required when NULL is used as an actual
+argument in a generic reference and is needed to disambiguate
+the reference.  The optional argument is also required when NULL
+is used as an actual argument to a procedure with an implicit
+interface (a case that does not arise with the pointer form of
+NULL).
+
+The procedure-value form of NULL can be used in one additional
+context that does not apply to the pointer form.  It can appear
+as part of a procedure comparison operation.  In that case,
+its result charactersitics are the same as those of the other
+operand in the comparison (and if both operands are NULL,
+they are considered equal).
+
+If J3 prefers, a different name than "null" could be adopted for
+the procedure-valued form, but "null" seems like the most
+intuitive name to me.  I can't even come up with any close second
+place.  (Perhaps "NADA"? - no, I doubt that would "fly").  The
+existing NULL intrinsic already has the strange property of
+having a result that depends on context.  It seems consistent to
+let it also depend on context to determine whether it is
+procedure-valued or pointer-valued.
+--------------------------------------------------------------------
+

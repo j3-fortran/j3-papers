@@ -1,0 +1,128 @@
+                                                           J3/14-221r2
+To: J3
+From: Nick Maclaren & Malcolm Cohen
+Subject: Interoperable procedures
+Date: 2014 October 15
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0116
+TITLE: Interoperable procedures
+KEYWORD: Interoperability, procedure
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+In all cases, Alf is a Fortran procedure like this:
+
+    SUBROUTINE Alf (Arg) BIND(C,NAME='Alf')
+        INTERFACE
+            SUBROUTINE Arg () BIND(C)
+            END SUBROUTINE Arg
+        END INTERFACE
+        CALL Arg
+    END SUBROUTINE Alf
+
+Q1. Consider
+
+    extern void Bert (void) {
+        ;
+    }
+
+    int main (void) {
+        Alf(Bert);
+    }
+
+15.5.1p2 requires a procedure defined by means other than Fortran to
+have the same binding label as the interface.  Function Bert() has a
+binding label of 'Bert', but 15.5.2p2 states that the dummy argument
+Arg has no binding label, therefore 15.5.1p2 is not satisfied.
+
+Was this intended to be conforming?
+
+Q2. Consider
+
+    static void Fred (void) {
+        ;
+    }
+
+    int main (void) {
+        Alf(Fred);
+    }
+
+15.5.1p2 requires a procedure defined by means other than Fortran to
+have a name that has external linkage as defined by 6.2.2 of ISO/IEC
+9899:1999.  Function Fred() has no such name, as its definition has
+internal linkage.  However, linkage in C affects only the visibility
+of the external name, and has no application to either types or
+values, whether in the form of function parameters or other pointers.
+
+Was this intended to be conforming?
+
+Q3. Consider
+
+    extern inline void arg (void) {
+        ;
+    }
+
+    int main (void) {
+        Alf(Joe);
+    }
+
+C99 6.7.4 describes the inline specifier.  This does not prevent it
+from having external linkage, but
+  "An inline definition does not provide an external definition for
+   the function"
+i.e. despite having external linkage, there might be no external
+definition that could be invoked from Fortran.
+
+Was it not an oversight not to exclude inline in 15.5.1?
+
+ANSWERS:
+
+A1. Yes, this was intended to be conforming.  An edit is provided to
+    correct this mistake.
+
+A2. Yes, this was intended to be conforming.  An edit is provided to
+    correct this mistake.
+
+A3. A C function with no external definition is not "defined by
+    means other than Fortran" so much as "not defined".  This was
+    not intended to be conforming.  An edit is provided to clarify
+    this situation.
+
+EDITS:
+
+[436:15] 15.5.1 Definition and reference of interoperable procedures,
+         p1, Append sentence
+  "A C function that has an inline definition and no external
+   definition is not considered to be defined in this sense.".
+
+In 15.5.1p2, apply these edits
+[436:16] After "means other than Fortran," delete "it shall",
+[436:17] Before "be describable" insert "it shall",
+         after "the interface," insert "and",
+[436:18-19] Before "have a name"
+         insert "if it is accessed using its binding label, it shall"
+         and begin a bullet sub-list,
+         and make the "have the same" bullet the second sublist item.
+This makes that whole paragraph read
+  "If the procedure is defined by means other than Fortran,
+   -- it shall be describable by a C prototype that is interoperable
+      with the interface, and
+   -- if it is accessed using its binding label, it shall
+      - have a name that has external linkage as defined by 6.2.2 of
+        ISO/IEC 9899:1999, and
+      - have the same binding label as the interface."
+{Note this wording uses "accessed" rather than "invoked" since it can
+ be the argument of C_FUNPTR or the target in a procedure pointer
+ assignment.}
+
+SUBMITTED BY: Nick Maclaren.
+
+HISTORY: 14-221    m205  Submitted
+         14-221r1  m205  Revised
+         14-221r2  m205  Further Revised
+
+----------------------------------------------------------------------

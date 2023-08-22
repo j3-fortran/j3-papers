@@ -1,0 +1,100 @@
+To: J3                                                     J3/21-139
+From: Brad Richardson
+Subject: Interpretation of CO_BROADCAST of object with allocatable
+         component
+Date: 2021-May-18
+
+----------------------------------------------------------------------
+
+NUMBER: F18/027
+TITLE: CO_BROADCAST with allocatable component
+KEYWORDS: CO_BROADCAST allocatable component
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the program
+
+program example
+  type :: my_string_t
+    character(len=:), allocatable :: contents
+  end type
+  type(my_string_t) :: string
+  if (this_image() == 1) string%contents = "Hello, World!"
+  call co_broadcast(string, source_image=1)
+  print *, string%contents
+end program
+
+Is this program valid?
+If so, what is the status of string%contents on images other than 1?
+
+The description for argument A in the standard (Section 16.9.46)
+states that A:
+  "shall have the same shape, dynamic type, and type parameter value,
+  in corresponding references."
+
+and given the example that follows, would indicate that allocatable
+array arguments must be allocated to the same shape on all images
+prior to the call to CO_BROADCAST. However, it also states that A:
+  "becomes defined, as if by intrinsic assignment, on all images"
+
+which would indicate that objects with allocatable components would
+have those components (re)allocated.
+
+Is it intended for CO_BROADCAST to be usable by objects with
+allocatable components, and have those components be (re)allocated on
+the receiving images? Furthermore, can those components be polymorphic,
+(i.e. be declared with CLASS instead of TYPE)?
+
+ANSWER:
+
+The program is conforming because argument A satisfies the
+requirements:
+  "shall have the same shape, dynamic type, and type parameter value,
+  in corresponding references."
+
+and string%contents should be allocated with value "Hello, World!"
+because string shall:
+  "becomes defined, as if by intrinsic assignment, on all images"
+
+EDITS to 21-007:
+
+[369:2] 16.9.54.3 Argument A, last sentence
+    At the end of the last sentence
+    add ", including (re)allocation of any allocatable ultimate
+         components, and setting the dynamic type of any components
+         that are polymorphic".
+
+Somewhat redundant because "as if by intrinsic assignment" should
+already indicate it, but clearly the clarification is needed, as some
+compilers have not interpreted it as such.
+
+ALTERNATE ANSWER:
+
+The program is not conforming because collective subroutines are not
+intended to allow automatic (re)allocation. This is an oversight in the
+current specification. The following edits will correct this.
+
+ALTERNATE EDITS to 21-007:
+
+[368:37] 16.9.54.3 Argument A, first sentence
+    Before "in corresponding references"
+    add "including all of its ultimate components, "
+
+[369:2] 16.9.54.3 Argument A, last sentence
+    After "as if by intrinsic assignment"
+    add ", except that no (re)allocation of ultimate components takes
+         place, nor setting the dynamic type of any polymorphic components"
+
+This severely limits the usefulness of CO_BROADCAST, but eliminates
+the possibility of performance issues in dealing with potential
+(re)allocation on remote images.
+
+SUBMITTED BY: Brad Richardson
+
+HISTORY: 21-139   m224  Submitted
+
+----------------------------------------------------------------------
+
+

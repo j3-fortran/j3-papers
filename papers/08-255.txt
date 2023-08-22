@@ -1,0 +1,217 @@
+To:                                       J3
+From: Aleksandar Donev
+Subject: Library-based ASYNCHRONOUS I/O and SYNC MEMORY
+Date: 2008 July 18
+
+Several important libraries have routines for asynchronous data
+transfer, for example, MPI's non-blocking communication routines. The
+use of these routines is essentially identical to asynchronous I/O
+within Fortran 2003, however, the ASYNCHRONOUS attribute only applies
+to the standard-specified asynchronous I/O. The VOLATILE attribute
+may be used to signal to the compiler that a variable may be modified
+asynchronously by an external mechanism, however, this disables
+all optimizations involving the variable, which is not needed. In
+particular, in good programs the variable will not be referenced or
+defined while asynchronous data transfer is possibly occuring (this
+is an explicit restriction in the MPI standard), just as required in
+F2003 for variables involved in async I/O.
+
+It is therefore useful to extend the semantics of the ASYNCHRONOUS
+attribute to also apply to library I/O. This was difficult to do in
+Fortran 2003 because the issues of memory consistency were hard to
+specify. However, the same kind of asynchronous data transfer and
+memory consistency issues occur with coarrays, and we now have the
+segment model and SYNC MEMORY to lean on. I therefore consider this
+proposal to be integration and appropriate for immediate incorporation
+into Fortran 2008, especially given the long-existing demand for it
+from the MPI community.
+
+The proposal here requires very little implementation effort. Compilers
+that already implement SYNC MEMORY due to parallelism will already
+inhibit code motion across SYNC MEMORY for all variables, and this
+proposal merely gives that as a guarantee to the programmer. Compilers
+that implement (true) asynchronous I/O already need to inhibit motion
+across WAIT statements and SYNC MEMORY can be handled identically. Only
+compilers that presently ignore ASYNCHRONOUS and plan to implement only
+"single-image" coarrays need to actually do some work. Since compilers
+already have to inhibit code motion across certain procedure calls
+the work involved in doing the same for SYNC MEMORY is small.
+
+Technical specification:
+==============
+
+I propose that the following modification be made to the F2008
+standard:
+We should explicitly allow a variable with the ASYNCHRONOUS attribute
+to be modified or examined by means external to the processor,
+similarly to VOLATILE variables. If such a variable is modified
+or examined externally during a segment, that variable must not be
+referenced or define during that segment. Details are in the edits
+below.
+
+This simple modification solves an existing problem with MPI
+non-blocking transfer, namely, the need to prevent movement of code
+across calls to MPI_Wait. The programmer can use SYNC MEMORY to
+indicate to the compiler that ASYNCHRONOUS variables may be affected
+and therefore old copies in registers should be discarded and new
+values written to memory. This is exactly as for coarrays and TARGETs
+(which may be modified by other images) and also just like SYNC
+MEMORY needs to be put around external synchronization routines such
+as MPI_Barrier (see Note 8.39).
+
+Also note that the ASYNCHRONOUS attribute solves another vexing problem
+with MPI non-blocking transfer, namely, that of copy in/out. The
+existing rules we have now specify that if both the dummy and the
+actual have the ASYNCHRONOUS attribute, no copy in/out can occur
+because either the dummy has to be assumed-shape or the actual
+has to be simply-contiguous. It would be nice if we could say that
+explicitly in the standard (not proposed here because I do not know
+how to word it).
+
+Straw vote:
+===============
+
+Note that the use of SYNC MEMORY will lead to lots of code segments
+like this:
+
+SYNC MEMORY
+CALL MPI_Wait(request,...) ! Complete communication
+SYNC MEMORY
+
+or
+
+SYNC MEMORY
+CALL MPI_Barrier(comm) ! If used to synchronize images
+SYNC MEMORY
+
+I think it would be a benefit to programmers to give them syntactic
+sugar to do this without requiring rewriting existing codes or
+writing wrappers. It could be achieved through a SYNC procedure
+attribute, which cannot be combined with PURE and is not a procedure
+characteristic. A call to a procedure with the SYNC attribute implies
+a SYNC MEMORY both before and after the call. I do not provide edits
+for this but I hope it can be voted on.
+
+---------------------
+Examples:
+
+--------
+Example 1:
+
+REAL, ASYNCHRONOUS :: buffer(100)
+
+SYNC MEMORY ! This is not really necessary in practice, it should
+be added
+CALL MPI_IRecv(buffer,...,request,...) ! The dummy buffer has the
+ASYNC attribute
+... ! Code not involving buffer but buffer may be modified outside
+CALL MPI_Wait(request,...)
+SYNC MEMORY
+WRITE(*,*) buffer
+
+--------
+Example 2:
+
+REAL..., ASYNCHRONOUS :: buffer1, buffer2, ...
+
+CALL PrepareNonBlocking(buffer1, buffer2, ...) ! Build internal
+pointers etc.
+        ! This may take some time to initialize, but is done only once
+        ! No copy in/out will happen if buffers are simply-contiguous
+        ! and the interface has ASYNCHRONOUS on the dummies
+....
+buffer2=...
+SYNC MEMORY
+CALL BeginNonBlocking() ! Start async transfer
+.... ! Cannot reference buffers within this segment
+.... ! This may span across many procedure calls or even scoping units
+CALL WaitNonBlocking()
+SYNC MEMORY
+WRITE(*,*) buffer1
+
+---------------------
+
+Edits:
+
+[88:p1] Clause 5.3.4 on the ASYNCHRONOUS attribute:
+Add to the end of the first sentence:
+", or a variable that may be referenced, defined, or become undefined,
+by means not specified by the program."
+
+{Note that I specifically do not want to allow pointer or association
+status to be changed asynchronously, as we do for VOLATILE.}
+[88:p2] Clause 5.3.4. Rewrite para 2:
+The base object of a variable shall have the ASYNCHRONOUS attribute
+in a scoping unit if the variable appears in an executable statement
+or specification expression in that scoping unit and any statement
+of the scoping unit is executed while
+-the variable is a pending I/O storage sequence affector (9.6.2.5), or
+-the variable is referenced, defined, or become undefined, by means
+not specified by the program and the base object does not have the
+VOLATILE attribute in that scoping unit
+{Note: The second item may be stronger than we want since it requires
+either VOLATILE or ASYNCHRONOUS to be specified. Does this disallow
+existing threaded programs?}
+
+{Note: These rules are meant to be analogues of the rules in 9.6.4
+for Fortran async I/O.}
+[88:p3+] Add a new paragraph after para 3:
+If a variable has the ASYNCHRONOUS attribute but does not have the
+VOLATILE attribute, then:
+-If it is referenced by means not specified by the program during
+the execution of a segment, then it shall not be defined or become
+undefined in a statement executed during that segment.
+-If it is defined or becomes undefined by means not specified by
+the program during the execution of a segment, then it shall not
+be referenced, defined, or become undefined in a statement executed
+during that segment, or become associated with a dummy argument that
+has the VALUE attribute during that segment.
+
+[88:NOTE 5.4] Clause 5.3.4. Add a new sentence before the last sentence
+of Note 5.4:
+"The ASYNCHRONOUS attribute should also be used to specify variables
+that are involved in asynchronous data transfer performed by external
+libraries, such as non-blocking communication in certain parallel
+programs."
+
+[88:] Clause 5.3.4. Add a new Note 5.4+:
+"The difference between the VOLATILE and ASYNCHRONOUS attributes is
+that the processor may optimize the execution of a segment assuming
+that all asynchronous data transfer happens due to means specified
+by the program. After a new segment begins, the Fortran processor
+should reload the most recent value of an asynchronous object from
+memory when a value is required. Likewise, when a segment ends,
+the processor should store the most recent Fortran definition in
+memory. It is the programmer's responsibility to manage any interaction
+with non-Fortran processes and to use SYNC MEMORY to delimit segments
+and thus inform the processor to disable certain optimizations. It is
+also the programmer's responsibility to only reference or define the
+variable in segments in which it is not being defined or referenced
+by non-Fortran processes.
+
+For example:
+
+INTERFACE
+   SUBROUTINE MY_WRITE(var, n_bytes, id)
+      REAL, INTENT(IN), ASYNCHRONOUS :: var(*)
+      INTEGER, INTENT(IN) :: n_bytes
+      INTEGER, INTENT(OUT) :: id
+   END SUBROUTINE
+   SUBROUTINE MY_WAIT(id)
+      INTEGER, INTENT(IN) :: id
+   END SUBROUTINE
+END INTERFACE
+
+REAL :: buffer(100)
+INTEGER :: id
+
+buffer=... ! Definition
+
+SYNC MEMORY ! Segment boundary
+! No copy shall occur in this call since buffer is simply-contigous:
+CALL MY_WRITE(buffer, SIZE(buffer)*(STORAGE_SIZE(buffer)/8), id)
+! Statements not referencing or defining buffer
+CALL MY_WAIT(id) ! Complete the asynchronous I/O
+SYNC MEMORY ! Segment boundary
+
+buffer=... ! Definition

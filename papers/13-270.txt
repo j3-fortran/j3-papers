@@ -1,0 +1,455 @@
+                                                           13-270
+To: J3
+From: Nick Maclaren
+Subject: Why are atomics a nightmare?
+Date: 2013 June 20
+
+
+I have written this to try to explain why I reacted so negatively to the
+last of a precise data consistency mode for the proposed atomics.
+Unfortunately it was written in haste, and may contain bugs.  Even if
+you don't have the time or interest to read all of this, please look at
+the first couple of sections to see why I am concerned.
+
+I have seen almost all of these failures of sanity ('gotchas') over the
+years, and most of them can be demonstrated on current systems in
+programs that conform to existing, important interfaces.  They are bugs
+in neither the implementation nor the program - the only error would be
+if the programmer relied on them not happening.  Some people will claim
+that some of these are forbidden by the current standard, but I try to
+explain in section 4 why that is not the case.
+
+Note that I am NOT proposing that they all be forbidden - merely that we
+need an unambiguous data consistency model, so that it all clueful
+vendors and programmers can agree on what is required.  Some of these
+gotchas
+will remain as features.
+
+
+2. Interaction With Other Features
+----------------------------------
+
+I shall give just three examples, for simplicity; there are a lot more
+that I could give.
+
+
+2.1 Synchronisation failure (1)
+-------------------------------
+
+            INTEGER(ATOMIC_INT_KIND) :: x[*] = 0
+
+Image 1:    CALL ATOMIC_DEFINE(x,42)
+
+Image 2:    CALL ATOMIC_REF(y,x[1])
+            PRINT *, y
+            SYNC IMAGES ( (/2,3/) )    ! Assumed to be matching
+
+Image 2:    SYNC IMAGES ( (/2,3/) )    ! Assumed to be matching
+            CALL ATOMIC_REF(y,x[1])
+            PRINT *, y
+
+Could print 42 on image 2 and 0 on image 3.  This can happen, because of
+the store buffering described below.  In itself, this isn't a problem,
+but see the next example.
+
+
+2.2 Synchronisation failure (2)
+-------------------------------
+
+            REAL :: p[*] = 0
+            INTEGER(ATOMIC_INT_KIND) :: x[*] = 0
+
+Image 1:    p = 13
+            SYNC MEMORY    ! Assumed to be matching
+            CALL ATOMIC_DEFINE(x,42)
+ 
+Image 2:    CALL ATOMIC_REF(y,x[1])
+            IF (y == 42) THEN
+                SYNC MEMORY    ! Assumed to be matching
+                PRINT *, p[1]
+            END IF
+
+Could print 0.  This can happen, because of the store buffering
+described below.  It obviously conflicts with Note 8.4.1, but we
+agreed and stated in 13.1 paragraph 3 that whether that example
+would actually work is processor dependent.
+
+
+2.3 Collectives
+---------------
+
+            INTEGER(ATOMIC_INT_KIND) :: x[*] = 0
+
+Image 1:    CALL ATOMIC_DEFINE(x,42)
+            y = x
+            CALL CO_BROADCAST (y)    ! Assumed to be matching
+
+Image 2:    CALL CO_BROADCAST (y)    ! Assumed to be matching
+            CALL ATOMIC_REF(z,x[1])
+            PRINT *, y, z
+
+Could print 42, 0.  This can happen, because of the store buffering
+described below.
+
+
+
+3. Breaches of Sanity
+---------------------
+
+3.1 Write reordering
+--------------------
+
+            INTEGER(ATOMIC_INT_KIND) :: x[*] = 0
+
+Image 1:    DO i = 1,3
+                CALL ATOMIC_DEFINE(x,i)
+            END DO
+
+Image 2:    DO i = 4,5
+                CALL ATOMIC_DEFINE(x[1],i)
+            END DO
+
+Image 3:    DO i = 1,5
+                CALL ATOMIC_REF(y,x[1])
+                PRINT *, y
+            END DO
+
+Image 4:    DO i = 1,5
+                CALL ATOMIC_REF(y,x[1])
+                PRINT *, y
+            END DO
+
+Could print 0, 1, 2, 3, 4 on image 3 and 4, 5, 6, 0, 1 on image 4.
+Everything happens instantaneously, but not in a consistent order.  It
+will break most programs that use atomics, but it is a very likely
+effect on message passing implementations, due to locality.
+
+It can be worse, and the effect can occur when a single image does all
+of the writing, where an implementation relies on single-sided fencing
+or has multiple paths.
+
+Apparently, the rule that writes must appear in a single order is now
+known as coherence, and every modern parallel interface I have seen has
+specified it.  However, older ones did not always do so, UDP and IP do
+not, and even TCP and most file access protocols do not at their
+transport level.
+
+
+3.2 Erroneous accumulation
+--------------------------
+
+            INTEGER(ATOMIC_INT_KIND) :: x[*] = 0
+
+Image 1:    DO i = 1,5
+                CALL ATOMIC_ADD(x,i)
+            END DO
+            PRINT *, x
+
+Image 2:    DO i = 6,10
+                CALL ATOMIC_ADD(x[1],i)
+            END DO
+            PRINT *, x[1]
+
+Could print 47.  Everything is instantaneous, but some actions seem to
+get lost.  This can and does happen on Intel and AMD multi-core CPUs,
+because of the store buffering described below.
+
+
+3.3 Confusing return values
+---------------------------
+
+            INTEGER(ATOMIC_INT_KIND) :: x[*] = 0
+
+Image 1:    DO i = 1,5
+                CALL ATOMIC_ADD(x,7,y)
+                PRINT *, y
+            END DO
+            PRINT *, x[1]
+
+            INTEGER(ATOMIC_INT_KIND) :: x[*] = 0
+
+Image 2:    DO i = 6,10
+                CALL ATOMIC_ADD(x[1],13,y)
+                PRINT *, y
+            END DO
+            PRINT *, x[1]
+
+Could print 0, 20, 40, 60, 80 and 100 on image 1 and 7, 7, 20, 27, 30
+and 100 on image 2 or, with some implementations, 14, 34, 54, 74, 87 and
+100 on image 2.  The total is correct, but the old values are not what
+was expected.  This can occur when the update happens atomically, but
+the loading of the return value has to be emulated.
+
+
+3.4 Time warps
+--------------
+
+            INTEGER(ATOMIC_INT_KIND) :: x[*] = 0
+
+Image 1:    CALL ATOMIC_REF(y,x[3])
+            CALL ATOMIC_DEFINE(x,42)
+            PRINT *, y
+
+Image 2:    CALL ATOMIC_REF(y,x[1])
+            CALL ATOMIC_DEFINE(x,y)
+
+Image 3:    CALL ATOMIC_REF(y,x[2])
+            CALL ATOMIC_DEFINE(x,y)
+
+Could print 42.  I have not seen this, but understand that it can occur
+on some current architectures and with some compilers, possibly POWER.
+
+
+3.5 Store buffering
+-------------------
+
+            INTEGER(ATOMIC_INT_KIND) :: x[*] = 0
+
+Image 1:    CALL ATOMIC_DEFINE(x,42)
+            CALL ATOMIC_REF(y,x[2])
+            PRINT *, y
+
+Image 2:    CALL ATOMIC_DEFINE(x,42)
+            CALL ATOMIC_REF(y,x[1])
+            PRINT *, y
+
+Could print 0 from both images.  This one is the root cause of the
+strange effects in the previous examples on Intel and AMD CPUs, as it
+is allowed by their architectural model for atomic operations.
+
+
+3.6 Independent reads of independent writes
+-------------------------------------------
+
+            INTEGER(ATOMIC_INT_KIND) :: x[*] = 0
+
+Image 1:    CALL ATOMIC_DEFINE(x,13)
+
+Image 2:    CALL ATOMIC_DEFINE(x,69)
+
+Image 3:    CALL ATOMIC_REF(y,x[1])
+            CALL ATOMIC_REF(z,x[2])
+            PRINT *, y, z
+
+Image 4:    CALL ATOMIC_REF(z,x[2])
+            CALL ATOMIC_REF(y,x[1])
+            PRINT *, y, z
+
+Could print 13, 0 on image 3 and 0, 69 in image 2.  Curiously, Intel and
+AMD CPUs do not have this one, but it is common on both hardware and
+software message passing, where the locality of the images groups as
+(1,3),(2,4).  It is also extremely hard to exclude on large-scale
+systems, as it is an inherently global property.
+
+
+
+4. The Current Situation
+------------------------
+
+4.1 The meaning of 'atomic'
+---------------------------
+
+I have seen at least the following meanings, in order of increasing
+strictness:
+
+    a) An action that either happens or does not, and may be used to
+bypass the synchronisation rules at the cost of losing all consistency
+properties
+
+    b) An action that either happens or does not, and where successive
+writes on a single object occur in a total order, but with no other
+property (not even that reads get the latest copy)
+
+    c) An action that either happens or does not, and where successive
+accesses to a single object occur in a total order, but with no
+consistency property between variables
+
+    d) An action that either happens or does not, where successive
+actions on a single object occur in a single total order, and where all
+atomic actions obey a specified consistency property
+
+Fortran 2008 says:
+
+    An atomic subroutine is an intrinsic subroutine that performs an
+    action on its ATOM argument atomically. The effect of executing an
+    atomic subroutine is as if the subroutine were executed
+    instantaneously, thus not overlapping other atomic actions that
+    might occur asynchronously. The sequence of atomic actions within
+    ordered segments is specified in 2.3.5.  How sequences of atomic
+    actions in unordered segments interleave with each other is
+    processor dependent.
+
+Unfortunately, the word "instantaneously" is ambiguous in this context.
+The reason for this is that, as most of us know, parallel time is very
+like time in special relativity: the ordering of events and simultaneity
+depend on the observer.  Even if all of the subroutine calls occur
+instantaneously, that says nothing about the consistency of their order
+across threads.
+
+Fortran's current rules are generally known as relaxed atomics, though
+it does not even require what is now called coherence (see 2.1 below).
+We deliberately took the decision to punt any decision on their
+semantics into the long grass.  However, the proposed TS adds
+read-modify-write operations (which OpenMP calls capture), and that
+approach will no longer work.
+
+
+1.2 Memory models
+-----------------
+
+Relaxed atomics are known to be diabolically difficult for ordinary
+programmers to use correctly, and typically require the extra constraint
+that 2.1 below does not happen.  However, don't know of any that can use
+completely relaxed read-modify-write atomics because of the problems
+described below.  Many of them are for stores and loads, but that sort
+of effect makes it very tricky to emulate read-modify-write atomics
+efficiently.
+
+The simplest model to adopt would be sequential consistency (Lamport),
+both for the programmers and for standardisation.  Unfortunately, it is
+extremely hard to implement both efficiently and scalably; half of the
+logic and cost of an 128-node SGI Origin was needed for that alone.
+There is a bit more on this right at the end.
+
+A common assumption in WG5 is that coarrays will be located in the image
+that they are defined in, and that atomics will be handled by the
+processor instance for that image.  But the standard does not say so,
+and I describe below why that is unimplementable using the current
+operating system standard, POSIX.
+
+This is not a theoretical problem, and I have seen almost all of the
+above gotchas in actual systems in various parallel environments; in
+most cases, they were NOT bugs, but it took ages to explain why to the
+users whose programs had failed in the cases when users brought them to
+me.
+
+
+
+5. Implementations
+------------------
+
+5.1 Shared-memory systems
+-------------------------
+
+5.1.1 Multi-core CPUs
+---------------------
+
+Almost all of these will use the native hardware.  Currently, this is
+dominated by 'x86', followed by POWER, but there are a lot of others.
+Once one gets beyond single-board systems, the properties of the
+interconnect become relevant, and they are not always the same as for
+the underlying CPUs.  These properties are likely to become more
+relaxed, because of scalability constraints.
+
+In particular, the problems above can be caused by virtually all of the
+standard hardware optimisations, including caching, preloading, store
+buffering, asynchronous accesses and directory-based systems.  There
+is no chance that those are going to become less important.
+
+Where the underlying system uses a more relaxed memory model than the
+interface requires, the compiler has to include various forms of
+fencing, which can have a serious performance impact.  Where the
+interface is inadequately designed, the programmer gets whatever the
+hardware provides, and programs using atomics cease to be portable; this
+has been observed with OpenMP and with POSIX threads and volatile.
+
+Note that POSIX cannot be used as the implementation basis, whether
+images are threads or processes, and whether or not either of the forms
+of inter-process shared memory is used, for reasons described below
+under message passing.  Any correct implementation is necessarily
+dependent on hardware facilities for the synchronisation.
+
+We can assume that systems will continue to be different, and direct use
+of the memory facilities will lead to the problems mentioned above.
+
+5.1.2 RDMA and similar
+----------------------
+
+I am not an expert on these, and the one thing that I know for sure is
+that they are all different.  My guess is most of them will adopt the
+approach that coarrays will be located in the image that they are
+defined in, and that atomics will be handled by the hardware on which
+that image is running.  Bill Long has posted what Cray do, but the
+semantics of other systems is unclear.
+
+Strictly, even message passing systems can be directory-based, but I am
+currently describing the infrastructure on which Fortran coarrays will
+be implemented.  At least some of the larger and future systems will
+be directory-based, because that is generally felt to be the best way
+to achieve scalable coherence.  But what consistency model will they
+deliver?  Looking at file systems (which are comparable in granularity
+to coarrays) seems a good idea.
+
+POSIX is very close to sequentially consistent, but no distributed
+file systems deliver its semantics.  NFS, AFS, GPFS, DFS and others
+are all different and all are less or much less strict.  Lustre can
+be configured from nearly POSIX-conforming and direly slow to very
+different and much faster.
+
+It is likely that at least some of the 'RDMA' systems will have at least
+some of the issues described below for message passing.
+
+
+
+5.2 Message passing
+-------------------
+
+I shall assume that this is based on TCP/IP or MPI on a POSIX-based (or
+possibly Microsoft) system, because that will be far and away the most
+common form.  I have failed to find a precise specification of Microsoft
+threading, but have reason to believe that it is similar to POSIX.  The
+same is likely to be true of other, similar infrastructure.
+
+We took care to ensure that Fortran segments and synchronisation could
+be implemented by MPI's progress engine; but, to go beyond that, an
+implementation needs a helper thread.  The problem is that atomics, like
+MPI passive one-sided communication and UPC, need access to the data of
+an image without the cooperation of that image.  Without helper threads,
+this leads to deadlock, as I showed for Berkeley UPC.
+
+Let's ignore problems caused by unreliable transports like UDP or IP,
+and assume that the implementation is based on a 'reliable' transport
+like TCP or MPI.
+
+5.2.1 Helper threads
+--------------------
+
+Using a helper thread correctly and efficiently is not easy.  The
+problem is with accesses to atomic variables from the images on the
+owning node.  If they use the remote protocol (i.e. via TCP/IP or MPI)
+for all accesses to atomic variables, there is no problem.  But that
+does mean ALL accesses, and not just the ones via the atomic
+subroutines, so the performance impact will be considerable.
+
+The reason is that POSIX (like almost all other shared-memory
+interfaces) has no one-sided synchronisation mechanisms.  It doesn't
+have fences as such, but the same applies to the use of fences, so they
+are used here.  In order for thread A to read data written by a remote
+thread B to location X, the sequence has to be as follows:
+
+Helper:    Receive update into X
+           Fence
+           . . .
+Thread A:  Fence
+           Read data from X
+
+If an implementation does not do that, then there will necessarily be
+circumstances under which incorrect results occur.  So we need to
+specify as relaxed a model as is consistent with usability, to allow
+maximum flexibility.
+
+5.2.2 Multiple paths
+--------------------
+
+This includes when multiple network ports and connections are strapped
+together to increase bandwidth, but it also includes redundant networks
+and many other such configurations.  The point is that one message can
+overtake another, even when they are sent from and to the same nodes.
+MPI specifically forbids this, but UDP and IP do not, and it will
+obviously occur when the Fortran processor has direct access to both
+paths.
+
+This is a soluble problem, as MPI demonstrates.  But, if the standard
+does not require it to be excluded, we can assume that at least some
+implementations will not serialise their messages.  That could be
+for simplicity or for extra performance.

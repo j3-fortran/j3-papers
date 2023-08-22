@@ -1,0 +1,102 @@
+                                                            J3/13-248
+To: J3
+From: Van Snyder
+Subject: Interp F03/0051
+Date: 2013 February 14
+
+
+1. Introduction
+
+Interp F03/0051 failed with a NO vote from Jim Xia.  It should have
+failed for an entirely different reason.
+
+The subroutine that defines formatted input excutes an INQUIRE
+statement for the internal unit.  This is explicitly prohibited by
+9.2.10.1p2.
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0051
+TITLE: Repeat specifiers and UDDTIO
+KEYWORDS: repeat specifier, POS=, UDDTIO
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following program:
+
+MODULE m
+
+  TYPE t
+    INTEGER :: i
+    INTEGER :: j
+  END TYPE
+
+  INTEGER :: ipos
+
+  INTERFACE READ(FORMATTED)
+    MODULE PROCEDURE formattedReadT
+  END INTERFACE
+
+CONTAINS
+
+  SUBROUTINE formattedReadT (dtv, unit, iotype, vlist, iostat, iomsg)
+    CLASS(T), INTENT(INOUT) :: dtv
+    INTEGER, INTENT(IN) :: unit
+    CHARACTER(*), INTENT(IN) :: iotype
+    INTEGER, INTENT(IN) :: vlist(:)
+    INTEGER, INTENT(OUT) :: iostat
+    CHARACTER(*), INTENT(INOUT) :: iomsg
+
+    READ(unit, *) dtv%i
+    INQUIRE(unit, POS=ipos)
+    READ(unit, *) dtv%j
+  END SUBROUTINE
+
+END MODULE
+
+PROGRAM foo
+  USE m
+  TYPE(t) :: a
+  OPEN(10, FILE='file.txt', ACCESS='stream', FORM='formatted')
+  WRITE(10, '(A)') '2*3 5'
+  REWIND(10)
+  READ(10, *) a
+  PRINT *, a%i, a%j, ipos
+END PROGRAM
+
+10.9 of Fortran 2003 states that the r*c form of list-directed input
+is equivalent to r occurrences of c.  So, when the read is performed,
+it is as if the input record contains two occurrences of the number 3.
+
+The first child read statement reads the first 3, and does not advance
+the file position to the next record (because it is a child data
+transfer statement).  It appears that the second read statement should
+read the second 3.  But the file position between the child read
+statements is unclear.
+
+What does the above program print?
+
+ANSWER:
+
+The standard does specify the behavior of a processor when a list
+directed input record contains a r*c constant, but that is irrelevant
+to the question at hand.  Executing an INQUIRE statement using an
+internal unit is prohibited by 9.2.10.1p2.  The program does not
+conform.
+
+EDITS:
+
+None.
+
+SUBMITTED BY: Rob James
+
+HISTORY: 05-142        m171  F03/0051 submitted
+         05-142r2      m171  Passed by J3 meeting
+         05-167/170    m172  Failed J3 letter ballot #11
+         06-369r1      m178  Passed by J3 meeting
+         07-250r1/272  m181  Failed J3 letter ballot #13
+         13-nnn        m200  Revised
+
+----------------------------------------------------------------------

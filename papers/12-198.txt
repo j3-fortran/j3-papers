@@ -1,0 +1,120 @@
+To:        J3                                      12-198
+From:      Bill Long/Robert Corbett
+Subject:   Coarray events
+Date:      2012 October 18
+Reference: WG5/N1930, 12-170
+
+Discussion:
+-----------
+This paper proposes syntax and semantics for feature
+5. Synchronization using events.
+
+NOTIFY and QUERY statements were proposed in N1858.  That proposal
+matches execution of a NOTIFY statement on one image with execution of
+a QUERY statement on another image based on the number of times the
+statements are executed on each image.  That mechanism is not robust
+in the presence of code reordering.  For example, an image that 
+would otherwise be idle might bring other work forward.  Event
+variables provide a more robust mechanism for synchronizing execution
+of images.  Event variables allow library routines to use
+synchronization in a way that is hidden from and does not interfere
+with the calling code.
+
+E1: There should be a mechanism to allow one-sided ordering of
+    execution segments. For example, suppose image I executes
+    successive segments I1 and I2 and image J executes successive
+    segments J1 and J2; there might be a need for I1 to precede J2,
+    but no need for J1 to precede I2.
+
+E2: The mechanism should use a data entity that is accessible by all
+    the images to identify the event. There shall be a type for event
+    variables, probably an opaque derived type defined in the
+    intrinsic module ISO_FORTRAN_ENV.
+
+E3: Mechanisms shall be provided to post an event, to test if an event
+    has been posted, and to wait for an event to be posted. Repeated
+    posts to the same event variable increment a counter internal to
+    the event variable and waits decrement the counter.  The statements
+    implementing event post and wait are image control statements. The
+    test operation may be implemented by an inquiry function and hence
+    would not be an image control statement.
+
+E4: If multiple event wait operations are waiting on the same event
+    variable, which of those operations completes when the
+    corresponding event post occurs is unspecified.
+
+
+Syntax and Semantics
+--------------------
+
+An image can use events to notify one or more other images that they
+can proceed to work on tasks that use common resources.  Images can
+wait on events posted by other images and can query if images have
+posted events.
+
+EVENT_TYPE is a derived type with private components; no component is
+allocatable or a pointer. It is an extensible type with no type
+parameters.  It does not have the BIND (C) attribute and is not a
+sequence type. All components have default initialization.  The type
+is defined in the ISO_FORTRAN_ENV intrinsic module.
+
+A scalar variable of type EVENT_TYPE is an event variable.  An event
+variable includes a count of the number of posts to the event variable
+that have not yet been matched by a wait.  A event variable with a
+count of zero is <clear>.  An event variable with a count that is
+greater than zero is <pending>.  The default initialization of the
+components of an event variable sets the event variable to clear.
+
+A successful post to an event variable increments the count if no
+images are waiting on the event variable.  A successful wait on an
+event variable that is pending decrements the count.  A wait on
+an event variable that is clear causes the executing image to wait
+on the event variable unless an error condition is detected.  A
+successful post to an event variable that one or more images are
+waiting on releases one of those images to resume execution; the
+count is not changed.  Unsuccessful posts and waits shall not change
+the count.
+
+Two new statements and a new intrinsic function are provided for
+event variables.  The statements are
+
+     EVENT POST(event-variable [, sync-stat-list] )
+
+and
+
+     EVENT WAIT(event-variable [, sync-stat-list] )
+
+EVENT POST posts to <event-variable>, and EVENT WAIT waits on
+<event-variable>.  The new statements are image control statements.
+
+An event variable shall not appear in a variable definition context
+except as the <event-variable> in an EVENT POST or EVENT WAIT
+statement, as an <allocate-object>, or as an actual argument in a
+reference to a procedure with an explicit interface where the
+corresponding dummy argument has INTENT(INOUT).  A variable with a
+subobject of type EVENT_TYPE shall not appear in a variable
+definition context except as an <allocate-object> or as an actual
+argument in a reference to a procedure with an explicit interface
+where the corresponding dummy argument has INTENT(INOUT).
+
+The new intrinsic function is
+
+     EVENT_QUERY(EVENT)
+
+The function result is false if the event variable cannot be accessed
+because of a processor-dependent error condition; otherwise, the
+function result is true if the event variable is pending and false if
+the event variable is clear.  A function reference that invokes
+EVENT_QUERY does not constitute an image control statement.
+
+A processor shall complete execution of all segments of an image that
+precede an EVENT POST statement before executing the statement.  A
+processor shall not start execution of segments of an image that
+follow an EVENT WAIT statement until after the statement has been
+executed.  A processor may execute portions of segments of images
+that follow an EVENT POST statement before executing the statement
+provided the effect of the sequential execution of the segments of
+the image is not changed.  A processor may defer execution of portions
+of segments of images that precede an EVENT WAIT statement until after
+the statement is executed, provided the effect of the sequential
+execution of the segments of the image is not changed.

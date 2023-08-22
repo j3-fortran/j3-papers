@@ -1,0 +1,113 @@
+                                                                 08-122
+
+To:          J3
+From:        Malcolm Cohen
+Subject:     Interpretation request: ID= integer size
+Date: 2008 February 06
+
+
+NUMBER: F03/00xx
+TITLE: Size and uniqueness considerations for ID=.
+KEYWORDS:
+DEFECT TYPE:
+STATUS: J3 consideration in progress
+
+
+QUESTION:
+
+The ID= specifier returns an identifier (or "handle") for an async
+i/o request.  Must this fit inside the smallest integer kind
+supported by the processor?
+
+Consider:
+  Integer(Selected_Int_Kind(1)) x(1000)
+  Character(80) :: test(1000) = (/ ... /)
+  ...
+  Do i=1,1000
+    Write (17,'(a)',Asynchronous='Yes',Id=x(i)) test(i)
+  End Do
+  ...
+  Do i=1,1000
+    Wait (17,Id=i)
+  End Do
+
+X is only guaranteed to have approximately 20 values available,
+and in practice will probably only have 256 such values, so
+we are certainly not going to have 1000 unique handles.
+
+Without loss of generality, suppose that one such duplicate value
+is 4.  After WAIT(17,ID=4), the async i/o request with ID 4
+is no longer pending.  This means that the subsequent WAIT(17,ID=4)
+is not conforming to the standard since it requires that the ID=
+value is one that is pending.
+
+(1) Is the processor permitted to require a minimum size for ID=
+    (e.g. such as default integer)?
+
+Clearly 1000 values do not fit into a 256-valued object, but apart
+from that,
+
+(2) Is the processor required to produce unique ID= values for
+    each multiple asynchronous i/o operation?
+
+One might conjecture that if the processor returned ID=4 for
+two or more async i/o requests on the same unit, the first WAIT
+for ID=4 would wait for the first such async i/o request and the
+second one would wait for the second such async i/o request.
+
+(3) Does WAIT-ing on an ID= value wait for all async i/o operations
+    that have that as the handle, or are these queued up?
+
+Unlike other i/o-related specifiers, there does not seem to be any
+constraint on the value returned for ID= (such as being non-zero
+or non-negative).  In the case of the i/o being completed
+synchronously, there does not appear to be any way of returning
+a "non-handle" to the user program (one might have conjectured that
+zero was not a handle, but this is not supported by the text of
+the standard).
+
+(4) Was there intended to be a "non-handle" return for ID=?
+
+DISCUSSION:
+
+It is understood that resource considerations may limit the number
+of outstanding asynchronous i/o requests, but 19 (the limit implied
+by the minimum-size integer that follows the model in c13) seems
+awfully small; for that matter 256 seems pretty small for todays
+operating systems.
+
+ANSWER:
+
+(1) Yes, the standard should require the ID= specifier to be default
+    integer or bigger.
+OR
+    No, the processor must choose handle values that fit in the size
+    of integer that the user passes; and the user must not have more
+    outstanding async i/o requests on a particular unit than the
+    variable passed to ID= is capable of representing.
+
+Either way, the standard probably wants an edit.
+
+(2) Yes, provided there is at least one value the ID= variable can
+    hold and which is not currently an outstanding async i/o request.
+
+Probably warrants an edit (at least, if we agree that ID= values are
+supposed to be unique ... which is the implication of the WAIT
+statement subclause even though it is not stated in READ/WRITE).
+
+(3) ID= values are required to be unique, so this question does not
+    arise.
+
+(4) Yes, the value zero should not be a handle but an indication the
+    request was completed synchronously.
+OR
+    No, all values, both positive and negative, are available to the
+    processor for use as handles.
+
+EDITS:
+
+
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 08-nnn    m183  F03/00xx Submitted

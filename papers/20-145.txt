@@ -1,0 +1,112 @@
+To: J3                                                     J3/20-145
+From: Bill Long
+Subject:  Response to UTI 010
+Date: 2020-October-08
+References: 20-007
+
+Discussion:
+-----------
+
+UTI 10 from page 90 of 20-007.pdf:
+
+----------------
+Why can BOZ be used to init a PARAMETER but not a variable?
+Seriously, that
+       INTEGER,PARAMETER :: x = z'2000'
+is valid but
+       INTEGER :: y = z'2000'
+is invalid, is obviously inconsistent.
+---------------
+
+We agree that this is inconsistent and variable initialization should
+be allowed.
+
+A simple test:
+
+> cat uti10.f90
+program uti10
+  implicit none
+  integer,parameter :: x = z'2000'
+  integer :: y = z'2001'
+
+  print *, x, y
+end program uti10
+
+Four compilers allow the code as is:
+
+> ftn uti10.f90 
+> ./a.out
+ 8192,  8193
+> ftn -VV
+Cray Fortran : Version 10.0.3 
+
+> ifort uti10.f90
+> ./a.out
+        8192        8193
+> ifort --version
+ifort (IFORT) 19.1.2.254 20200623
+
+> pgf90 uti10.f90
+> ./a.out
+         8192         8193
+> pgf90 --version
+
+pgf90 20.1-0 LLVM 64-bit target on x86-64 Linux -tp sandybridge 
+
+> nvfortran test.f90
+> ./a.out
+         8192         8193
+> nvfortran --version
+
+nvfortran 20.7-0 LLVM 64-bit target on x86-64 Linux -tp sandybridge
+
+
+A fifth compiler gives an error by default for standard violation,
+but provides an option to lower the error to a warning:
+
+> gfortran -fallow-invalid-boz uti10.f90
+uti10.f90:3:26:
+
+    3 |   integer,parameter :: x = z'2000'
+      |                          1
+Warning: BOZ literal constant at (1) is neither a data-stmt-constant 
+nor an actual argument to INT, REAL, DBLE, or CMPLX intrinsic function
+uti10.f90:4:16:
+
+    4 |   integer :: y = z'2001'
+      |                1
+Warning: BOZ literal constant at (1) is neither a data-stmt-constant 
+nor an actual argument to INT, REAL, DBLE, or CMPLX intrinsic function
+> ./a.out
+        8192        8193
+> gfortran --version
+GNU Fortran (GCC) 10.1.0 
+
+Therefore, it appears to be a minimal implementation change to allow a
+boz constant as the initialization in the declaration of a variable.
+
+Edits are provided to modify this feature.
+
+Edits to 20-007:
+----------------
+
+[90:26-30] In 7.7 Binary, octal, and hexadecimal literal constants, in
+the last Constraint in the subclause, change "initialization for a
+named constant" to "initialization for a named constant or variable"
+
+{making the full constraint read
+
+
+C7113 (R764) A <boz-literal-constant> shall appear only as a
+data-stmt-constant in a DATA statement, as the initialization for a
+named constant or variable of type integer or real, as the <expr> in
+an intrinsic assignment whose variable is of type integer or real, as
+an ac-value in an array constructor with a type-spec that specifies
+type integer or real, as an output-item in an output statement, or
+where explicitly allowed in 16.9 as an actual argument of an intrinsic
+procedure.}
+
+[90:30+] Remove Unresolved Technical Issue 010
+
+
+

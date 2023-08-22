@@ -1,0 +1,121 @@
+To: J3                                                     J3/18-243
+From:    Van Snyder
+Subject: Medium-grain parallelism
+Date: 2018-September-13
+Reference: 97-114r2, 18-237
+
+Introduction
+============
+
+Fortran has fine-grain parallelism in the form of array operations,
+medium-grain parallelism in the form of DO CONCURRENT constructs, and
+coarse-grain parallelism in the form of coarrays.
+
+This paper proposes additional medium-grain parallelism structures,
+addressing the same use cases described in 18-237.
+
+Proposals
+=========
+
+1. Fork-Join construct
+----------------------
+
+A Fork-Join construct is a construct with blocks that can be executed in
+any order, or in parallel (e.g., in separate threads).  It has been
+pointed out that one can "fake" this by using a SELECT CASE construct
+within a DO CONCURRENT construct.  A Fork-Join construct would be
+syntactic sugar for this idiom.  A possible syntax might be
+
+  PARALLEL
+  FORK [ ( <logical-expr> ) ]
+    <block-specification-part> ! Same as LOCAL locality, right?
+    <block>
+  FORK [ ( <logical-expr> ) ]
+    <block-specification-part> ! Same as LOCAL locality, right?
+    <block>
+  ...
+  END PARALLEL or JOIN
+
+The rules for interaction between blocks are the same as the rules for
+interaction between iterations of a DO CONCURRENT construct.
+
+The purpose of [ ( <logical-expr> ) ] is to avoid starting a thread for
+a block for which the first action is to terminate execution of the
+block.  This isn't possible with a SELECT CASE construct within a DO
+CONCURRENT construct.
+
+Alternative syntax: "FORK [ IF ( <logical-expr> ) ]" (yeah, I know it
+smells like perl, but "[ IF ( <logical-expr> ) ] FORK" is weirder).
+
+2. Asynchronous blocks
+----------------------
+
+An asynchronously-executed block is the same as an inlined
+asynchronously-executed procedure.  When the sequence of execution
+reaches an asynchronous block, the processor can ignore the
+"asynchronous" advice, or it can create an independent sequence of
+execution (e.g., a thread) that executes the block asynchronously, and
+then proceed immediately to the first executable construct after the
+block.  To determine when execution of the block is complete, the block
+shall specify an event variable, for which any sequence of execution can
+wait.  A possible extension of the syntax of the BLOCK construct might
+be
+
+  [ ASYNCHRONOUS ( <event-variable> ) ] BLOCK
+    <block-specification-part>
+    <block>
+  END BLOCK
+
+Syntactic sugar for
+
+  ASYNCHRONOUS ( <event-variable> ) BLOCK
+    ASSOCIATE ( ... )
+      <block>
+    END ASSOCIATE
+  END BLOCK
+
+might be
+
+  [ ASYNCHRONOUS ( <event-variable> ) ] ASSOCIATE ( ... )
+    <block>
+  END ASSOCIATE
+
+Syntactic sugar for
+
+  ASYNCHRONOUS ( <event-variable> ) BLOCK
+    <block-specification-part>
+    ASSOCIATE ( ... )
+      <block>
+    END ASSOCIATE
+  END BLOCK
+
+might be
+
+  [ ASYNCHRONOUS ( <event-variable> ) ] ASSOCIATE ( ... )
+    <block-specification-part>
+    <block>
+  END ASSOCIATE
+
+The rules for interaction with asynchronous blocks for which one has not
+waited for the block's event are the same as the rules for interaction
+between iterations of a DO CONCURRENT construct.
+
+When a procedure executes a RETURN or END statement, or END BLOCK
+statement, it is necessary to wait for all asynchronous blocks to
+complete execution, before the procedure (or construct) completes
+execution.  This imposes the same sort of book-keeping requirement as is
+needed to deallocate local allocatable variables.
+
+Asynchronous blocks were proposed in section 18 of 97-114r2.
+
+To avoid the appearance of a syntac conflict with the ASYNCHRONOUS
+statement that declares the ASYNCHRONOUS attribute for a variable, the
+constructs might instead be introduced by
+
+  BLOCK [, ASYNCHRONOUS ( <event-variable> ) ]
+
+and
+
+  ASSOCIATE ( ... ) [, ASYNCHRONOUS ( <event-variable> ) ]
+
+

@@ -1,0 +1,103 @@
+                                                                 J3/00-155r1
+
+Date:		2nd March 2000
+To:		J3
+From:		Malcolm Cohen
+Subject:	ALLOCATE(MOULD=)
+
+1. Introduction
+
+A recent WG5 resolution exhorts us to add an ALLOCATE option that creates an
+object whose dynamic type is the same as the dynamic type of another variable
+(i.e. not the declared type, and not a type that could be explicitly specified
+in the ALLOCATE statement).  This is not a mandatory feature, but does come
+highly recommended by WG5 if we can do it as an MTE.
+
+It is not completely mandatory because there are two ways of programming the
+functionality (viz, copying a polymorphic data structure) with varying degrees
+of inconvenience:
+(1) Do a SELECT TYPE on the variable one wishes to copy the type information
+    from, and do the appropriately explicitly typed allocation within each
+    TYPE IS block.  This is fragile and inconvenient.
+(2) Provide a type-bound procedure which returns a copy of its object.  A
+    new procedure needs to be written for each type to be handled, and this
+    cannot be retrofitted onto an existing class structure.
+
+However, in my experience the ALLOCATE(MOULD=) feature as described above only
+solves 20% of the problem (of copying a polymorphic data structure); 80% of the
+time one wishes to copy the value as well as the type information.  Just
+copying the type information would not obviate the need for a SELECT TYPE in
+these cases.
+
+Most (not all) other O.O. languages contain a copying facility for polymorphic
+entities, variously spelled "copy" or "clone".  Sometimes it is an intrinsic
+function (e.g. Simula-67 "COPY(x)"), sometimes it is an intrinsicly
+provided type-bound procedure (e.g. Java "x%clone()").  Since in Fortran
+memory allocation is provided by an ALLOCATE statement, provision of this
+facility would best fit as an option within the ALLOCATE statement.
+
+2. Specifications
+
+There shall be a "CLONE" facility which makes a copy of a polymorphic object
+preserving the dynamic type information and the value.  This shall be provided
+via an option on the ALLOCATE statement.
+
+Preserving the value means assigning the value from the object being cloned to
+the new object via (nonpolymorphic) intrinsic assignment (there is no
+polymorphic intrinsic assignment).  Including the special treatment of pointer
+components and allocatable components.
+
+3. Syntax
+
+Given a polymorphic pointer or allocatable variable X, and a polymorphic
+variable (whether pointer, allocatable, or plain dummy) Y,
+  ALLOCATE(X,CLONE=Y)
+shall allocate X to have the same dynamic type as Y, with the value of Y
+assigned to X as if by intrinsic assignment.
+
+Thus, pointer components of X are associated with the same targets as the
+pointer components of Y.  Allocatable components of X have the same allocation
+status as allocatable components of Y, and if allocated, the same values.
+Nonpointer nonallocatable components of X are assigned the same values as the
+corresponding components of Y.  All value copying done as if by intrinsic
+assignment.
+
+Straw Vote: Prefer (1) CLONE= spelling
+                   (2) COPY= spelling
+		   (3) SOURCE= spelling
+		   (4) some other syntax
+                   (5) Undecided.
+
+4. Implementation Requirements
+
+Extensible types could have an additional entry in the "type signature"
+indicating what, if any, special treatment is required for the assignment.
+
+5. Edits
+
+[102:15+] Insert "<<or>> CLONE= <clone-variable>"
+
+[102:23+] Insert "R631a <clone-variable> <<is>> <variable>"
+
+[102:41+] Insert constraints
+"Constraint: If CLONE= is specified, <type-spec> shall not be specified,
+             <allocation-list> shall contain only one <allocation>, and
+	     <allocate-object> shall be type-compatible with
+	     <clone-variable>.
+ Constraint: <clone-variable> shall be polymorphic and have the same rank and
+             kind type parameters as <allocate-object>.
+ Constraint: The corresponding kind type parameters of <allocate-object> and
+             <clone-variable> shall have the same values."
+
+[103:9] After ";" insert
+        "if a <clone-variable> is specified, it allocates an object whose
+         dynamic type and type parameters are the same as those of
+         <clone-variable>;"
+
+[103:28+] Insert new paragraph
+"If the CLONE= is present, <clone-variable> shall have the same shape as
+ <allocate-object>.  If the allocation is successful, <clone-variable> is
+ then assigned to <allocate-object> as if by an intrinsic assignment for
+ objects whose declared type is the dynamic type of <clone-variable>."
+
+===END

@@ -1,0 +1,76 @@
+To: J3                                                             07-163r1
+From: John Reid
+Subject: STOP and ALL STOP example
+Date: 2007 February 15
+References: 07-007, 07-155
+
+Edits to J3/07/07
+
+[17:13+] At the end of 2.3.6 Execution sequence, add "An example
+illustrating normal and error termination of execution is contained in
+C.0a."
+
+[523:3+] Add the start of Annex C add
+
+C.0a Clause 2 notes
+
+C.0a.1 Normal and error termination of exection.
+
+This code fragment illustrates the use of STOP and ALL STOP in a
+climate model that uses two teams, one for the ocean and one for the
+atmosphere.  
+
+If something goes badly wrong in the atmosphere calculation, the whole
+model is invalid and a restart is impossible, so all images stop as
+soon as possible without trying to preserve any data.
+
+If something goes slightly wrong with the atmosphere calculation, the
+images in the atmosphere team write their data to files and stop, but
+their data remain available to the ocean images which complete
+execution of the OCEAN subroutine. On return from the computation
+routines, if something went slightly wrong with the atmosphere
+calculation, the ocean images write data to files and stop, ready for
+a restart in a later run.
+
+
+   USE,INTRINSIC :: ISO_FORTRAN_ENV
+   TYPE(IMAGE_TEAM) :: OCEAN_TEAM, ATMOSPHERE_TEAM
+   INTEGER :: I, SYNC_STAT
+   :
+! Form two teams
+   CALL FORM_TEAM (OCEAN_TEAM,[I,I=1,NUM_IMAGES()/2])
+   CALL FORM_TEAM (ATMOSPHERE_TEAM,[I,I=1+NUM_IMAGES()/2,NUM_IMAGES()])
+   :
+! Perform independent calculations   
+   IF (THIS_IMAGE() > NUM_IMAGES()/2) THEN
+      CALL ATMOSPHERE (ATMOSPHERE_TEAM)
+   ELSE   
+      CALL OCEAN (OCEAN_TEAM)
+   END IF
+! Wait for both teams to finish 
+   SYNC ALL (STAT=SYNC_STAT)
+   IF (SYNC_STAT == SYNC_STOPPED_IMAGE) THEN
+       : ! preserve data on file
+      STOP 
+   END IF
+   CALL EXCHANGE_DATA ! Exchange data between teams 
+   :
+CONTAINS
+   SUBROUTINE ATMOSPHERE (TEAM)
+      TYPE(IMAGE_TEAM) :: TEAM      
+      : ! Perform atmosphere calculation. 
+      IF (...) THEN ! something has gone slightly wrong
+         : ! preserve data on file
+         STOP 
+      END IF   
+   : 
+      IF (...) ALL STOP  ! something has gone very badly wrong
+      :   
+      SYNC TEAM (TEAM, STAT=SYNC_STAT))
+      IF (SYNC_STAT == SYNC_STOPPED_IMAGE) THEN
+         : ! remaining atmosphere images preserve data in a file
+         STOP
+      END IF
+   END SUBROUTINE ATMOSPHERE
+     
+    

@@ -1,0 +1,226 @@
+To: J3                                                     J3/18-111
+From: Tom Clune
+Subject: Use case for overloading pointer assignment
+Date: 2018-February-05
+
+The contents of this paper are in paper J3/##-###.xxx
+
+Introduction:
+-------------
+
+This use case is motivated by software containers (see paper 18-110),
+but is potentially relevant to other use cases.  Further, it is
+relatively narrow in terms of functionality/scope.
+
+Consider that we have a derived type that acts as a container for a
+variety of elements of varying type (real, integer, ...).  We desire
+to have an accessor function that returns a pointer to the contained
+element as specified by a key (string).
+
+If the issue were _assignment_ rather than _pointer assignment, then
+one could have the get() function return an intermediate object
+containing an unlimited polymorphic entity and then overload
+ASSIGNMENT(=):
+
+    ! First the intermediate derived type
+    TYPE intermediate
+       CLASS(*), allocatable :: anything
+    CONTAINS
+       GENERIC :: ASSIGNMENT(=) => assign_integer
+       GENERIC :: ASSIGNMENT(=) => assign_real
+    END TYPE intermediate
+
+    FUNCTION assign_integer(a, b)
+    INTEGER, INTENT(OUT) :: a
+    TYPE (INTERMEDIATE), INTENT(IN) :: b
+
+    SELECT TYPE (i => b%anything)
+    TYPE IS (INTEGER)
+       a = i
+    CLASS DEFAULT
+       a = UNDEFINED_INTEGER ! error
+    END FUNCTION
+
+    FUNCTION assign_real(a, b)
+    REAL, INTENT(OUT) :: a
+    TYPE (INTERMEDIATE), INTENT(IN) :: b
+
+    SELECT TYPE (x => b%anything)
+    TYPE IS (REAL)
+       a = x
+    CLASS DEFAULT
+       a = UNDEFINED_REAL ! error
+    END FUNCTION
+
+
+    ! And now the container derived type
+    TYPE :: container
+       ! Suppressed internals are a binary tree with key-value pairs
+       ! where keys are strings and values are unlimited polymorphic
+       ! entities.
+       ...
+    CONTAINS
+       PROCEDURE :: get
+    END TYPE
+
+    FUNCTION get(this, key)
+    TYPE (intermediate) :: get
+    CLASS (container), target, INTENT(IN) :: this
+    CHARACTER(*), INTENT(IN) :: key
+       ...
+       get%anything = ...
+    END FUNCTION
+
+    ...
+
+    ! And use all this with:
+    INTEGER :: species_index
+    REAL :: species_mass
+    TYPE (container) :: c
+
+    species_index = c%get('index') ! uses overloaded "="
+    species_mass = c%get('mass')   ! uses overloaded "="
+
+
+Note the clean separation of responsibilities.  The container is
+responsible for finding the correct element and the intermediate
+object is responsible for "casting" to a specific type.
+
+
+
+Implementation with pointers:
+------------------------------
+
+Unfortunately the above design must change considerably if the desire
+is to return pointer references to the contained elements.  Lacking
+the analog of OPERATOR(=), one must instead resort to using overloaded
+interfaces of subroutines:
+
+    TYPE intermediate
+       CLASS(*), pointer :: anything
+    CONTAINS
+       PROCEDURE :: get_integer
+       PROCEDURE :: get_real
+       GENERIC :: get => get_integer, get_real
+    END TYPE intermediate
+
+    SUBROUTINE get_integer(this, i)
+    TYPE (INTERMEDIATE), TARGET, INTENT(IN) :: this
+    INTEGER, POINTER, INTENT(OUT) :: i
+
+    SELECT TYPE (p => this%anything)
+    TYPE IS (INTEGER) 
+       i => p
+    CLASS DEFAULT
+       i => null() ! error
+    END SELECT
+
+    END FUNCTION
+
+    SUBROUTINE get_real(this, x)
+    TYPE (INTERMEDIATE), TARGET, INTENT(IN) :: this
+    REAL, POINTER, INTENT(OUT) :: x
+
+    SELECT TYPE (p => this%anything)
+    TYPE IS (REAL) 
+       x => p
+    CLASS DEFAULT
+       x => null() ! error
+    END SELECT
+
+    END FUNCTION
+
+
+    TYPE :: container
+       ! Suppressed internals are a binary tree with key-value pairs
+       ! where keys are strings and values are unlimited polymorphic
+       ! entities.
+       ...
+    CONTAINS
+       PROCEDURE :: get_integer
+       PROCEDURE :: get_real ! pun not intended
+       GENERIC :: get => get_integer, get_real
+       PROCEDURE :: get_intermediate
+    END TYPE
+
+    FUNCTION get_intermediate(this, key) RESULT(p)
+    CLASS(*), pointer :: p
+    CLASS (container), TARGET, INTENT(IN) :: this
+    CHARACTER(*), INTENT(IN) :: key
+       ...
+    END FUNCTION
+
+    SUBROUTINE get_integer(this, key, p_int)
+    CLASS (container), TARGET, INTENT(IN) :: this
+    CHARACTER(*), INTENT(IN) :: key
+    INTEGER, POINTER, INTENT(OUT) :: p_int
+
+    TYPE (intermediate) :: tmp
+
+    tmp%anything => this%get_intermediate(key)
+    call tmp%get(p_int)
+
+    END SUBROUTINE
+
+
+    SUBROUTINE get_real(this, key, p_real)
+    CLASS (container), TARGET, INTENT(IN) :: this
+    CHARACTER(*), INTENT(IN) :: key
+    REAL, POINTER, INTENT(OUT) :: p_real
+    TYPE (intermediate) :: tmp
+
+    tmp%anything => this%get_intermediate(key)
+    call tmp%get(p_real)
+
+    END SUBROUTINE
+
+    ...
+
+    ! And use all this with:
+    INTEGER, POINTER :: species_index
+    REAL, POINTER :: species_mass
+    TYPE (container) :: c
+
+    call c%get('index', species_index)
+    call c%get('mass', species_mass)
+
+
+There are two unfortunate flaws in this design.
+
+1) First and foremost, there is no longer a complete separation of
+   concerns for the element search vs the casting to a pointer to a
+   concrete type.  In particular, both derived types must add a new
+   procedure when a new type is to be supported.
+
+2) The resulting API is much less clear.  Looking at the calls one
+   cannot immediately assertain by inspection that the final arguments
+   of get() have the POINTER attribute, nor that the are only outputs.
+
+   It would be highly desirable to do something like:
+
+      species_index => c%get('index')
+      species_mass => c%get('mass')
+
+   Here the pointer nature and the information flow are self evident.
+
+
+The example in this paper demonstrates that a workaround within the
+language is both possible and reasonably straightforward.  Of course,
+the same can be said of the ASSIGNMENT case were that operator not
+permitted to be overloaded.  But ultimately, the reasons for
+incorporating ASSIGNMENT(=) overloading should generally apply to
+pointer assignment as well.
+
+
+
+
+
+
+
+
+
+
+
+
+
+

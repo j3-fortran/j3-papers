@@ -1,0 +1,132 @@
+                                                            J3/10-183
+To: J3
+From: Malcolm Cohen
+Subject: Final interp 7: PURE Polymorphic
+Date: 2010 June 13
+
+Actually, I had an alternative answer for this interp, but I decided
+that that answer would not have been appropriate in this context.
+
+----------------------------------------------------------------------
+
+NUMBER:
+TITLE: PURE polymorphic finalization
+KEYWORDS: PURE CLASS FINAL
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+  MODULE m
+    TYPE root
+      REAL c
+    CONTAINS
+      FINAL pf
+      PROCEDURE asgn
+      GENERIC :: ASSIGNMENT(=) => asgn
+    END TYPE
+    TYPE,EXTENDS(root) :: t
+    CONTAINS
+      FINAL f
+    END TYPE
+    INTEGER :: fcount = 0
+  CONTAINS
+    PURE SUBROUTINE pf(x)
+      TYPE(root),INTENT(INOUT) :: x
+      x%c = 0
+    END SUBROUTINE
+    SUBROUTINE f(x)
+      TYPE(t),INTENT(INOUT) :: x
+      fcount = fcount + 1
+    END SUBROUTINE
+    PURE SUBROUTINE asgn(a,b)
+      CLASS(root),INTENT(OUT) :: a
+      CLASS(root),INTENT(IN) :: b
+      a%c = b%c
+    END SUBROUTINE
+    SUBROUTINE process(array,scalar)
+      CLASS(root) array(:),scalar
+      FORALL (i=1:SIZE(array)) array(i) = scalar
+    END SUBROUTINE
+  END MODULE
+
+  TYPE(root) w,x(100)
+  TYPE(t) y(100),z
+  ...
+  CALL process(x,w) ! (1)
+  CALL process(y,z) ! (2)
+
+The procedure reference at (1) will execute process with the dyanmic
+types of its dummy arguments being TYPE(root); the finalization of the
+array elements caused by the defined assignment in the FORALL
+statement will execute only the pure procedure pf, so all is well.
+
+However, the procedure reference at (2) will execute process with the
+dynamic types of its dummy arguments being TYPE(t); the finalization
+of the array elements in this case will additionally call the impure
+final procedure f, so all is not well.
+
+However, this cannot be detected at compilation time.  But constraint
+C1284 requires diagnosis of this error.
+
+Surely some mistake?  Either the constraint cannot be a constraint
+(which would be bad, since a design goal of pure procedures is that
+violation of purity can be detected at compile time), or polymorphic
+arguments to pure procedures need to be restricted in some way.
+
+Q1. Should polymorphic INTENT(OUT) arguments to pure procedures be
+    allowed?
+
+Note that finalization can also occur via DEALLOCATE of an ALLOCATABLE
+or POINTER dummy argument that is not INTENT(IN).
+
+Q2. Should ALLOCATABLE and POINTER dummy arguments of pure procedures
+    be allowed to be polymorphic and not INTENT(IN)?  Or should
+    deallocation of any polymorphic subobject of a dummy argument
+    simply be disallowed?
+
+Note that problematic (as in undecidable at compile time) finalization
+can also occur via DEALLOCATE of a non-polymorphic component of a
+non-INTENT(IN) argument if it has a subobject that is an ALLOCATABLE
+polymorphic component.
+
+Furthermore, such deallocation can occur via intrinsic assignment.
+
+Q3. Should this be constrained in some way?
+
+ANSWER:
+
+A1. This interaction between polymorphism, finalization, and purity is
+    inadvertant.  An INTENT(OUT) argument of a pure procedure should
+    not be allowed; an edit is supplied to correct this mistake.
+
+A2. Yes, deallocation of any polymorphic entity should be forbidden in
+    a pure procedure.  An edit is supplied to correct this.
+
+A3. Any statement that might result in a deallocation that is
+    forbidden should not be allowed in a pure procedure.  An edit is
+    supplied, with a note.
+
+EDITS to 10-007:
+
+[312:22+] Insert new constraint
+  "C1278b An INTENT(OUT) dummy argument of a pure procedure shall not
+          be polymorphic."
+
+[313:6+] Insert new constraint
+  "C1284a A statement that might result in the deallocation of a
+          polymorphic entity is not permitted in a pure procedure.
+
+   Note 12.48x
+   Apart from the DEALLOCATE statement, this includes intrinsic
+   assignment when the variable has a polymorphic allocatable
+   component at any level of component selection that does not
+   involve a pointer component but which might involve one or more
+   allocatable components."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 10-183   m192 Submitted
+
+----------------------------------------------------------------------

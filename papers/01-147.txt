@@ -1,0 +1,248 @@
+
+                                                                   J3/01-147
+
+Date:    01 March 2001
+To:      J3
+From:    Malcolm Cohen
+Subject: MTE 16: Defined assignment fixup (data abstraction)
+
+
+1. Introduction
+
+In meeting 155, it was decided to re-open solution of MTE 16 as the /interp
+process had not been successful in meeting this requirement.
+
+This paper details the various options and recommends a course of action
+for satisfying this WG5 requirement in F2002.
+
+2. Background
+
+The basic problem is that the language provides an intrinsic assignment
+operation for derived types that is not always appropriate.  In particular,
+if a derived type has a component for which defined assignment is necessary,
+the intrinsic assignment for the parent type invokes intrinsic assignment
+on the component.  Thus, even though the component type provided a defined
+assignment overriding the intrinsic assignment, it does not override the
+intrinsic assignment in this case.
+
+Furthermore, "USE ONLY" will pick up the type that needs defined assignment
+without picking up the defined assignment.  This would not be so bad except
+that the (inappropriate) intrinsic assignment is silently supplied instead.
+
+3. Possible Solutions - General Approach
+
+Several solutions are possible: the advantages and disadvantages are listed,
+together with necessary syntax changes.
+
+(a) invoke defined assignment (if available) for components during intrinsic
+    assignment, always
+    + solves half the problem
+    - solves only half the problem (i.e. not the "USE ONLY" half).
+    - incompatible with F90/F95.
+
+    No new syntax required.
+
+(b) invoke type-bound defined assignment (if avail) for components during
+    intrinsic assignment
+    + solves all the problem
+    - inconsistency for defined assignment between interfaces and tbps.
+
+    No new syntax required.
+    Altered semantics needed for type-bound assignment.
+
+(c) provide syntax to insist on defined assignment during intrinsic
+assignment
+    + solves half the problem always
+    + solves the other half with type-bound assignment only
+    - seems rather peculiar
+
+    New syntax needed; i.e. new keyword "PERVASIVE_DEFINED_ASSIGNMENT", e.g.
+
+    TYPE,PERVASIVE_DEFINED_ASSIGNMENT :: varying_string
+      PRIVATE
+      CHARACTER,POINTER :: value(:)
+    END TYPE
+
+    The attribute name is still rather long (but it is shorter than my first
+    thought, which was
+"USE_DEFINED_ASSIGNMENT_FOR_COMPONENTS_OF_THIS_TYPE").
+
+(d) provide syntax to insist on type-bound defined assignment
+    + solves all the problem
+    + avoids (some of the) inconsistency
+    - still need to use extra syntax to get the problem solved.
+
+    New syntax needed; i.e. new keyword "PERVASIVE", for type-bound
+intrinsic
+    assignment defns, e.g.
+
+    TYPE ...
+    CONTAINS
+      GENERIC,PERVASIVE :: ASSIGNMENT(=) => module-procedure-name-list
+
+    In context, the attribute is more-or-less self-explanatory.
+
+(e) provide syntax just to suppress intrinsic assignment of that type
+    + this at least alerts the user to the problem, so he can correct his
+      program
+    - but it does not supply the correct assignment procedure
+    - so use of objects that need defined assignment becomes burdensome
+
+    New syntax required; i.e. new keyword "NO_INTRINSIC_ASSIGNMENT", e.g.
+
+    TYPE,NO_INTRINSIC_ASSIGNMENT :: varying_string
+      ...
+
+    The name of this attribute might seem long, but does describe its
+    effect quite well.
+
+4. An almost orthogonal issue
+
+The linkage from DATA and PARAMETER to intrinsic assignment is both
+unnecessary
+and poorly specified in the standard.  We should fix the problems in the
+text
+and break this link at the same time.
+
+This is certainly necessary if we want to allow the module provider to
+provide
+constants of his type (as he can in F90/F95), otherwise we'll end up
+invoking
+defined assignment at compile-time (a bad move!).
+
+5. Related text
+
+There is some confusion in section 7.5.1.4 between "intrinsic assignment"
+and
+"intrinsic assignment statement", in particular in note 7.54, which states
+things that are nonsense on the face of it; e.g. that in an intrinsic
+derived-type assignment statement the numeric nonpointer components are
+assigned "using the numeric intrinsic assignment statement".  This is only
+in a
+note but nonetheless untrue.  It probably says this because we never
+bothered
+to define numeric intrinsic assignment, only numeric intrinsic assignment
+statements.
+
+Either we can define "numeric intrinsic assignment", "logical intrinsic
+assignment" and "character intrinsic assignment" (and delete multiple
+"statement"s from the note), or we can just rewrite the note to avoid this
+unnecessary (and currently incorrect) detail.  I propose the latter.
+
+6. Recommended Solution
+
+After consideration, it seems that option (b) is the most useful and least
+objectionable.
+
+Option (a) introduces an incompatibility with both Fortran 90 and 95.
+Option (c) only confuses the issue - you need both the "PERVASIVE..."
+keyword
+and to make the assignment type-bound if you want to solve the whole
+problem.
+Option (d) would be attractive if there were any real reason for splitting
+the functionality like this; but since type-bound assignment is already
+"pervasive" (through USE,ONLY, inheritance, etc.) it actually does make
+sense to make it automatically pervasive through component embedding as
+well.
+Option (e) is an uncomfortable half-way house.  It leaves the burden of
+correctness on the user of the type and does not give the type provider
+the facility to make it all happen automatically.
+
+No new syntax is required and no incompatibility is introduced.
+
+Furthermore, it is recommended that we allow the type provider to provide
+constants of this type.  As we intend to clean up the DATA and PARAMETER
+descriptions, this will be no trouble.
+
+7. Edits to 01-007
+
+[65:47-66:1] Replace
+  "becomes defined with the value determined from <initialization-expr> in
+   accordance with the rules of intrinsic assignment (7.5.1.4)"
+with
+  "is initially defined with the value specified by the
+<initialization-expr>;
+   if necessary, the value is converted according to the rules of intrinsic
+   assignment (7.5.1.4) to a value that agrees in type, type parameters, and
+   shape with the <object-name>".
+{Break dependence on intrinsic assignment for initialization in type decl.
+ Also fix broken wording "becomes defined"!}
+
+[69:23-25] Replace
+           "The <object-name> becomes defined with the value determined from
+            the <initialization-expr> that appears on the right of the
+equals,
+            in accordance with the rules of intrinsic assignment (7.5.1.4)."
+           with
+           "The <object-name> has the value specified by the
+            <initialization-expr> that appears on the right of the equals;
+            if necessary, the value is converted according to the rules of
+            intrinsic assignment (7.5.1.4) to a value that agrees in type,
+            type parameters, and shape with the <object-name>".
+{Break dependence on intrinsic assignment for parameter definition.  The
+ existing words make no sense at all - PARAMETERs never "become defined",
+ they just *are values*!}
+
+[81:1-3] Replace
+         "Each named constant becomes defined with the value determined from
+          the initialization expression that appears on the right of the
+          equals, in accordance with the rules of intrinsic assignment
+          (7.5.1.4)."
+         with
+         "The value of each named constant is that specified by the
+          corresponding initialization expression that appears on the right
+of
+          the equals; if necessary, the value is converted according to the
+          rules of intrinsic assignment (7.5.1.4) to a value that agrees in
+          type, type parameters, and shape with the named constant".
+{Break dependence on intrinsic assignment for the PARAMETER statement.  Like
+ the other occurrences, the existing words are sub-optimal.}
+
+[83:30-32] Replace
+         "A <data-stmt-constant> other than NULL() shall be compatible with
+its
+          corresponding variable according to the rules of intrinsic
+          assignment (7.5.1.4), and the variable becomes initially defined
+with
+          the <data-stmt-constant> in accordance with the rules of intrinsic
+          assignment."
+         by
+         "A <data-stmt-constant> other than NULL() shall be compatible with
+its
+          corresponding variable according to the rules of intrinsic
+          assignment (7.5.1.4), and the variable is initially defined with
+the
+          value specified by the <data-stmt-constant>; if necessary, the
+value
+          is converted according to the rules of intrinsic assignment
+(7.5.1.4)
+          to a value that agrees in type, type parameters, and shape with
+the
+          variable."
+{Break dependence on intrinsic assignment for DATA.  The only thing wrong
+with
+ the existing wording was the use of "becomes" for a non-time-dependent
+thing.}
+
+[131:37+] Insert "defined assignment for nonpointer nonallocatable
+components
+                  of a type that has a type-bound defined assignment
+consistent
+                  with the component,"
+{Make intrinsic assignment invoke type-bound defined assignment.}
+
+[132:10-12] Replace "C%S using ... and D%V" with
+            "C%S, D%T to C%T, and D%U to C%U using intrinsic assignment, and
+             D%V".
+{Do not falsely claim that these are done using statements.}
+
+[132:10-12] Replace "the numeric intrinsic assignment statement" by
+
+[132:12-13] Replace "the ... statement" with
+            "defined assignment if objects of that type have a compatible
+             type-bound defined assignment, and intrinsic assignment
+             otherwise."
+{Alter comment in note 7.45 to take account of the new situation.}
+
+===END
+

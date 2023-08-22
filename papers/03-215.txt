@@ -1,0 +1,442 @@
+
+                                                        J3/03-215
+
+Date: 04 August 2003
+To: J3
+From: Kurt W. Hirchert
+Subject: Nagging Doubts
+
+Re:  WG5/N1558
+
+                                      ISO/IEC JTC1/SC22/WG5/N1558
+
+From: Kurt W. Hirchert 
+
+Subject: Nagging Doubts                               24 Jul 2003
+
+A large number of decisions were made in a short time at the most
+recent joint J3-WG5 meeting.  Under such circumstances, it can be
+easy to make mistakes.  After reviewing the actions of that
+meeting, I find that I am satisfied for the most part with the
+decisions made, either because I agree with a decision, because I
+feel the difference between the decision and my preferred outcome
+is not that significant, or because I see believe the language
+can reasonably be "fixed" to address my concerns in a future
+revision.  There are, however, a handful of decisions about which
+I have serious concerns, in part because I believe it would be
+extremely difficult to "fix" them later.
+
+This paper presents my concerns about these issues along with the
+specification of what I believe to be a way those concerns could
+resolved within our current timetable.  Edits corresponding to
+those specifications are being prepared as papers for J3 meeting
+165.  I hope WG5 will be able to briefly consider each issue and
+decide whether
+
+*  it is a serious problem and J3 should be charged with fixing
+    it (possibly with my proposed solution and edits),
+
+*  it is not a problem and J3 should do nothing to address it, or
+
+*  it is enough a problem that J3 should be authorized to address
+    it if a satisfactory solution can be crafted at meeting 165
+    (again, possibly using my solution and edits).
+
+=======================================
+Nagging Doubt I:  Allocating Assignment
+=======================================
+
+By "allocating assignment", I mean the feature that adopted in
+response to UK response item TC10.  I think the basic idea of
+evaluating an expression and then reallocating an allocatable
+variable to hold it is a desirable one.  My concerns relate to
+the decision to package this functionality as part of the
+intrinsic assignment.  (I also have general reservations about
+the wisdom of doing something this big this late in the
+process.)
+
+One of the areas of concern is code performance.  The primary
+problem here is that decision whether an assignment to an
+allocatable variable is a new allocating assignment or an ordinary
+nonallocating assignment is based on attributes that unlikely to
+be determinable at compile time.  As a result, the code for most
+such assignment statements will have to include the code for both
+alternatives with a run-time test to determine which to execute.
+The cost of the test itself can be dismissed as likely to be small
+compared to the cost of the assignment.  One must also take into
+account the cost of having code for two cases when one will likely
+execute only one or the other; most of the time, this effect will
+also be negligible, but in situations where the memory and cache
+are already stressed, this effect could be dramatic.  A more
+serious effect is that the variant execution paths will tend to
+interfere with the identification of opportunities for optimizations
+such a loop jamming; it is unclear how often such opportunities
+occur, but any time such an opportunity is lost, the performance
+effect is likely to be significant.  Yet another possible source
+of significant loss is that in some cases this hybrid requires and
+in other cases it encourages code that does an extra whole array
+copy when compared to a purer implementation of the underlying
+concept of allocating assignment.
+
+It can be argued that by changing
+
+       variable = expr
+
+to either
+
+       variable(:) = expr
+
+or
+
+       if(allocated(variable)) deallocate(variable)
+       variable = expr
+
+one can provide enough information for a compiler to know at
+compile time which case applies and thus avoid the performance
+problems associated with not knowing.  If we skip for the moment
+the argument about whether these techniques would actually work,
+one is still left with the question of whether we can consider
+reasonable a design which requires one to engage in such
+techniques to obtain best performance.
+
+The other major area of concern is semantic consistency.  Part of
+the problem is that in a number of cases, assignment to an
+existing allocation does _not_ produce an equivalent result to
+deallocating that allocation, allocating a new allocation with
+the same size and type parameters, and assigning to that.  Among
+the differences are that the bounds of allocation may be different,
+that the old value is not finalized, and that allocation that
+is the recipient of the assignment has that old value instead of
+a default new value.  (At first I thought the last point didn't
+matter because the assignment was intrinsic assignment, but then
+I realized that intrinsic assignment may involve type-bound
+assignment of its components and type-bound assignment could
+have an INTENT(INOUT) argument for the variable being assigned
+to, so the old value of the variable _can_ make a difference,
+even for intrinsic assignment.)  In other words, the effect of
+assigning a value to an allocatable variable already having
+matching shape and type parameters could produce dramatically
+different results from both the results when assigning to a
+variable that does not having a matching allocation and from
+the results when performing the same assignment between
+allocatable components as a part of intrinsic assignment.  This
+last point is especially ironic, given that the original
+justification for introducing this feature was to make intrinsic
+assignment to allocatable variables more consistent with the
+handling of allocatable components.  Of course, one can force
+consistency with the
+
+       if(allocated(variable)) deallocate(variable)
+       variable = expr
+
+trick, but should this be necessary?
+
+[Aside: there are some odd differences in the description of
+how the bounds of an allocatable component are determined in
+intrinsic assignment and how the bounds are determined for an
+allocatable variable.  In particular, these may be inconsistent
+for zero size array extents.  It may be that there is no way
+for a running program to detect this difference (because of the
+way LBOUND and UBOUND operate on zero size extents), but if we
+do not make this question moot by adopting my suggested
+solution below, we should at least do something about this
+inconsistency.]
+
+Another part of the semantic consistency concern derives from the
+fact that this feature is tied to intrinsic assignment.  For
+allocatable components, it is intrinsic assignment of the type
+that contains the allocatable components, and the value of the
+allocatable component may actually be transferred by type-bound
+assignment.  For allocatable variables, it is intrinsic assignment
+of the variable itself, so necessarily no defined assignment
+(type-bound or otherwise) can take place.  Not only do we not
+automatically provide an allocating variant of type-bound
+assignment, it is effectively impossible to provide one manually.
+(One can provide one only if one doesn't the nonallocating form.)
+This kind of distinction between intrinsic assignment and defined
+assignment seems much at odds with the strategy we have been
+following in developing defined types.
+
+The more I look at this packaging of allocating assignment, the
+more problems I find.  I hope that by now it is obvious that at
+best it has more problems than we can reasonably expect to fix
+and stay on schedule for the production of this revision and at
+worst it may have more problems than we could ever fix.
+
+===================
+Possible Solution I
+===================
+
+A. Remove this feature.  (This section of the edits will, in
+    essence, be an explicit reversal of the edits from J3/03-118r3.)
+
+B. It may be that the wisest course of action would be to defer
+    any further action in this area to the next revision, but there
+    was so much desire for this functionality at the last meeting
+    that I suspect many members will be reluctant to remove the
+    flawed allocating assignment without providing a replacement.
+    An appropriate replacement would be to package a purer version
+    of the functionality in a distinct syntax.
+
+    This syntax could easily be a new intrinsic procedure, but the
+    edits I am preparing for J3 meeting 165 will use the syntax
+
+          <variable> := <expr>
+
+    (Although I can argue some minor mnemonic significance to ":=",
+    this notation could easily be changed to some other combination
+    of characters not already in use.)  The variable is reallocated
+    whether or not its current allocation has shape and type
+    parameters matching those of the expression.  The assignment is
+    then performed as for
+
+          <variable> = <expr>
+
+    [The use of a distinct syntax eliminates the performance problems
+    and the semantic consistency problem resulting from having to
+    remain compatible with existing nonallocating assignment results.
+    The fact that its semantics are defined in terms of ordinary
+    assignment avoids the inconsistencies between the handling of
+    intrinsic assignment and defined assignment.]
+
+C. Although it would not be strictly necessary, it seems a good
+    idea to rewrite the description of the handling of allocatable
+    components in terms of the ";=" allocating assignment statement.
+
+    [This should make it conceptually easier to understand ("=>"
+    for pointers, ":=" for allocatables, and "=" for everything
+    else) and avoids the possibility of inadvertent inconsistency
+    between the handling of allocatable variables and allocatable
+    components.]
+
+====================================
+Nagging Doubt II: Type Compatibility
+====================================
+
+For the most part, the concept of type compatibility could be
+summarized as "A is type compatible with B if the type declaration
+of A is always a correct (if less specific) description of B."
+When used in argument association, this kind of type compatibility
+means that dummy argument A is associated with all of B.  When
+used for pointer assignment, it means that pointer A can point to
+all of B
+
+There is one exception: an object of TYPE(T) is considered type
+compatible with an object of CLASS(T).  When used in argument
+association, this kind of type compatibility means that there is
+a part of B that dummy argument A can be associated with.  Note,
+however, that although there are many situations where A might
+be a correct description of part of B, this is the _only_ one that
+is considered type compatible.
+
+If one looks only at the text, one might conclude that this looks
+like an editorial accident.  If one looks at how this facility
+developed, one might conclude that it is the lest vestige of the
+concept originally adopted and then modified because of its
+impact on the generic rules.  However it came to be, combining
+two concepts the different in one term is a disaster waiting to
+happen, both for the developers and maintainers of the standard
+and for users whose programs won't work the way they expect them
+to.
+
+Since the first concept is consistently developed and the second is
+not, I suggest removing the latter.
+
+If the second form of type compatibility were not already a part of
+the standard, I know of no convincing reason it should be added (now
+or in a future revision).  The only reason I have heard for not
+removing it now is concern for making changes late in the process.
+
+If we remove the second form now and we discover later that it
+really would have been beneficial, it would be possible to add it
+in a future revision and remain compatible with this revision.
+If we leave it in and find that is really as much of a disaster
+as I fear there will be no way to remove it and remain compatible.
+
+Under the circumstances, it seems to me that the responsible thing
+to do would be to eliminate this odd exception.
+
+====================
+Possible Solution II
+====================
+
+A. The edit to remove the exception is trivial and requires no
+    further specification.
+
+B. In certain circumstances, it can be awkward to deal with the
+    TYPE(T) part of a CLASS(T) object.  If one needs only to
+    access the components of the TYPE(T) subobject, there is no
+    problem.  If one can that the object is some specific
+    extension type, one can then access its parent component.  The
+    awkwardness exists when neither of these conditions is true.
+    The exception provided a way to finesse the awkwardness by
+    implicitly converting a CLASS(T) object into a TYPE(T) object,
+    but with the elimination of the exception, it would be
+    helpful to address this awkwardness directly.
+
+    A simple way to do this is to treat a CLASS(T) object as
+    effectively being of an extension type and allow one to
+    reference its parent component T.  This is a clean solution
+    conceptually and in its implementation.  The only difficulty
+    is finding a way to express it in the current editorial
+    framework.  It is hoped that the edits being prepared for
+    J3 meeting 165 will suffice.
+
+=======================================================
+Nagging Doubt III: The "Value" of a Derived-Type Object
+=======================================================
+
+J3/03-111r2 introduced text that was intended to clarify the
+meaning of the "value" of a derived-type object.  I suggest that
+this text is directly inadequate for types with pointer components
+and effectively inadequate when nonpointers are used in
+pointer-like ways.
+
+Consider a statement such as
+
+       CALL SUB(X,(X))
+
+The expression (X) has a value identical to the value of X at the
+time SUB is called, and the processor is supposed to make that
+value accessible through the second dummy argument of SUB
+for the entire execution of SUB.  According to the text in 4.5.7,
+this value includes the pointer association of any pointer
+components of X.  How is a processor supposed to preserve this
+part of the value for the duration of SUB's execution?  At first
+glance it may seem sufficient to use pointer assignment to
+copy this association to another pointer (or pointer component).
+This new point will certainly have the same pointer association
+immediately after the copy.  However, if during the execution of
+SUB, it uses the first dummy argument to access that pointer
+component of X and deallocate its target, then our copy is no
+longer the same pointer association.  Although it may be the same
+bits, it has transformed from a defined pointer association to an
+undefined pointer association.  It appears to me that under this
+definition of value, there is no way for the processor to
+preserve the value of (X).
+
+Instead of a pointer component, imagine that X has an integer
+component, but that this component is interpreted as a subcript
+into an array that has the real pointer component.  According to
+4.5.7, as long as the processor preserves the value of that
+subscript, it has preserved the value of X.  I would suggest that
+if SUB uses that subscript to find the pointer component of the
+array element and deallocate its target, things are equally
+broken -- the definition of value just doesn't recognize that
+it is broken.  (This is what I meant when I said that the text
+is effectively inadequate for nonpointers used in pointer-like
+ways.)
+
+I suggest that for derived-types, we can give rules for
+enumerating the possible representations that type could have,
+but that enumeration is not the same thing as an enumeration of
+the values of that type.  On the one hand, two different
+representations might represent the same value (e.g., in a
+RATIONAL type, 1/2 and 2/4 are the same value even though they
+are different representations).  On the hand, at different times
+in a program, the same representation might represent different
+values (as in our example of using subscripts to access value
+information stored elsewhere).  It is reasonable that the default
+interpretation be that values are the same if and only if they
+have the same representation, but it must be possible for users
+to construct abstractions that override that default
+interpretation.
+
+=====================
+Possible Solution III
+=====================
+
+I suggest that values of a derived type exist only in the context
+of objects of that type.  So long as the value of an object has a
+particular value, the representation in that object is a
+representation of that value, but if it is necessary to preserve
+that value past the point when the original object would cease to
+have that value, the only way to do so is to assign that value to
+another object of the same type, type parameters, and shape.
+
+To keep this solution compatible with what Fortran 90/95 processors
+are currently doing, this should be limited to type-bound and
+intrinsic assignment.  In a program, such a Fortran 90/95 program,
+that has no type-bound assignment, those intrinsic assignments
+will effectively be bit copies, and you will get the same results
+as front existing processors, but when type-bound assignment is
+added to the mix, Fortran 2K will have to execute more user code.
+
+What the draft is currently calling the value of a derived type
+should instead be called the representation of a value, and the
+draft can then specify under what circumstances this
+representation will continue represent the same value and when it
+can obtain a different representation by assigning that value to
+a new object.
+
+=======================================
+Nagging Doubt IV: Function Side-Effects
+=======================================
+
+Although Fortran functions are allowed to have side effects, a
+Fortran processor is allowed under at least some circumstances
+not to deliver those side effects.  There is disagreement how
+great this license is, but even under the most restrictive
+interpretations, there is no way for the writer of a function
+to ensure that its side effects will be delivered.
+
+In contrast, C does reliably deliver function side effects, so
+C APIs often involve functions whose purpose is to deliver
+side effects.  However, there is nothing in C interoperability
+that changes a processor's license not to deliver those side
+effect.
+
+Although I believe implementors will make a good faith effort not
+to optimize away function references whose side effects are
+significant, I think inevitable that on some processors under
+some levels of optimization, there will be some C interoperability
+programs that will not work as intended because functions will
+significant side effects will be optimized away.  I fear that these
+failures will be blamed on the features and the standard, rather
+than on the programs and the processors.  I suggest that if C
+interoperability is to be fully successful, we must do something
+to ensure that significant function side effects are consistently
+delivered.
+
+====================
+Possible Solution IV
+====================
+
+One possibility would be to require a processor to always deliver
+function side effects.  I suggest that such a requirement would
+never be acceptable in practice, as many nonstandard programs
+depend on "short circuit" evaluation of logical expressions.
+
+Another possibility would be to require a processor to always
+deliver the side effects of C functions.  This would solve the
+immediate problem, but I think it would create new problems of
+its own.  I think we would see many programs in which BIND(C)
+would be specified solely for the purpose of protecting side
+effects and that the requirements that arguments of such functions
+be interoperable with C would lead to significant complaints.
+
+The solution I recommend is therefore to provide an explicit way
+for a program to identify functions whose side effects need to
+be delivered.  The method I suggest is a keyword analogous to
+PURE.  The particular keyword I suggest is VOLATILE, because there
+are a number of similarities to volatile variables, including the
+fact that a function that references a volatile variable will
+likely be one that needs to be executed each time it is
+referenced.  However, there is no editorial dependence on this
+similarity, so this keyword is changed.  The principal semantic
+effect of identifying a function as volatile is to remove it from
+the rule that allows some function references not to be executed.
+Additionally, nonvolatile functions can be associated with volatile
+dummy procedures and procedure pointers much as pure procedures can
+be associated with nonpure dummy procedures and procedure pointers.
+
+Strictly speaking, these changes are ones that could be made in a
+future revision, but I believe the political necessity of C
+interoperability working reliably in this revision also makes
+it necessary to make these changes now.
+
+                               - end -
+-----------------------------------------------------------------
+Kurt W Hirchert
+hirchert@atmos.uiuc.edu
+UIUC Department of Atmospheric Sciences          +1-217-265-0327

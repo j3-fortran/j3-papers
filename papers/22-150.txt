@@ -1,0 +1,793 @@
+To: J3                                                     J3/22-150
+From: Malcolm Cohen
+Subject: Results of J3 Fortran interp letter ballot #39
+Date: 2022-April-12
+
+Here are the results of J3 letter ballot #39 on Fortran interpretations
+that closed 10-April-2022.  The ballot is in J3 paper 22-xxx for meeting
+#227.  If I have omitted, or transcribed a vote or a comment incorrectly,
+please let me know.
+
+Voter / interp      F18 F18 F18
+                    026 031 035 036 037 038 039 040 041
+
+Richard Bleikamp     Y   Y   Y   Y   Y   Y   Y   Y   Y
+Reuben D. Budiardja  Y   Y   Y   Y   Y   Y   Y   Y   Y
+Daniel Chen          Y   Y   Y   Y   Y   Y   Y   Y   Y
+Thomas L. Clune      Y   Y   Y   Y   Y   Y   Y   Y   Y
+Malcolm Cohen        y   y   y   y   y   y   y   y   y
+Robert Corbett       Y   Y   Y   Y   Y   Y   Y   Y   Y
+Brian Friesen        Y   Y   Y   Y   Y   Y   Y   Y   Y
+Zach Jibben          Y   Y   Y   Y   Y   Y   Y   Y   Y
+Gary Klimowicz       Y   Y   Y   Y   Y   Y   Y   Y   Y
+Mark LeAir           Y   Y   Y   Y   Y   Y   Y   Y   Y
+Steve Lionel         Y   Y   Y   Y   Y   Y   Y   Y   Y
+Bill Long            Y   Y   Y   Y   Y   Y   Y   Y   Y
+Brad Richardson      Y   Y   Y   Y   Y   Y   Y   Y   Y
+John Reid            Y   Y   Y   Y   Y   Y   Y   Y   Y
+Nathan Sircombe      Y   Y   Y   Y   Y   Y   Y   Y   Y
+Van Snyder           -   -   -   y   y   y   -   -   y
+Jon Steidel          Y   Y   Y   Y   Y   Y   Y   Y   Y
+
+LB#39 Result         Y   Y   Y   Y   Y   Y   Y   Y   Y
+
+(*) Reuben D. Budiardja is an alternate for David Bernholdt
+    Malcolm Cohen is a non-voting-here alternate for Steve Lionel
+    Mark LeAir is an alternate for Bryce Adelstein-Lelbach
+    John Reid is an alternate for Siddhartha Ghosh
+    Brad Richardson is an alternate for Karla Morris
+    Van Snyder is an emeritus member
+    Jon Steidel is an alternate for Lorri Menard
+
+Not Voting
+    Craig Rasmussen
+
+The interps marked "Y" pass with no change.
+The interps marked "A" pass with some minor fixes, as noted below.
+The interps marked "N" fail.
+
+The comments for each interp are attached below in the same order as
+the table above. Within each interp, the order is by order of voting.
+Interps that passed unchanged with all Y votes and no comments are not
+listed in the discussion below.
+
+The edited interps in their final form are attached and will appear
+in the next version of 006.
+
+/Malcolm
+
+
+----------------------------------------------------------------------
+
+NUMBER: F18/026
+TITLE: C_SIZEOF argument
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+QUESTION:
+
+Consider the example
+    SUBROUTINE test(b)
+      USE iso_c_binding
+      REAL(c_double) b(:),a(SIZE(b))
+      PRINT *,c_sizeof(a)               ! A
+      PRINT *,c_sizeof(b)               ! B
+      PRINT *,c_sizeof(a(::2))          ! C
+      PRINT *,c_sizeof(a+1)             ! D
+      PRINT *,c_sizeof(1.0_c_double)    ! E
+    END SUBROUTINE
+
+18.2.3.7 C_SIZEOF (X) states
+    "X shall be an interoperable data entity..."
+
+According to that, the reference to C_SIZEOF marked A is valid, as A
+is interoperable (an explicit-shape array of interoperable type and
+type parameters). And the reference marked B is invalid, as only
+explicit-shape arrays and assumed-size arrays are interoperable, thus
+assumed-shape arrays are definitely not.
+
+For the references at C and D, the standard seems to be silent on the
+matter of whether they are interoperable. It is clear for named
+variables, but although subobject designators can denote variables,
+they are not names, and expressions are not variables at all. Being
+silent implies non-conformance as no interpretation is established.
+
+The reference at E also appears to be non-conforming, as the standard
+specifies no criteria for interoperability of expressions.
+
+However, the description of the result of C_SIZEOF only makes use of
+the interoperability of the type and type parameters.
+
+Are these references intended to be conforming?
+If not, should the standard be clarified to say that X shall be an
+interoperable named variable?
+
+ANSWER:
+
+Yes, these references were all intended to be conforming.
+An edit is supplied to correct this mistake, with an addition to
+require that any pointer or allocatable argument be associated or
+allocated.
+
+EDIT to 18-007r1:
+
+[473:27] 18.2.3.7 C_SIZEOF (X), p3 Argument,
+  Replace the paragraph with:
+
+   "Argument. X shall be of interoperable type and type parameters,
+    and shall not be an assumed-size array, an assumed-rank array
+    that is associated with an assumed-size array, an unallocated 
+    allocatable variable, or a pointer that is not associated."
+{Loosen the requirements.}
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 21-134   m224  Submitted
+         21-134r1 m224  Revised
+         21-134r2 m224  Revised again
+         22-101r1 m226  Disallow unassociated/unallocated argument.
+                        Passed by J3 meeting 226.
+         22-nnn   m227  Passed by J3 letter ballot #39.
+
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
+NUMBER: F18/031
+TITLE: CO_BROADCAST with polymorphic argument
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+QUESTION:
+
+Consider the code fragment
+
+    Subroutine asgn_for_image(a,b,srcimg)
+      Class(*) a,b
+      Integer,Intent(In) :: srcimg
+      ! The assignment A = B is not allowed, so...
+      If (This_Image()==srcimg) Then
+        Call asgn(b)
+      Else
+        Call asgn(a)
+      End If
+    Contains
+      Subroutine asgn(x)
+        Class(*) x
+        Call co_broadcast(x,Source_Image=srcimg)
+      End Subroutine
+    End Subroutine
+
+There is no requirement forbidding the A argument of CO_BROADCAST
+from being polymorphic, so on the face of it, this appears to get
+around the prohibition against nonallocatable polymorphic
+assignment.
+
+However, CO_BROADCAST states
+    "A becomes defined, as if by intrinsic assignment"
+but intrinsic assignment is not defined when the variable is a
+nonallocatable polymorphic. It can be convincingly argued that
+the standard therefore does not establish an interpretation, and
+thus the call to CO_BROADCAST is not valid.
+
+Philosophically, it would seem to be strange to allow polymorphic
+broadcast across images, but not to allow polymorphic assignment
+of a single variable within an image let alone across images.
+
+Is the call to CO_BROADCAST in the example standard-conforming?
+
+(And if so, what are the actual semantics?)
+
+ANSWER:
+
+No, this was not intended to be conforming. Edits are supplied to
+correct this.
+
+EDITS to 18-007r1:
+
+[355:19] 16.9.46 CO_BROADCAST, p3 Arguments, argument A, sentence 1,
+delete "dynamic" to make the sentence read
+    "A shall have the same shape, type, and type parameter values, in 
+    corresponding references."
+{The word "dynamic" would be confusing here.}
+
+[355:20] 16.9.46 CO_BROADCAST, p3 Arguments, argument A, sentence 2,
+after "It shall not be" insert "polymorphic or" making the sentence read
+    "It shall not be polymorphic or a coindexed object."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 21-151   m224  Submitted
+         21-151r1 m224  Eliminated alternative answer,
+                        passed by J3 meeting 224.
+         21-184r1 m225  Failed J3 letter ballot.  
+         22-100   m226  Revised
+         22-100r1 m226  Passed by J3 meeting 226.
+         22-nnn   m227  Passed by J3 letter ballot #39.
+
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
+NUMBER: F18/035
+TITLE: Defining or referencing a coarray component of a dummy argument
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+QUESTION 1:
+
+On page 311 of 18-007r1, in 15.5.2.13, we have
+"While an entity is associated with a dummy argument, the following
+restrictions hold.
+      ...
+(3) Action that affects the value of the entity or any subobject of it
+    shall be taken only through the dummy argument unless
+     ...
+   (d) the dummy argument is a coarray and the action is a coindexed
+       definition of the corresponding ultimate argument coarray by a
+       different image."
+
+Should there be a similar exception for a coarray that is an ultimate
+component of a dummy argument?
+
+QUESTION 2:
+
+On page 312 of 18-007r1, in 15.5.2.13, we have
+"While an entity is associated with a dummy argument, the following
+restrictions hold.
+      ...
+(4) If the value of the entity or any subobject of it is affected
+    through the dummy argument, then at any time during the invocation
+    and execution of the procedure, either before or after the
+    definition, it shall be referenced only through that dummy argument
+    unless
+     ...
+   (d) the dummy argument is a coarray and the reference is a coindexed
+       reference of its corresponding ultimate argument coarray by a
+       different image.
+
+Should there be a similar exception for a coarray that is an ultimate
+component of a dummy argument?
+
+ANSWERS:
+
+For both questions, the answer is "yes". It was intended that a
+subobject of a coarray that is an ultimate component of a dummy
+argument may be referenced or defined on another image by coindexing
+the corresponding coarray subobject of the actual argument.
+
+Edits are provided.
+
+EDITS to 18-007r1:
+
+[xiv] Introduction, Program units and procedures, last sentence,
+      Insert ", or a coarray ultimate component of a dummy argument,"
+      After "argument", making that sentence read
+  "A coarray dummy argument, or a coarray ultimate component of a
+   dummy argument, can be referenced or defined by another image."
+{Add to new feature list since Fortran 2008.}
+
+[311:44-46] In 15.5.2.13 Restrictions on entities associated with dummy
+arguments, para 1,
+at the end of (3)(c) delete "or", and
+at the end of (3)(d) replace "image." by
+"image, or
+(e) the dummy argument has a coarray ultimate component and the action
+    is a coindexed definition of the corresponding coarray by a
+    different image."
+
+[312:9-11] In 15.5.2.13 Restrictions on entities associated with dummy
+arguments, para 1,
+at the end of (4)(c) delete "or", and
+at the end of (4)(d) replace "image." by
+"image, or
+(e) the dummy argument has a coarray ultimate component and the
+    reference is a coindexed reference of the corresponding coarray
+    by a different image."
+
+[314:1-]. At the end of 15.5.2.13 Restrictions on entities associated
+with dummy arguments, NOTE 5, sentence 1, replace "exception" by
+"exceptions" and "coarrays enables" by "arguments that are coarrays or
+have coarray ultimate components enable" so that the sentence reads
+"The exceptions to the aliasing restrictions for dummy arguments that
+are coarrays or have coarray ultimate components enable cross-image 
+access while the procedure is executing."
+
+
+SUBMITTED BY: John Reid
+
+HISTORY: 22-107   m226 Submitted
+         22-107r1 m226 Revised. Passed by J3 meeting 226.
+         22-nnn   m227  Passed by J3 letter ballot #39.
+
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
+NUMBER: F18/036
+TITLE:  Array element argument for sequence association
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+QUESTION:
+
+Paragraph 14 of 15.5.2.4 Ordinary dummy variables states
+
+If the actual argument is a noncoindexed scalar, the corresponding
+dummy argument shall be scalar unless
+ - the actual argument is default character, of type character with
+   the C character kind (18.2.2), or is an element or substring of an
+   element of an array that is not an assumed-shape, pointer, or
+   polymorphic array,
+ - the dummy argument has assumed-rank, or
+ - the dummy argument is an assumed-type assumed-size array.
+
+15.5.2.11 Sequence association, paragraphs 2 and 3, say
+
+   "An actual argument represents an element sequence if it is ... an
+    array element designator...
+    If the dummy argument is not of type character with default or C
+    character kind, and the actual argument is an array element
+    designator, the element sequence consists of that array element
+    and each element that follows it in array element order.
+
+    If the dummy argument is of type character with default or C
+    character kind, and has nonzero character length, the storage unit
+    sequence is as follows:
+    ...
+    - if the actual argument is an array element or array element
+      substring designator, the storage units starting from the first
+      storage unit of the designator and continuing to the end of the
+      array;"
+
+Consider
+    SUBROUTINE sub2
+      CHARACTER(10),TARGET :: a2(20,30)
+      CHARACTER(:),POINTER :: p2(:,:)
+      p2 => a2(::2,::3)(3:4)
+      CALL bad2(p2(1,1))
+    END SUBROUTINE
+    ! There is no explicit interface here.
+    SUBROUTINE bad2(b2)
+      CHARACTER b2(*)
+      ...
+    END SUBROUTINE
+
+15.5.2.11 says that the storage units of b2 are the storage units of
+p2 starting from the array element - in this case p2(1,1) - going on
+to the end of the array (p2); these are
+    a2(1,1)(3:3), a2(1,1)(4:4), a2(3,1)(3:3), a2(3,1)(4:4), ...
+which are discontiguous in storage. But as an assumed-size array, b2
+is supposed to have contiguous storage units.
+
+If there were an explicit interface, the compiler could gather all the
+elements of p2 into a temporary, and pass that, similarly to how it
+handles passing p2 itself as an actual argument to an "old style"
+dummy array. But there is not, and it would be completely unreasonable
+to copy the whole of the rest of p2 starting from some arbitrary array
+element into a temporary, when the dummy argument might be scalar.
+
+Q1. Was sequence association for default/C character to the storage
+    units of the whole of the rest of the array intended to apply to
+    non-contiguous arrays, or was the sequence association intended to
+    apply only to the storage units of the array element itself?
+
+Further consider
+
+    SUBROUTINE sub1
+      REAL,TARGET :: a(10,20,30)
+      REAL,POINTER :: p(:,:,:)
+      p => a(::2,::4,::3)
+      CALL bad1(p(1,1,1))
+    END SUBROUTINE
+    SUBROUTINE bad1(b)
+      TYPE(*) b(*)
+      ...
+    END SUBROUTINE
+
+15.5.2.11 says that the element sequence of the actual argument is the
+element sequence of the whole array p, starting from the specified
+array element - in this case p(1,1,1), i.e.
+    p(1,1,1), p(2,1,1),...
+But these correspond to the discontiguous array elements
+     A(1,1,1), A(3,1,1),...
+
+One cannot do anything much with an assumed-type variable other than
+pass it to C, but a C routine is allowed to access all the elements of
+an array so passed. That would be difficult in this case unless the
+Fortran processor makes a copy of the entire rest of P and pass that
+as an argument instead (and copy-back on return if not INTENT(IN)).
+
+Q2. Was sequence association for assumed type to the element sequence
+    of the whole of the rest of the array intended to apply to
+    non-contiguous arrays, or was the sequence association intended to
+    apply only to the array element itself?
+
+ANSWER:
+
+A1. When the array element or array element substring designator is of
+    a potentially discontiguous array is passed, only the storage
+    units of that array element or substring are intended to be
+    passed.
+
+An edit is provided to correct this error.
+
+A2. When an array element of a potentially discontiguous array is
+    passed to an assumed-type assumed-size dummy argument, only that
+    element is intended to be passed.
+
+An edit is provided to correct this error.
+
+EDITS to 18-007r1:
+
+[310:14] 15.5.2.11 Sequence association, p2,
+    After the first sentence, ending "C character kind (18.2.2).",
+    insert a paragraph break.
+    After that (in was-end-of-p2 now-new-p3), factor out
+        "If the dummy argument is not of type character with default
+         or C character kind,"
+    changing the comma to a colon, and turn those two sentences into
+    a bullet list with semicolons.
+    After "and the actual argument is an array element designator"
+    insert "of a simply contiguous array",
+{Avoid the hostages to fortune of listing the allowed ones or the
+ disallowed ones, in favour of what property we want the array to
+ have.}
+    At the end of (was-p2 now-new-p3) append bullet
+        "otherwise, if the actual argument is scalar, the element
+         sequence consists of that scalar".
+
+This makes the new p3 read
+   "If the dummy argument is not of type character with default or C
+    character kind:
+    - if the actual argument is an array expression, the element
+      sequence consists of the elements in array element order;
+    - if the actual argument is an array element designator of a
+      simply contiguous array, the element sequence consists of that
+      array element and each element that follows it in array element
+      order;
+    - otherwise, if the actual argument is scalar, the element
+      sequence consists of that scalar."
+
+[310:19-21] Same subclause, next paragraph (was p3),
+    After "substring designator"
+    insert "of a simply contiguous array".
+    Change the last "if the actual" to "otherwise, if the actual",
+    and delete "and not an array ... designator".
+
+This makes the old p3 read
+   "If the dummy argument is of type character with default or C
+    character kind, and has nonzero character length, the storage unit
+    sequence is as follows:
+    - if the actual argument is an array expression, the storage units
+      of the array;
+    - if the actual argument is an array element or array element
+      substring designator of a simply contiguous array, the storage
+      units starting from the first storage unit of the designator and
+      continuing to the end of the array;
+    - otherwise, if the actual argument is scalar, the storage units
+      of the scalar object."
+
+SUBMITTED BY: John Reid
+
+HISTORY: 22-105   m226  Submitted
+         22-136   m226  Revised. Passed by J3 meeting 226.
+         22-nnn   m227  Passed by J3 letter ballot #39.
+
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
+NUMBER: F18/037
+TITLE: Locality spec limitations
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+BACKGROUND
+
+In 11.1.7.2 Form of the DO construct, C1128 states
+  "A <variable-name> that appears in a LOCAL or LOCAL_INIT
+   <locality-spec> shall not have the ALLOCATABLE, INTENT (IN), or
+   OPTIONAL attribute, shall not be of finalizable type, shall not be
+   a nonpointer polymorphic dummy argument, and shall not be a coarray
+   or an assumed-size array."
+
+QUESTION:
+
+Q1. Was it intended to allow a variable with an ultimate component of
+    finalizable type here?
+
+Q2. Was it intended to allow a variable with a coarray ultimate
+    component here?
+
+Q3. Was it intended to allow a variable with an allocatable ultimate
+    component here?
+
+ANSWER:
+
+A variable with an ultimate allocatable component was not intended to
+be allowed here. All the questions above involve such a component.
+
+An edit is provided to correct this oversight.
+
+EDIT to 18-007r1:
+
+[181:22-24] 11.1.7.2 Form of the DO construct, C1128, first sentence,
+    After "of finalizable type,"
+    insert "shall not have an ultimate allocatable component,"
+    making the whole constraint read
+
+  "C1128 A variable-name that appears in a LOCAL or LOCAL_INIT
+         locality-spec shall not have the ALLOCATABLE, INTENT (IN), or
+         OPTIONAL attribute, shall not be of finalizable type, shall
+         not have an allocatable ultimate component, shall not be a
+         nonpointer polymorphic dummy argument, and shall not be a
+         coarray or an assumed-size array. A variable-name that is not
+         permitted to appear in a variable definition context shall
+         not appear in a LOCAL or LOCAL_INIT locality-spec."
+
+SUBMITTED BY: John Reid
+
+HISTORY: 22-109   m226  Submitted
+         22-109r1 m226  Revised
+         22-109r2 m226  Further revised. Passed by J3 meeting 226.
+         22-nnn   m227  Passed by J3 letter ballot #39.
+
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
+NUMBER: F18/038
+TITLE:  SIZE= with no reason
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+QUESTION:
+
+Fortran 2018 permits SIZE= in an input statement without ADVANCE=.
+SIZE= assigns to its variable the number of character transferred by
+edit descriptors.
+
+This means that SIZE= is also allowed for list-directed and namelist
+input/output, but no edit descriptor is involved, so this will always
+assign the value zero to the variable.
+
+For example,
+    READ(*,*,SIZE=N) X
+    PRINT *,N ! Always prints zero.
+
+Was this superfluous additional way of assigning zero to an integer
+variable deliberately added?
+
+ANSWER:
+
+No, this was not a deliberate addition.
+An edit is provided to remove this inadvertent feature.
+
+EDIT to 18-007r1:
+
+[225:29+] 12.6.2.1 Syntax, in 12.6.2 Control information list,
+    After constraint C1213 that begins
+        "(R1213) A BLANK=, PAD=, END=, EOR=, or SIZE= specifier..."
+    insert new constraint
+        "C1213a A SIZE= specifier shall not appear in a list-directed
+                or namelist input statement."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 22-137   m226  Submitted
+         22-137r1 m226  Passed by J3 meeting
+         22-nnn   m227  Passed by J3 letter ballot #39.
+
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
+NUMBER: F18/039
+TITLE:  Corresponding coarrays in recursive procedures
+KEYWORDS: coarray, recursive, allocatable
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+QUESTION:
+
+Consider the following program:
+
+program recu_caf_1
+    call csub( 1 )
+contains
+    recursive subroutine csub ( depth )
+        integer :: depth
+        real, allocatable :: x[:]
+        integer :: k
+        
+        if (this_image() == depth) then
+            allocate(x[*], source=real(depth))
+        else if (depth < num_images()) then
+           call csub ( depth + 1 )
+        end if
+        if (allocated(x)) then
+           write(*, *) "image: ", this_image(), "depth: ", depth, &
+                    "x: ", (x[k],k = 1, num_images())
+        else
+           write(*, *) "image: ", this_image(), "depth: ", depth, &
+                    "x not allocated" 
+        end if                  
+    end subroutine
+end program
+
+Q1: Is program recu_caf_1 standard-conforming?
+    It establishes a single coarray on each image, but at different
+    recursion depths on each image, so the question is really whether
+    these correspond (each recursion level has its own set of unsaved
+    local variables).
+
+Q2: If the SAVE attribute is added to the declaration of coarray "x"
+    in the example, does that make the program standard-conforming?
+    (There is only one saved variable, shared with each recursion
+    level.)
+
+ANSWER:
+
+A1: No, unsaved local variables are different at each level, and it
+    was intended that coarrays at the same level correspond.
+    An edit is provided to clarify this.
+
+A2: Yes, the modified program is standard-conforming.
+
+EDITS to 18-007r1:
+
+[41:25] 5.4.7 Coarray, paragraph 2, append new sentence
+   "If a coarray is an unsaved local variable of a recursive
+    procedure, its corresponding coarrays are the ones at the same
+    depth of recursion on each image."
+
+[134:17] 9.7.1.2 Execution of an ALLOCATE statement, paragraph 3,
+         append new sentence
+"If the coarray is an unsaved local variable of a recursive procedure,
+ the execution of the ALLOCATE statement shall be at the same depth of
+ recursion on every active image in the current team."
+
+SUBMITTED BY: John Reid and Reinhold Bader
+
+HISTORY: 22-113   m226  Submitted
+         22-113r1 m226  Revised. Passed by J3 meeting 226.
+         22-nnn   m227  Passed by J3 letter ballot #39.
+
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
+NUMBER: F18/040
+TITLE: Allocating a dummy argument with a coarray ultimate component
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+QUESTION:
+
+On page 134 of 18-007r1, 9.7.1.2, para 3, we have
+"If an allocation specifies a coarray, its dynamic type and the values 
+of corresponding type parameters shall be the same on every active image 
+in the current team. The values of corresponding bounds and 
+corresponding cobounds shall be the same on those images. If the coarray 
+is a dummy argument, its ultimate argument (15.5.2.3) shall be the same 
+coarray on those images."  
+Should there be a similar restriction for a coarray that is an ultimate  
+component of a dummy argument? For example, does the following program
+conform to the standard?
+
+program test
+   type new
+      real, allocatable :: a[:]
+   end type
+   integer :: i
+   type(new) x,y 
+   if(this_image()<=2) then
+      call work(x)
+   else   
+      call work(y)
+   end if
+   sync all
+   if (this_image()==2)then
+      do i = 1, num_images()
+         x%a[i] = i
+      end do   
+   end if
+   sync all
+   if (this_image()==4)then
+      do i = 1, num_images()
+         write(*,*) i, y%a[i]
+      end do   
+   end if      
+contains  
+   subroutine work(z)
+      type(new) :: z 
+      allocate (z%a[*])
+   end subroutine       
+end program 
+
+Here, the calls of subroutine work create a coarray that is accessible 
+on images 1 and 2 as x%a[i] and on other images as y%a[i]. Was this
+intended?
+
+ANSWER:
+
+A similar restriction was intended. It was not intended to allow the 
+creation of a coarray that is accessible in a scope as an ultimate
+component of one object on some images and as an ultimate component of 
+another object on other images. 
+
+An edit is provided. We have taken the opportunity to change "same" in
+the quoted text to "corresponding". Coarrays on different images cannot 
+be the same, but they can correspond, see 5.4.7. We need the concept of
+"same" for objects of a type with coarray ultimate components. It seems
+appropriate to require that they be declared with the same name in the 
+same set of statements. 
+
+EDIT to 18-007r1:
+
+[134:16-17] In 9.7.1.2 Execution of an ALLOCATE statement, para 3, 
+replace the final sentence by the two sentences
+"If the coarray is a dummy argument, the ultimate arguments (15.5.2.3) 
+on those images shall be corresponding coarrays. If the coarray is an 
+ultimate component of a dummy argument, the ultimate arguments on those
+images shall be declared with the same name in the same scoping unit and
+if in a recursive procedure at the same depth of recursion."
+
+SUBMITTED BY: John Reid
+
+HISTORY: 22-110   m226 Submitted. Passed by J3 meeting 226.
+         22-nnn   m227  Passed by J3 letter ballot #39.
+
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
+NUMBER: F18/041
+TITLE: NULL() passed to assumed-rank dummy
+KEYWORDS: NULL, assumed-rank
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 letter ballot
+
+QUESTION:
+
+Consider:
+
+  call foo(null())
+contains
+  subroutine foo(x)
+    integer, pointer, intent(in) :: x(..)
+    print *, rank(x)
+  end subroutine
+end 
+
+What should be printed? According to Table 16.5 (Characteristics of
+the result of NULL()), the actual argument has the rank of "the 
+corresponding dummy argument". In this case, however, the corresponding
+dummy has no defined rank, instead taking its rank from the actual
+argument. Was this intended to be undefined?
+
+ANSWER:
+
+No, this combination was intended to be non-conforming.
+An edit is provided to correct this mistake.
+
+EDITS to 18-007r1:
+
+[400:33] 16.9.144 NULL, p6 "If the context...",
+         Add a new sentence to the end of the paragraph:
+   "If the context of the reference to NULL is an <actual argument>
+    corresponding to an <assumed-rank> dummy argument, MOLD shall be
+    present."
+{Add restriction. It could also be appended to p5, or be a new para.}
+
+SUBMITTED BY: Steve Lionel
+
+HISTORY: 22-146   m226  F18/041 Submitted. Passed by J3 meeting 226.
+         22-nnn   m227  Passed by J3 letter ballot #39.
+
+----------------------------------------------------------------------
+
+===END===
+
+

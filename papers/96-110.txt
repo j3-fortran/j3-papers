@@ -1,0 +1,107 @@
+
+                                                            X3J3/96-110
+
+Date:    May 16, 1996
+To:      X3J3
+From:    David R. Levine
+Subject: Tutorial on Asynchronous I/O
+
+
+                      TUTORIAL ON ASYNCHRONOUS  I/O
+         
+                   GETTING ASYNC I/O TO WORK PROPERLY
+         
+         Simple example:
+         
+         OPEN (unit=u, .."ASYNC")
+         
+         READ (u, wait="NO", handle=ha,  errs=100), A
+         
+           WAIT (u, handle=ha,  errs=100)
+         
+           compute using  A
+         
+           READ (u, wait="NO", handle=ha,  errs=100), A
+         
+         
+         100   deal with eof, errors
+         
+         Note:  
+          - "handle" is probably an integer tag, defined by library
+          -  also provide inquiry capability to see if wait would occur
+         
+           INQUIRE (u, handle=ha, would_wait=ans)
+         
+         --------------------------------------------------------
+
+         Example with two buffers  (unrolled)
+         
+           OPEN (unit=u, .."ASYNC")
+         
+           READ (u, wait="NO", handle=ha,  errs=100), A
+         -
+               READ (u, wait="NO", handle=hb,  errs=100), B
+           WAIT (u, handle=ha,  errs=100)
+           compute using  A
+           READ (u, wait="NO", handle=ha,  errs=100), A
+               WAIT (u, handle=HB,  errs=100)
+               compute using  B
+               READ (u, wait="NO", handle=hb,  errs=100), B
+           WAIT (u, handle=ha,  errs=100)
+           compute using  A
+         
+         
+         100   deal with eof, errors
+
+         SEMANTIC  ISSUES
+         
+         - Semantics must be correct with asynch operation
+         
+         - Processor allowed to perform the entire I/O 
+         	operation entirely at either the READ (WRITE) or WAIT
+         
+         - State of data is nondeterministic between READ (WRITE) and WAIT
+         
+         - Processor allowed to copy data to an internal 
+         	buffer immediately on WRITE; or not copy.
+            ==> program MUST do one WAIT for each write
+         	(if implementation copies, WAIT always fast)
+         
+         - Errors can be handled at either R/W or at WAIT
+            --- but NOT in between (!)
+         
+         --------------------------------------------------------
+
+         PROBLEMS:
+         - in order to handle errors, the WAIT statement 
+         	will need all the error-handling information of READ (WRITE)
+           ==> statement form must allow it
+           ==> user should provide same info to both
+         
+         - How does the optimizer know the boundaries for code motion?
+           <<  There's no link between READ (WRITE) and associated WAIT >>
+         
+           possible solutions:
+           -- worst-case assumption
+           -- provide better information somehow
+         	idea:  model after hardware "cache prefetch"
+
+         Same example, with "PRE-READ" approach:
+         
+         
+           OPEN (unit=u, .."ASYNC")
+         
+           READ (u, wait="NO", handle=ha,  errs=100), A
+         >
+               READ (u, wait="NO", handle=hb,  errs=100), B
+           READ (u, wait="YES", handle=ha,  errs=100), A
+           compute using  A
+           READ (u, wait="NO", handle=ha,  errs=100), A
+               READ (u, wait="YES", handle=hb,  errs=100),B
+               compute using  B
+               READ (u, wait="NO", handle=hb,  errs=100), B
+           READ (u, wait="YES", handle=ha,  errs=100), A
+           compute using  A
+         
+         100   deal with eof, errors
+

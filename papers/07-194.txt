@@ -1,0 +1,164 @@
+To: J3
+From: Aleksandar Donev
+Subject: Questions/issues concerning macros
+Date: 2007 April 24
+References: 06-343r1, 07-007, 07-139
+
+Note: This paper is a resubmit of 07-139 which was not processed
+at meeting 179.
+
+I discuss several aspects of macro processing that I do not quite
+understand, and several technical problems.
+
+1. Nesting of macros (i.e., macros defining macros).
+
+In 06-007r1 there was an ambiguity in parsing nested macros since
+the internal DEFINE MACRO could either be a macro-body-stmt or a
+macro-definition. The editor added C316 ([37:5]) to try to correct
+this. We need to add an additional constraint for "END MACRO", so that
+it cannot be a macro-body-stmt either. Otherwise it is ambiguous to
+parse the internal END MACRO.
+
+2. Note: This was also proposed by Dick at meeting 179 and accepted,
+see paper 07-154r1 (I like mine better :-).
+My example could be added to the annex if desired?
+
+I think we need an example similar to that in Note 3.15 that uses
+arrays of kind parameters instead of SELECTED_INT_KIND, either to
+replace the example in Note 3.15 or to add a new version. Here is
+an attempt
+
+DEFINE MACRO MyGenericInterface(array_of_kinds)
+   MACRO INTEGER :: i, kind
+   INTERFACE MyGenericProcedure
+      MACRO DO i=1,SIZE(array_of_kinds)
+         ! Necessary in order to evaluate kind to an integer:
+         MACRO kind=array_of_kinds(i)
+         MACRO IF(kind>0) THEN
+            SUBROUTINE MySpecificProcedure_%%kind(X)
+               INTEGER(kind), INTENT(IN) :: X
+            END SUBROUTINE
+         MACRO END IF
+      MACRO END DO
+   END INTERFACE
+END Macro MyGenericInterface
+
+Use of the macro:
+
+USE ISO_FORTRAN_ENV
+INTEGER, PARAMETER :: INT_KINDS(4)=[INT8, INT16, INT32, INT64]
+
+EXPAND MyGenericInterface(INT_KINDS) ! Will generate generic interface
+  ! for specifics for up to four integer kinds supported by the processor
+
+3. Note: I defer this issue until WG5 meeting.
+
+In the example in point 2 above, I could not write:
+INTEGER(KIND=kind), INTENT(IN) :: X
+because both appearances of the token KIND would have been replaced
+by the integer value of the macro variable kind. This seems
+to me to be inconsistent with the rest of Fortran and also rather
+inconvenient for programmers. A possible proposed solution (on the J3 list)
+is syntax to quote (not expand) a token.
+
+4. Concerning C306 and C307 on page 35: Is it needed to give a similar
+example about two macro-local-variables having the same name or is
+this already covered by rules on name conflicts?
+
+5. It seems we do not allow a token concatenation such as X%%Y where Y
+is an optional macro argument, in the case when Y is not present. This
+seems like a useful thing and should be allowed.
+
+6. Concerning C329 and C330 on page 38. We do not seem clearly spell
+out how macro association happens. Mike sent this example to J3:
+
+DEFINE MACRO :: A (X,Y)
+   MACRO OPTIONAL :: X, Y
+   ...
+END MACRO A
+
+EXPAND A ( test13 ) ! Is X or Y PRESENT?
+
+While the intention is clear, we need to spell it out clearly.
+
+7. When is a nested macro definition parsed?
+
+It is not clear to me at what point the bnf for macro-body-construct
+is used: At the time the outer macro is EXPANDed, or when the outer
+macro is parsed itself. Or maybe both? Some examples may clarify
+my confusion.
+
+It is clear to me the following was intended to work:
+
+Example A:
+
+--------
+DEFINE MACRO M(something)
+   DEFINE something X()
+      ...
+   END something
+END MACRO
+
+EXPAND M(MACRO)
+EXPAND X()
+--------
+
+But now consider the following examples:
+
+Example B:
+
+--------
+DEFINE MACRO M(something)
+   DEFINE MACRO X()
+     ...
+   END something
+END MACRO
+
+EXPAND M(MACRO)
+EXPAND X()
+
+--------
+
+Example C:
+
+--------
+DEFINE MACRO M(Y)
+   DEFINE MACRO M_1 Y
+      CALL PROC(Y)
+   END MACRO
+END MACRO
+
+EXPAND M((A,B,C)) ! Defines M_1(A,B,C)
+EXPAND M_1(x,y,z) ! Expands to "CALL PROC(x,y,z)"
+--------
+
+Are examples B and C legal as 07-007 stands? If not, was this intended
+or just a by-product of the way the bnf is constructed?
+
+As the final and most perverse example, consider a macro that defines
+a macro with a variable number of arguments, where the number of
+arguments is an argument of the top-level macro. What are the answers
+to the above questions for this example?
+
+--------
+DEFINE MACRO :: assign_shortcut(rank)
+   MACRO INTEGER :: i
+   DEFINE MACRO assign_%%rank(array,value,index1&&
+      MACRO DO i=2,rank
+           ,index%%i &&
+      MACRO END DO
+      )
+      array(index1&&
+      MACRO DO i=2,rank
+           ,index%%i &&
+      MACRO END DO
+            )=value
+   END MACRO assign_%%rank
+END MACRO assign_shortcut
+
+EXPAND assign_shortcut(3)
+EXPAND assign_3(A,5.0,i,j,k)
+! Expands to
+! A(i,j,k)=5.0
+--------
+

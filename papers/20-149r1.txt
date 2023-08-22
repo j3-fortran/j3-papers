@@ -1,0 +1,127 @@
+To: J3                                                     J3/20-149r1
+From: Malcolm Cohen
+Subject: Allocation and deallocation
+Date: 2020-October-15
+
+----------------------------------------------------------------------
+
+NUMBER: F18/0020
+TITLE: Multiple allocate/deallocate of same object
+KEYWORDS: ALLOCATE DEALLOCATE
+DEFECT TYPE: Clarification
+STATUS: Passed by J3 meeting
+
+QUESTION:
+
+Consider
+
+  Program test
+    Integer,Alloctable :: aa(:)
+    Integer,Pointer :: p(:)
+    Allocate(aa(10),aa(10),Stat=istat) ! (A)
+    Print *,istat
+    Deallocate(aa,aa,Stat=istat) ! (B)
+    Print *,istat
+    Allocate(p(10),p(20)) ! (C)
+    Print *,Shape(p)
+    Deallocate(p,p,Stat=istat) ! (D)
+    Print *,istat
+  End Program
+
+The standard says that an allocate-object cannot depend on another
+allocate-object, whether in ALLOCATE or DEALLOCATE. See
+[133:22-24] 9.7.1.1 Form of the ALLOCATE statement, paragraph two, and
+[136:21-23] 9.7.3.1 Form of the DEALLOCATE statement, paragraph two.
+
+
+Thus, it could be argued that all the statements with comments are
+invalid (not conforming).
+
+However, AA does not depend on AA; it *is* AA. Similarly P. The
+semantics specified by the standard seem to be unambiguous, even
+though there is no ordering specified for the allocations and
+deallocations:
+    (A) causes the variable AA to become allocated, and raises an
+        error condition assigning a non-zero value to ISTAT due to
+        attempting to ALLOCATE an already-allocated ALLOCATABLE.
+        As the bounds are the same, there is not even any dependency
+        on the allocation ordering.
+    (B) causes the variable AA to become deallocated, and raises an
+        error condition assigning a non-zero value to ISTAT due to
+        attmpting to DEALLOCATE an unallocated ALLOCATABLE.
+    (C) causes the variable P to become allocated, twice, probably
+        "leaking" the memory from one allocation. After execution
+        of the statement, the shape of P will be [ 10 ] or [ 20 ].
+    (D) causes the variable P to become disassociated, and raises an
+        error condition attempting to DEALLOCATE a disassociated
+        pointer.
+
+Q. Is the program conforming, with the results specified above?
+
+As a supplementary consideration, what about variables that are not
+the same but are associated? For example, ENTRY result variables are
+associated with the FUNCTION result, and an allocatable or pointer
+component of an associate-name is associated with the corresponding
+component of a selector if the selector is a variable,
+
+ANSWER:
+
+A. No, the program was not intended to be conforming; the word
+   "depend" was intended to include the cases of the variable being
+   the same (or associated), even in cases where there can be no
+   dependency as such. An edit is supplied to clarify this.
+
+DISCUSSION:
+
+Although it is indeed arguable that the program is conforming, it seems
+clear enough that this was not intended. As further evidence, it would
+make the result processor-dependent in some cases, and is not listed in
+the Annex of processor dependencies.
+
+EDITS to 18-007r1:
+
+[xiii] Introduction, p2, bullet "Data usage and computation", append
+    "An object cannot be allocated or deallocated twice in the same
+     ALLOCATE or DEALLOCATE statement."
+
+[28:16+] Fortran 2008 compatibility, p10+, append paragraph
+    "Fortran 2008 permitted an object to be allocated or deallocated
+     twice in the same ALLOCATE or DEALLOCATE statement; this document
+     does not permit that."
+
+[28:40+] Fortran 2003 compatibility, p10+, append paragraph
+    "Fortran 2003 permitted an object to be allocated or deallocated
+     twice in the same ALLOCATE or DEALLOCATE statement; this document
+     does not permit that."
+
+[29:6+] Fortran 95 compatibility, p2+, insert paragraph
+    "Fortran 95 permitted an object to be allocated or deallocated
+     twice in the same ALLOCATE or DEALLOCATE statement; this document
+     does not permit that."
+
+[29:29+] Fortran 90 compatibility, p4+, append paragraph
+    "Fortran 90 permitted an object to be allocated or deallocated
+     twice in the same ALLOCATE or DEALLOCATE statement; this document
+     does not permit that."
+
+[133:24] 9.7.1.1 Form of the ALLOCATE statement, p2, append
+    "An <allocate-object> shall not appear more than once in the same
+     ALLOCATE statement. An <allocate-object> shall not be associated
+     with another <allocate-object> in the same ALLOCATE statement."
+
+[136:23] 9.7.3.1 Form of the DEALLOCATE statement, p2, append
+    "An <allocate-object> shall not appear more than once in the same
+     DEALLOCATE statement. An <allocate-object> shall not be
+     associated with another <allocate-object> in the same DEALLOCATE
+     statement."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 20-149   m222  F18/020 Submitted
+         20-149r1 m222  Passed as amended by J3 meeting 222.
+
+----------------------------------------------------------------------
+
+
+
+

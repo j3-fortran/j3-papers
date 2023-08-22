@@ -1,0 +1,407 @@
+To: J3                                                       10-122r2
+Subject: Reply to comments on interop TR ballot
+From: Craig Rasmussen/Bill Long
+Date: 2010 February 19
+References: N1766, N1763, N1761, 06-128r1, WG5 worklist item j3-041
+
+
+A letter ballot N1763 was taken regarding the technical content of
+N1761, "Further Interoperability of Fortran with C" (Interoperability
+of optional, assumed-shape, allocatable, pointer, assumed-type, and
+assumed-rank dummy arguments).  Several people replied to this ballot
+with comments.  This paper is a reply to some of these comments.
+
+The format of the reply below is:
+
+n) [Commentor ID(s)] Comment, possibly paraphrased
+
+Commentor ID	  Name, Affiliation
+------------      -----------------
+
+Aleks	  	  Aleskandar Donev, LBL
+Mike		  Michael Ingrassia, SUN 
+Nick		  Nick Maclaren, Cambridge University 
+Van	  	  Van Snyder, NASA/JPL
+Jim		  Jim Xia, IBM
+
+
+---
+
+
+Reply text:
+
+1) [Van] A C descriptor has a flag that indicates whether a pointer is
+   or is not associated.  It's not always possible to tell.  It is
+   always possible to tell whether a pointer is or is not
+   disassociated.
+
+---
+
+The description of the base_addr will be modified to say that the base
+address of a zero-sized array shall not be NULL. In that case the
+information in the "state" member of the descriptor is no longer
+necessary and it will be deleted.
+
+
+2) [Van] The "sm" component of a CFI_dim_t struct is specified to be
+   measured in bytes.  This should be in processor-dependent units.
+
+---
+
+The "sm" (stride multiplier) is intended to have the same units as the
+the units of the elem_len component of the C descriptor, and hence the
+units of the C sizeof operator. The C standard (6.5.3.4) specifies
+this unit to be "in bytes". Changing the units of the stride
+multiplier to be potentially different seems like an unnecessary
+complication.
+
+
+3) [Aleks, Nick] Use a flexible array member at the end of the cdesc
+   struct to hold the bounds triples, rather than a fixed-size array.
+
+---
+
+This change will be made in the specification.
+
+
+4) [Mike] The file ISO_Fortran_binding.h is not included in the
+   standard.
+
+---
+
+One of the ground rules for the TR is that no struct can be explicitly
+specified in the standard. Instead, only descriptions of the struct
+members are allowed.  Including a copy of ISO_Fortran_binding.h would
+expose a suggested implementation of the cdesc struct, in violation of
+this rule. Also, generally the standard does not mandate specific
+implementations of things like this. Some vendors might, for example,
+want to add extra, hidden members to the struct for various purposes.
+
+
+5) [Mike] The general approach of specifying a data structure seems
+   awkward compared to the approach of standardizing the particular
+   set of APIs that the programmers will want.
+
+---
+
+The initial version of the TR was based on a set of functions / macros
+that served as such an API.  This quickly grew into an MPI-like
+monstrosity that would have been hard to use at best.  We switched to
+the descriptor approach as cleaner and simpler to use.  Also,
+minimizing the number of needed functions lowers the implementation
+and maintenance costs for vendors.
+
+
+6) [Mike] There is no "version" query for the structure or API.
+
+---
+
+A macro that expands to a version-specific integer constant will be
+included in the file ISO_Fortran_binding.h.
+
+
+
+7) [Mike] There is no pointer in the Fortran descriptor pointing to a
+   corresponding C descriptor, resulting in an asymmetry.
+
+---
+
+The implementation model will be revised to eliminate visibility of a
+Fortran descriptor.
+
+
+8) [Nick] A "pointer of type void" is meaningless - C has no data type
+   "void". The terminology should be fixed, everywhere the wording is
+   used.
+
+---
+
+Where relevant, the term used will be changed to "pointer to void".
+
+
+9) [Nick] "The C descriptor is a struct of type CFI_desc_t" is
+   ambiguous.
+
+---
+
+The intention is that the struct be defined as
+
+typedef { .......  } CFI_cdesc_t;
+
+and declarations of descriptors of the form
+
+CFI_cdesc_t  arg;
+
+Improved wording is: "CFI_desc_t is a typedef name that designates a
+structure type."
+
+
+10) [Nick] The specification of the "attribute" field is broken. Inter
+    alia, it mixes type properties with attributes, does not allow
+    assumed-shape arrays to be allocatable or pointers, and makes no
+    reference to assumed-rank.  I am not sure what it is proposing, or
+    why. If it is needed, it should specify the attributes as bits in
+    a mask.
+
+---
+
+Regarding the first sentence, it was never intended to provide for
+assumed-shape arrays that are allocatable or pointers. No such things
+exist in Fortran.
+
+This will be reconsidered.
+
+
+
+11) [Nick] The description of the "state" field is baffling. Why
+    should assumed-shape but not assumed-rank be included together
+    with associated pointers and allocatable variables?
+
+---
+
+In the reply to (1) above, this member is removed.
+
+
+
+12) [Nick] The type "intptr_t" is unsuitable for array
+    indexing... "ptrdiff_t" is a far better type for the purpose.
+
+---
+
+The array indexing type will be replaced by an abstracted typedef that
+vendors can define as appropriate.
+
+
+13) [Nick] The specification must say which kind of C constants are
+    defined in the file ISO_Fortran_binding.h, as C has several, with
+    different properties. That would need careful design.  Most of
+    them should be preprocessor constants suitable for use in #if
+    directives, but perhaps not all.
+
+---
+
+It is expected that these constants will be defined as macros in
+ISO_Fortran_binding.h, for example,
+
+#define CFI_xxx  value
+
+
+Preferred wording: "The values given below shall be replaced by
+    constant expressions suitable for use in #if preprocessing
+    directives."
+
+
+14) [Nick] The layout of C structures is very dependent on the
+    compiler options. In the existing Fortran standard, the processor
+    can (in theory, at least) remap structures. Because N1761 proposes
+    structures to use as the actual interface descriptors, that is not
+    feasible.  The matter needs consideration.
+
+---
+
+The specification does not require a particular form for structs. Care
+will be taken to avoid the problems brought up.
+
+
+
+15) [Nick] The description of stride "equal to the difference between
+    the subscript values of consecutive elements of an array along a
+    specified dimension" makes no sense when applied to a dummy
+    argument - it is always one. Fortran has no concept of the strides
+    of the actual arguments being visible to the called procedure."
+
+---
+
+This will be clarified.
+
+
+
+16) [Nick] It is unclear is one has the ability to call the MPI
+    transfer functions with arrays of interoperable derived types as
+    choice arguments.
+
+---
+
+This is possible by defining an MPI datatype and using TYPE(*) in the
+MPI interface.
+
+
+
+17) [Nick] The current proposal has unnecessary restrictions and
+    artificial distinctions between Fortran features.  For example,
+    the current proposal allows for the passing of assumed-shape
+    arrays but not assumed-length CHARACTER.
+
+---
+
+The proposal to make assumed-length character interoperable was
+considered by WG5. The decision was to not include this in the TR.
+This could be included in a future standard within the current design.
+
+
+18) [Nick] A design should be considered that allows potential
+    extensibility to interfacing with the C variable argument list
+    mechanism.
+
+---
+
+This was discussed in subgroup and we do not intend to support this in
+the TR.
+
+
+19) [Nick]) At least potentially permit the companion processor to be
+    a debugging tool (preferably passing object bounds across the
+    interface for all arguments).  Perhaps the simplest and cleanest
+    way of resolving many interoperability issues is to extend the
+    BIND attribute slightly, to allow the programmer to select between
+    the current interface and a descriptor-based one, along the lines
+    of:
+
+proc-language-binding-spec is
+    BIND(C[,METHOD=binding_method][NAME=scalar-char-initialization-expr])
+
+binding_method is DIRECT
+               or DESCRIPTOR
+
+The default is DIRECT, and is what we have at present.
+
+---
+
+This is an interesting idea.  It could be proposed as an extension for
+a later Fortran standard.
+
+
+20) [Nick] The design does not support ALLOCATABLE and POINTER arrays
+    cleanly; in particular, the C descriptor does not contain enough
+    information to update the pointer value correctly.  Changing the
+    base address in the descriptor alone will NOT work.
+
+---
+
+The new specification no longer uses a Fortran descriptor. Further
+limitations will ensure that these problems are avoided.
+
+
+
+21) [Nick] The types need to include a non-interoperable type, for use
+    with assumed-type arguments.  The existing standard already allows
+    them to be passed between Fortran and C.
+
+---
+
+CFI_type_cptr and CFI_type_cfunptr will be added to the list.
+
+
+22) [Nick] The specification of ISO_Fortran_binding.h should be
+    specified to be unitary as the standard C headers are.
+
+---
+
+A citation to the relevant wording in the C standard will be included.
+
+
+
+23) [Nick] The level of namespace pollution must also be specified,
+    for future enhancements.
+
+---
+
+The following sentence will be added: "Names beginning with CFI__ will
+be reserved for use by vendors, and names beginning with CFI_x where x
+is not an underscore will be reserved for portable usage in the file
+ISO_Fortran_binding.h wherever that file is included."
+
+
+24) [Nick] The descriptor functions are impure and return an error
+    code through their function result.  Because they are C
+    interfaces, that is plausible, but it is undesirable to use a
+    specification that conflicts with Fortran's conventions.  In
+    particular, it would obstruct a vendor or future version of the
+    standard from defining them as interoperable procedures.  That
+    option should be left open.
+
+---
+
+This issue will be considered.
+
+
+25) [Nick] The descriptor functions use the supplied descriptors both
+    as the source of data and where they store the results, but they
+    do not specify which fields must be set on entry and which are set
+    on exit.
+
+---
+
+The text will be modified to better describe these functions.
+
+
+26) [Nick] CFI_update_fdesc is specified to use malloc, but that is an
+    unreasonable restriction on an implementation; the requirement
+    should be removed.
+
+---
+
+In the new specification, the CFI_update_fdesc function is no longer
+present.
+
+
+27) [Nick] CFI_allocate says "The supplied bounds override any current
+    dimension information in the descriptors. The stride values are
+    ignored and assumed to be one. Both the Fortran and C descriptors
+    are updated by this function."  That makes no sense, as it would
+    leave the descriptors in an invalid state.  Also, the intent of
+    CFI_bounds_to_cdesc is unclear, especially as it does not say that
+    creating an invalid descriptor is forbidden.
+
+---
+
+Stating that creating an invalid descriptor is forbidden is implied by
+"Errors might occur because values supplied in an argument are invalid
+for that function" in discussion of error returns.  The circumstances
+under which actions are invalid will be clarified.
+
+
+
+28) [Nick] "The base address in the C descriptor for a data pointer
+    may be modified by assignment and that change later affected in
+    the corresponding Fortran descriptor by the CFI_update_fdesc
+    function" means that allocatable and pointer arrays can be changed
+    other than by calls to CFI_allocate and CFI_deallocate (which is
+    stated to be forbidden elsewhere).  Something is wrong, but I
+    don't know what.
+
+---
+
+In the new specification, the CFI_update_fdesc function is no longer
+present.
+
+
+29) [Nick] Wording should be added to forbid the bounds array to have
+    a higher rank than the descriptor.
+
+---
+
+The text will be modified to forbid this.
+
+
+30) [Nick] The examples use "integer(8)" to indicate an 8-byte integer
+    set up by a compiler option "-i8".  That is completely
+    processor-dependent, and should not be included in a Technical
+    Report.  Also, the examples use MPI names, but are wildly invalid.
+    They should use MPI correctly, or not refer to it.
+
+---
+
+The examples will be changed.
+
+
+31) [Jim] Although Fortran descriptors are used when passing
+    assumed-shape arrays, pointer arrays, and allocatable arrays by
+    many vendors, they however are not universally used by all
+    vendors.
+
+---
+
+In the new specification, the Fortran descriptor is no longer used, so
+a vendor would not necessarily be required to define one.
+

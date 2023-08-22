@@ -1,0 +1,251 @@
+                                                             J3/14-160r2
+To:      J3
+From:    Van Snyder
+Subject: EVENT_TYPE, event count, and the EVENT_QUERY subroutine
+Date: 2014 May 29
+
+1. Discussion of EVENT_TYPE
+===========================
+
+Subclause 6.2 of 14-130 states that a "processor shall support a maximum
+value of the event count of at least HUGE(0)."
+
+This implies that objects of type EVENT_TYPE have an integer component
+of a kind that represents numbers at least that large.
+
+There is no facility provided to inquire the maximum value.
+
+Specifying the kind of the component of EVENT_TYPE that represents the
+count is exactly the problem for which kind type parameters were
+designed.
+
+Rather than specifying that a "processor shall support a maximum value
+of the event count of at least HUGE(0)," type EVENT_TYPE should have a
+kind type parameter named KIND that specifies the kind of the component
+that represents the event count.  That kind type parameter should have a
+default value of KIND(0).  One could inquire the kind type parameter
+value, and use the result to inquire the maximum value of the event
+count, e.g., "integer, parameter :: EK = event%kind
+              ... huge(0_ek)".
+
+2. Discussion of EVENT_QUERY and event count
+============================================
+
+Querying an event count in a coindexed event variable is no different
+from examining a component of an ordinary coindexed variable.  Querying
+an event count in an event variable that is not coindexed is no
+different from examining a component of an ordinary variable.  The
+purpose of STAT and ERRMSG arguments is to detect whether one is
+querying an event count on a failed image, which is certainly not the
+current image.  There is no corresponding support for detecting whether
+examining a component of an ordinary coindexed object is not possible
+because the indexed image has failed, other than by invoking the
+FAILED_IMAGES intrinsic function, which would serve equally well to
+inquire whether an image having an event count of interest has failed.
+
+Since there is no support to detect whether examining a component of an
+ordinary coindexed object is not possible because the indexed image has
+failed, and EVENT_QUERY consists only of examining a component of a
+coindexed object (or a local object), there is no compelling reason for
+EVENT_QUERY to be special.  Therefore, there is no compelling reason for
+EVENT_QUERY to have STAT and ERRMSG arguments.  Therefore there is no
+reason for EVENT_QUERY to be a subroutine.
+
+There are at least three alternatives to the EVENT_QUERY subroutine.
+
+(1) An EVENT_QUERY intrinsic function, with one argument: The event
+variable.
+
+(2) A generic type-bound function named COUNT, having a result of type
+integer and the same kind as the event variable, and no arguments other
+than the passed-object dummy argument.
+
+(3) A public component of type integer with its kind specified by the
+value of the kind type parameter of the event variable, and protections
+to prevent tampering.
+
+2. Edits with respect to 14-130 for EVENT_QUERY intrinsic function
+==================================================================
+
+[15:6 6.2p1] After "components" insert "and one kind type parameter
+named KIND.  The default value of KIND is KIND(0)".  Delete "with no
+type parameters".
+
+[15:13 6.2p2] Replace "The processor ... HUGE(0)" with "There is an
+integer component that represents the event count.  Its kind is the kind
+type parameter KIND".
+
+[23:24-24:2+2 7.4.11] Replace subclause 7.4.11
+
+"
+7.4.11 EVENT_QUERY ( EVENT )
+
+Description. Event count.
+
+Class.  Elemental function.
+
+Arguments. EVENT shall be of type EVENT_TYPE with any KIND type
+parameter value.
+
+Result characteristics.  Integer.  The kind type parameter value is
+EVENT%KIND.
+
+Result value.  Number of successful event posts using EVENT minus the
+number of events successfully awaited using EVENT.
+
+Examples.  If EVENT is an event variable for which there have been no
+successful event posts or waits, EVENT_QUERY ( EVENT ) has the value
+zero.  After 10 successful posts to EVENT[2] and two successful waits on
+EVENT[2] with UNTIL_COUNT=2, EVENT_QUERY ( EVENT[2] ) has the value 6.
+
+NOTE 7.3
+  Invoking EVENT_QUERY does not imply any synchronization.
+"
+{Is the note really necessary?}
+
+[43:25 A.2.1] Delete "count, "
+
+[43:40-46 A.2.1] Replace "CALL event_query ... IF ( count > 0 )..." with
+
+"  IF ( event_query(confirm%event(i)) > 0 ) THEN ! avoid blocking if
+                                                 ! processing on worker
+                                                 ! is incomplete
+"
+
+{Checking the status at [43:41-45] was not replaced by
+    if ( any( failed_images() == this_image() ) ) then ...
+ because the statement cannot be executed if this_image() has failed!
+ If we really wanted in the original to illustrate the usefulness of
+ testing whether an image has failed, "confirm%event(i)" should have
+ involved a coindexed "confirm" reference.
+}
+
+4. Edits with respect to 14-130 for COUNT type-bound function
+=============================================================
+
+[15:6 6.2p1] After "components" insert "and one kind type parameter
+named KIND.  The default value of KIND is KIND(0)".  Delete "with no
+type parameters".
+
+[15:13 6.2p2] Replace "The processor ... HUGE(0)" with "There is an
+integer component that represents the event count.  Its kind is the kind
+type parameter KIND".
+
+[15:24+ C603+] Insert a paragraph
+
+"
+EVENT_TYPE has a pure elemental non-overridable type-bound generic
+function named COUNT that has no arguments other than the passed-object
+dummy argument.  The result type is integer.  The result kind is the
+same as the KIND type parameter.  The result value is the number of
+successful event posts for the passed object minus the number of events
+successfully awaited for the passed object.
+
+NOTE 6.0
+  Invoking the COUNT type-bound function does not imply any
+  synchronization.
+"
+{Is the note really necessary?}
+
+[17:5 7.1p1] Delete "EVENT_QUERY,".
+
+[23:24-24:2+2] Delete subclause 7.4.11.
+
+[34:14+21] Delete the EVENT_QUERY table entry.
+
+[43:6 A.2.1] Replace the subclause title with "Event count example"
+
+[43:25 A.2.1] Delete "count, "
+
+[43:40-46 A.2.1] Replace "CALL event_query ... IF ( count > 0 )..." with
+
+"  IF ( confirm%event(i)%count() > 0 ) THEN ! avoid blocking if
+                                            ! processing on worker
+                                            ! is incomplete
+"
+
+{Replace this with
+"  IF ( confirm%event(i)%count > 0 ) THEN ! avoid blocking if processing
+                                          ! on worker is incomplete
+"
+if 14-145r1 passes.}
+
+{Checking the status at [43:41-45] was not replaced by
+    if ( any( failed_images() == this_image() ) ) then ...
+ because the statement cannot be executed if this_image() has failed!
+ If we really wanted in the original to illustrate the usefulness of
+ testing whether an image has failed, "confirm%event(i)" should have
+ involved a coindexed "confirm" reference.
+}
+
+5. Edits with respect to 14-130 for COUNT component
+===================================================
+
+[15:6 6.2p1] Before "private" insert "a public component named COUNT; it
+may have additional".  After "components" insert "and one kind type
+parameter named KIND.  The default value of KIND is KIND(0)".  Delete
+"with no type parameters".
+
+[15:8] Replace "An event variable has a count that" by "The COUNT
+component of an event variable"
+
+[15:9-10] Replace "The effect of each change ... change" with "The COUNT
+component of an event variable is updated as if by invoking the
+ATOMIC_ADD intrinsic subroutine".
+
+[15:12] Replace "event count" with "COUNT component".
+
+[15:13 6.2p2] Delete "The processor ... HUGE(0)."
+
+[15:24+ C603+] Insert a paragraph
+
+"
+The COUNT component of EVENT_TYPE is an integer scalar.  Its kind is
+specified by the KIND type parameter of the type.  It has no additional
+attributes.  It is not definable other than by executing EVENT POST or
+EVENT WAIT statements.  The value of the COUNT component of an object of
+EVENT_TYPE is the number of successful posts using the object minus the
+number of events successfully awaited using the object.
+
+C603a The COUNT component of an object of type EVENT_TYPE shall not
+      appear
+      -- in a variable definition context (16.6.7),
+      -- as an actual argument corresponding to a dummy argument that
+         does not explicitly have INTENT(IN),
+      -- as the <data-target> in a pointer assignment statement,
+      -- as the <expr> corresponding to a component with the POINTER
+         attribute in a <structure-constructor>,
+      -- as an actual argument corresponding to a dummy argument with
+         the POINTER attribute, or
+      -- as an actual argument in a reference to the C_LOC function from
+         the ISO_C_BINDING intrinsic module.
+"
+
+[15:30,31 6.3] Replace "count" with "COUNT component" twice.
+
+[16:12,13 6.4] Replace "event count" with "COUNT component of the event
+variable" twice.
+
+[17:5 7.1p1] Delete "EVENT_QUERY,".
+
+[23:24-24:2+2] Delete subclause 7.4.11.
+
+[34:14+21] Delete the EVENT_QUERY table entry.
+
+[43:25 A.2.1] Delete "count, "
+
+[43:6 A.2.1] Replace the subclause title with "Event count example"
+
+[43:40-46 A.2.1] Replace "CALL event_query ... IF ( count > 0 )..." with
+
+"  IF ( confirm%event(i)%count > 0 ) THEN ! avoid blocking if processing
+                                          ! on worker is incomplete
+"
+
+{Checking the status at [43:41-45] was not replaced by
+    if ( any( failed_images() == this_image() ) ) then ...
+ because the statement cannot be executed if this_image() has failed!
+ If we really wanted in the original to illustrate the usefulness of
+ testing whether an image has failed, "confirm%event(i)" should have
+ involved a coindexed "confirm" reference.
+}

@@ -1,0 +1,106 @@
+To: J3                                                     J3/17-246r1
+From: Steve Lionel
+Subject: Assignment to specifier variables
+Date: 2017 October 18
+
+Reference: 17-007r2, 10-007r1, 14-194r1
+
+
+Introduction
+------------
+
+Paper 14-194r1 introduced a change to the language used to describe
+assignment to specifier variables, such as ERRMSG=, IOMSG= and
+INQUIRE specifiers. For example, Fortran 2008's description of
+ERRMSG= in ALLOCATE said:
+
+[132:23-25, 6.7.5p2]
+If an error condition occurs during execution of an ALLOCATE or
+DEALLOCATE statement, the processor shall assign an explanatory message
+to errmsg-variable.
+
+In the Fortran 2015 draft, this paragraph reads:
+
+[147:26-28, 9.7.5p2]
+If an error condition occurs during execution of an ALLOCATE or
+DEALLOCATE statement with an ERRMSG= specifier, the errmsg-variable
+is assigned an explanatory message, as if by intrinsic assignment.
+
+The change was to use the phrase "as if by intrinsic assignment"; the
+primary motivation being to get the right semantics for
+padding/truncation of character values. Unfortunately, as do so many
+seemingly harmless changes, this had unintended side-effects when
+the variable provided for the specifier is a deferred-length
+character allocatable.
+
+Discussion
+----------
+
+Consider the following program:
+
+character(:), allocatable :: errmsg_var
+real, allocatable :: arr(:)
+integer :: status
+
+! Assume that an attempt to allocate an array of HUGE(0) elements
+! fails and that the error message the processor provides is
+! "Out of memory"
+
+errmsg_var = "initial" ! Allocates errmsg_var to length 7
+ALLOCATE (arr(HUGE(0)), STAT=status, ERRMSG=errmsg_var)
+PRINT *, status, errmsg_var !A
+
+DEALLOCATE(errmsg_var)
+ALLOCATE (arr(HUGE(0)), STAT=status, ERRMSG=errmsg_var)
+PRINT *, status, errmsg_var !B
+
+END
+
+Intrinsic assignment to a deferred-length allocatable character
+variable is described in 10.2.1.3. In case A, the length of the
+message (13) is different from the errmsg-variable's length (7),
+so the variable would be deallocated and then reallocated to length
+13 before assignment. In case B, the variable is not allocated
+so it would get allocated to length 13.
+
+This is a significant technical change and it is clear from the earlier
+papers that it was not considered. In the long term,
+automatic reallocation here would be useful to programmers but it is
+too late in the development cycle to include this.
+
+Edits are provided to eliminate the potential rellocation. The
+committee may want to consider reintroducing this as part of a
+broader expansion of allocatable variables in a future revsion.
+
+Edits
+-----
+
+[147:27, 9.7.5p2, ERRMSG= specifier]
+Replace:
+    "as if by {intrinsic assignment}"
+with:
+    "truncated or padded according to the rules of {intrinsic
+    assignment}"
+
+[218:31, 11.6.11p12, STAT= and ERRMSG= specifiers in image control
+statements]
+Replace:
+    "as if by {intrinsic assignment}"
+with:
+    "truncated or padded according to the rules of {intrinsic
+    assignment}"
+
+[255:27, 12.10.1p1, Forms of the INQUIRE statement
+Replace:
+    "performed as if by {intrinsic assignment}"
+with:
+    "converted, truncated, or padded according to the rules of
+    {intrinsic assignment}"
+
+[264:27, 12.11.6p1, IOMSG= specifier]
+Replace:
+    "as if by {intrinsic assignment}"
+with:
+    ", truncated or padded according to the rules of {intrinsic
+    assignment}"
+

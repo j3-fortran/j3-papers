@@ -1,0 +1,105 @@
+                                                             J3/15-218
+To: J3
+From: Malcolm Cohen
+Subject: Interp on intrinsic derived-type assignment
+Date: 2015 September 08
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0146
+TITLE: Does intrinsic assignment copy inherited components twice?
+KEYWORDS: Intrinsic assignment, Type extension
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+
+  Type base
+    Integer a
+  End Type
+  Type,Extends(base) :: ext
+    Real b
+  End Type
+  ...
+  Type(ext) x,y
+  ...
+  x = y
+
+According to 7.2.1.2 Intrinsic assignment statement, p13,
+
+  "An intrinsic assignment where the variable is of derived type is
+   performed as if each component of the variable were assigned from
+   the corresponding component of <expr>"
+
+This would seem to indicate that the above assignment "x = y" is
+interpreted as the following (in unspecified order):
+
+  x%a = y%a
+  x%b = y%b
+  x%base = y%base
+
+and the assignment to x%base is treated as if it were
+
+  x%base%a = y%base%a
+
+thus assigning to x%a twice, which does not seem to make sense.  If a
+type is extended more than once, there can be a plethora of ancestor
+components inheritance-associated with a component, resulting in that
+component being assigned many times.
+
+Q1. Are these per-component assignment semantics intended to apply to
+    ancestor components (and thus produce multiple assignments for
+    inherited components).
+
+It is particularly problematic if the components have type-bound
+defined assignment, for example consider the program
+
+  Module damod
+    Type datype
+    Contains
+      Procedure asgnda
+      Generic :: Assignment(=) => asgnda
+    End Type
+  Contains
+    Subroutine asgnda(a,b)
+      Class(datype),Intent(Out) :: a
+      Class(datype),Intent(In) :: b
+      Print *,'Hello asgnda'
+    End Subroutine
+  End Module
+  Module types
+    Use damod
+    Type base
+      Type(datype) c
+    End Type
+    Type,Extends(base) :: ext
+    End Type
+  End Module
+  Program test
+    Use types
+    Type(ext) :: x = ext(datype()), y
+    y = x
+  End Program
+
+Q2. Does this program print "Hello asgnda" once or twice?
+
+ANSWER:
+
+A1. This sentence was not intended to apply to ancestor components; an
+    edit is supplied to correct this oversight.
+
+A2. The program should print "Hello asgnda" only once.
+
+EDITS:
+
+[156:3] 7.2.1.2 Intrinsic assignment statement, p13,
+        Between "performed as if each" and "component"
+        insert "nonancestor".
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 15-nnn   m208 F08/0146  Submitted
+
+----------------------------------------------------------------------

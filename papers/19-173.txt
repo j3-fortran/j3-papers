@@ -1,0 +1,230 @@
+To: J3                                                     J3/19-173
+From: Van Snyder
+Subject: Rank-agnostic array declaration
+Date: 2019-July-05
+References: 19-110r1 19-150 18-247
+
+Background
+==========
+
+19-110r1 proposed rank-agnostic array declarations of the form
+
+  real :: X(A)                          ! bounds of X == bounds of A
+  real, rank=rank(B), allocatable :: Y  ! Deferred shape
+  real, rank=rank(C), pointer :: P      ! Deferred shape
+  real, rank=rank(D), intent(...) :: Z  ! Assumed shape
+
+tbat would declare objects having the ranks of A, B, C, and D
+respectively.
+
+In the fourth case, intent(...) is, of course, not required; that Z is a
+dummy argument would be obvious without it.
+
+Assuming a dummy argument were declared using
+
+  real, intent(in) :: A(:,:,:)
+
+The obvious utility of
+
+  real :: X(A)                     ! bounds of X == bounds of A
+
+to declare an automatic "work" array, as opposed to
+
+  real :: x(lbound(a,1)-1:ubound(a,1)+1, &
+        &   lbound(a,2)-1:ubound(a,2)+1, &
+        &   lbound(a,3)-1:ubound(a,3)+1) )
+
+or an allocatable "work" array
+
+  real, allocatable :: X(:,:,:)
+  ...
+  allocate ( x(lbound(a,1)-1:ubound(a,1)+1, &
+           &   lbound(a,2)-1:ubound(a,2)+1, &
+           &   lbound(a,3)-1:ubound(a,3)+1) )
+
+was described in 19-110r1.
+
+In a generic-programming context, one might declare
+
+  module M(Q)
+    real, rank=rank(Q), intent(in) :: A   ! Assumed shape
+    real :: X(A)                          ! SHAPE(X) == SHAPE(A)
+
+!  or
+
+    real, rank=rank(Q), intent(in) :: A   ! Assumed shape
+    real, rank=rank(A), allocatable :: X  ! Deferred shape
+    ...
+    allocate ( x(A) )
+    ...
+  end module M
+
+The utility here is obvious.  The British might say "bleeding obvious." 
+The response from JOR to the proposals in 19-110r1 was "Huh?" even
+though there was an admonition in 19-110r1
+
+  If you don't understand the implications of this, PLEASE ASK FOR MORE
+  EXPLANATION!  There is nothing in DIMENSION(..) and SELECT RANK that
+  provides any support in this direction.
+
+Nobody asked for illumination.
+
+The predecessor of 19-110r1, 18-247, was dismissed by JOR as being the
+same as vector subscripts, even though specifying the bounds of an array
+has nothing to do with subscripting, and the final example in 18-247
+said
+
+  This provides a more general scatter/gather facility than the present
+  vector subscript facility.  This is not the same as using the elements
+  of the rank-one sections in S as vector subscripts...
+
+and
+
+  S is NOT a vector subscript.
+
+appeared in the paper.
+
+Proposals
+=========
+
+1. Explicit shape
+-----------------
+
+Allow a rank-one array with extent given by a constant expression to
+specify the rank and bounds of another array, e.g.
+
+  real :: X(A)
+
+declares an array X such that RANK(X) == RANK(A), and X has the same
+bounds (not just shape) as A.  The bounds of A shall be specified by
+constant expressions (any of its lower bounds might be the default "1"
+value).
+
+One bound of X could be a scalar, which is "broadcast" to the same shape
+as the other bound (which determines the rank), e.g., allow
+
+  real :: X ( 0 : shape(A)+1 ) )
+
+instead of requiring
+
+  real :: X ( [ ( 0, i = 1, rank(A) ) ] : shape(A)+1 ) )
+
+2. Deferred shape
+-----------------
+
+2.1 Deferred-shape object declaration
+.....................................
+
+Allow to specify the rank of an allocatable or pointer object using a
+RANK attribute, e.g.
+
+  real, rank=rank(B), allocatable :: Y  ! Deferred shape
+  real, rank=rank(C), pointer :: P      ! Deferred shape
+
+For example, if SIZE(B) = 3, this is equivalent to
+
+  real, allocatable :: Y(:,:,:)
+
+which is not useful in a generic-programming context.
+
+Whether B or C being a scalar is prohibited (e.g., in a
+generic-programming context), results in declaring a scalar, or results
+in declaring a new entity called a rank-zero array, can be decided in
+due course.
+
+2.2 Deferred shape object allocation
+....................................
+
+Allow to allocate a deferred-shape object using a rank-one object of
+explicit shape and constant extent to specify bounds, e.g.
+
+  allocate ( Y ( A ) ) ! lbound(Y) == [1,1,...], ubound(Y) == A,
+                       ! SIZE(A,1) is a constant expression
+
+or, more generally
+
+  allocate ( Y ( B : A ) ) ! lbound(Y) == B, ubound(Y) == A, SIZE(A,1)
+                           ! == SIZE(B,1) are constant expressions
+
+e.g.,
+
+  allocate ( Y ( lbound(A)-1 : ubound(A) + 1 )
+
+insead of requiring
+
+  allocate ( Y(lbound(a,1)-1:ubound(a,1)+1, &
+           &   lbound(a,2)-1:ubound(a,2)+1, &
+           &   lbound(a,3)-1:ubound(a,3)+1) )
+
+The latter is not useful in a generic-programming context, wherein
+RANK(Y) depends upon a generic parameter.
+
+One bound could be a scalar, which is "broadcast" to the same shape as
+the other bound, e.g.
+
+  allocate ( Y ( 0 : shape(A)+1 ) )
+
+instead of requiring
+
+  allocate ( Y ( [ ( 0, i = 1, rank(A) ) ] : shape(A)+1 ) )
+
+If the object (Y in the examples) is (allowed to be) a scalar, the
+object used to declare the bounds (A in the examples) shall be an array,
+and its extent shall be zero.
+
+2.3 Pointer rank remapping
+..........................
+
+In a rank-remapping pointer assignment, the upper bounds of a pointer
+object can be specified by a single rank-one array whose extent is a
+constant expression
+
+  P(A) => M(...)
+
+in which case the lower bounds are all 1, or both bounds can be
+specified by rank-one arrays whose extents are constant expressions that
+have the same value
+
+  P( lbound(A)-1 : ubound(A)+1 ) => M(...)
+
+instead of requiring
+
+  P( lbound(A,1)-1 : ubound(A,1)+1, &
+   & lbound(A,2)-1 : ubound(A,2)+1, &
+   & lbound(A,3)-1 : ubound(A,3)+1 ) => M(...)
+
+The latter is not useful in a generic-programming context, wherein
+RANK(A) depends upon a generic parameter.
+
+In all cases, the rank of P is the extent of the bounds.
+
+One set of bounds could be specified by a scalar, which is "broadcast"
+to the same extent as the other bound, which specifies the rank, e.g.
+
+  P ( 0 : shape(A)+1 ) => M(...)
+
+instead of requiring
+
+  P ( [ ( 0, i = 1, rank(A) ) ] : shape(A)+1 ) => M(...)
+
+3. Assumed shape
+-----------------
+
+Allow to specify the rank of an assumed-shape object using a
+RANK attribute, e.g.
+
+  real, rank=rank(B) :: Y  ! Assumed shape if Y is a dummy argument
+                           ! even if the INTENT attribute is not
+                           ! specified
+
+For example, if SIZE(B) = 3, this is equivalent to
+
+  real :: Y(:,:,:)
+
+which is not useful in a generic-programming context.
+
+Whether B being a scalar is prohibited (e.g., in a generic-programming
+context), results in declaring a scalar, or results in declaring a new
+entity called a rank-zero array, can be decided in
+
+

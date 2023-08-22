@@ -1,0 +1,150 @@
+To: J3                                                     J3/22-151r1
+From: Tom Clune & generics subgroup
+Subject: Specs for generics scoping
+Date: 2022-April-19
+
+Reference: 22-120r5.txt
+
+1. Introduction
+===============
+
+The purpose of this paper is to establish the formal specs for the
+proposed TEMPLATE feature with regard to _scoping_.  Section 2
+contains the specs and section 3 contains a pseudo-code example that
+demonstrates several aspects.
+
+
+2. Formal Specs
+===============
+
+A. The TEMPLATE construct has access to entities in the host scope
+   through host association.
+
+   Rationale: We expect templates will often make use of types,
+              restrictions, and other templates that are provided by
+              the containing scope.
+
+   Straw Vote - Should the IMPORT statement be required to access
+                entities from the host scope of a TEMPLATE construct?
+
+B1. A TEMPLATE construct may specify the accessibility of each entity
+    declared within it.  Private template entities must not be
+    referenced outside of the template.  Instantiation provides access
+    to public entities declared inside the template.
+
+    NOTE: Entities accessible in the template via host or use
+          association cannot be made public from the template.
+
+B2. The default accessibility for template declared entities is
+    public, but this may be overridden with a PRIVATE statement or
+    made explicit with a PUBLIC statement.
+
+C1. The INSTANTIATE statement defines concrete instances of entities
+    of the specified template as external entities. I.e., instantiated
+    entities do not reside in the same scope as the referenced
+    template, nor are they global identifiers.
+
+C2. Public entities instantiated via the INSTANTIATE statement are
+    accessible within the scope in which the INSTANTIATE statement
+    appears.
+
+C3. The INSTANTIATE statement provides an optional ONLY clause that
+    enables fine-grained access to individual template entities.
+
+C4. The INSTANTIATE statement provides rename capabilities analogous
+    to those of the USE statement for modules.
+
+
+3. Example
+==========
+
+The example below demonstrates how multiple distinct instantiations of
+a single TEMPLATE may use the same host-associated module variable
+"counter".
+
+     MODULE A
+        IMPLICIT NONE
+        PRIVATE
+
+        PUBLIC :: TMPL
+        PUBLIC :: counter
+
+        INTEGER :: counter = 0
+
+        RESTRICTION R(T, F)
+           TYPE :: T; END TYPE
+           PURE FUNCTION F(x) RESULT(y)
+              TYPE(T) :: y
+              TYPE(T), INTENT(IN) :: x
+           END FUNCTION F
+        END RESTRICTION
+
+        TEMPLATE tmpl(T, F)
+           REQUIRES R(T, F)
+           PRIVATE
+           PUBLIC :: iterate
+
+        CONTAINS
+
+              PURE FUNCTION iterate(x, n) RESULT(y)
+                 TYPE(T) :: y
+                 TYPE(T), INTENT(IN) :: x
+                 INTEGER, INTENT(IN) :: n
+
+                 INTEGER :: i
+
+                 y = x
+                 DO i = 1, n
+                    y = F(y)
+                    counter = counter + 1 ! HOST association
+                 END DO
+             END FUNCTION iterate
+
+        END TEMPLATE
+
+     END MODULE A
+
+
+     PROGRAM MAIN
+        USE A
+
+        REAL :: y
+
+        ! The following instantiations provide access to the template
+        ! declared entity iterate
+
+        INSTANTIATE iterate_tmpl(INTEGER, square), only: &
+           & iterate_square => iterate
+        INSTANTIATE iterate_tmpl(REAL, logistic),  only: &
+           & iterate_logistic => iterate
+
+        y = iterate_square(2, n=3)
+        PRINT*, 'y = ', y, '; expected 256.'
+
+        y = iterate_logistic(0.1, n=10)
+        PRINT*, 'y = ', y,'; expected 0.8872352'
+
+        PRINT*, 'TOTAL: ', counter, '; expected 13 (3 + 10)'
+
+     CONTAINS
+
+        PURE FUNCTION square(x) RESULT(Y)
+           INTEGER :: y
+           INTEGER, INTENT(in) :: x
+
+           y = x*x
+        END FUNCTION square
+
+        PURE FUNCTION logistic(x) RESULT(Y)
+           REAL :: y
+           REAL, INTENT(in) :: x
+           REAL, PARAMETER :: feigenbaum = 3.56995
+           y = feigenbaum * x * (1-x)
+        END FUNCTION logistic
+
+     END PROGRAM
+
+
+===END===
+
+

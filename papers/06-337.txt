@@ -1,0 +1,187 @@
+
+                                                               J3/06-337
+
+To: J3
+Date: October 30, 2006
+From: Aleksandar Donev
+Subject: Unresolved Issue 089: Pointer subcomponents of co-arrays
+References: J3/06-007r1
+
+Note: This issue spans multiple Clauses---I do not think it is
+appropriate to split it up.
+
+Unresolved Technical Issue (UTI) 89 complains about the imposition
+of am uncheckable run-time requirement on the type of co-indexed
+object at [118:11-13]. It is also important to consider [118:11-13]
+together with C617 [117:15-16]. In particular, the later was meant to
+cover the cases that C617 could not cover being a numbered constraint.
+
+What [118:11-13] was trying to achieve was to prevent copying a
+Fortran or C pointer from one image to another by using type extension
+(see Example 1 below), as is not covered by C617. This would lead to
+a local pointer pointing to a remote object, the implementation of
+which would require making all pointers much less efficient and the
+memory consistency model ineffective.
+
+Malcolm came up with an example where even [118:11-13] is not
+sufficient, as restrictive as it tries to be (see Example 2
+below). This example uses TRANSFER to effectively copy a pointer
+from one image to another and bypass the typing system that C617 and
+[118:11-13] rely on.
+
+Given this, it seems best not to try to (completely) prevent a user
+from copying pointers from one image to another. Rather, we should
+prohibit de-rereferencing of such pointers via references that are
+not co-indexed with the image where the target resides. I do that
+in the edits below by adding a restriction against data-refs that
+lead to de-referencing a "local" pointer whose target resides on
+another image. It might be possible to do it by specifying that a
+pointer's association status becomes undefined if it becomes pointer
+associated with a target that resides on another image as a new item
+in 16.5.2.2.3 at [493:33+], but I could not word this. If it can be
+done it would be better than the edits proposed below.
+
+I believe we should still try to put in as many compile-time
+constraints as possible in order to prevent a user from copying a
+pointer in-between images (and thus shoot themselves in the foot
+later).
+
+Note:
+I believe C616 and C617 to be deffective in that they are not
+compile-time checkable. A polymorphic object may have ultimate/direct
+components that are not known at compile time. An edit tries to
+fix this.
+
+Further Note:
+In my paper "Co-indexed procedure references"
+I point out that one should not be allowed to reference
+procedures on other images via pointer or type-bound procedures. I
+propose there the new constraint:
+
+Edit: [309:8++] Add new constraint after C1227:
+C1227b (R1221) The <data-ref> in a <procedure-designator> shall not
+be a co-indexed object.
+
+This is related to the issue discussed here and maybe more
+appropriately included in this paper.
+
+--------------------------------------------
+
+Example 1.
+============
+
+This illustrates how type extension can be used to copy a C pointer
+from one image to another and try to access a remote variable without
+a co-indexed object visible to the compiler.
+
+USE ISO_C_BINDING
+CLASS(*), ALLOCATABLE, DIMENSION[:] :: p
+CLASS(*), ALLOCATABLE :: my_p
+
+ALLOCATE(TYPE(C_PTR)::p[*])
+
+IF(THIS_IMAGE()==1) THEN
+   x=1.0
+   SELECT TYPE(p)
+   TYPE IS(C_PTR)
+     p=C_LOC(x)
+   END SELECT
+   NOTIFY(2)
+ELSE IF(THIS_IMAGE()==2) THEN
+   QUERY(1)
+   ALLOCATE(my_p, SOURCE=p[1]) ! Will copy the pointer from image 1
+   SELECT TYPE(my_p)
+   TYPE IS(C_PTR)
+     CALL C_F_POINTER(my_p,y)
+     WRITE(*,*) y ! Should print 1.0
+   END SELECT
+END IF
+
+Example 2.
+============
+
+-----------------------------------
+ Type t
+   Real,Pointer :: p => Null()
+ End Type
+
+ Type(t) :: x
+ Real,Target :: y
+ Integer,Allocatable :: ix(:)[:]
+
+ ixlen = Size(Transfer(x,(/0/)))
+ Allocate(ix(ixlen))
+
+ If (This_image()==1) Then
+   y = 3
+   x%p => y
+   ix = transfer(x,ix)
+ Else
+   y = 4
+ End If
+ Sync All
+ If (This_image()==2) Then
+   x = transfer(ix(:)[1],x)
+   Print *,x%p ! Prints 3.0, from the y on image 1
+ End If
+
+--------------------------------------------
+Edits:
+
+Note: These edits rely on being able to say "ultimate/direct component
+of a type" (rather than of an object), as is done elsewhere.
+
+[117:13] Insert "declared" before "type"
+
+[117:15] In C617 delete:
+", or have a direct component,"
+
+[117:16] Append to the end of C617:
+", and its declared type shall not have direct components that are
+of type IMAGE_TEAM, C_PTR, or C_FUNPTR."
+
+[118:11-13] Replace this paragraph with:
+"If <data-ref> is a pointer that appears in a context that does not
+pertain to its pointer association status, and its target is on a
+different image then <data-ref> shall include an <image-selector>
+that specifies the image of the target. If <data-ref> is of type
+IMAGE_TEAM, its value shall not be obtained by an invocation of the
+intrinsic procedure FORM_TEAM on another image."
+[Note: This last sentence allows copying empty teams between images]
+[Question: Should ASSOCIATED(p) be allowed if p points to a remote
+object? These edits allow that. This may be difficult to do on
+heterogeneous "clusters".]
+
+[118:13+] Add a new note:
+Note 6.7a
+The numbered constraints C616, C617, C725, and C727 prevent a (Fortran
+or C) pointer from pointing to a target on a different image. It is
+never-the-less possible for a conforming program to associate a pointer
+with a target that resides on a different image. Such a pointer shall
+not be referenced. This restriction allows the processor to assume that
+all references to data on other images are co-indexed. It is however
+possible to de-reference a pointer on another image if it points to a
+target on that same image. For example, if Z is a co-array that is of
+a derived type with a pointer component PTR, Z[P]%PTR is a reference
+to the target of component PTR of Z on image P.
+End Note
+
+[163:20+] Delete Note 7.47.
+
+[467:1+] In item (2) of the description of C_LOC, add to the end of
+the sentence:
+"on the same image"
+
+[467:1+] In item (2) of the description of C_LOC, add to the end of
+the sentence:
+"on the same image"
+[Question: Is C_FUNPTR covered by requiring it to be a valid C
+address?]
+
+[475:1-] Add new note:
+Note 15.12a
+If the value of an object of type C_PTR is the address of an object
+that resides on another image, it cannot be directly referenced in
+Fortran and it cannot be de-referenced in C since it is not a valid
+C address."
+End Note

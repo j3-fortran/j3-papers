@@ -1,0 +1,52 @@
+To:                                       J3
+From: Aleksandar Donev
+Subject: Problem with LOCKED_BY_THIS_IMAGE
+Date: 2008 July 18
+
+At the last meeting, when LOCK/UNLOCK were added, an intrinsic called
+LOCKED_BY_THIS_IMAGE was also added. I am not exactly certain of the
+need or use of this intrinsic. I was told that one of the uses is for an
+image to check first if it already owns a lock, and if not, proceed to
+obtain it. Note that LOCK with a STAT specifier already does that.
+
+In any case, assuming this function is actually useful and kept, there
+is a technical problem with any reasonable use of this function.
+Consider the example:
+
+IF(THIS_IMAGE()==2) THEN
+        IF(.NOT.LOCKED_BY_THIS_IMAGE(lock[1])) THEN ! Segment 2-A
+                LOCK(lock[1])
+        END IF
+ELSE IF(THIS_IMAGE()==1) THEN
+        LOCK(lock[1]) ! Segment 1-A starts
+END IF
+
+According to our memory consistency restrictions, the access to
+LOCKED_BY_THIS_IMAGE(lock[1]) in segment 2-A must be ordered with
+respect to the locking in segment 1-A, so the above code would in fact
+be illegal. We are allowing a variable to be examined while other images
+are modifying it, even if it is a lock. This forces the processor to use
+atomic instructions for setting/reading the field that says who owns the
+lock.
+
+If this function is to remain in the language, we need to explicitly
+exempt references to lock variables in calls to this intrinsic function
+in our memory consistency rules. Essentially, the intention should be
+that references to LOCKED_BY_THIS_IMAGE act as references to a VOLATILE
+scalar of a single numeric unit. Presumably, actual implementations of
+locks would make them derived types that have an integer component whose
+value is the image that owns the lock (or zero otherwise). This integer
+is atomically loaded from memory and then compared to THIS_IMAGE to
+determine if the lock is locked by this image.
+
+I am not presently certain how to write the words for this, so I provide
+no specific edits.
+
+Renaming the keyword LOCKED
+=============
+
+I believe we ought to change the keyword LOCKED= in the LOCK
+statement---it will confuse people. Is it referring to "already locked"
+or "just locked"? I know it is the latter, but some users will think it
+is the first. I propose the keyword SUCCESS as a clearer alternative.
+Another option is ALREADY_LOCKED.

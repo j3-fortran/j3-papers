@@ -1,0 +1,64 @@
+
+                                                          J3/02-189r2
+
+Date:     May 15, 2002
+To:       J3
+From:     Rob James
+Subject:  VOLATILE and targets of pointers
+
+At [85:9-10] of 02-007R1, it is stated that, if a variable with the 
+POINTER attribute also has the VOLATILE attribute, then the volatility
+applies not only to the pointer, but also to the target.  This could 
+be interpreted to mean that _all_ accesses to the target of a volatile 
+pointer are considered to be accesses to a volatile object, even those
+that are not made by dereferencing the pointer.  For example:
+
+  INTEGER, TARGET :: A
+  INTEGER, POINTER, VOLATILE :: P
+  P => A
+  A = 4
+  IF (A .EQ. 9) THEN  ! This cannot be optimized out, even if the 
+                      ! programmer knows that A should not be 
+                      ! considered volatile, but that the pointer
+                      ! should.
+    ...
+  END IF
+
+So, in this situation, it is as if A has the VOLATILE attribute.  The 
+situation gets a bit hairier when there are multiple possible targets
+for the pointer.  In this case, all of those possible targets would
+have to be considered volatile, even if only one of them (or only the
+pointer itself) needs to be volatile.
+
+This "blanket volatility" is undesirable.  It would be better to only
+consider the pointer association to be volatile, rather than the
+target as well.  This would allow the target to be non-volatile if the
+programmer knows it does not need to be, but if it is accessed through
+the pointer, the latest value of the pointer must be loaded from
+memory and followed in order to get the correct object.  This will
+have the effect of treating the object as volatile when it is accessed
+through the pointer, but direct access to the object is non-volatile
+and can be optimized.
+
+
+Edits:
+
+[85:9-10] Delete: "to the target of the pointer and"
+
+[85:11-]  Add the following note:
+          Note 5.25a
+          If a pointer has the VOLATILE attribute, its target does not 
+          necessarily need the VOLATILE attribute.  In such a case, 
+          if the target is accessed through the pointer, the most recent
+          association status of the pointer must be loaded from memory
+          and used in order to get the correct object.  This has the 
+          effect of treating the object as volatile when it is accessed
+          through the pointer, while access to the object that does not
+          occur through the pointer is non-volatile and can be 
+          optimized.
+
+[85:13]   Delete this sentence.  We already have a rule specifying
+          when volatile must be used.  If the user doesn't use it in
+          these situations, they cannot expect correct behaviour from
+          their program.  We don't really need to make anything
+          processor dependent.

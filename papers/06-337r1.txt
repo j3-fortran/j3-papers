@@ -1,0 +1,212 @@
+
+                                                               J3/06-337r1
+
+To: J3
+Date:8 November, 2006
+From: Aleksandar Donev and John Reid
+Subject: Unresolved Issue 089: Pointer subcomponents of co-arrays
+References: J3/06-007r1
+
+Note: This issue spans three Clauses - we do not think it is
+appropriate to split it up.
+
+Unresolved Technical Issue (UTI) 89 (page 119) complains about the imposition
+of an uncheckable run-time requirement on the type of co-indexed
+object at [118:11-13]. It is important to consider this in conjunction
+with C616 and C617 [117:13-16]. In particular, [118:11-13] was meant to
+cover the cases that could not be covered by constraints.
+
+What [118:11-13] was trying to achieve was to prevent copying a Fortran
+or C pointer from one image to another by using type extension (see
+Example 1 below). This would lead to a local pointer pointing to a remote 
+object, the implementation of which would require making all pointers much 
+less efficient and the memory consistency model ineffective.
+
+Malcolm came up with an example where even [118:11-13] is not
+sufficient, as restrictive as it tries to be (see Example 2 below). 
+This example uses TRANSFER to effectively copy a pointer from one 
+image to another. Example 3 shows that the problem can also occur
+through a subroutine call. 
+
+Given this, it seems best not to try to (completely) prevent a user from
+copying pointers from one image to another. Rather, we should specify
+that a pointer's association status becomes undefined if it would otherwise
+become pointer associated with a target on another image.
+
+We retain the compile-time constraints that prevent a pointer assignment
+statement associating a pointer with a target on another image, but
+discard the attempt to prevent such a pointer assocation occurring 
+in other ways. Similarly, we retain the compile-time constraints that 
+disallow an intrinsic assignment for a variable of type IMAGE_TEAM, 
+C PTR, and C_FUNPTR of a value on another image, but discard the attempt 
+to prevent such an assignment occurring in other ways. 
+
+Also, in considering this issue, we noticed that there is no prohibition
+against allocating a co-array to be of a dynamic type IMAGE_TEAM, 
+C PTR, or C_FUNPTR even though we prohibit a co-array to be declared 
+with such a declared type (C526 on p. 89). 
+
+--------------------------------------------
+
+Note:
+J3/06-334 "Co-indexed procedure references" points out that one should 
+not be allowed to reference procedures on other images via pointer or 
+type-bound procedures and proposes the new constraint:
+
+Edit: [309:8++] Add new constraint after C1227:
+C1227b (R1221) The <data-ref> in a <procedure-designator> shall not
+be a co-indexed object.
+
+This is related to the issue discussed here and maybe more
+appropriately included in this paper.
+
+--------------------------------------------
+
+Example 1.
+
+This illustrates how type extension can be used to copy a C pointer
+from one image to another.
+
+USE ISO_C_BINDING
+CLASS(*), ALLOCATABLE, DIMENSION[:] :: p
+CLASS(*), ALLOCATABLE :: my_p
+
+ALLOCATE(TYPE(C_PTR)::p[*])
+
+IF(THIS_IMAGE()==1) THEN
+   SELECT TYPE(p)
+   TYPE IS(C_PTR)
+     p=C_LOC(x)
+   END SELECT
+   NOTIFY(2)
+ELSE IF(THIS_IMAGE()==2) THEN
+   QUERY(1)
+   ALLOCATE(my_p, SOURCE=p[1]) ! Will copy the pointer from image 1
+END IF
+
+-----------------------------------
+
+Example 2.
+
+ Type t
+   Real,Pointer :: p => Null()
+ End Type
+
+ Type(t) :: x
+ Real,Target :: y
+ Integer,Allocatable :: ix(:)[:]
+
+ ixlen = Size(Transfer(x,(/0/)))
+ Allocate(ix(ixlen))
+
+ If (This_image()==1) Then
+   x%p => y
+   ix = transfer(x,ix)
+ End If
+ Sync All
+ If (This_image()==2) Then
+   x = transfer(ix(:)[1],x) ! x%p points to y on image 1
+ End If
+
+-----------------------------------
+
+Example 3.
+
+program remote_targets
+
+   real, target :: t ! Local target
+   
+   type :: my_base
+   end type
+   
+   type, extends(my_base) :: my_type
+      real, pointer :: p
+   end type
+   
+   class(my_base), allocatable :: a
+   
+   allocate(my_type::a)   
+   select type(a)
+      class is(my_type)
+         a%p=>t ! Local target
+   end select
+   
+   call sub(a[1])
+   ! Within sub, on all images, x%p is targeted on image 1. 
+   
+contains
+
+   subroutine sub(x)
+      class(my_type), intent(in) :: x
+      select type(x)
+         class is(my_type)
+            ! Where is the target of x%p???
+      end select
+   end subroutine
+   
+end program
+
+--------------------------------------------
+
+Edits:
+
+[117:13-14]. In 6.1.2 Structure components, delete constraint C616.
+
+[117:15]. In 6.1.2 Structure components, C617, delete
+    ", or have a direct component,".
+
+[117:16+]. In 6.1.2 Structure components, delete NOTE 6.4.
+
+[118:11-13]. In 6.1.2 Structure components, delete final paragraph.
+
+[125:31+] In 6.3.1 ALLOCATE statement, add after C639:
+
+   C639a (R626) <type-spec> shall not be C_PTR, C_FUNPTR, or IMAGE_TEAM
+         if an <allocate-object> is a co-array.
+
+   C639b (R626) The declared type of <source-expr> shall not be C_PTR, 
+         C_FUNPTR, or IMAGE_TEAM if an <allocate-object> is a co-array.
+
+[161:1-] After NOTE 7.43, add new paragraph and note
+
+   For an intrinsic assignment of the type IMAGE_TEAM, C_PTR, or
+   C_FUNPTR, the variable becomes undefined if the variable and <expr>
+   are not on the same image.
+
+   NOTE 7.43a
+   An intrinsic assignment statement for a variable of type IMAGE_TEAM,
+   C_PTR, or C_FUNPTR is not permitted to involve a co-indexed object,
+   see C617, which prevents inappropriate copying from one image to
+   another. However, such copying may occur as an intrinsic assignment
+   for a component in a derived-type assignment, in which case the copy
+   is regarded as undefined.
+   End Note
+
+[162:22] Add new sentence at end of first paragraph of 7.4.2.1 "General":
+
+   If the pointer and target are not on the same image, pointer
+   assignment causes the association status of the pointer to become
+   undefined.
+
+[162:22+] Add new note at end of first paragraph of 7.4.2.1 "General":
+
+   NOTE 7.46a
+   A pointer assignment statement is not permitted to involve a co-indexed
+   pointer or target, see C725 and C727. This prevents this statement 
+   associating a pointer with a target on another image. If such an 
+   association would otherwise be implied, such as for a pointer component 
+   in a derived-type intrinsic assignment, the association status of the 
+   pointer becomes undefined. 
+   End Note
+
+[493:4+] In the list in 16.5.2.3.3 "Events that cause the association
+status of pointers to become undefined", add new item
+
+  (1a) the pointer is pointer-assigned to a target on a different image,
+
+[503:11+] In the list in 16.6.6 "Events that cause variables to become 
+undefined", add new item
+
+  (21)  Execution of an intrinsic assignment of the type IMAGE_TEAM, C_PTR, 
+        or C_FUNPTR in which the variable and <expr> are not on the same 
+        image causes the variable becomes undefined.

@@ -1,0 +1,94 @@
+                                                            J3/12-142
+To: J3
+From: Malcolm Cohen
+Subject: PURE INTENT(OUT) finalization
+Date: 2012 February 16
+
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0031
+TITLE: PURE INTENT(OUT) finalization
+KEYWORDS: PURE INTENT(OUT) FINAL
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+  MODULE m
+    TYPE t
+      ...
+    CONTAINS
+      FINAL f
+    END TYPE
+    INTEGER :: fcount = 0
+  CONTAINS
+    SUBROUTINE f(x)
+      TYPE(t),INTENT(INOUT) :: x
+      ...
+      fcount = fcount + 1
+    END SUBROUTINE
+    PURE SUBROUTINE zap(x)                ! (1)
+      TYPE(t),INTENT(OUT) :: x
+    END SUBROUTINE
+    PURE SUBROUTINE bad(y)
+      TYPE(t),INTENT(INOUT) :: y
+      CALL zap(y)                         ! (2)
+    END SUBROUTINE
+  END MODULE
+
+Clearly, even though subroutine zap is pure, invoking it causes impure
+final subroutine f to be called and so therefore it cannot be invoked
+in any context that requires it to be pure.
+
+Thus the call marked (2) is invalid.
+
+The question is whether the subroutine definition itself (marked (1))
+is standard-conforming.  If finalization of INTENT(OUT) arguments is
+considered to be done by the called procedure, then the subroutine
+definition is not standard-conforming.  If finalization of INTENT(OUT)
+arguments is done by the caller, the subroutine definition might be
+standard-conforming.
+
+It would certainly seem a bit strange to be able to define a PURE
+procedure that cannot be invoked anywhere purity is required.
+
+DISCUSSION:
+
+Although the phrase "When a procedure is invoked" sounds like
+finalization occurs in the caller of a procedure and not in the called
+procedure, being PURE or having a finalizable INTENT(OUT) dummy
+argument are not grounds for an explicit interface to be required.
+
+This would appear to require, as a matter of practicality, that the
+processor performs the finalization of the actual argument on entry to
+the called procedure.  I.e., that the impure final subroutine will in
+actuality be called from the pure procedure.
+
+ANSWER:
+
+Allowing a PURE procedure to cause invocation of impure final
+procedures in this way was inadvertant.  An edit is supplied to
+clarify that any INTENT(OUT) dummy arguments of a PURE procedure must
+not have a relevant impure FINAL procedure.
+
+EDITS to 10-007r1:
+
+[312:21+] In 12.7 after C1277, insert new constraint
+  "C1277a An INTENT(OUT) argument of a pure procedure shall not be
+          such that finalization of the actual argument would
+          reference an impure procedure."
+{In some other constraints we use "procedure that is not pure", but
+ "impure procedure" is a simpler way of saying the same thing.}
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 10-181    m192  F08/0031 submitted
+         10-181r1  m192  Revised - Passed by J3 meeting
+         10-202    m192  Passed by J3 letter ballot #21 10-199
+         11-006Ar1 m196  Adjust edits to reference 10-007r1
+         N1889     m197  Failed WG5 ballot N1877
+         12-142    m197  Removed J3 note, no other changes.
+
+----------------------------------------------------------------------

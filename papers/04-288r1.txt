@@ -1,0 +1,174 @@
+
+                                                    J3/04-288r1
+
+To: J3/WG5
+From: Malcolm Cohen
+Date: 3rd May 2004
+Subject: Nonelemental IEEE subroutines
+
+1. Introduction
+
+In the IEEE TR, the routines
+  IEEE_SET_FLAG
+  IEEE_SET_HALTING_MODE
+are described as being (pure and) elemental.  However, in the F2003 FCD,
+they are described as being impure.
+
+This is an inconsistency between the TR and the standard.  We promised
+only to make changes to the facilities described by the TR if they were
+necessary (i.e. there was an error in the TR).  In the discussion below
+it is explained
+- why these procedures cannot be elemental (and therefore that there is
+  an error in the TR),
+- that these procedures can be pure.
+
+Making these procedures impure as well as nonelemental is a larger
+inconsistency than is needed simply to fix the error (and one which
+will likely adversely affect existing user programs) and thus in
+breach of our promise.  Restoring their purity will restore the
+possibility of doing exception handling in a procedure called from a
+FORALL.
+
+Therefore we propose to reinstate the purity of these procedures.
+
+Other flaws were discovered during the investigation of this problem,
+and fixes are proposed for those too.
+
+2. Why can these routines not be elemental?
+
+Because
+
+   CALL IEEE_SET_FLAG( (/ IEEE_OVERFLOW,IEEE_OVERFLOW /), &
+                       (/ .TRUE.,.FALSE. /) )
+
+would have ill-defined semantics.  Similarly for IEEE_SET_HALTING_MODE.
+
+3. When was this change made?
+
+At meeting J3/160, by paper 01-138r2, item 39.
+
+In the discussion on this paper, the above reason for them not being
+elemental was made, however, that is not the reason given in the paper,
+which simply claims that these routines "have side effects" and
+therefore cannot be pure.
+
+This reasoning is ill-founded, because it is not possible to use these
+routines in any way that would create a side effect prohibited by the
+purity rules.
+
+(In a way, the wrong question was being asked.  The right question is
+"can one use IEEE_SET_FLAG or IEEE_SET_HALTING_MODES to create a
+[prohibited] side-effect", and the answer to that question is "no", as
+shown below.)
+
+4. The purity rules and the IEEE state
+
+The purity rules are designed not to prohibit all side-effects
+(C.S. terminology);  indeed all useful pure subroutines have
+side-effects (that being all that a subroutine can do).
+
+The purity rules were designed (by HPFF) to prevent dependencies between
+instances of a procedure in parallel execution (FORALL or WHERE), thus
+preventing nondeterminism and race conditions.
+
+The IEEE TR carefully defined the semantics of the IEEE state (flags and
+modes) and the information/effect flow thereof in such a manner as to
+prevent the "effects" from being (HPFF-style) "side-effects".
+
+That is, far from being simple global variables, the IEEE flags and
+modes in Fortran are more like implicit arguments (but defined in such a
+manner as to facilitate the use of the hardware-provided registers in
+their implementation).
+
+5. Purity of IEEE_SET_FLAG
+
+It is fairly easy to see that IEEE_SET_FLAG must be PURE, because it
+does not do anything that arithmetic does not do.  All it does is set
+the IEEE flags.  So if IEEE_SET_FLAG were considered to be "impure",
+then arithmetic (which also sets the flags and does more besides) must
+be doubly impure!  For example
+   PURE FUNCTION F(X,Y)
+     INTENT(IN) X,Y
+     F = X/Y
+   END
+invoked with X==huge and Y==tiny will set IEEE_OVERFLOW, etc.
+
+We can see that this does not cause a problem (either for arithmetic
+or for IEEE_SET_FLAG) by considering the information flow.  For the
+flags, this is upwards only - a called procedure can set a flag and
+this is apparent in the caller, but the called procedure cannot see
+which flags of the caller are set (they all appear to be quiet).
+
+This means that IEEE flag setting does not transmit information
+downwards, nor "sideways" (that is, to other instances of the same
+procedure at the same invocation level within a FORALL).
+
+6. Purity of IEEE_SET_HALTING_MODE
+
+The IEEE halting mode information flows downwards only - setting the
+halting mode in the called procedure does not affect the mode in the
+caller - thus it is not possible to use IEEE_SET_HALTING_MODE to cause a
+side-effect.
+
+7. Optimisation effects
+
+IEEE_SET_FLAG actually has no effect on optimisation whatsoever (it is
+IEEE_GET_FLAG which has the effect, if it is used), because any
+(floating-point) arithmetic operation sets the flags anyway.
+
+IEEE_SET_HALTING_MODE has an effect on optimisation inside the routine
+in which it is called (because the processor usually needs to save and
+restore the modes on entry and exit).  It can have little effect on
+optimisation outside of that routine because
+(i) the compiler almost never knows with what halting-mode settings a
+    procedure is invoked anyway,
+(ii) if the effect of changing the halting modes is to cause the program
+     to terminate instead of proceeding normally, the program was not
+     standard-conforming ("halting" is an "abort", not a well-defined
+     means of stopping).
+
+8. Other wording problems
+
+1) As defined, IEEE_GET_FLAG is merely an expensive way of setting
+LOGICAL variables to .FALSE., since the flags were all set quiet on
+entry to IEEE_GET_FLAG (see [365:37-38]).  We get this right for the
+other routines that need "magic" exceptions from this sort of thing, viz
+the mode setting routines (see last sentence of 14.3, last sentence of
+second paragraph of 14.4 and the last sentence of 14.5), so we ought to
+get it right for this one too.
+
+2) There is a typo "IEEE_SET_HALTING" for "IEEE_SET_HALTING_MODE".
+
+3) The information about the purity of the intrinsic subroutine
+MOVE_ALLOC is buried in the text; it would be clearer if it appeared in
+the subroutine description as well.  This applies to IEEE_SET_FLAG and
+IEEE_SET_HALTING_MODE too.
+
+9. Edits to 03-007r2
+
+[337:29] Change "Subroutine" to "Pure subroutine".
+{So the user can tell the purity from the routine description.}
+
+[365:37] After "procedure"
+         insert "other than IEEE_GET_FLAG or IEEE_GET_STATUS".
+{Text modelled on the similar text for the other magic procedures near
+the ends of 14.3, 14.4 and 14.5.}
+
+[366:11] "IEEE_SET_HALTING" -> "IEEE_SET_HALTING_MODE".
+{Typo.}
+
+[371:8+] Insert new paragraph
+  "The nonelemental subroutines IEEE_SET_FLAG and IEEE_SET_HALTING_MODE
+   are pure.  No other nonelemental subroutine contained in IEEE_EXCEPTIONS
+   is pure."
+{Say that IEEE_SET_FLAG and IEEE_SET_HALTING_MODE are pure, and that
+none of the others are pure.}
+
+[371:13+] Insert new paragraph
+  "No nonelemental subroutine contained in IEEE_ARITHMETIC is pure."
+{Make the lack of purity explicit.}
+
+[378:25,33] Change "Subroutine" to "Pure subroutine", twice.
+{So the user can tell the purity from the routine description.}
+
+===END===

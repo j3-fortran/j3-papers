@@ -1,0 +1,108 @@
+To:      J3                                             J3/14-158r1
+From:    Reinhold Bader
+Subject: atomic subroutine semantics and example for Annex
+Date: 2014 June 19
+References: N1999, N2007
+
+Discussion:
+~~~~~~~~~~~
+
+Starting from my comments on section A.3.2.2 in N1999, this paper
+proposes a rewording of the text that defines the atomic subroutine
+semantics as well as addition of another example to A.3.2.2.
+
+The text in N2007/[34:4-7] does not appear in section 7.2; conversely,
+the changes made in 7.2 are not completely applied in section 8.8.
+Fixes for both these issues are included.
+
+EDITS to N2007:
+~~~~~~~~~~~~~~~
+
+[17:12-15] Replace "The effect ... any other." by
+
+"For any two executions of atomic subroutines in unordered segments by
+ different images on the same atomic object, the effect is as if one of
+ the executions is performed before the other in a single segment on a
+ separate image, without access to the object in either execution
+ interleaving with access to the object in the other. Which is executed
+ first is indeterminate."
+
+[[Reword in terms of the simplest building block that provides full
+ generality, based on a suggestion by John Reid. "processor-dependent"
+ appears misleading since the ordering may change between subsequent
+ program runs as well as appear to be different on different images.]]
+
+"For an execution of an atomic subroutine in segment P_i, the effect
+ on any image Q is as if it is executed on Q within a finite time after
+ execution of the first segment Q_j that is unordered against P_i has
+ started."
+
+[[Prevent an implementation from infinitely delaying visibility of
+  updates on other images while claiming conformity.]]
+
+
+[17:16+] After "2010.", insert
+
+"If two variables are updated by atomic memory operations in segments
+ P_1 and P_2, and the changes to them are observed by atomic accesses
+ from a  segment Q which is unordered relative to either P_1 or P_2,
+ the changes  need not be observed in segment Q in the same order as
+ they are made in  segments P_1 and P_2, even if segments P_1 and P_2
+ are ordered."
+
+[[This is a reworded version of the text from [34:4-7].
+  Also, I've moved the text to an earlier location since this seems
+  topically appropriate; in fact it may be desirable to turn [17:16-19]
+  "For invocation ... atomic action." into a separate para.]]
+
+[17:19+] Add
+  "NOTE 7.1-
+   These properties support the use of atomic subroutines for designing
+   customized synchronization mechanisms. The programmer needs to
+   account for all possible orderings of sequences of atomic
+   subroutine executions that can arise as a consequence of the above
+   rules; the orderings can turn out to be different on different
+   images even in the same program run."
+
+[[The above is intended to replace NOTE 13.1 of 10-007]]
+
+[34:1-7] Replace para by
+
+{In 13.1 Classes of intrinsic procedures, replace paragraph 3 by
+  paragraph 1 [[and 2, see above]] of 7.2 Atomic subroutines,
+  with these changes: Delete "of ISO/IEC 1539-1:2010"}
+
+{In 13.1 Classes of intrinsic procedures, replace the text
+ of NOTE 13.1 with that of NOTE 7.1- in 7.2 Atomic subroutines.}
+
+[47:26+]
+"Example 4:
+
+Assuming the declarations
+
+INTEGER(ATOMIC_INT_KIND) :: x[*]= 0, z = 0
+
+the statements
+
+CALL ATOMIC_ADD(x[1], 1)         ! (A)
+IF (THIS_IMAGE() == 2) THEN
+  wait : DO
+     CALL ATOMIC_REF(z, x[1])    ! (B)
+     IF (z == NUM_IMAGES()) EXIT wait
+  END DO : wait                  ! (C)
+END IF
+
+will execute the "wait" loop on image 2 until all images have completed
+statement (A). The updates of x[1] are performed by each image in
+the same manner, but arbitrary order. Because the result from the
+complete set of updates will eventually become visible by execution
+of statement (B) for some loop iteration on image 2, the termination
+condition is guaranteed to be eventually fulfilled, provided that no
+image failure occurs, no image branches around the above code, and no
+other code is executed in an unordered segment that performs updates
+to x[1]. Furthermore, if two SYNC MEMORY statements are inserted in
+the above code before statement (A) and after statement (C),
+respectively, the segment started by the second SYNC MEMORY on image 2
+is ordered after the segments on all images that end with the first
+SYNC MEMORY."
+

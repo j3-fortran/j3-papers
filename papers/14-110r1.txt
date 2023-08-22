@@ -1,0 +1,254 @@
+To:      J3                                        J3/14-110r1
+From:    Reinhold Bader & John Reid
+Subject: Coshaping and coindexing in teams
+Date: 2014 February 13
+References: N1996, N1999
+
+Discussion:
+~~~~~~~~~~~
+
+Discussion in HPC has reaffirmed the conclusion there needs to be a way
+of associating a coarray in a change team construct with a coarray in
+its parent team that allows the corank and cobounds to be changed.
+Allowing the names to be different permits safer programming
+practice. Syntax illustrated by this example is proposed here
+       CHANGE TEAM(BLOCK, A[*]=>B, C[16,*]=>D)
+which means that the parent coarrays B and D are accessible in the
+construct with coshapes [*] and [16,*].
+
+Discussion in HPC also recognized the need to be able to access a
+coarray in a sibling team using the sibling's cosubscripts. Syntax
+illustrated by this example is proposed here
+        A[i,team_id=3] = ...
+where the integer that was used to identify the team in the
+FORM TEAM statement is used to identify the sibling.
+
+An issue with the TEAM feature noted in N1999 is the lack of a precise
+definition for what the corank and cobounds of a coarray are when
+the team execution context changes. This is remedied.
+
+Two examples are provided for inclusion in the Annex.
+
+
+Edits to N1996:
+~~~~~~~~~~~~~~~
+
+Section 5.1:
+
+[9:4-6] Replace "Syntax ... current team." by
+
+"Syntax and semantics of <image-selector> (R624 in ISO/IEC
+ 1539-1:2010) have been extended to determine how cosubscripts are
+ mapped to image indices for both sibling and ancestor team
+ references."
+
+
+Section 5.3:
+
+[10:5] Change "[, <sync-stat-list>]" to
+"[, <coarray-association-list>] [, <sync-stat-list>]".
+
+[10:5+] Add
+"R502a <coarray-association> <<is>> <codimension-decl> => []
+                              []   <coselector-name>
+R502b <coselector>      <<is>> <coarray>
+C503b The <coarray-name> in the <codimension-decl> shall not be the
+      same as any <coselector-name> in the <change-team-stmt>."
+
+[10:18+] Add
+"A <coslector> shall be established when the CHANGE TEAM statement
+begins execution."
+
+[10:23+] Add
+"A <codimension-decl> in a <coarray-association> associates a coarray
+with an established coarray during the execution of the block.  This
+coarray is an associating entity (8.1.3.2, 8.1.3.3, 16.5.1.6).  Its
+name is an associate name that has the scope of the construct. It has
+the declared type, dynamic type, type parameters, rank, and bounds of
+the coselector.  Apart from the final upper cobound, its corank and
+cobounds are those specified in the <codimension-decl>.
+
+Within a CHANGE TEAM construct, a coarray that does not appear in a
+<coarray-association> has the corank and cobounds that it had when it
+was established, apart from its final upper cobound.
+
+Within a CHANGE TEAM construct, the final upper cobound of a coarray
+is determined from the number of images in the current team."
+
+Section 5.4:
+
+[10:38] In R624, after <cosubscript-list> add
+     "[, TEAM_ID = <scalar-int-expr>]"
+[10:38+] Add
+"C508a (R624)  <team-variable> and TEAM_ID = shall not both appear
+in the same <image-selector>. "
+
+[11:1-7] Replace by
+
+"If <team-variable> appears in a coarray designator, it shall be
+defined with the value that represents an ancestor of the current
+team. The coarray shall be established in that team or an ancestor of
+that team and the cosubscripts are interpreted as if the current team
+were that team.
+
+If TEAM_ID = appears in a coarray designator, the <scalar-int-expr>
+shall be defined with the value of a <team_id> for one of the teams
+that were formed by the execution of the FORM TEAM statement for the
+the current team."
+
+[[Definition of "established" is in section 8 edits for clause
+2.4.7]]
+
+[11:7+] In the code of Note 5.2:
+line 3, Change "A" to "B"
+line 9, replace by
+     CHANGE TEAM(BLOCK,A[*]=>B)
+
+
+Section 8:
+
+[28:25+] Add a new edit:
+{In 2.4.7 Coarray, after paragraph 1, add a new paragraph as follows.}
+A nonallocatable coarray that is neither a dummy argument nor host
+associated with a dummy argument is established in the initial team.
+An allocated allocatable coarray is established in the team in which
+it was allocated. An unallocated allocatable coarray is not
+established. An associating coarray is established in the team of its
+CHANGE TEAM block. A nonallocatable coarray that is a dummy argument
+or host associated with a dummy argument is established in the team of
+the corresponding actual argument.
+
+In paragraph 2, change "an image" to "an image of a
+team", and "other image" to "other image of that team".
+
+In paragraph 3, edit the first sentence as follows:
+change "all images" to "all images of a team".
+
+In paragraph 4, edit the first sentence as follows:
+change "any image" to "any image of the current team".
+
+[33:18+] Add two new edits:
+
+{16.4 Statement and construct entities, add a new paragraph after
+paragraph 8}
+The associate names of a CHANGE TEAM construct have the scope of the
+block. They have the declared type, dynamic type, type parameters,
+rank, and bounds of the corresponding coselector.
+
+{16.5.1.6 Construct association, append to the paragraph 1}
+Execution of a CHANGE TEAM statement establishes an association
+between each coselector and the corresponding associate name of the
+construct.
+
+
+
+Annex A
+
+[37:10+] Add
+
+A.1.3 Accessing coarrays in sibling teams.
+
+The following program shows the subdivision of a 4 x 4 grid
+into 2 x 2 teams and addressing of sibling teams.
+
+PROGRAM DEMO
+! Initial team : 16 images. Algorithm design is a 4 x 4 grid.
+! Desire 4 teams, for the upper left (UL), upper right (UR),
+!                         Lower left (LL), lower right (LR)
+  USE,INTRINSIC :: ISO_FORTRAN_ENV, ONLY: team_type
+  TYPE (team_type) :: t
+  INTEGER,PARAMETER :: UL=11, UR=22, LL=33, LR=44
+  REAL    :: A(10,10)[4,*]
+  INTEGER :: mype, teamid, newpe
+  INTEGER :: UL_image_list(4) = [1, 2, 5, 6], &
+             LL_image_list(4) = UL_image_list + 2,  &
+             UR_image_list(4) = UL_image_list + 8,  &
+             LR_image_list(4) = UL_image_list + 10
+
+  mype = THIS_IMAGE()
+  IF (any(mype == UL_image_list)) teamid = UL
+  IF (any(mype == LL_image_list)) teamid = LL
+  IF (any(mype == UR_image_list)) teamid = UR
+  IF (any(mype == LR_image_list)) teamid = LR
+  FORM TEAM (teamid, t)
+
+  a = 3.14
+
+  CHANGE TEAM (t, b[2,*] => a)
+    ! Inside change team, image pattern for B is a 2 x 2 grid
+    b(5,5) = b(1,1)[2,1]
+
+    ! Outside the team addressing:
+
+    newpe = THIS_IMAGE()
+    SELECT CASE (team_id())
+    CASE (UL)
+       IF (newpe == 3) THEN
+           b(:,10) = b(:,1)[1, 1, TEAM_ID=UR]  ! Right column of UL gets
+                                               ! left column of UR
+       ELSE IF (newpe == 4) THEN
+           b(:,10) = b(:,1)[2, 1, TEAM_ID=UR]
+       END IF
+    CASE (LL)
+       ! Similar to complete column exchange across middle of the
+       ! original grid
+    END SELECT
+   END TEAM
+END PROGRAM DEMO
+
+
+A.1.4 Reducing the codimension of a coarray.
+
+This example illustrates how to use a subroutine to
+coordinate cross-image access to a coarray for row and column
+processing.
+
+PROGRAM
+  USE, INTRINSIC :: iso_fortran_env, ONLY : team_type
+  IMPLICIT NONE
+
+  TYPE(team_type), target :: row_team, col_team
+  TYPE(team_type), pointer :: used_team
+  REAL, ALLOCATABLE :: a(:,:)[:,:]
+  INTEGER :: ip, na, p, me(2)
+
+  p = ... ; q = ... ! such that p**q == num_images()
+  na = ...          ! local problem size
+
+  ! allocate and initialize data
+  ALLOCATE(a(na,na)[p,*])
+  a = ...
+
+  me = this_image(a)
+
+  FORM TEAM(me(1), row_team, NEW_INDEX=me(2))
+  FORM TEAM(me(2), col_team, NEW_INDEX=me(1))
+
+  ! make a decision on whether to process by row or column
+  IF (...) THEN
+     used_team => row_team
+  ELSE
+     used_team => col_team
+  END IF
+
+  ... ! do local computations on a
+
+  CHANGE TEAM (used_team)
+
+    CALL further_processing(a, ...)
+
+  END TEAM
+CONTAINS
+  SUBROUTINE further_processing(a, ...)
+    REAL :: a(:,:)[*]
+    INTEGER :: ip
+
+    ! update ip-th row or column submatrix
+    a(:,:)[ip] = ...
+
+    SYNC ALL
+    ... ! do further local computations on a
+
+  END SUBROUTINE
+END PROGRAM
+

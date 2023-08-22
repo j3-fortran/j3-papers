@@ -1,0 +1,215 @@
+
+                                                          J3/00-296
+Date:    20th September 2000
+To:      J3
+From:    Malcolm Cohen
+Subject: Inconsistent association status
+
+1. Introduction
+
+There are a number of poorly specified association relationships.
+
+(1) The relationship between the pointer association status of two pointers
+    that are associated with each other (yes, I mean that the pointers are
+    associated, not that their targets are associated [which is what
+    ASSOCIATED tests]) is poorly specified in Fortran 95.  In particular,
+    when two pointers are argument-associated the relationship is described
+    in chapter 12 via a copy-in copy-out model, but there is no text describing
+    the relationship between two storage-associated pointers - e.g. pointers
+    in COMMON.
+
+    Now, if we get our "usual" restrictions right in the pointer case,
+    this is equivalent to the "by-reference" model anyway.  However, it
+    cannot easily be used to describe the COMMON interactions.
+
+    The model used to describe the relationship between the values of
+    associated non-pointers is a "continuous" model (which for argument
+    associated means by-reference), and is a model more suited to describing
+    the effects of storage association.
+
+(2) The model for host association of pointers is a continuous one, which is
+    somewhat confusing since the standard apparently bypasses its normal
+    fiction of the local host-associated and the host host-associated
+    entities being separate but associated (with host association) and
+    talks about manipulating the pointer to which the internal procedure
+    "gains access" directly.  If this sort of language is acceptable for
+    pointers, why for all these years have we been struggling with the
+    association model for nonpointers?
+
+(3) The semantics for allocatable variables that are associated by argument
+    association are described in the standard by a copying model.
+    (The usual restrictions prevent a user from telling the difference
+    between this and the ordinary "continuous association" model).
+
+    Strangely, the copying model specifies copy-in and appears to omit
+    copy-out.  Perhaps some edit in the distant past lost this?  Oops.
+
+    Anyway, there are no semantics for allocatable variables that are
+    associated by other means, i.e. name association or pointer association.
+    Such forms of association are best described by a continuous model
+    rather than a copying model.
+
+(4) The effects of allocation/deallocation/association on type parameters is
+    described by a copying model, not a continuous model.  Again, this is
+    erroneous, confusing and incomplete.
+
+    5.1.2.7 already says that the type parameter values of a pointer with a
+    pointer association status of "associated" are those of its target.  A
+    disassociated/undefined pointer has no value for any deferred type
+    parameter (it is forbidden to enquire about them - 6.1.3), so there is
+    no need for any further specification of deferred type parameter values
+    for pointers.
+
+2. Examples
+
+(3) Here is an allocation status example for allocatable variables that are
+    associated by pointer association.
+
+   MODULE m
+     TYPE string
+       CHARACTER(:),ALLOCATABLE :: value
+     END TYPE
+   END
+   PROGRAM example
+     USE m
+     TYPE(string),TARGET :: x
+     TYPE(string),POINTER :: y
+     y => x
+     ALLOCATE(CHARACTER(27)::x%value)
+     ! y%value is now allocated with length 27
+     DEALLOCATE(y%value)
+     ! x%value is no longer allocated
+   END
+
+(4) Here is a parameterised derived type example for allocatable components
+    with pointer association.
+
+  MODULE m
+    TYPE varchar(len)
+      CHARACTER(len) :: value
+    END TYPE
+  END
+  PROGRAM example
+    TYPE person
+      TYPE(varchar(:)),ALLOCATABLE :: name,address(:)
+    END TYPE
+    TYPE(person),TARGET :: x
+    TYPE(person),POINTER :: y
+    y => x
+    ALLOCATE(TYPE(varchar(27)) :: x%name)
+    PRINT *,y%name%len  ! prints 27
+    DEALLOCATE(y%name)
+    ALLOCATE(TYPE(varchar(42)):: y%name)
+    PRINT *,x%name%len  ! prints 42
+  END
+
+3. Proposal
+
+(1) Delete the copy-in/out model in chapter 12 and describe the effects of
+    (argument/storage/etc.) association on pointer association status by a
+    continuous model in chapter 14.
+
+    There is no intended semantic difference between the text as it
+    currently appears (where it provides semantics) and the new text;
+    the only difference is to specify semantics for currently unspecified cases.
+
+(2) Delete the erroneous description of host associated pointers.
+
+(3) Delete the copy-in model in chapter 6 and describe the semantics of
+    all associated allocatable variables by a continuous model (in chapter
+    6).
+
+    (NB: Allocation status is covered in chapter 6, not in chapter 14).
+
+(4) Describe type parameter effects together with allocation status, etc.
+
+4. Edits to 00-007r2
+
+[32:44] Change initial "," to ", or".
+        Delete ", or by argument association (12.4.1.2)".
+{Deferred type parameters are not determined by argument association.}
+
+[104:26-29] Replace paragraph
+  "When the allocation status of an allocatable variable is changed, the
+   allocation status of all associated allocatable variables is changed
+   accordingly.  Allocation of an allocatable variable establishes values
+   for the deferred type parameters of all associated allocatable variables."
+{Change copy-in semantics to continuous semantics, and cover all forms of
+ association, not just argument association.  Specify type parameter
+effects.}
+{If the editor does not like the "is changed ... is changed accordingly"
+ construction, he can replace it with "becomes currently allocated ...
+ becomes currently allocated" and duplicate the sentence with two "not"s
+ inserted.}
+
+[104:29+] Insert new paragraph
+  "When an association is established during execution to an allocatable
+   entity, the associating variable receives the allocation status of the
+   existing allocatable entity.  If the allocatable entity was currently
+   allocated, any deferred type parameter of the associating variable
+   receives the value of the corresponding type parameter of the allocatable
+   entity.
+
+   J3 internal note:
+   This is intended to cover all forms of association (use/host/argument/...).
+   It almost certainly needs more work - e.g. to explain the difference
+   between the associating variable and the existing variable."
+{Cover the creation of a new association for an existing allocatable
+variable.
+ Note that once the association is established, the continuous model takes
+ over so we don't need "copy-out".}
+
+[256:29-31] Delete.
+{Already covered by 5.1.1.8.}
+
+[257:1-7] Delete.
+{Remove copying model of deferred type parameters for argument association.}
+
+[257:14-21] Delete.
+{Remove copying model of pointer association status for argument association.
+ Some of this is covered elsewhere already, some of it we'll cover in the
+ usual way in chapter 14.}
+
+[259:34-41] Delete.
+{This will be covered by the usual pointer rules in chapter 14.}
+
+[350:4-9] Delete.
+{This material is mostly erroneous, except for the remark about return from
+ the procedure potentially making the host pointer undefined.  However,
+ since this remark applies with equal force to use association, it is not
+ suitable for discussion here.  In any case it is covered adequately by the
+ normative text at 14.6.2.1.3 item 3.}
+
+[351:43] Delete "or".
+[351:45] Change "." to ", or".
+[351:45+] Insert new list item
+  "(3) The pointer is associated with another pointer by name association,
+       storage association, or inheritance association, and the other
+       pointer becomes associated."
+{Pointer association equivalent of 14.7.5 item (13).  We explicitly list
+name association and storage association even though there is no other way
+pointers can be associated with each other, to avoid any confusion with two
+pointers being "associated" meaning that they are pointer-associated with
+the same target.}
+
+[352:4+] Insert new list item and renumber:
+  "(2a) The pointer is associated with another pointer by name association,
+        storage association, or inheritance association, and the other
+        pointer becomes disassociated,"
+{Other pointer association equivalent of 14.7.5 item (13).}
+
+[352:24] Delete "or".
+[352:26] Change "." to ", or".
+[352:26+] Insert new list item
+  "(7) The pointer is associated with another pointer by name association,
+       storage association, or inheritance association, and the pointer
+       association status of the other pointer becomes undefined."
+{Pointer association equivalent of 14.7.6 item (9).}
+
+{NOTE TO J3, NOT THE STANDARD: We already have, for nonpointers, the fiction
+ that on exit from a procedure, argument associations are broken *before*
+ the dummy variables disappear i.e. become "undefined".  This is implicit
+ rather than explicitly stated (at least, I don't recall seeing it anyway).
+ We use the same fiction for pointers, and will for allocatables.}
+
+===END

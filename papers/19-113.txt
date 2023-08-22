@@ -1,0 +1,52 @@
+To: J3                                                     J3/19-113
+From: Van Snyder
+Subject: CONTIGUOUS (not on the work plan)
+Date: 2019-January-16
+
+The Problem
+===========
+
+The CONTIGUOUS attribute isn't precise enough.
+
+If an actual argument is of rank greater than one, and is an array
+section that is contiguous in some early dimensions but not all of them,
+applying the CONTIGUOUS attribute to an assumed-shape dummy argument
+causes copy-in / copy-out.
+
+Example
+=======
+
+  real :: A(m_max, n_max)
+  call S1 ( A(1:m,:) ) ! m < m_max
+  call S2 ( A(1:m,:) ) ! m < m_max
+  call S3 ( A, m_max, m, n_max )
+
+  subroutine S1 ( X )
+    real, intent(in) :: X(:,:)
+    ! Do something using X, say using X(:,i)
+
+  subroutine S2 ( X )
+    real, intent(in), contiguous :: X(:,:)
+    ! Do something using X, say using X(:,i)
+
+  subroutine S3 ( X, M_Max, M, N )
+    integer, intent(in) :: M_Max, M, N
+    real, intent(in) :: X(M_Max,N)
+    ! Do something using X(1:m,1:n)
+
+The example using S1 runs measurably slower than the example using S3.
+The example using S2 runs considerably slower than the example using S1.
+
+Proposal
+========
+
+Allow an optional integer in the CONTIGUOUS attribute specification, to
+specify how many dimensions are contiguous.  E.g.,
+
+  subroutine S4 ( X )
+    real, intent(in), contiguous(1) :: X(:,:)
+    ! Do something using X, say using X(:,i)
+
+I would expect the example using S4 would run about as fast as S3.
+
+

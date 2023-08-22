@@ -1,0 +1,115 @@
+                                                            J3/10-173
+To: J3
+From: Malcolm Cohen
+Subject: DO CONCURRENT (Interp=2).
+Date: 2010 June 02
+
+----------------------------------------------------------------------
+
+NUMBER:
+TITLE: DO CONCURRENT and POINTER
+KEYWORDS: DO CONCURRENT, POINTER
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following example:
+
+  REAL,POINTER :: x(:)
+  REAL y(4)
+  DO CONCURRENT (i=1:4)
+    IF (IAND(i,1)==1) THEN
+      ALLOCATE(x(i))
+      x = 3           ! Note: defines x, does not reference x.
+    ELSE
+      y(i) = SUM(x)   ! (*) Note: references x.
+      DEALLOCATE(x)
+    END IF
+  END DO
+
+This is clearly not conforming, as it violates the requirement
+  "A pointer that is referenced in an iteration either shall be
+   previously pointer associated during that iteration, or shall not
+   have its pointer association changed during any iteration."
+
+However, consider example 2, identical except for replacing the (*)
+statement with:
+      y(i) = SIZE(x)   ! (*) Note: does not reference x.
+
+That statement does not reference x (see definition of reference at
+1.3.120) and so does not violate the requirement.
+
+An even simpler example which does not violate the requirement but
+which appears problematic is
+  POINTER p
+  NULLIFY(p)
+  DO CONCURRENT(i=1:2)
+    IF (i==1) ALLOCATE(p)
+    IF (i==2) PRINT *,ASSOCIATED(p)
+  END DO
+
+A third example which does not violate the requirement but again
+appears to be problematic is
+  PROCEDURE(),POINTER :: p,q
+  EXTERNAL a,b
+  p => a
+  DO CONCURRENT(i=1:2)
+    IF (i==1) p => b
+    IF (i==2) q => p    ! (*1)
+  END DO
+  CALL q                ! (*2)
+
+Note that (*1) does not reference p, but (*2) does reference q.
+The pointer q is only set by one iteration, so no problem there.
+
+Were these examples intended to be standard-conforming?
+
+ANSWER:
+
+No, the examples were not intended to be standard-conforming.  An edit
+is supplied to correct the requirement.
+
+Comment: We don't need to require "pointer associated" for
+         "reference", that is always required for references.
+         What we need to require is for the pointer association
+         status to be established.
+
+EDITS to 10-007:
+
+[178:8-9] Replace the sentence
+            "A pointer that is referenced ... any iteration."
+          with the following sentence:
+  "A pointer that is used in an iteration other than as the pointer in
+   pointer assignment, allocation, or nullification, either shall be
+   previously pointer-assigned, allocated, or nullified in that
+   iteration or shall not have its pointer association changed during
+   any iteration."
+
+ALTERNATIVE EDIT:
+
+Define a new term
+  \term{p-reference}
+  \termqual{pointer}
+  take any action that depends on the current association status of
+  a pointer
+  \begin{note}
+  This includes inquiring the association status, inquiring any
+  property of the target that is not a property of the declared type
+  and type parameters of the pointer itself, defining the target,
+  referencing the target, and deallocating the pointer.
+  It does not include defining the association status, i.e. pointer
+  assigning (a target to it), nullification, or allocation.
+  \end{note}
+
+Use the new term: Replace the faulty sentence with
+  "A pointer that is p-referenced in an iteration either shall have
+   its pointer status association previously established during that
+   iteration, or shall not have its pointer association changed during
+   any iteration."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 10-173   m192 Submitted
+
+----------------------------------------------------------------------

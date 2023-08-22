@@ -1,0 +1,283 @@
+
+                                                                 J3/00-330
+Date:    8th December 2000
+To:      J3
+From:    Malcolm Cohen
+Subject: Interpretation 29: Nested Derived Types and Defined Assignment
+
+This paper contains three revised answers for interp 29, which failed
+its recent WG5 ballot.  The "zero option" does not satisfy MTE work item
+M16, but is worth considering given
+(a) i29 has failed to get into corrigendum 1 anyway,
+and
+(b) the horribleness of the other options.
+
+If the zero option is chosen, M16 will need to be re-examined to determine
+whether it can be satisfied in an upwards-compatible way in F2002, perhaps
+by type-bound assignment with or without some special attribute that either
+prevents intrinsic assignment (forcing the user to write a defined
+assignment
+when he includes such data types as components of his own) or produces
+"intelligent assignment" which does the necessary.  But that is for
+another paper.
+
+----------------------------------------------------------------------
+
+NUMBER: 000029
+TITLE: Nested Derived Types and Defined Assignment
+KEYWORDS: derived type, defined assignment
+DEFECT TYPE: Erratum
+STATUS: J3 under consideration
+
+QUESTION: According to Fortran 90, intrinsic assignment of derived
+type entities does not invoke defined assignment for components of
+these entities, even if it exists.  Should this situation have been
+corrected in Fortran 95 to avoid breaking encapsulation of derived
+types?
+
+That is, in the example program below, is the final assignment
+statement intended to invoke the user-defined assignment routine for
+the "name" components of "a" and "b", or should it do pointer
+assignment on the (PRIVATE) "value" components of the "name"
+components?
+
+MODULE lib_varying_string
+  TYPE varying_string
+    PRIVATE
+    CHARACTER,POINTER :: value(:)
+  END TYPE
+  INTERFACE ASSIGNMENT(=)
+    MODULE PROCEDURE assign_vs_to_vs
+  END INTERFACE
+CONTAINS
+  SUBROUTINE assign_vs_to_vs(var,expr)
+    TYPE(varying_string),INTENT(OUT) :: var
+    TYPE(varying_string),INTENT(IN) :: expr
+    ALLOCATE(var%value(SIZE(expr%value,1)))
+    var%value = expr%value
+  END SUBROUTINE
+END
+PROGRAM programme
+  USE lib_varying_string
+  TYPE mytype
+    TYPE(varying_string) name
+  END TYPE
+  TYPE(varying_string) x,y
+  TYPE(mytype) a,b
+  x = y               ! invokes "assign_vs_to_vs(x,(y))".
+  a%name = b%name     ! invokes "assign_vs_to_vs(a%name,(b%name))"
+  a = b               ! in F90, pointer assigns the "value" components
+END
+
+ANSWER 0:
+
+No, there is no ambiguity or error in the standard.
+
+DISCUSSION 0:
+
+Intrinsic assignment is not intended to invoke user-written procedures.
+This would introduce anomalies with initialization by DATA statements.
+
+Library writers cannot in any case depend on defined assignment to enforce
+encapsulation automatically, because the user can deliberately (or
+accidentally) omit to import the defined assignment from the module.
+(Also, other facilities such as TRANSFER may break encapsulation).
+
+In the example given, a defined assignment should be provided for
+TYPE(mytype) by the programmer.
+
+EDITS 0:
+
+None.
+
+ANSWER 1/2:
+Yes, Fortran 95 should have corrected this mistake in Fortran 90. The
+final assignment above should invoke "assign_vs_to_vs(a%name,
+(b%name))".
+
+REFERENCES: ISO/IEC 1539:1997 (E) sections 7.5.1.2 and 7.5.1.5.
+
+EDITS 1:
+
+This set of edits creates a new "default assignment statement".
+There is no longer a "derived-type intrinsic assignment statement", but
+"derived-type intrinsic assignment" remains for use elsewhere in the
+document (because DATA et al depend on it).
+
+1. Add a new item to the numbered list at the end of subclause 1.5.1
+   [3:32+]
+   "(3) The default assignment statement for derived types now invokes
+        defined assignment on nonpointer components for which the intrinsic
+        assignment has been overridden by an interface block with an
+        ASSIGNMENT(=) specifier."
+
+2. In the last sentence of subclause 7.5.1.1 [107:27],
+   Change "intrinsic" to "intrinsic, default,".
+
+3. In the first paragraph of subclause 7.5.1.2, [107:30-31]
+   Change "where (1) The" to "where the", and
+   Change ", or" to ".".
+
+4. In the first paragraph of subclause 7.5.1.2, [107:32]
+   Change "(2) The" to
+   "A <<default assignment statement>> is an assignment statement where the
+    shapes of <variable> and <expr> conform and where the".
+
+5. In the second paragraph of subclause 7.5.1.2 [107:38-39]
+   Change "<<derived-type intrinsic>>" to "<<derived-type default>>";
+   and later in the same sentence, change "intrinsic" to "default".
+
+6. In subclause 7.5.1.3, [108:11]
+   After "intrinsic assignment" insert "or a default assignment".
+
+7. Replace the body of note 7.44 with
+   "Derived-type intrinsic assignment is only used for initialization of
+    variables.  All derived-type assignment statements are either default
+    assignment or defined assignment."
+
+8. After subclause 7.5.1.6, insert a new subclause 7.5.1.7 [110:35+]
+   "7.5.1.7 Interpretation of default assignment statements
+
+    A derived-type default assignment is performed as if each component of
+    <expr> were assigned to the corresponding component of <variable>
+    using pointer assignment (7.5.2) for pointer components, intrinsic
+    assignment for nonpointer components of intrinsic type, defined
+    assignment for nonpointer components of derived type for which there is
+    an accessible interface block with an ASSIGNMENT(=) specifier for
+    objects of that type, and default assignment for other nonpointer
+    components.
+
+    If <expr> in a default assignment is a scalar and <variable> is an
+    array, the <expr> is treated as if it were an array of the same shape
+    as <variable> with every element of the array equal to the scalar value
+    of <expr>.
+
+    When <variable> in a default assignment is an array, the assignment is
+    performed element-by-element on corresponding array elements of <expr>
+    and <variable>."
+
+9.  Insert the previous note 7.44 immediately before subclause 7.5.2, with
+    the following changes:
+    Replace the first two occurrences of "intrinsic" with "default" in the
+    first sentence.
+    Replace "using the derived-type intrinsic assignment statement" with
+    "using defined assignment if there is an accessible interface block
+     with an ASSIGNMENT(=) specifier overriding the default assignment
+     for objects of that type, and using the derived-type default
+     assignment statement otherwise".
+
+EDITS 2:
+
+This alternative set of edits changes intrinsic assignment to "do the right
+thing" for nested derived types, and removes the dependencies of the DATA
+statement et al on the definition of intrinsic assignment.
+
+1. Add a new item to the numbered list at the end of section 1.5.1
+   [3:32+]
+   "(3) Intrinsic assignment for derived types now invokes defined
+        assignment on nonpointer components for which the intrinsic
+        assignment has been overridden by an interface block with an
+        ASSIGNMENT(=) specifier."
+
+2. In subclause 4.4.1, paragraph beginning "If <initialization-expr>"
+   [40:16-18]
+   Replace the sentence beginning "The evaluation rules..." with
+   "If necessary, each value is converted according to the rules of
+    intrinsic assignment (7.5.1.4) to a value that agrees in type and type
+    parameters with that component.  The shapes of the component and the
+    <initialization-expr> shall conform.  If the component is an array and
+    the <initialization-expr> is scalar, the <initialization-expr> is
+    treated as if it were an array of the same shape as the component with
+    every element equal to the scalar value of the <initialization-expr>."
+
+{{Note to J3: This would be a lot easier if shape conformance and scalar-
+  array broadcasting were in 7.5.1.4 instead of buried in 7.5.1.5, as then
+  the second two sentences in all of these edits would be unnecessary.
+  Perhaps we could consider doing that for F2002.}}
+
+3. In subclause 5.1, paragraph beginning "If an <entity-decl> contains"
+   [49:15-17]
+   Replace "becomes defined ... (7.5.1.4)." with
+   "is initially defined with the value determined from <initialization-
+    expr>.  If necessary, the value is converted according to the rules of
+    intrinsic assignment (7.5.1.4) to a value that agrees in type and type
+    parameters with the variable.  The shapes of the variable and the
+    <initialization-expr> shall conform.  If the variable is an array and
+    the <initialization-expr> is scalar, the <initialization-expr> is
+    treated as if it were an array of the same shape as the variable with
+    every element equal to the scalar value of the <initialization-expr>."
+
+{{Note to J3: The previous text was broken already because it said the
+  variable "becomes defined", not "is initially defined".}}
+
+4. In subclause 5.1.2.1, first paragraph [52:22-24]
+   Replace "<object-name> becomes ... (7.5.1.4)" with
+   "value of <object-name> is determined from the <initialization-expr>
+    that appears on the right of the equals.  If necessary, the value of
+    the <initialization-expr> is converted according to the rules of
+    intrinsic assignment (7.5.1.4) to a value that agrees in type and type
+    parameters with the <object-name>.  The shapes of the <object-name> and
+    the <initialization-expr> shall conform.  If the <object-name> is an
+    array and the <initialization-expr> is scalar, the <initialization-
+    expr> is treated as if it were an array of the same shape as the
+    <object-name> with every element equal to the scalar value of the
+    <initialization-expr>."
+
+{{Note to J3: The previous text was broken already because it said the
+  named constant "becomes defined", a concept that only applies to
+  variables.}}
+
+5. In subclause 5.2.9, paragraph beginning "Each" [61:1-3]:
+   Replace entire paragraph with
+   "The value of each named constant is determined from the
+    <initialization-expr> that appears on the right of the equals, in
+    accordance with the rules for the PARAMETER attribute (5.1.2.1)."
+
+{{Note to J3: This was another nonsensical "named constant becomes
+  defined".  I've made it cross-reference the parameter attribute instead
+  of repeating all those tedious conversion rules.}}
+
+6. In subclause 5.2.10, paragraph beginning "A data-stmt-constant" [63:9]
+   Replace "<data-stmt-constant> ... assignment" with
+   "value determined from the <data-stmt-constant>.  If necessary, the
+    value is converted according to the rules of intrinsic assignment
+    (7.5.1.4) to a value that agrees in type and type parameters with the
+    variable."
+
+7. Replace "and intrinsic assignment for nonpointer components." in
+   section 7.5.1.5 [109:37] with
+   ", defined assignment for nonpointer components of derived type
+    for which there is an accessible interface block with an
+    ASSIGNMENT(=) specifier for objects of that type, and intrinsic
+    assignment for other nonpointer components."
+
+8. In note 7.44, change "using the derived-type intrinsic assignment
+   statement" [110:4-5] to
+   "using defined assignment if there is an accessible interface
+    block with an ASSIGNMENT(=) specifier overriding the intrinsic
+    assignment for objects of that type, and using the derived-type
+    intrinsic assignment statement otherwise."
+
+9. In subclause 14.7.5, item (1) [288:36-38]
+   Change "assignment or FORALL"
+   to "assignment, derived-type assignment, or".
+   Change "defined assignment" to "derived-type assignment".
+
+{{Note to J3: Even intrinsic derived-type assignment no longer necessarily
+  means that the entire LHS gets defined (because it may execute defined
+  assignment for some components.}}
+
+NOTE: This is MTE work item M16 for Fortran 2000.  The corresponding
+      edits to F2K have not been made as of 00-007r3.
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 97-197  m142  Submitted
+         97-197  m145  Passed unanimously as amended {see 98-167
+                       minutes}
+         Failed WG5 letter ballot.
+         00-330  m155  Revised answer.
+
+----------------------------------------------------------------------
+===END
+

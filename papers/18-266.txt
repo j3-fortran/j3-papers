@@ -1,0 +1,126 @@
+To: J3                                                     J3/18-266
+From: Gary Klimowicz
+Subject: Add reductions to DO CONCURRENT
+Date: 2018-October-15
+
+Reference: 18-007: 11.1.7 (DO construct) and 16.9.161 (REDUCE)
+
+Motivation
+----------
+Performing a reduction on the array elements computed
+in DO CONCURRENT is error-prone or inefficient.
+The naive expression of a reduction is non-conforming
+(taken from comp.lang.fortran):
+
+        real :: a(1024), s
+        integer :: i
+
+        call random_seed()
+        call random_number(a)
+
+        ! With DO CONCURRENT, the use of 's' in the
+        ! loop below is not defined.
+        s = 0
+        do concurrent (i = 1:size(a))
+          s = s + (2 * a(i) - 1)
+        end do
+
+        print *, s
+        end
+
+('s' is referenced in an iteration before its value is defined.)
+
+Specifying SHARED locality does not solve the problem:
+
+        ! other initializations and declarations as above
+
+        ! The sums on 's' can lead to race conditions.
+        s = 0
+        do concurrent (i = 1:size(a))
+          s = s + (2 * a(i) - 1)
+        end do
+
+        print *, s
+        end
+
+
+One potential solution is to construct a temporary array
+variable to hold the values to be reduced, and then perform
+the reduction outside the DO CONCURRENT.   
+
+        real :: s_temp(1024)
+        ! other initializations and declarations as above
+
+        do concurrent (i = 1:size(a)), shared(s)
+          s_temp(i) = s + (2 * a(i) - 1)
+        end do
+        s = sum(s_temp)
+
+Another potential solution is to use critical sections
+around the reduction. This requires the extension
+of CRITICAL to use beyond their use in teams:
+        s = 0
+        do concurrent (i = 1:size(a)), shared(s)
+          critical
+            s = s + (2 * a(i) - 1)
+          end critical
+        end do
+
+These solutions become more complex or inefficient as we
+use more complicated concurrent-headers or wish to perform
+reductions on multiple expressions within the body of the
+DO CONCURRENT.
+
+For computing environments that can exploit significant SIMD
+parallelism, these solutions can involve a substantial
+amount of data or process synchronization. The DO CONCURRENT
+can also be scaled to the number of available threads (the
+number of which are not visible to the programmer).
+
+When the user is most interested in performing a simple
+reduction of the data in the DO CONCURRENT, this overhead
+can exceed the gains from the computational parallelism.
+
+We propose a way of specifying scalar reduction variables that are
+managed across the DO CONCURRENT block executions to accumulate the
+scalar values from each executed block. This would be done with
+processor-specific synchronization.
+
+The intent is to support an in-Fortran specification of some
+of the features of the OpenMP reduction clause.
+
+We propose something simpler (example syntax only):
+
+        s = 0
+        do concurrent (i = 1:size(a)), reduce(s)
+            s = s + (2 * a(i) - 1)
+        end do
+
+This will:
+* Increase expressiveness of DO CONCURRENT
+* Increase opportunities to exploit SIMD and other parallelism
+* Increase ability to optimize parallelism according to the
+  number of available threads
+* Make it easier to write conforming programs
+* Reduce memory allocation needs or explicit data management
+  when offloading to target processors
+* Eliminate explicit process synchronization
+* Avoid redefinition of CRITICAL/END CRITICAL beyond teams
+
+
+Key questions
+-------------
+1. Is this use case compelling?
+2. Are there ways to exploit the potential parallelism with
+   the existing locality-specifiers and by relaxing the semantics
+   in 11.1.7.5 pp1-4?
+3. Can this be done with existing CRITICAL/END CRITICAL semantics?
+4. Can this be done with expansion of the ATOMIC_xxx functions
+   beyond their use with scalar coarrays or coarray indexed values?
+
+Straw Vote
+----------
+1. Is this worth continuing to investigate?
+
+
+

@@ -1,0 +1,79 @@
+                                                                  08-301
+
+To:        J3
+From:      Van Snyder
+Subject:   Referencing procedures using % and coindexing
+Date: 2008 November 18
+Reference: 08-143r3
+
+1. The problem
+
+Classify the possibilities of procedure designators with % in them
+according to the following matrix.
+
+       A                   B
+   1 polymorphic      not polymorphic
+   2 subobject of     whole object
+   3 procedure ptr    type-bound procedure
+
+Assume THIS_IMAGE() == 1
+
+Notation: 1b2b3b = pick B from row 1, pick B from row 2, pick C from row 3;
+                 = "not polymorphic" + "whole object" + "type-bound proc".
+
+Item 1.
+1b2b3b call x[3]%reset == call reset ( x[3] )
+       Might look a little like RPC but the brackets are in the wrong
+       place, not really ....  Compile-time resolved to a procedure.  NAP.
+
+[NAP = Not A Problem].
+
+Item 2.
+1b2b3a call x[3]%procptr
+       Problematic.  Could be performance problem.  Best solution might be
+       an indirection table ... and that could require changes in linker
+       and dynamic loader.  Does UPC have this feature?  (It's not clear
+       from their spec.)
+
+Item 3.
+1b2a3b call x[3]%y%sum = call sum ( x[3]%y )
+       Same as 1.  NAP
+
+Item 4a.
+1a2b3b+alloc
+       call px[3]%reset == call "slot7 of px.dispatch" ( px[3] )
+       NAP because type of PX is same on all images.  Same as 1.
+
+Item 4d.
+1a2b3b+dummy
+       call px[3]%reset ! px is a dummy arg coarray
+       NAP -- same type every image.  See 2.5.7p5.
+
+Item 5.
+1a2a3b call x[3]%px%sum == call "slot3 of x[3]%px.dispatch" ( x[3]%px )
+       Problematic like 2 if type of x%px is defined in a module in a DLL.
+       Ask image 3 for type of px.  But the type information tables might
+       be at a different address on image 1.  Best solution might be a type
+       indirection table in addition to a procedure indirection table.
+
+1b2a3a same as 2
+
+1a2b3a same as 2
+
+1a2a3a same as 2
+
+Items 2 and 5 are the only problems.  The other items are generally useful
+functionality that is worth preserving.
+
+2. Edits:
+
+[157:7.2.2.2 C728]------------------------------------------------------
+Editor:  Replace C728 by
+"C728 (R741) The <scalar-variable> shall be a <data-ref> that is not a
+             coindexed object."
+{Exclude case 2.}
+
+[285:12.5.1 C1229+] Insert new constraint
+  "C1229a (R1221) <data-ref> shall not be a polymorphic subobject of a
+                  coindexed object."
+{Exclude case 5.}

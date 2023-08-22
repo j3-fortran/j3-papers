@@ -1,0 +1,158 @@
+
+                                           J3/04-142
+                          
+Date:    26 Dec. 2003
+To:      J3
+From:    Dan Nagle
+Subject: Proposed ASSERT Statement
+
+
+Placing assertions into programs serves at least three purposes:
+First, they provide a simple means of debugging;  Second, they
+document the programmer's intentions;  Third, they provide a means
+to allow the compiler gain information which would require
+entire application analysis otherwise, if it could be gained at all.
+
+A way should be found to provide assertions for Fortran programs
+without unnecessarily increasing overhead during execution.
+This paper describes a way to do so.
+
+Number: 
+
+Title: ASSERT Statement
+
+Submitted By: J3
+
+Status: For Consideration
+
+References: 
+
+Basic Functionality: An ASSERT statement is proposed which asserts
+                     the truth of a <s-l-e>, with various consequences
+                     if the <s-l-e> is false.  These consequences are
+                     determined by an "assertion level" known during
+                     compilation.
+
+Rationale:  Allowance for program debugging makes Fortran easier to use.
+            A means of "self-documenting" programs makes Fortran programs
+            easier to maintain and extend.  With growing separate compilation
+            (especially now that we have EM), allowing a compiler to have
+            more knowledge of an overall application's assumptions
+            allows greater and safer optimization.
+
+Estimated Impact: A new statement must be supported; as designed here,
+                  new constants in iso_fortran_env must be defined.
+
+Detailed Specification: The ASSERT statement is an executable statement
+                        and has the general form:
+
+                        ASSERT( <assert-list> )
+
+                        An <assert-list-item> is one of
+
+                        [COND=] <s-l-e> The 'COND=' is optional if the <s-l-e>
+                        is the first item on the list.  This is the condition
+                        whose validity is being asserted.
+
+                        LEVEL= <asrt-lvl> Is a <s-d-i-i-e> that sets the effects
+                        of a violated assertion.  Its value must be known
+                        during compilation and must be one of the constants
+                        listed below, defined in iso_fortran_env.  Other values
+                        have an undefined effect (so processors may,
+                        for example, invoke a debugger, or flush all buffers,
+                        or perform a checkpoint, or do some other
+                        processor-dependent action).  
+
+                        [PROC=> <asrt-proc>] Optionally sets the user procedure,
+                        if any, to execute if the assertion is violated,
+                        depending on the assert level.  If PROC=> is absent,
+                        it has the same effect as PROC=>NULL() (that is,
+                        no procedure is executed).
+
+                        [MSG= <asrt-msg>] Optionally sets the user's message
+                        to be printed to stderr when the assertion is violated.
+                        The processor will provide a cheerful message
+                        if MSG= is absent.  In any case, the message
+                        will be prefaced by the file, procedure, line,
+                        and the text of the COND=.
+
+                        The values of the LEVEL= specifier are one
+                        of the following scalar default integer
+                        constants defined in iso_fortran_env:
+
+                        ASSERT_IGNORE, a value which, if present, causes
+                        the assert statement to have no effect.
+
+                        ASSERT_WARN, a value which, if present, causes
+                        the assert statement to issue a warning message
+                        to stderr if the assertion is false and
+                        continue execution.
+
+                        ASSERT_EXECUTE, a value which, if present and
+                        not PROC=>NULL(), causes the assert statement,
+                        when the COND= is false, to issue a warning and
+                        execute the procedure identified
+                        by the "PROC=> proc" and continue execution.
+
+                        ASSERT_HALT, a value which, if present, causes
+                        the assert statement, when the COND= is  false,
+                        to issue a warning, execute the procedure identified
+                        by the PROC=> and then stop.
+
+                        Examples:
+
+                        ASSERT( KINC > 8, LEVEL= ASSERT_IGNORE)
+
+                        causes nothing to happen if KINC is not > 8.
+                        The compiler may (or may not) use the information
+                        that KINC > 8 to optimize the program (perhaps
+                        as a hint of how to unroll a loop).
+
+                        ASSERT( KINC > 8, LEVEL= ASSERT_WARN)
+
+                        causes a processor-dependent message to be printed
+                        to stderr containing the file, procedure name, line,
+                        the text 'KINC > 8' and whatever else the processor
+                        chooses.
+
+                        ASSERT( KINC > 8, LEVEL= ASSERT_EXECUTE)
+
+                        causes a processor-dependent message to be printed
+                        to stderr containing the file, procedure name, line,
+                        the text 'KINC > 8' and whatever else the processor
+                        chooses.  If a PROC had been present, the subroutine
+                        indicated would have been executed.
+
+                        ASSERT( KINC > 8, LEVEL= ASSERT_EXECUTE, PROC=> mysub)
+
+                        causes a processor-dependent message to be printed
+                        to stderr containing the file, procedure name, line,
+                        the text 'KINC > 8' and whatever else the processor
+                        chooses.  The subroutine 'mysub' is called.  Upon
+                        return, execution continues.
+
+                        ASSERT( KINC > 8, LEVEL= ASSERT_EXECUTE, &
+                                PROC=> mysub( KINC))
+
+                        causes a processor-dependent message to be printed
+                        to stderr containing the file, procedure name, line,
+                        the text 'KINC > 8' and whatever else the processor
+                        chooses.  The subroutine 'mysub' is called.  Upon
+                        return, execution continues.
+
+                        ASSERT( KINC > 8, LEVEL= ASSERT_HALT, PROC=> mysub)
+
+                        causes a processor-dependent message to be printed
+                        to stderr containing the file, procedure name, line,
+                        the text 'KINC > 8' and whatever else the processor
+                        chooses.  The subroutine 'mysub' is called.  Upon
+                        return, execution ends.
+
+                        ASSERT( KINC > 8, LEVEL= ASSERT_HALT, MSG= 'Oh, no!')
+
+                        causes a processor-dependent message to be printed
+                        to stderr containing the file, procedure name, line,
+                        the text 'KINC > 8' and the user-specified message.
+                        Then execution ends.
+
+History: 

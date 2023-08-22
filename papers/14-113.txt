@@ -1,0 +1,115 @@
+To:      J3                                        J3/14-113
+From:    John Reid
+Subject: Restrictions on assignments of team variables
+Date: 2014 January 27
+References: N1996, N1999
+
+Discussion:
+~~~~~~~~~~~
+
+We have a restriction on team variables:
+
+C502 A team variable shall not appear in a variable definition
+        context ...
+
+The restriction is designed for safety - to endure that when the images
+of a team execute
+
+       CHANGE TEAM(team)
+
+they all work with consistent values, set by a single FORM TEAM
+statement. Nick Maclaren points out in his ballot (N1999) that there
+are holes. His example is
+
+       TYPE(TEAM_TYPE) :: a[NUM_IMAGES()]
+       DO i = 1,NUM_IMAGES()
+           FORM TEAM (i,a(i))
+       END DO
+       CALL Fred(a(i))
+
+       SUBROUTINE Fred (x)
+       TYPE(TEAM_TYPE) :: x
+       CHANGE TEAM (x)
+
+A possible fix to this is in J3/14-112:
+
+In 5.3 [10:20] After "intrinsic subroutine GET_TEAM (7.4.13).", add:
+"The values of the <team-variable>s on the images of the team shall be
+those defined by a single synchronized execution of a FORM TEAM
+statement on the team."
+
+Note that C502 is based on what we did for locks, which are not allowed
+to be pointers. Pointer team variables, of course, give huge scope for
+constructing team values that are inconsistent across images.
+
+I have been critical of GET_TEAM because it blows a hole in the
+restrictions on assignments for team variables. However, there is
+already a big hole with pointers and there are the holes that Nick
+mentions.
+
+Should we give up on the restriction and rely on the above text for
+[10:20]? Or should we ban pointer assignments, too?
+
+Alternative edits for the two cases are provided here. My view is
+that we should make one of these changes - either
+
+A. Continue to favour safety. Malcolm Cohen wrote:
+
+   (1) If we allow pointers to team variables, then an undiagnosed
+       undefined pointer reference will be pointing to random memory
+       and likely to be garbage.
+   (2) If we allow unformatted i/o, it is easy to load garbage.
+   (3) If we allow TRANSFER, the user can easily produce a bad team.
+
+   Note that (2) and (3) are just as likely to be mistakes as to be a
+   perfidious user exploring the capabilities of the system.  Some
+   compilers can diagnose (1), I am not aware of any that can diagnose
+   (2), and (3) is explicitly standard-conforming so cannot be
+   diagnosed (unless we forbid it).
+
+   Since having a bad team variable seems likely to cause hard-to-
+   diagnose problems (e.g. much later while syncing or some such), if
+   we can avoid that kind of thing the better.
+
+B. Favour the added functionality of removing the restrictions
+
+   In J3/14-110, there is an example illustrating the utility of
+   pointer team variables.
+
+   Bill Long wrote:
+
+   I prefer to make only minimal restrictions that represent the cases
+   that actually matter.  Creating a team involves FORM TEAM that also
+   defines the value of the supplied team variable so that it describes
+   the created team.  I don't see a problem with, later, assigning that
+   value to a different team variable through assignment, argument
+   association, calling GET_TEAM, or pointer assignment. I think the
+   minimal restriction would be only on a team variable that is
+   specified in the CHANGE TEAM statement of a currently executing
+   CHANGE TEAM construct.  I see two options:
+
+   1) If you redefine that team variable, it shall not be referenced
+      subsequently in an image selector, SYNC TEAM statement, or
+      CHANGE TEAM statement during execution of the CHANGE TEAM
+      construct.
+   2) The team variable shall not be defined while the CHANGE TEAM
+   construct is executing.
+
+   Note that Option 1 allows the program to respond to a failure by
+   redefining the current team with FORM TEAM, redefining the current
+   team variable, to exclude the failed images and then restarting
+   the same CHANGE TEAM construct where the failure is detected.
+   This seems like a desirable capability.
+
+
+Edits to N1996:
+~~~~~~~~~~~~~~~
+
+Alternative 1
+
+[9:24] Add to C501 "A team variable shall not be a pointer."
+
+Alternative 2
+
+[9:25-33] Delete C502 and C503.
+

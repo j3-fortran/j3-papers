@@ -1,0 +1,59 @@
+
+                                                              J3/97-181
+
+To:		   J3
+From:		   /interval2, Dick Hendrickson
+Subject:		module approach to intervals
+Date:		   May 14, 1997
+
+Interval2 believes we have a way to allow the full power and scope of Interval arithmetic that does not require any direct processor support for intervals and also allows full (intrinsic) optimizations.  This paper describes extensions or refinements to /164.  The syntax and names can be refined later.  The belief is the first seven of the following features have general utility for many derived types and these features must, therefore, be supported by all processors.
+
+1)  We introduce an intrinsic, required(?), module that contains procedures which implement directed rounding for the +. -. *, and / operators.  There are 8 functions with names like 
+"round_to_plus_inf_add" and "round_to_minus_inf_multiply" .   These seem to be desirable for general arithmetic, not just interval arithmetic.  We could also add routines for the other IEEE rounding modes.  On an IEEE machine these implement as a few op-codes.  On a machine which supports the exception handeling TR IEEE_ROUNDING control they can be implemented as calls to set_rounding_mode.  
+
+2)  We do nothing about user defined precedence for the new interval operators.  The interval dot operators have the same precedence as any other user defined operator.  The direct consequence of this is that expressions using more than one interval dot operator and/or some of the existing logical operators will have to add parenthesis to be correct (see /175 for an example of this).  Fortunately, for intervals a failure to add parens will result in a compile time error, not a bad result, because of type mismatches for the "and" operator.
+
+3)  We provide an overload for format edit descriptors.  Using the current Derived Type I/O proposal provide a mechanism to overload all format descriptors when they match with an operand of derived type in the I/o list.  This can either be the default behaviour if a format interface is visable or can be controlled with a keyword.  This will allow derived Type variables to be printed "naturally" with E or f descriptors or with DT* descriptors.
+
+4)  We add "DRU" and "DRD" as new edit descriptors that control rounding direction of subsequent formated I/O operations.  They have scope like BN or BZ and would most likely be used in the internal reads and writes that implement interval formated I/O.
+
+5)  We provide a general mechanism to write constants for any opaque (with private parts) derived type.  The mechanism is to write the constant inside of quote marks, so that it looks like a character string.   In effect, there is a new constructor function for the type that takes a single character string as its argument.  The module must provide the routine and documentation that tells a user how to code up the string.  For example,
+
+type (any_type) ::  pi, x
+pi = "3.14"
+...
+x = x + "3.14"
+x = x + pi
+x = x + any_type("3.14"...)
+
+The last 3 are equivalent.  If "any_type" is interval then INTERVAL("3.14") should provide a sharp interval representation.
+
+There are two ways to do this.  The module that defines interval arithmetic can overload all of the functions to provide "character + interval", etc. functions, or the standard can provide an explicit coercion from character to defined-type whenever it sees a mixed mode character/defined-type operation with no visable overload to resolve it.  
+
+6)  We allow the character string notation in PARAMETER statements, but we restrict use of these entities such that their value is never needed at compile time.  In effect, they can be evaluated at routine entry time.  They can't be used in other PARAMETER expressions (other than simple assignment) nor in DIMENSION or whatever statements.
+
+use, intrinsic  ::ISO_interval
+type (interval), parameter  ::  pi = "3.14"
+or perhaps
+type (interval), parameter  ::  pi = interval("3.14")
+depending on how automatic we want the "..." conversions to be.
+
+7)  We provide read-only variables above the contains in a module.  These are essentially the same as PARAMETERs defined in the module and have the same restrictions as would the
+parameters.  Perhaps we could even use the word "parameter" rather than read-only, but read-only is generally useful.
+
+module whatever
+use, intrinsic  ::  ISO_interval
+type (interval), read_only  ::  pi = "3.14"
+
+As a fall back, these can be implemented with invisible accssor functions.  In effect, it's compiled as
+
+contains
+  pure function get_pi()  result (pi)
+  type (interval) ::  pi
+  pi = "3.14"
+  end function get_pi
+
+and any reference is done as "get_pi()"
+
+ 8)  We extend the INTERVAL function in Baker's papers to accept a character string as the first argument.  It would provide an interval that contains the decimal representation of the argument.  Because the argument is a string there is no concern about inaccuracies during compile-time conversion and the module routine (or the compiler) can provide the sharpest possible interval.  
+

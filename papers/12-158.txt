@@ -1,0 +1,96 @@
+To:       J3                                       12-158
+From:     Daniel Chen
+Subject:  Array constructor with an abstract declared type
+Date: 2012 June 15
+
+NUMBER: F08/nnnn
+TITLE: Array constructor with an abstract declared type
+KEYWORDS: Abstract type, array constructor
+DEFECT TYPE:
+STATUS: J3 consideration in progress
+
+Question:
+
+Is the following program intended to be standard conforming?
+If so, what is its expected output?
+
+module m
+  abstract interface
+    integer function afoo()
+    end function
+  end interface
+
+  type, abstract :: abstract_base
+    integer i
+  contains
+    procedure(afoo), nopass, deferred :: foo
+  end type
+
+  type, extends(abstract_base) :: child
+    integer j
+  contains
+    procedure, nopass :: foo => foo_child
+  end type
+contains
+  integer function foo_child()
+    foo_child = 1
+  end function
+end module
+
+use m
+implicit none
+class(abstract_base), allocatable :: x, y(:)
+allocate(x, source=child(1,2))
+allocate(y(1), source=[x])
+select type(y)
+  type is (child)
+    print *, y
+  class is (abstract_base)
+    print *, y(1)%i
+end select
+print *, y(1)%foo()
+end
+
+Discussion:
+
+Fortran 2008 (and an interp of Fortran 2003) specify the relationship
+between the declared and dynamic types of an array constructor and the
+declared type of its ac-value.  Specifically,
+section 4.8 "Construction of array values" of Fortran 2008 states:
+
+"2 If type-spec is omitted, each ac-value expression in the array
+constructor shall have the same length type parameters; in this case,
+the declared type and type parameters of the array constructor are
+those of the ac-value expressions."
+
+"4 The dynamic type of an array constructor is the same as its
+declared type."
+
+In the above program, the declared type of the ac-value is abstract.
+The two rules above make the dynamic type of the array
+constructor [x] abstract and cause y to have an abstract dynamic type.
+
+There is a constraint in the standard to forbid this situation for
+the unlimited polymorphic case:
+
+"C4106 (R472) An ac-value shall not be unlimited polymorphic."
+
+But I don't see one to forbid it for the abstract type case.
+
+ANSWER:
+
+This was not intentional.  A new constraint should be added to forbid
+an ac-value to have an abstract declared type.
+
+EDITS:
+
+Change C4106 (R472)
+from:
+"C4106 (R472) "An <ac-value> shall not be unlimited polymorphic."
+to:
+"C4106 (R472) "An <ac-value> shall not be unlimited polymorphic or of
+an abstract type."
+
+SUBMITTED BY: Daniel Chen
+
+HISTORY: yy-nnn    m198  F03/nnnn submitted

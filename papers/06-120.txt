@@ -1,0 +1,209 @@
+
+                                                    J3/06-120
+
+To: J3/WG5
+Date: 1/27/06
+From: Aleksandar Donev
+Subject: Atomic operations: ATOMIC construct
+
+Note: This proposal assumes that the CoArray Fortran proposal is
+accepted and Fortran 2008 is an explicitly parallel language.
+
+____________________
+The Problem: When CRITICAL does not apply
+____________________
+
+Shared data-structures often require some form of exclusive access to
+assure that certain operations complete "atomically", i.e., without
+the possible interference by other images. CAF provides the CRITICAL
+construct that can, among other uses, be used for the purpose of
+providing atomic access to data, as in:
+
+INTEGER :: x[*]=0
+
+CRITICAL
+   x[1]=x[1]+1
+END CRITICAL
+
+While the CRITICAL construct works well in some cases, the problem
+with it is that it provides an exclusive access based on lexical
+grouping of statements, rather than based on the data the statements
+are accessing. That is, if in another section of the code one needs to
+reset the above counter, one cannot put this inside another CRITICAL
+section:
+
+CRITICAL
+   IF(x[1]>=NUM_IMAGES()) x[1]=0
+END CRITICAL
+
+The second critical section has nothing to do with the first one,
+and so exclusive access is not guaranteed. Instead, the user must
+combine these into one critical section:
+
+CRITICAL
+   SELECT CASE(operation)
+   CASE(increment)
+      x[1]=x[1]+1
+   CASE(reset)
+      IF(x[1]>=NUM_IMAGES()) x[1]=0
+   END SELECT
+END CRITICAL
+
+This is a major hassle in real programs, where more complicated
+data-access patterns exist. Additionally, a major advantage of CRITICAL
+sections is that compilers can sometimes translate them into atomic
+hardware instructions, as in "fetch and increment" for the first
+construct, and "compare and swap" in the second one. But with the
+bulking of a CRITICAL construct with CASE statements and other complex
+control flow needed to merge all unordered data accesses into one
+CRITICAL section, it will become harder for a compiler to recognize
+patterns and instead of efficient hardware instructions locks will
+have to be used.
+
+A closely related problem appears with the use and semantics of
+VOLATILE variables. Consider:
+
+INTEGER, VOLATILE :: x=0
+x=x+1
+
+The value of x may change (externally) while the expression x+1
+is evaluated. The user may expect this to work in the obvious way
+(atomically), but this is certainly not specified by our standard. The
+same for statements like
+
+IF(x>1) x=0 ! May or may not work as expected
+
+____________________
+The solution: The ATOMIC construct
+____________________
+
+I propose to introduce a special new construct, an ATOMIC construct,
+that allows one to manipulate the values of certain objects
+atomically. This will allow users to implement their own more
+complicated locking/exclusion mechanisms.
+
+_________
+Specification:
+_________
+
+The proposed syntax is
+
+   ATOMIC(<var>)
+      <body>
+   END ATOMIC
+
+with the following constraints:
+
+A) <var> is a scalar variable that occupies a single numeric storage
+unit (default integer, real, logical, or bits). Such variables can
+often be manipulated with atomic hardware instructions on existing
+hardware.
+
+B) The <body> can only contain assignment statements and some basic
+non-iterative control statements such IF and CASE constructs.
+
+The semantics is that, while the <body> is evaluated, the value of
+the variable <var> will not change due to statements executed by
+other images, so that, in a sense, exclusive access is granted to the
+value of <var>. In CAF programs, statements inside <body> executing on
+different images may reference or define the value of <var> without
+being ordered. In the existing CAF proposal, only VOLATILE variables
+may be referenced by unordered segments, but a variable may never be
+defined in unordered segments.
+
+   ATOMIC(x[1])
+      x[1]=x[1]+1
+   END ATOMIC
+
+   ATOMIC(x[1])
+      IF(x[1]>=NUM_IMAGES()) x[1]=0
+   END ATOMIC
+
+This can be implemented easily as follows: If the body can be
+translated into a hardware atomic instruction, just do so. If it
+cannot, copy the value of <var> and then evaluate the <body>. Then
+issue the following atomic operation: compare the current value of
+<var> with the copy, and if equal (no other image changed the value),
+write the newly calculated value of <var>, otherwise (some other
+image changed the value in the interim), repeat the procedure. This
+is a "compare and swap" instruction as implemented in most hardware,
+and can also be emulated if it is not.
+
+The exclusion guaranteed by the ATOMIC construct as proposed here is
+purposely based on the value of <var>. This avoids having to worry
+about whether two variables actually refer to the same variable, as
+in the case when <var> is a pointer (and therefore the <body> uses
+the value of the target). A consequence is that an atomic construct
+that does not change the value of <var> can actually be executed
+simultaneously with other construct, as this has no visible effects
+on the final value.
+
+_________
+Extended example
+_________
+
+Here is how the ATOMIC construct can be used to implement a classical
+mutex (lock):
+
+MODULE SimpleLocks
+   PRIVATE
+   TYPE, PUBLIC :: Lock_t
+      LOGICAL :: locked=.false.
+   CONTAINS
+      PROCEDURE, PASS :: AcquireLock, AttemptAcquireLock, ReleaseLock
+   END TYPE
+CONTAINS
+   SUBROUTINE AcquireLock(lock) ! Blocking
+      CLASS(Lock_t), INTENT(INOUT) :: lock[*] ! Co-array
+      LOGICAL :: locked
+      locked=.TRUE.
+      DO WHILE(locked) ! Spin loop
+         ATOMIC(lock[1]%locked)
+            IF(.NOT.lock[1]%locked) THEN
+               locked=.FALSE.
+               lock[1]%locked=.TRUE.
+            END IF
+         END ATOMIC
+      END DO
+   END SUBROUTINE
+   SUBROUTINE AttemptAcquireLock(lock, success) ! Non-blocking
+      CLASS(Lock_t), INTENT(INOUT) :: lock[*] ! Co-array
+      LOGICAL, INTENT(OUT) :: success
+      success=.FALSE.
+      ATOMIC(lock[1]%locked)
+         IF(.NOT.lock[1]%locked) THEN
+            success=.TRUE.
+            lock[1]%locked=.TRUE.
+         END IF
+      END ATOMIC
+   END SUBROUTINE
+   SUBROUTINE ReleaseLock(lock) ! No error checking
+      CLASS(Lock_t), INTENT(INOUT) :: lock[*] ! Co-array
+      ATOMIC(lock[1]%locked)
+         lock[1]%locked=.FALSE.
+      END ATOMIC
+   END SUBROUTINE
+END MODULE
+
+_________
+Future extensions
+_________
+
+Atomic array operations
+
+In the future, when and if we allow co-sections, we should allow
+<var> to be a co-scalar (of a type occupying a single numeric storage
+unit), allowing one to atomically modify the value of a co-variable
+on all images:
+
+   INTEGER :: x[*]
+   ATOMIC(x)
+      x[:]=x[:]+1 ! Increment counters on all images at once
+   END ATOMIC
+
+This seems to me to be harder to implement---I would say the user
+can employ scalar locks (possibly written using the above version
+of the atomic construct) to ensure atomicity of such collective
+assignments. However, maybe the above can be implemented more
+efficiently on some machines, which would suggest it is a good idea
+to add it to the language.

@@ -1,0 +1,311 @@
+                                                             J3/15-197
+To:        J3
+Subject:   Allow users to specify variable locality in DO CONCURRENT
+From:      Daniel Chen & Malcolm Cohen
+Date: 2015 August 04
+Reference: 15-150r2
+
+0. Prelude
+
+This paper is identical to 15-150r2, except for the location of the
+edits, and typos, which have been updated to refer to 15-007r1.
+Some explanation has also been wittered.
+
+1. Introduction
+===============
+
+The intent of the restrictions listed in (8.1.6.5) is to allow a
+processor to parallelize the code inside a DO CONCURRENT construct
+without causing any race condition. However, there are issues as
+illustrated in the following cases:
+
+Case 1:
+
+  REAL X
+  X = 1.0
+  DO CONCURRENT(...)
+    IF (condition) THEN
+      X = something
+      ...                ! code using X
+    END IF
+    ...                  ! code that doesn't use X
+  END DO
+
+In case 1, a processor cannot localise X, because if "condition"
+is true exactly once, the assignment affects the "outer" X. OTOH,
+if condition is true more than once, a processor cannot execute in
+parallel without localising X.
+
+
+Case 2:
+
+  REAL X
+  X = 1.0
+  DO CONCURRENT(...)
+    CALL sub(X)
+    ...                  ! code referencing X
+  END DO
+
+In case 2, a processor is not able to detect
+1. if X is defined (or becomes undefined) in sub, and
+2. how many iterations that defines or undefines X as the condition
+could be in sub.
+
+Both Case 1 and 2 are standard conforming.
+
+It is understood that users can use a BLOCK construct to localize
+variables, but a processor still needs to be able to handle all the
+standard conforming code when the BLOCK construct is not used.
+
+In order to still be able to parallelize code such as in Case 1 and
+2, a processor needs to always localize x and copy-in the initial
+value and also copy-out the value at every possible point X could
+be defined or become undefined.
+
+The performance impact described at the above is not the intent
+of the standard, a proposal is made to eliminate the indetermination.
+
+
+2. Proposal
+===========
+
+Since a processor is not able to determine if a variable can be referenced
+by all iterations without causing a race condition, it would be critical to
+provide a mechanism to allow users to explicitly specify their intent of
+how a variable is expected to be used.
+
+A new syntax as follows is introduced to achieve that: change loop-control
+to have "concurrent-locality" after "concurrent-header", thus only
+affecting the DO CONCURRENT statement.
+
+  R8nn concurrent-locality is [ locality-spec ]...
+
+  R7xx locality-spec is LOCAL ( variable-name-list )
+                     or LOCAL_INIT ( variable-name-list )
+                     or SHARED ( variable-name-list )
+                     or DEFAULT ( NONE )
+
+New rules:
+1. Variables appearing in the variable-name-list of a LOCAL_INIT specifier
+   shall be previously defined.
+2. When parallelization is enabled, a local copy of a variable that appears
+   in the variable-name-list of the LOCAL specifier is created for each
+   iteration. Such a local copy is initially undefined.
+3. When parallelization is enabled, a local copy of a variable that appears
+   in the variable-name-list of the LOCAL_INIT specifier is created for
+   each iteration.  Such a local copy is initialized to the value of the
+   corresponding variable specified by the LOCAL_INIT specifier.
+4. Variables that appear in the variable-name-list of the SHARED specifier
+   are common to all iterations; a shared variable shall not be defined or
+   become undefined in more than one iteration.  A shared variable that is
+   defined or becomes undefined in one iteration shall not be referenced in
+   any other iteration.  In the case of arrays, these requirements apply to
+   each element individually. In the case of derived types, these
+   requirements apply to the ultimate components.
+5. If DEFAULT (NONE) appears, all variables referenced or defined within
+   the loop, other than the loop iteration variables, shall have their
+   locality explicitly declared.
+6. A variable can only appear in at most one of the LOCAL, LOCAL_INIT, or
+   SHARED specifiers.
+9. A LOCAL or LOCAL_INIT variable with the ALLOCATABLE attribute will be
+   automatically deallocated at the end of each iteration if it is
+   allocated.
+10. An assumed-size array shall not appear in LOCAL or LOCAL_INIT.
+11. A DO CONCURRENT index cannot appear in a locality-spec for that
+    loop.  It seems to be ok to let it appear in a locality-spec for
+    an outer DO CONCURRENT when there are nested DO CONCURRENT constructs
+    though.
+
+Removed (was new) rules:
+7. The name of an array whose subscripts involve index-names of
+   a DO CONCURRENT construct shall not appear in the
+   variable-name-list of the LOCAL or LOCAL_INIT specifier.
+Because: there is no such restriction in the current text.  This would be
+         quite difficult to state accurately, and is broken (not just
+         useless) if stated inaccurately.  Of course it's possible that
+         no-one actually implements the current text, which can localise
+         the whole array in some cases...
+8. It is recommended that a scalar variable or an array whose subscripts do
+   not involve index-names of a DO CONCURRENT construct that does not
+   appear in any locality-spec not be defined or become undefined in any
+   iteration.
+Because: There is some controversy over this recommendation, and it is
+         difficult to state accurately.  We *could* just do scalars...
+
+Note: There are some difficulties with interpreting such things as
+      references to A(MOD(I,2)+1) in a DO CONCURRENT, it clearly depends
+      on the index I but also seems likely that multiple iterations will
+      want their own copies and therefore they should be localisable.
+      If we can work this out, we could reconsider reinstating these
+      rules (with appropriate modifications).
+
+Note: There are also issues with finalization.  A LOCAL or LOCAL_INIT
+      variable is a new entity in each iteration, and therefore needs
+      to be finalized at the end of each iteration.
+
+
+3. Examples
+===========
+
+IMPLICIT NONE
+INTEGER :: N = 10
+REAL :: X, Y, Z, R
+X = 1.0
+Y = 2.0
+Z = 3.0
+R = 4.0
+DO CONCURRENT (INTEGER :: I = 1 : N) LOCAL (X, R) LOCAL_INIT (Y) SHARED (Z)
+  X = I + 1.0       !! X HAS VALUE OF I + 1.0
+  R = Y             !! R HAS VALUE OF 2.0
+  IF (I == 1) THEN
+    Z = 4.0
+  END IF
+END DO
+PRINT*, X           !! 1.0
+PRINT*, Y           !! 2.0
+PRINT*, Z           !! 4.0
+PRINT*, R           !! 4.0
+END
+
+4. Edits to 15-007r1
+====================
+
+[79:2+] 4.5.6.3 When finalization occurs, p4+, insert new paragraph
+  "A nonpointer nonallocatable variable with LOCAL or LOCAL_INIT locality
+  in a DO CONCURRENT construct is finalized when execution of each
+  iteration completes.".
+{Specify that these are finalised, just as if they were BLOCK construct
+ entities within the DO CONCURRENT construct.}
+
+[176:23] 8.1.6.2 Form of the DO construct, R817 loop-control,
+         After "<concurrent-header>"
+         Insert "<concurrent-locality>"
+
+[176:29+] Same subclause, after R823 concurrent-step, insert new BNF
+  "R823a <concurrent-locality> <<is>> [ <locality-spec> ]...
+
+   R823b <locality-spec> <<is>> LOCAL ( <variable-name-list> )
+                         <<or>> LOCAL_INIT ( <variable-name-list> )
+                         <<or>> SHARED ( <variable-name-list> )
+                         <<or>> DEFAULT ( NONE )
+
+[177:2+] Same subclause, before R824 end-do, insert constraints
+  "C8xx A <variable-name> in a <locality-spec> shall be the name of a
+        variable in the scoping unit that is not an assumed-size array and
+        is not the same as an <index-name> in the <concurrent-header> of
+        the same DO CONCURRENT statement.
+
+   C8xx The name of a variable shall not appear in more than one
+        <variable-name-list>, or more than once in a <variable-name-list>,
+        in a <locality-spec>.
+
+   C8xx A variable that is referenced by the <scalar-mask-expr> of a
+        <concurrent-header> or by any <concurrent-limit> or
+        <concurrent-step> in that <concurrent-header> shall not appear in a
+        LOCAL <locality-spec> in the same DO CONCURRENT statement.
+
+   C8xx If the <locality-spec> DEFAULT ( NONE ) appears in a DO CONCURRENT
+        statement, a variable that appears in the <block> of the construct
+        and is not an <index-name> of that construct shall have its
+        locality explicitly specified.".
+{Add new syntax and constraints.
+ A variable used in the mask expression cannot be LOCAL as it would then
+ be undefined when the mask is evaluated, but being LOCAL_INIT is ok.}
+
+[179:27] 8.1.6.5 Restrictions on DO CONCURRENT constructs, heading,
+         rename to "Additional semantics for DO CONCURRENT constructs".
+
+[179:36] Same subclause, before p1, replace opening sentence with new
+         paragraphs and opening as follows:
+  "The locality of a variable that appears in a DO CONCURRENT construct is
+   LOCAL, LOCAL_INIT, SHARED, or unspecified.
+
+   A variable that has LOCAL or LOCAL_INIT locality is a construct entity
+   with the same attributes as the variable with the same name outside the
+   construct, and the outside variable is inaccessible by that name within
+   the construct.  At the beginning of execution of each iteration,
+   - if a variable with LOCAL locality is allocatable it is unallocated, if
+     it is a pointer it has undefined pointer association status, and
+     otherwise it is undefined except for any subobjects that are
+     default-initialized;
+   - a variable with LOCAL_INIT locality has the allocation, pointer
+     association, and definition status of the outside variable with that
+     name; the outside variable shall not be an undefined pointer or a
+     nonallocatable nonpointer variable that is undefined.
+   When execution of that iteration completes, an allocatable variable with
+   LOCAL or LOCAL_INIT locality will be automatically deallocated.
+
+   If a variable has SHARED locality, appearances of the variable within
+   the DO CONCURRENT construct refer to the variable in the scoping unit.
+   If it is defined or becomes undefined during any iteration, it shall not
+   be referenced, defined, or become undefined during any other iteration.
+   If it is allocated or deallocated during an iteration it shall not have
+   its allocation or association status, dynamic type, array bounds, shape,
+   or a deferred type parameter value inquired about in any other
+   iteration.
+
+   If a variable has unspecified locality,"
+[179:37] "A variable that is referenced in an iteration shall"
+         -> "if it is referenced in an iteration it shall",
+[179:38] ". A variable that is" -> "\item if it is".
+[179:39] "iteration becomes" -> "iteration it becomes",
+         "terminates." -> "terminates;".
+[179:40] "A pointer that" -> "if it is a pointer and",
+[179:41] "nullification, shall" -> "nullification, it shall",
+[180:1] ". A pointer that has its pointer association"
+         -> "\item if it is a pointer whose pointer association is",
+[180:2] "iteration has" -> "iteration, it has",
+[180:3] "If an allocatable object" -> "if it is allocatable and",
+[180:4] ". An allocatable object that"
+         ->"; \item if it is allocatable and",
+[180:6] "shall either" -> "it shall either".
+
+This makes the 179:37-180:7 text read:
+ "If a variable has unspecified locality,
+  - if it is referenced in an iteration it shall either be previously
+    defined during that iteration, or shall not be defined or become
+    undefined during any other iteration;
+  - if it is defined or becomes undefined by more than one iteration it
+    becomes undefined when the loop terminates;
+  - if it is a pointer and is used in an iteration other than as the
+    pointer in pointer assignment, allocation, or nullification, it shall
+    either be previously pointer associated during that iteration or shall
+    not have its pointer association changed during any iteration;
+  - if it is a pointer and has its pointer association changed in more than
+    one iteration, it has an association status of undefined when the
+    construct terminates;
+  - if it is allocatable and is allocated in more than one iteration, it
+    shall have an allocation status of unallocated at the end of every
+    iteration;
+  - if it is allocatable and is referenced, defined, deallocated, or has
+    its allocation status, dynamic type, or a deferred type parameter value
+    inquired about, in any iteration, it shall either be previously
+    allocated in that iteration or shall not be allocated or deallocated in
+    any other iteration.".
+
+[180:8-10] De-itemise lines 8-9 and prepend to line 10 (removing from p1),
+           so that p2 now contains both the requirements on concurrent
+           i/o.
+{Organisational improvement.}
+
+[181:0+lots] Between NOTES 8.15 and 8.16, which are just before
+             8.1.7 IF construct and statement,
+             insert new NOTE
+"NOTE 8.15a
+ The following code demonstrates the use of the LOCAL clause so that the
+ X inside the DO CONCURRENT construct is a temporary variable, and won't
+ affect the X outside the construct.
+
+        X = 1.0
+        DO CONCURRENT (I=1:10) LOCAL(X)
+          IF (A(I)>0) THEN
+            X = SQRT(A(I))
+            A(I) = A(I) - X**2
+          END IF
+          B(I) = B(I) - A(I)
+        END DO
+        PRINT *,X ! Always prints 1.0.
+".
+{Add the simplest example.}
+
+===END===

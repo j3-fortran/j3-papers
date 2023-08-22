@@ -1,0 +1,336 @@
+
+                                                            J3/03-130r1
+
+To: J3
+From: Dick Hendrickson
+Subject: Edits for UK comment MTC7 (Output of IEEE exceptional values)
+Date: 2 April 2003
+
+1. Introduction
+
+This version has been modified to reflect the results of straw votes.
+Some of the options offered in the original edits have been deleted.
+
+
+Comment MTC7 was
+   "Allow input/output of IEEE exceptional values.
+
+    Input/output of IEEE "exceptional" values should be specified.  
+    Currently, if the user has an IEEE infinity (or NaN), i/o is completely 
+    non-standard.  Now that the standard supports IEEE arithmetic, it should 
+    specify the i/o results, and at least for the infinities should specify 
+    what they are (for NaNs it would be acceptable to make it "processor-
+    dependent".  Similarly, the results of various intrinsic functions (e.g. 
+    EXPONENT and FRACTION) should be specified for these values."
+
+2. Discussion - i/o formatting
+
+There are existing implementations which produce interesting strings for
+output of IEEE exceptional values.  There are fewer implementations which
+permit reading such values back in.  The output produced by each 
+implementation generally differs from the others in detail.
+
+There are two obvious paths:
+(1) minimally standardise the output, to reduce the impact on existing
+    implementations.
+(2) specify the output in essentially the same level of detail as is currently
+    done for unexceptional values.
+
+The proposal in this paper follows the second path.  It attempts to be
+maximally conformant with existing implementations, but there is so little
+consensus between them that there is not much one can do.
+
+A survey of 12 existing implementations produced the following results
+
+Compiler   String for Positive Infinity   String for NaN    Justification
+1:            " Infinity"                 " NaN"             left
+2:            "INF"                       "NaNQ"             right
+3:            "Inf"                       "-NaN"             left
+4:            "Inf"                       "NaN"              right
+5:            "inf"(F),"INF"(E)           "nan"(F),"NAN"(E)  right
+6:            "+INF"                      "NaN"              left
+7:            "+Infinity"                 unknown            left
+8:            "+" repeated                "?" repeated       filled
+9:            "INF"                       "NaN"              dec. pt. aligned
+10:           "inf"                       "-nan"             right
+11:           "?" repeated                "?" repeated       filled
+12:           "Infinity"                  "NaN"              right
+13:           "Infinity"                  "NaN"              right
+
+The most common name for infinity is "Infinity".
+The most common name for NaN is "NaN".
+The most common justification is right.
+
+There is some justification for allowing processors to produce additional text
+following the basic "NaN" output, e.g. to convey additional information as to
+how that NaN has arisen.
+
+3. Discussion - intrinsic functions
+
+There are a number of intrinsic functions where the result is defined in
+terms of the numeric model in 13.4.  This does not work for infinities and
+NaNs, since they do not fit that model.  The functions affected are EXPONENT,
+FRACTION, RRSPACING and SPACING.
+
+4. The proposal in brief
+
+F edit descriptor:
+  IEEE Infinity: optionally signed "Inf" or "Infinity", right-justified.
+  IEEE NaN: unsigned "NaN", optionally followed by processor-dependent text,
+            right-justified.
+
+(If there is not enough room, the whole field should be filled with asterisks
+as per usual when things don't fit.)
+
+E edit descriptor:
+  IEEE Infinity: optionally signed "Inf" or "Infinity", right-justified
+  IEEE NaN: unsigned string "NaN", followed by zero or more processor-dependent
+            characters, right-justified.
+            Even with SP, do not produce a sign (NaNs do not have a sign).
+            All positions after the "NaN" to be processor-dependent.
+
+G edit descriptor:
+  Use E format.
+ES and EN edit descriptors:
+  Same as E format.
+List-directed:
+  Pick any format which avoids asterisks.
+
+On input:
+  "Inf[inity]" and "+Inf[inity]" (not case sensitive) shall produce IEEE_POS_INF.
+  "-Inf[inity]" shall produce IEEE_NEG_INF.
+  "NaN" shall produce IEEE_QUIET_NAN.
+  "NaN" followed by non-blanks shall produce IEEE_QUIET_NAN or
+        IEEE_SIGNALING_NAN (processor-dependent).  The intent here is that
+        those processors which write NaN information after the NaN can use
+        this to make writing + reading the identity function.
+
+EXPONENT intrinsic:
+  return HUGE(0) for infinities.
+    (that's the biggest number we can return!)
+  return HUGE(0) for NaNs.
+    (NaNs are pretty significant.
+     We cannot return a NaN because the result is of type integer.)
+FRACTION intrinsic:
+  return the argument.
+    (This preserves the X=SCALE(FRACTION(X),EXPONENT(X)) identity.
+     A possible alternative would be to return NaN for both INF and NaN.)
+RRSPACING intrinsic:
+  return zero for infinities.
+  return NaN for NaNs.
+SPACING intrinsic:
+  return +infinity for infinities.
+    (That's what the spacing is.)
+  return NaN for NaNs.
+
+5. Basic design decisions
+
+These potential straw votes are the main design points for the proposal.
+In each case the first option is the one recommended by this paper.
+
+Q1. Level of detail of specification in the standard should be:
+>>> a. Similar to ordinary numbers, i.e. detailed
+    b. Minimal, basically all INF/NaN i/o would be processor-dependent
+    u. Undecided.
+
+
+Straw vote  16-1-0
+
+
+Q2. The string for IEEE_POS_INF, excluding the sign, should be
+    a. "Infinity"?
+    b. "INF"?
+    c. "Inf"?
+    d. "inf"?
+>>> e. "INF" with processor-dependent case, optionally followed by "inity"?
+    u. Undecided.
+
+Straw vote  2-0-3-0-13-0
+
+
+Note: If option (e) is chosen, we ought to require all processors to accept
+      all the variant forms.
+
+Not Q3:
+  The base string for a NaN shall be "NaN".
+
+Q4:
+>>>  The base string for a NaN may be followed by processor-dependent text
+     conveying some processor-dependent information.
+
+Straw vote  13-2-3
+
+
+Q5. The form of the processor-dependent text shall be
+    a. "..." where "..." is any number of non-blank chars?
+>>> b. "(...)" where "..." is any number of non-blank non-parenthesis chars?
+    c. completely processor-dependent?
+    u. undecided.
+Straw vote    4-11-0-2
+
+
+Comment: option (b) is what has been suggested to the IEEE 754R committee,
+though they've not discussed it yet.
+
+Q6. The base string (NaN/INF) should be aligned:
+>>> a. right-justified
+    b. left-justified
+    c. decimal-point-aligned
+    u. undecided
+Straw vote    11-0-6-1
+
+
+6. Minor (uncontroversial!) design details
+
+M1. No sign shall be output for a NaN.
+{NaN's do not have signs.}
+
+M2. No sign shall be accepted on input for a NaN.
+{Ditto.}
+
+M3. The base string for signalling and quiet NaNs shall be the same.
+{Signalling NaNs tend to turn into quiet NaNs when you look at them anyway,
+and this sort of information can be in the processor-dependent suffix.}
+
+M4. Obviously, in list-directed output, the processor should use an appropriate
+    format that results in at least "Inf[inity]" and "NaN" being produced.  This
+    can be left as a QoI issue.
+
+7. Edits to 02-007r3
+
+[225:25] After "in" insert "an IEEE exceptional specification or".
+{Map lower-case to upper-case for inf/nan.}
+
+[225:30] Between "field" and "consists", insert
+  "is either an IEEE exceptional specification or"
+{This whole paragraph only describes ordinary values.}
+
+[226:3-] Insert new paragraphs
+  "The input field for an IEEE exceptional specification consists either of
+   (a) an optional sign, followed by the string 'INF' or the string 'INFINITY'
+   or
+   (b) the string 'NAN', optionally followed by a processor-dependent number
+       of nonblank characters enclosed in parenthesis.
+   The value specified by form (a) is an IEEE infinity; this form shall not
+   be used if the processor does not support IEEE infinities for the input
+   variable.  The value specified by form (b) is an IEEE NaN; this form shall
+   not be used if the processor does not support IEEE NaNs for the input
+   variable.  The particular NaN value is processor-dependent, except that
+   if there are no nonblank characters following the 'NAN' string, it is a
+   quiet NaN."
+{Input of exceptional values.
+ Note: 'INFINITY' and 'NAN' specified instead of 'Infinity' and 'NaN' because
+ we want the input not to be case sensitive - see edit at [225:25].}
+
+[226:3-] Insert description of Infinity/NaN output before paragraph.
+  "For an internal value that is an IEEE infinity, the output field consists of
+   blanks, if necessary, followed by a minus sign for negative infinity or
+   an optional plus sign otherwise, followed by the letters "Inf" or "Infinity",
+   right justified within the field.  If <w> is less than 3, the field is filled 
+   with asterisks, otherwise, if <w> is less than 8, "Inf" is produced.
+
+   For an internal value that is an IEEE NaN, the output field consists of
+   blanks, if necessary, followed by the letters "NaN" and optionally followed
+   by up to <w>-5 nonblank processor-dependent characters enclosed in 
+   parenthesis, right justified within the field.  If <w> is less than 3, the 
+   field is filled with asterisks.
+
+   Note 10.10a
+   The processor-dependent characters following "NaN" may convey additional
+   information about that particular NaN.
+
+[226:3] Change "The" to "Otherwise, the".
+
+[226:14-] Insert description of Infinity/NaN E-format output before paragraph.
+  "For an internal value that is an IEEE infinity or NaN, the form of the
+   output field is the same as for F<w>.<d>."
+
+[226:14] Change "The" to "Otherwise, the".
+
+[227:9-] Insert description of Infinity/NaN EN-format output before paragraph:
+  "For an internal value that is an IEEE infinity or NaN, the form of the
+   output field is the same as for F<w>.<d>."
+
+[227:9] Change "The" to "Otherwise, the".
+
+[228:1-] Insert description of INF/NaN ES-format output before paragraph:
+  "For an internal value that is an IEEE infinity or NaN, the form of the
+   output field is the same as for F<w>.<d>."
+
+[228:1] Change "The" to "Otherwise, the".
+
+  [230:25-] Insert descr. of Infinity/NaN G-format output before paragraph:
+    "For an internal value that is an IEEE infinity or NaN, the form of the
+     output field is the same as for F<w>.<d>."
+  [230:25] Change "The" to "Otherwise, the".
+
+{Note to J3, no edits are needed for list directed or namelist I/O because
+238:15, 243:18 require the processor to use reasonable output formats!}
+
+
+[311:26] Replace with
+  "If X has the value zero, the result has the value zero.  If X is an IEEE 
+   infinity or NaN, the result has the value HUGE(0)."
+{Specify EXPONENT of exceptional values.}
+
+[312:25] Append
+  "If X is an IEEE infinity, the result is that infinity.
+   If X is an IEEE NaN, the result is that NaN."
+{Specify FRACTION of exceptional values.}
+
+[341:17] Append
+  "If X is an IEEE infinity, the result is zero.
+   If X is an IEEE NaN, the result is that NaN."
+{Specify RRSPACING.}
+
+[346:20] Change
+"is not zero" to "does not have the value zero"
+[346:21] Change
+"Otherwise" to "If X has the value zero"
+
+[346:22] Append
+  "If X is an IEEE infinity, the result is positive infinity.
+   If X is an IEEE NaN, the result is that NaN."
+{Specify SPACING.}
+
+8. Other Notes
+
+There is an inconsistent use of terminology for the value in output
+formatting.
+
+In 10.6.1.1, it is called the "value of the internal datum" at [225:10,18,20],
+and the "internal value" at ([225:11,13]).
+
+In 10.6.1.2.1, it is called the "internal value" ([226:3,5]).
+
+In 10.6.1.2.2, it is called the "datum value" ([226:19]).
+
+In 10.6.1.2.3, it is called the "value of the datum" ([227:13-14,17]).
+
+In 10.6.1.2.4, it is called the "value of the datum" ([228:5,8]).
+
+In 10.6.1.2.6, it is called the "internal value" ([228:23,26,27] - the
+first of these is a description of what is meant by "internal value").
+
+In 10.6.2, it is called the "value of the internal datum" ([229:19-20]).
+
+In 10.6.3, it is called the "internal representation" ([229:32,230:2-3,4]).
+
+In 10.6.4.1.2, it is called the "datum" ([230:25,31+1,231:0+1,2+8]) or
+"internal datum" ([230:26]).
+
+These all appear (to me at least) to be talking about the same thing.
+I've used "internal value" in the edits above.
+
+We recommend that these all be changed to the same wording to avoid confusion.
+Below are the edits for changing them all to "internal value".
+
+[225:10,18,20] Change "value of the internal datum" to "internal value", thrice.
+[226:19] Change "datum value" to "internal value".
+[227:13-14,17] Change "value of the datum" to "internal value", twice.
+[228:5,8] Change "value of the datum" to "internal value", twice.
+[229:19-20] Change "value of the internal datum" to "internal value".
+[229:32,230:3,4] Change "representation" to "value", thrice.
+[230:25] Change "datum" to "internal value".
+[230:26] Change "internal datum" to "internal value".
+[230:31+1,231:0+1,2+8] Change "datum" to "internal value", four times.

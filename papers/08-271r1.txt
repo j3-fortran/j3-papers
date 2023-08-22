@@ -1,0 +1,273 @@
+To: J3                                              08-271r1
+From: Bill Long
+Subject: Adding TYPE(*) and DIMENSION(..) to the TR
+Date: 15 Aug 2008
+References: J3/08-007r2
+
+
+Proposal to add TYPE(*) and DIMENSION(..) to Fortran.
+
+Specs and Syntax only; no Edits.
+
+The desire for a simple mechanism to interoperate with C objects
+declared as (void *) has led to several proposed modifications to
+Fortran. One of the most direct solutions is to provide as essentially
+equivalent declaration in Fortran and limit its associated
+semantics. The form of the declaration proposed is TYPE(*) which
+extends the already existing TYPE(...) syntax, and borrows the
+"assumed" semantics associated with the use of * in declarations.  In
+keeping with the rest of the TR, the idea is expanded to include
+assumed-shape, allocatable, and pointer variables. With those
+additions, a mechanism to ignore the rank is also needed.
+
+
+Syntax changes:
+---------------
+
+At [49:R403]:
+
+Add "<<or>> TYPE (*)" to the options for <declaration-type-spec>.
+
+At [92:515]:
+
+Add "<<or>> <assumed-rank-spec>"
+
+After [94:5.3.8.6] in a new subclause named "Assumed-rank array"
+include a syntax rule:
+
+"R522a  <assumed-rank-spec>  <<is>>  .."
+
+Semantics for assumed-type variables:
+-------------------------------------
+
+An <assumed-type> variable is a variable declared with TYPE (*). These
+constraints apply to assumed-type variables:
+
+C1) An <assumed-type> variable shall be a dummy variable.
+
+C2) An <assumed-type> variable shall not have the CODIMENSION,
+EXTERNAL, INTRINSIC, or VALUE attribute.
+
+Note: The ALLOCATABLE, ASYNCHRONOUS, CONTIGUOUS, DIMENSION, INTENT,
+OPTIONAL, POINTER, TARGET, and VOLATILE attributes are allowed.
+
+C3) An assumed-type variable may appear only as a dummy argument, an
+actual argument associated with a dummy argument that is assumed-type,
+or the first argument to these intrinsic and intrinsic module
+functions: ALLOCATED, ASSOCIATED, IS_CONTIGUOUS, LBOUND, PRESENT,
+SHAPE, SIZE, UBOUND, or C_LOC.
+
+Additional rules governing variables declared TYPE(*):
+
+An explicit interface is required for a procedure that has an
+assumed-type dummy argument.
+
+In the association of actual and dummy arguments, an assumed-type dummy
+argument is type and kind compatible with any actual data argument.
+
+In resolving a generic interface, corresponding dummy arguments may
+include a dummy argument of TYPE (*). Such a dummy is not distinguishable
+from other dummies based on type. That is, the other specifics in the
+generic must be distinguished based on the rank of this dummy or
+based on other arguments.
+
+A BIND(C) interface may specify dummy arguments that are
+assumed-type. If the dummy argument is a scalar, an explicit-shape
+array, or an assumed-size array, the corresponding formal parameter in
+the C prototype shall be a void pointer (void *).  If the dummy
+argument has the ALLOCATABLE or POINTER attributes, or is
+assumed-shape or assumed-rank, the actual argument is passed as a
+descriptor, as specified elsewhere in the TR.
+
+
+Semantics for assumed-rank variables:
+-------------------------------------
+
+An <assumed-rank> variable is a variable declared with an
+<assumed-rank-spec>. These constraints apply:
+
+C4) An <assumed-rank> variable shall be a dummy variable.
+
+C5) An <assumed-rank> variable shall not have the CODIMENSION,
+EXTERNAL, INTRINSIC, or VALUE attribute.
+
+Note: The ALLOCATABLE, ASYNCHRONOUS, CONTIGUOUS, DIMENSION, INTENT,
+OPTIONAL, POINTER, TARGET, and VOLATILE attributes are allowed.
+
+C6) An assumed-rank variable may appear only as a dummy argument, an
+actual argument associated with a dummy argument that is assumed-rank,
+the argument of the C_LOC intrinsic function in the ISO_C_BINDING
+module, or the first argument in a reference to the intrinsic inquiry
+functions except LCOBOUND, UCOBOUND, and IMAGE_INDEX. A new inquiry
+intrinsic RANK is added to inquire about the rank of an array.
+
+Additional rules governing assumed-rank variables:
+
+An explicit interface is required for a procedure that has an
+assumed-rank dummy argument.
+
+In the association of actual and dummy arguments, an assumed-rank
+dummy argument is rank compatible with any actual array argument, or
+an actual scalar argument. If the actual argument is scalar, the dummy
+argument has rank zero and the shape and bounds are arrays of zero
+size. If the actual argument is an array, the bounds of the dummy
+argument are assumed from the actual argument. In other respects, the
+rules for assumed-rank dummy arguments are similar to those for
+assumed-shape arrays.
+
+In resolving a generic interface, corresponding dummy arguments may
+include an assumed-rank dummy argument. Disambiguation must rely
+on the type of the argument or on other arguments.
+
+A BIND(C) interface may specify dummy arguments that are
+assumed-rank. If the dummy argument is assumed-rank, the actual
+argument is passed as a descriptor, as specified elsewhere in the TR.
+
+Specification for a RANK inquiry function.
+------------------------------------------
+
+In Table 13.1:
+
+RANK         (A)        I        Rank of a data object.
+
+Following the RANGE intrinsic in 13.7:
+
+13.7.136a  RANK (A)
+
+Description: Rank of a data object.
+
+Class: Inquiry function.
+
+Argument:  A  shall be a data object of any type.
+
+Result Characteristics: Default integer scalar.
+
+Result value: The result is the rank of A. 
+
+Example: For an array X declared REAL :: X(:,:,:), RANK(X) is 3.
+
+-------------------
+
+Example of TYPE (*) for an abstracted MPI routine with two
+arguments. The first argument is a data buffer of type (void *) and
+the second is an integer indicating the size of the buffer.  The
+generic interface allows for both 4 and 8 byte integers, as a solution
+to the "-i8" compiler switch problem.
+
+In C:  void MPI_xxx ( void * buffer, int n);
+
+In the Fortran MPI module:
+
+interface MPI_xxx
+   subroutine MPI_xxx (buffer, n) bind(c,name="MPI_xxx")
+      type(*),dimension(*) :: buffer
+      integer(c_int),value :: n
+   end subroutine MPI_xxx
+   module procedure MPI_xxx_i8
+end interface MPI_xxx
+
+...
+
+subroutine MPI_xxx_i8 (buffer, n)
+   type(*),dimension(*) :: buffer
+   integer(8) :: n
+   call MPI_xxx(buffer, int(n,c_int))
+end subroutine MPI_xxx_i8
+
+-----------------------
+Example of assumed-type and assumed-rank for an abstracted
+MPI_send routine.
+
+In C:  void MPI_send ( void * buffer, int n);
+       void MPI_send_new ( void * buffer_desc);
+
+In the Fortran MPI module:
+
+interface MPI_send
+   subroutine MPI_send_old (buffer, n) bind(c,name="MPI_send")
+      type(*), dimension(*) :: buffer ! Passed by simple address
+      integer(c_int),value :: n
+   end subroutine
+   subroutine MPI_send_new (buffer) bind(c,name="MPI_send_new")
+      type(*), dimension(..), contiguous :: buffer
+         ! Passed by descriptor including the shape and type
+   end subroutine
+end interface
+
+real :: x(100), y(10,10)
+
+! These will invoke MPI_send_old
+call MPI_send(x,size(x)) ! Passed by address
+call MPI_send(y,size(y)) ! Sequence association
+call MPI_send(y(:,1),size(y,dim=1)) ! Pass first column of y
+call MPI_send(y(1,5),size(y,dim=1)) ! Pass fifth column of y
+
+! These will invoke MPI_send_new
+call MPI_send(x) ! Pass a rank-1 descriptor
+call MPI_send(y) ! Pass a rank-0 descriptor
+call MPI_send(y(:,1)) ! Passed by descriptor without copy
+call MPI_send(y(1,5)) ! Illegal: No sequence association
+
+-------------------- 
+
+It is possible to "cast" a TYPE (*) object to a usable type, exactly
+as is done for void * objects in C. For example, this code fragment
+casts a block of memory to be used as an integer array.
+
+
+subroutine process(block, nbytes)
+   type(*), target :: block(*)
+   integer, intent(in) :: nbytes ! Number of bytes in block(*)
+   
+   integer :: nelems
+   integer, pointer :: usable(:)
+   
+   nelems=nbytes/(bit_size(usable)/8)
+   call c_f_pointer (c_loc(block), usable, [nelems] )
+   usable=0 ! Instead of the illegal block=0
+end subroutine   
+
+
+--------------------
+Assumed-rank variables are not restricted to be assumed-type.
+For example, many of the procedures in Clause 14 could be written
+using an assumed-rank dummy argument instead of writing 16 separate
+specific routines for each possible rank. 
+
+An example of an assumed-rank dummy argument for the specific
+procedures for a Clause 14 function.
+
+interface ieee_support_divide
+    module procedure ieee_support_divide_noarg
+    module procedure ieee_support_divide_onearg_r4
+    module procedure ieee_support_divide_onearg_r8
+    module procedure ieee_support_divide_onearg_r4_scalar
+    module procedure ieee_support_divide_onearg_r8_scalar
+end interface ieee_support_divide
+
+...
+
+logical function ieee_support_divide_noarg ()
+    ieee_support_divide_noarg = .true.
+end function ieee_support_divide_onearg_r4
+
+logical function ieee_support_divide_onearg_r4 (x)
+    real(4),dimension(..) :: x
+    ieee_support_divide_onearg_r4 = .true.
+end function ieee_support_divide_onearg_r4
+
+logical function ieee_support_divide_onearg_r8 (x)
+    real(8),dimension(..) :: x
+    ieee_support_divide_onearg_r8 = .true.
+end function ieee_support_divide_onearg_r8
+
+logical function ieee_support_divide_onearg_r4_scalar (x)
+    real(4) :: x
+    ieee_support_divide_onearg_r4_scalar = .true.
+end function ieee_support_divide_onearg_r4_scalar
+
+logical function ieee_support_divide_onearg_r8_scalar (x)
+    real(8) :: x
+    ieee_support_divide_onearg_r8_scalar = .true.
+end function ieee_support_divide_onearg_r8_scalar
+

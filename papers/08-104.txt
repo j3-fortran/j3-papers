@@ -1,0 +1,113 @@
+                                                                 08-104
+
+To:          J3
+From:        Dick Hendrickson
+Subject:     Interpretation request:  Elemental defined assignment
+Date: 2008 January 16
+
+
+NUMBER: F03/00xx
+TITLE: Is defined assignment to a vector subscripted array allowed?
+KEYWORDS: defined assignment, vector-valued subscripts, elemental
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+
+QUESTION:  Is the assignment statement in subroutine cg1018 standard
+conforming?
+
+I does an elemental defined assignment to an array with a vector
+valued subscript.  Several compilers reject this assignment,
+claiming that an INTENT(OUT) argument can't be associated with
+a vector-valued actual argument.
+
+According to 142:6-7, this is a defined elemental assignment.
+
+Lines 26 to 30 of 142 are
+"The interpretation of a defined assignment is provided by the
+subroutine that defines it.
+
+If the defined assignment is an elemental assignment and the variable
+in the assignment is an array, the defined assignment is performed
+element-by-element, in any order, on corresponding elements of variable
+and expr."
+
+The first line looks like a general definition of defined assignment
+and the second line looks like a qualification for the specific case of
+elemental assignment.  The qualification has to mean that the assignments
+are performed on an element-by-element basis and this surely must mean
+that the statement is processed as if it were expanded into something
+like
+
+      TLA1L(7) = UDA1R(7)
+      TLA1L(1) = UDA1R(1)
+      TLA1L(3) = UDA1R(3)
+      ...
+and then the assignment subroutine is invoked on an element-by-element
+basis following the rules in chapter 12.
+
+Page 140, lines 4-5 have essentially identical words for intrinsic
+assignment and intrinsic assignment to a vector valued array, including
+derived type arrays, is allowed (if not many-to-one).
+
+The processors that reject the test program apparently interpret the
+assignment as
+       Call U_TO_T( TLA1L(NFV1), (UDA1R))
+without doing the assignment on an element-by-element basis.
+
+If that interpretation is correct, then we have the unusual situation
+where
+      TLA1L(NFV1) = TLA1L
+is standard conforming if the assignment is intrinsic and non-standard
+if the assignment is defined.
+
+      MODULE c_TESTS
+
+      integer, save :: nfv1(10) = [1,2,3,4,5,6,7,8,9,10]
+
+      TYPE UNSEQ
+        REAL                              R
+      END TYPE UNSEQ
+
+      TYPE SEQ
+        sequence
+        REAL                              R
+      END TYPE SEQ
+
+      INTERFACE ASSIGNMENT(=)
+        MODULE PROCEDURE U_TO_T
+      END INTERFACE ASSIGNMENT(=)
+
+      CONTAINS
+
+      ELEMENTAL PURE SUBROUTINE U_TO_T(T,U)
+      TYPE(SEQ),INTENT(IN)      ::  U
+      TYPE(UNSEQ), INTENT(OUT)  ::  T
+      T%R = U%R
+      END SUBROUTINE U_TO_T
+
+      SUBROUTINE CG1018(TLA1L,UDA1R)
+      TYPE(UNSEQ) TLA1L(10)
+      TYPE(SEQ) UDA1R(10)
+
+      TLA1L(NFV1) = UDA1R             !???????
+
+      END SUBROUTINE
+
+      END MODULE c_TESTS
+
+
+
+
+ANSWER:
+
+
+
+EDITS:
+
+
+
+SUBMITTED BY: Dick Hendrickson
+
+HISTORY: 08-xxx    m183  F03/00xx Submitted
+

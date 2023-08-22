@@ -1,0 +1,136 @@
+
+                                                          J3/06-370
+
+To: J3
+Date: November 9, 2006
+From: Michael Ingrassia
+Subject: A problem program for BIND(C) for internal procedures
+
+Discussion:
+Recent discussion on the J3 mailing list concerned the possibility
+of allowing BIND(C) for internal procedures.   Some may
+consider this a matter of integration work in Fortran 2008.  But to the
+extent that this requires new implementation efforts, it should also
+be considered feature creep.
+
+The purpose of this note is to spell out an expensive case which
+implementors will need to face if the feature is permitted, and suggest
+a way for the standard to supply the functionality without so great an expense.
+
+
+% cat t1.f90
+RECURSIVE FUNCTION factorial(n)
+USE, INTRINSIC :: ISO_C_BINDING , ONLY : C_FUNLOC
+
+INTEGER factorial, n
+
+INTERFACE
+SUBROUTINE c_trace(p) BIND(C)
+USE, INTRINSIC :: ISO_C_BINDING, ONLY : C_FUNPTR
+TYPE(C_FUNPTR), VALUE :: p
+END SUBROUTINE
+END INTERFACE
+
+CALL c_trace(C_FUNLOC(ftrace))
+IF (n .eq. 0) THEN
+   factorial = 1
+ELSE
+   factorial = n * factorial(n - 1)
+END IF
+CONTAINS
+     SUBROUTINE ftrace()  BIND(C)    ! assume this is allowed and marks this routine as interoperable
+     PRINT *, 'Invoked factorial with argument ',n
+     END SUBROUTINE
+END FUNCTION factorial
+
+INTEGER i, factorial
+i = factorial(1) ; PRINT *, 'factorial(1)=',i
+i = factorial(2) ; PRINT *, 'factorial(2)=',i
+i = factorial(3) ; PRINT *, 'factorial(3)=',i
+i = factorial(4) ; PRINT *, 'factorial(4)=',i
+END
+
+% cat t2.c
+#include <stdio.h>
+void
+c_trace(void (*p)(void))
+{
+    /* Assume that p() prints trace information */
+    printf("0x%X: ", p);
+    p();
+}
+
+If this program is run by a standard f90 processor together
+with a companion C processor,
+one might expect c_trace to be called 10 times with a function
+pointer argument.  When calling the function through the
+pointer argument, the function (which is a Fortran internal subroutine)
+will need the value n=1 from four different host instances of factorial, the
+value n=2 from three more different host instances, the value
+n=3 from two more different host instances, and the value
+n=4 from an additional host instance.    An implementation based on
+dynamic code generation of trampolines would need to add 10 such
+trampolines/wrappers to handle the 5-line main program above !
+An implementation based on expecting C function pointers to contain more than
+just a C address might make too many demands on its companion processor
+or rule out too many potential companion processors.
+
+Such disproportionate effort is not required.  J3 could permit
+a wider variety of implementations of the same user functionality
+(interoperability of internal procedures with C) by
+introducing the concept of closures.  Here's a first attempt to show the flavor.
+If this is considered feature creep it would be possible to wait
+until the next revision of the standard.
+
+1) Introduce the type C_CLOSURE to intrinsic module ISO_C_BINDING.
+        TYPE(C_CLOSURE) can be used to construct an interface
+        that interoperates with a C prototype which has 2 corresponding
+        pointer arguments, the first being a function pointer and
+        the second being a "static display pointer" of type "void *".
+        An object of type C_CLOSURE is called a closure.
+
+        NOTE: It might be helpful, although it is not specifically required,
+        to think of a closure as having exactly two components , one pointing to
+        code and one pointing to a host instance.  Procedure pointers are
+        already required to have a concept of a host instance, see [318:1-3].
+
+        A Fortran procedure interface is interoperable with a C function prototype if
+        (1) the interface has the BIND attribute;
+        ...
+        (3) the number of dummy arguments of the interface is
+                equal to the number of formal parameters of the prototype
+                minus the number of dummy arguments of the interface of type C_CLOSURE
+           In this case we will say that a dummy argument of type C_CLOSURE
+                *corresponds to* two formal C parameters.
+           NOTE:  A Fortran dummy argument corresponds to 1 or 2 formal C parameters.
+                The number is always 1 if the dummy argument is not of type C_CLOSURE
+                and is always 2 if the dummy argument is of type C_CLOSURE.
+                The details of the correspondence are processor-specific.
+        ...
+
+2) Introduce function C_FUNCLOSURE to intrinsic module ISO_C_BINDING.
+        It takes as argument an internal procedure
+        or a procedure pointer which is pointer associated with an internal procedure.
+        An internal procedure shall not be the argument to C_FUNPTR.
+        C_FUNCLOSURE returns an object of type TYPE(C_CLOSURE) which describes
+        the internal procedure and its current host instance.
+
+3) Closures may be assigned to procedure pointers and procedure pointers may be
+        assigned to closures by value-preserving intrinsic assignment.
+        Value-preserving means that
+                Y = X
+                X = Y
+        results in X having its original value.
+
+4) An internal procedure is always defined by Fortran.  It is never, per se,
+        interoperable.  However, it can be called by a C function through a
+        C function pointer argument which interoperates with a Fortran dummy
+        which is a closure describing it.  The specific C calling sequence
+        is processor-dependent.
+
+        NOTE:  The C function may or may not be required to tailor the calling
+        sequence using the 2nd C formal parameter which interoperates with the
+        closure.  For example, it might need to be explicitly listed as an
+        argument. 
+        Different companion processors may require different C code to call the
+        same internal procedure defined by the same Fortran code.

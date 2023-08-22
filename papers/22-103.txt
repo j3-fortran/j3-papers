@@ -1,0 +1,375 @@
+To: J3                                                     J3/22-103
+From: Malcolm Cohen
+Subject: J3 Fortran interp letter ballot #38 - due 24-January-2022
+Date: 2021-December-22
+
+Enclosed is the next letter ballot on Fortran interpretations.
+
+This is a formal letter ballot; only one vote per principal member.
+An alternate member may vote if the principal member does not vote;
+in any case, comments are welcome from non-voting alternates and from
+members of WG5 that are not J3 members, and will be taken into
+consideration by J3/interp.
+
+The rules for interpretation handling by which we operate say:
+
+    o   J3 votes on the answer at a J3 meeting; a simple majority
+        vote marks the answer as "passed by J3 meeting".
+
+    o   Between J3 meetings the chair of /interp sends a J3 letter
+        ballot to J3 to approve interp answers that have been "passed
+        by J3 meeting".  The letter ballot runs for 30 days.  An interp
+        answer passes by a 2/3rds vote;  a no vote must be accompanied
+        by an explanation of the changes necessary to change the member's
+        vote to yes.
+
+        J3/interp reserves the right to recall an interp answer for
+        more study even if the answer passes.
+
+
+3 Fortran interpretations are currently "Passed by J3 meeting" after
+J3 meeting #225.  This is the letter ballot phase to go from "Passed
+by J3 meeting" to "Passed by J3 letter ballot".
+
+
+The following Fortran interpretations are being balloted:
+
+Yes  No   Number    Title
+
+---  ---  F18/025  Is component initialization an attribute?
+---  ---  F18/033  E/EN/ES/D output exponent when w=0
+---  ---  F18/034  Purity of IEEE_GET_FLAG and IEEE_GET_HALTING_MODE
+
+
+The text of these interpretations is attached.  Each interpretation
+starts and ends with a row of "-"s.
+
+Please mark the above -Y- in the Yes column for "yes", -C- in the Yes
+column for "yes with comment", or -N- in the No column for a "no"
+answer {be sure to include your reasons with "no"} and send only the
+above text {not this entire mail message} with any comments to
+
+        j3@j3-fortran.org
+
+by 23:59:59 PST, Monday 24-January-2022, in order to be counted
+(that is, by 02:59:59 EST, Tuesday 25-January-2022,
+          or 07:59:59 GMT, Tuesday 25-January-2022,
+          or 16:59:59 JST, Tuesday 25-January-2022).
+
+
+Thanks                         /Malcolm
+
+
+----------------------------------------------------------------------
+
+NUMBER: F18/025
+TITLE: Is component initialization an attribute?
+KEYWORDS: Component initialization, SEQUENCE, Generic
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 meeting
+
+QUESTION:
+
+Consider
+  MODULE m1
+    TYPE t
+      SEQUENCE
+      INTEGER :: a = 1
+    END TYPE
+  END MODULE
+  MODULE m2
+    TYPE t
+      SEQUENCE
+      INTEGER :: a = 999
+    END TYPE
+  END MODULE
+  MODULE m
+    USE m1,t1=>t
+    USE m2,t2=>t
+  END MODULE
+
+The normative text on attributes states:
+    "Every data object has a type and rank and can have ... other
+     properties that determine the uses of the object. Collectively,
+     these properties are the attributes of the object."
+It does seem that default initialization of components determines the
+uses of an object, but there is no clear statement either way that
+specifies that it is or is not an attribute. Obviously, it cannot
+appear in an attribute specification statement, but then, none of the
+attributes of a component can appear there.
+
+Q. Is component initialization an attribute? This affects type
+   equivalence, and thus generic resolution and pure procedure
+   semantics.
+
+For example,
+    PROGRAM test1
+      USE m
+      TYPE(t1) :: x = t1(0)
+      CALL sub(x) ! Has INTENT(OUT), therefore
+      PRINT *,x   ! we expect x%a to be now equal to 1.
+    END PROGRAM
+    SUBROUTINE sub(y)
+      USE m
+      TYPE(t2),INTENT(OUT) :: y
+      PRINT *,y   ! We expect y%a to be now equal to 999.
+    END SUBROUTINE
+This is only a valid program if type T1 is considered to be the same
+as T2, i.e. if component initialization is not an attribute. But then,
+is X%A initialised to 1 at the CALL, or to 999 on entry to SUB?
+Whichever, it seems the user will be surprised.
+
+Similarly, if component initialization is an attribute, then
+    MODULE mg
+      USE m
+      INTERFACE s
+        MODULE PROCEDURE s1,s2
+      END INTERFACE
+    CONTAINS
+      SUBROUTINE s1(a)
+        TYPE(t1) a
+        ...
+      END SUBROUTINE
+      SUBROUTINE s2(a)
+        TYPE(t2) a
+        ...
+      END SUBROUTINE
+    END MODULE
+would specify a valid generic interface, but if it is not an attribute
+the module MG is not valid.
+
+Finally, if component initialization is not an attribute, it might
+circumvent restrictions aimed at preventing side-effects of pure
+procedures, for example:
+    MODULE safe
+      REAL,TARGET :: x
+      TYPE t
+        SEQUENCE
+        REAL,POINTER :: p
+      END TYPE
+    END MODULE
+    MODULE bad
+      USE safe,ONLY:x
+      TYPE t
+        SEQUENCE
+        REAL,POINTER :: p => x
+      END TYPE
+    END MODULE
+    MODULE unsafe
+    CONTAINS
+      PURE SUBROUTINE s(a,b)
+        USE safe,ONLY:t1=>t
+        USE bad,ONLY:t2=>t
+        REAL,INTENT(OUT) :: a
+        REAL,INTENT(IN) :: b
+        TYPE(t1) oops
+        oops = t2() ! Only valid if component init not an attr.
+        oops%p = a  ! And then this modifies a global variable.
+        a = b
+      END SUBROUTINE
+    END MODULE
+
+ANSWER:
+
+The value produced by component initialization was intended to be an
+attribute. An edit is provided to clarify this ambiguity.
+
+EDIT to 18-007r1:
+
+[67:18] 7.5.2.4 Determination of derived types, p2,
+        After "attributes"
+        insert "(including the value of any default initialization,
+                 converted if necessary to the type, type parameters,
+                 and shape of the component)",
+        making that sentence read
+   "Data entities also have the same type if they are declared with
+    reference to different derived-type definitions that specify the
+    same type name, all have the SEQUENCE attribute or all have the
+    BIND attribute, have no components with PRIVATE accessibility, and
+    have components that agree in order, name, and attributes
+    (including the value of any default initialization, converted if
+    necessary to the type, type parameters, and shape of the
+    component)."
+{Make it clear that default initialization is considered to be an
+ attribute for the purposes of type equivalence.}
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 21-128   m223  Submitted
+         21-128r1 m223  Revised
+         21-128r2 m223  Passed by J3 meeting 223, 6-5.
+         21-184r1 m225  Failed J3 letter ballot #37
+         21-196   m225  Revised edit, passed by J3 meeting 225, 9-3.
+
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
+NUMBER: F18/033
+TITLE: E/EN/ES/D output exponent when w=0
+KEYWORDS: I/O, E_format
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 meeting
+
+QUESTION:
+
+Consider the following program:
+
+integer, parameter :: DP = selected_real_kind (10,300)
+integer, parameter :: QP = selected_real_kind (10,3000)
+real(DP) :: A
+real(QP) :: B
+
+A = 0.12345E123_DP
+write (*,'(E0.7)') A ! (1)
+
+B = 0.12345E1234_QP
+write (*,'(E0.7)') B ! (2)
+
+end
+
+13.7.2.1 p1(6) says:
+
+"On output, with I, B, O, Z, D, E, EN, ES, EX, F, and G editing, the
+ specified value of the field width w may be zero. In such cases, the
+ processor selects the smallest positive actual field width that does
+ not result in a field filled with asterisks."
+
+and (5) above it says:
+
+"On output, if an exponent exceeds its specified or implied width
+ using the E, EN, ES, EX, D, or G edit descriptor, or the number of
+ characters produced exceeds the field width, the processor shall fill
+ the entire field of width w with asterisks. However, the processor
+ shall not produce asterisks if the field width is not exceeded when
+ optional characters are omitted."
+
+If we then look at 13.7.2.3.3 (E and D editing), table 13.1 (Exponent
+forms) says that for the Ew.d form and where the absolute value of the
+exponent is greater than 99 but less than or equal to 999, the form of
+the exponent omits the exponent letter.
+
+Q1: According to the text of the standard, the exponent form for the
+    output at (1) must be "+123", omitting the exponent letter. Was
+    this intended? Isn't the whole point of w=0 to produce minimal
+    width but complete values? Note that the exponent letter is not an
+    "optional character".
+
+Q2: What should the output at (2) be? It would seem that the standard
+    does not provide an interpretation that results in anything but
+    the whole field being filled with asterisks, since the exponent
+    overflows three digits, yet w=0 disallows that.
+
+ANSWER:
+
+A1: No, this was not intended. E0.d should behave as if it were E0.dE0
+    (similarly for EN and ES), where the exponent letter is present
+    and there are the minimum number of digits needed to represent the
+    exponent. There is no D0.dE0 form, however, so it needs to be a
+    special case in the standard.
+
+A2: The current text provides no interpretation. The proposed change
+    to behave as E0.dE0 provides a reasonable interpretation.
+
+Note that G0.d does not have this problem, as the exponent form is
+specified as a "reasonable processor-dependent value ... of e".
+The EX descriptor also does not have this problem.
+
+EDITS to 18-007r1:
+
+13.7.2.3.3 (E and D editing)
+
+264:Table 13.1 (E and D Exponent forms)
+
+Row 1: Add after "Ew.d": " with w > 0"
+Row 3: Add after "Ew.dE0": " or E0.d"
+Row 4: Add after "Dw.d": " with w > 0"
+Add new Row 5:
+  Column 1: "D0.d"
+  Column 2: "any"
+  Column 3: "D\pmz1z2 . . . zs or E\pmz1z2 . . . zs"
+
+13.7.2.3.4 (EN editing)
+
+265:Table 13.2 (EN Exponent forms)
+
+Row 1: Add after "ENw.d": " with w > 0"
+Row 3: Add after "ENw.dE0": " or EN0.d"
+
+13.7.2.3.5 (ES editing)
+
+266:Table 13.3 (ES Exponent forms)
+
+Row 1: Add after "ESw.d": " with w > 0"
+Row 3: Add after "ESw.dE0": " or ES0.d"
+
+SUBMITTED BY: Steve Lionel
+
+HISTORY: 21-172    m225  Submitted
+         21-172r1  m225  Revised, passed by J3 meeting 225.
+
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
+NUMBER: F18/034
+TITLE: Purity of IEEE_GET_FLAG and IEEE_GET_HALTING_MODE
+KEYWORDS: IEEE_GET_FLAG, IEEE_GET_HALTING_MODE, PURE
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 meeting
+
+QUESTION:
+
+17.11.1 General (in 17.11 Specifications of the procedures) states
+    "all the subroutines are impure unless otherwise stated".
+
+Table 17.3 in 17.10 Summary of the procedures classes these as "ES",
+where "ES indicates that the procedure is an elemental subroutine".
+
+Since Fortran 2008, being elemental has no bearing on whether a
+procedure is pure or impure. If it is declared with the ELEMENTAL
+keyword it is pure by default, that is, if the IMPURE keyword does not
+appear; this however only applies to elemental procedures defined by
+subprograms, not ones defined by standard intrinsic modules.
+
+Looking at 17.11.5 and 17.11.6, the standard merely has
+    "Class: Elemental subroutine"
+which again, does not indicate purity or impurity.
+
+The lack of a statement to the contrary means that the specification
+in 17.11.1 is operative, and therefore IEEE_GET_FLAG and
+IEEE_GET_HALTING_MODE must be impure.
+
+However, these were considered to be pure in Fortran 2003, as Fortran
+2003 had no concept of an impure elemental procedure - it only had
+pure elemental procedures.
+
+Further evidence that the current situation might be a mistake is that
+the non-elemental subroutines IEEE_SET_FLAG and IEEE_SET_HALTING_MODE
+are explicitly specified to be pure.
+
+Are IEEE_GET_FLAG and IEEE_GET_HALTING_MODE intended to be pure?
+
+ANSWER:
+
+Yes, these subroutines were intended to be pure.
+Edits are provided to correct this mistake.
+
+EDITS to 18-007r1:
+
+[440:8] 17.10 Summary of the procedures, p3, line "ES indicates...",
+        "an elemental subroutine" -> "a pure elemental subroutine".
+
+[443:23] 17.11.5 IEEE_GET_FLAG (FLAG, FLAG_VALUE), para 2 Class,
+         "Elemental" -> "Pure elemental".
+
+[443:34] 17.11.6 IEEE_GET_HALTING_MODE (FLAG, HALTING), para 2 Class,
+         "Elemental" -> "Pure elemental".
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 21-202    m225  Submitted, passed by J3 meeting 225.
+
+----------------------------------------------------------------------
+
+

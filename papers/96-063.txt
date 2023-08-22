@@ -1,0 +1,864 @@
+
+                                                           X3J3/96-063
+
+Date:     April 3, 1996
+To:       X3J3
+From:     Keith Bierman
+Subject:  A Fortran Preprocessor
+
+
+1.0  Title: fpp
+     =====
+
+A Fortran preprocessor for FORTRAN 77 and Fortran 90 programs.
+
+
+2.0  Specification
+     =============
+
+Frequently Fortran programmers need to maintain more than one version
+of a code, or to run the code in various environments. The easiest
+solution for the programmer is to keep a single source file that has
+all the code variations interleaved within it so that any version can
+be easily extracted. This way, modifications that apply to all versions
+need only be made once.
+
+Source code preprocessors have long been used to provide these
+capabilities.  They allow the user to insert directive statements
+within the source code that effect the output of the preprocessor.
+Typically, these special directives may appear as comment lines to a
+compiler. In general, source code preprocessors permit the user to
+define special variables and logical constucts that conditionally
+control which source lines in the file are passed on to the compiler
+and which lines are skipped over. In addition, the preprocessor's
+source line editing capabilities allow the user to specify how the
+source code should be changed according to the value of defined string
+variables.
+
+Historically, the source code preprocessor found in standard C
+compilers, cpp, has been used to provide Fortran programmers with these
+capabilities.  However, cpp is too closely tied into the C language
+syntax and source line format to be used without careful scrutiny.  The
+proposed Fortran PreProcessor, fpp, would provide Fortran-specific
+source code capabilities that C programmers have long grown to expect
+in UNIX environments.
+
+Some of fpp's capabilities could, potentially, be reapplied in other
+tools.  An implementation of fpp would have to parse and analyze
+Fortran source, evaluate Fortran expressions and generate Fortran
+output. These are the building blocks that other tools would need to
+provide an enriched environment for Fortran program development.
+
+The following section specifies the capabilities of fpp in more
+detail.
+
+
+3.0  Detailed Specifications
+     =======================
+
+Preprocessor Source
+-------------------
+
+   fpp's input source is ordinary Fortran source with interspersed
+   preprocessor statements. All preprocessor statements begin with a
+   special character, #.  It may only appear at the first character
+   position in a line. The # should be immediately followed by the text
+   of the preprocessor command.
+
+   Preprocessor directives may not appear inside Fortran comments. Also
+   the preprocessor will not modify the text inside a Fortran comment.
+
+   The preprocessor will operate on both fixed and free form source.
+   Fixed form source files would have the extension .F while free form
+   source files would have the extension .F90. Note that the fixed form
+   file name convention applies to both FORTRAN 77 and Fortran 90.
+   Files with such extensions will be preprocessed first before the
+   appropriate compiler is invoked.
+
+   If the expansion of a macro or string replacement causes the column
+   width of a line to exceed column 72 (for fixed form) or column 132
+   (for free form), the preprocessor will generate the appropriate
+   continuation cards.
+
+Preprocessor Variables
+----------------------
+
+   Preprocessor variables are defined by directives to have a string
+   value.  fpp will replace occurrences of the variable within the
+   source code with its value wherever appropriate. Variables also
+   appear on conditional directives and control the selection of source
+   code lines passed to output.
+
+	#define name    string
+
+   defines the value of the variable "name" to be "string", with the
+   result that every occurrence of the token "name" [outside of
+   comments, IMPLICIT statement bounds, text in FORMAT statements & 
+   string literals] is literally replaced by "string".
+
+   Note: In case of IMPLICIT statement bounds and text in FORMAT statements,
+	 macros are not expanded only in case of conflict with valid
+	 literals in that context.
+
+   "Macro"-like, inline replacements with arguments are also
+   permitted:
+	#define name (arg1 [,arg2]...) string-with-args-inserted
+
+   Examples:
+
+	#define SOLARIS_2       .TRUE.
+
+	#define CONVERT(TO_FARENHEIT) ((TO_FARENHEIT*9)/5)+32
+
+   Preprocessor variables are enabled from the point of definition till
+   the end of the compilation unit. (ie. global scoping across the
+   file)
+
+   Preprocessor variables can be explicitly undefined using
+
+	#undef name
+
+
+Comments
+--------
+
+C style comments enclosed within /* and */ is accepted by the Fortran
+preprocessor.
+
+
+Conditional Source Code Selection
+---------------------------------
+
+   This is modeled on the cpp conditional code construct.
+
+	#if condition1
+		block1 
+	[#elif condition2
+		block2 ]
+	  ...
+	[#else
+		blockn ] 
+	#endif
+
+	or
+
+	#ifdef name
+		block 
+	#endif
+
+	#ifndef name
+		block 
+	#endif
+
+    The conditions are fpp expressions involving preprocessor variables
+    (specified by #define statements). Note that the conditions may be
+    specified within parentheses. These fpp expressions are a superset
+    of cpp expressions in that they can evaluate Fortran logical
+    literals. So, .TRUE. is valid in an fpp expression. The preprocessor 
+    evaluates these conditions to get a true or false result. The 
+    expressions may not evaluate floating point values or include 
+    intrinsic functions.
+
+    Example:
+	#define SOLARIS_2       .TRUE.  
+	#if (SOLARIS_2)
+	    CALL solaris_2 (X,Y,Z) 
+        #else
+	    CALL solaris_1 (X,Y,Z) 
+	#endif
+
+Including Files
+---------------
+
+    Sometimes, it is convenient to collect preprocessor variables in a
+    file. This is possible with
+
+	#include filename
+
+    Nesting of #include is permitted. #include statement may not appear
+    in a continued line (ie. the first statement in an included file
+    may not be a continuation line)
+
+
+Preprocessor Intrinsic Functions
+--------------------------------
+
+    defined(name) provides the definition status of a name. This is,
+    typically, used in a #if statement:
+
+	#if defined(BIG_MODEL)
+
+
+Command line options
+--------------------
+
+    fpp is typically invoked from the Fortran compiler driver. It can
+    also be invoked stand alone. fpp takes in the following options:
+
+    -Dname      Define name as 1. This is the same as if a
+			#define name 1 
+		line appeared in the source file that fpp is processing.
+
+    -Dname=def  This is the same as if a
+			#define name    def 
+		line appeared in the source file that fpp is processing.
+
+    -Idirectory Insert `directory' into the search path for #include files
+		with names not beginning with '/'. So, #include files
+		with names enclosed in double-quotes (") are searched
+		first in the directory of the file with the #include
+		line, then in directories named with the -I options,
+		and lastly, in the directories from the standard list.
+
+    -Uname      Remove any initial definition of `name', where `name'
+    		is predefined by the preprocessor.
+
+    -Ydirectory Use `directory' in place of the standard list of
+		directories when searching for #include files.
+
+
+========================================================================
+
+The man page to go along with that specification:
+
+
+fpp(1)                    User Commands                    fpp(1)
+
+
+
+NAME
+     fpp - the Fortran language preprocessor for FORTRAN  77  and
+     Fortran 90.
+
+SYNOPSIS
+     fpp [ options ] [ input-file [ output-file ] ]
+
+DESCRIPTION
+     fpp is the  preprocessor  for FORTRAN 77  and  Fortran   90.
+     fpp  optionally   accepts   two   filenames  as   arguments.
+     input-file and output-file  are,  respectively,  the   input
+     file  read  and the output file written by the preprocessor.
+     By default standard input and output are used.   fpp  should
+     be used instead of the cpp preprocessor with the Sun FORTRAN
+     77 compiler.
+
+OPTIONS
+     -Dname
+          Define the preprocessor variable name as 1 (one).  This
+          is the same as if a -Dname=1 option appeared on the fpp
+          command line, or as if a
+
+               #define name 1
+
+          line appeared in the source file, which is processed by
+          fpp.
+
+
+     -Dname=def
+          Define name as if by a #define directive.  This is  the
+          same as if a
+
+               #define name def
+
+          line appeared in the source file that fpp  is  process-
+          ing.   The   -D option has lower precedence than the -U
+          option.  That is, if the same name is used in both a -U
+          option  and  a   - D option, the name will be undefined
+          regardless of the order of the options.
+
+     -Uname
+          Remove any initial definition of name, where name is  a
+          fpp variable that is predefined by a particular prepro-
+          cessor.
+
+     -Idirectory
+          Insert directory into  the  search  path  for  #include
+          files  with names not beginning with `/'.  directory is
+          inserted ahead of  the  standard  list  of  ``include''
+          directories.   Thus, #include files with names enclosed
+          in double-quotes (") are  searched  for  first  in  the
+          directory  of  the file with the #include line, then in
+
+
+
+SunOS 5.4           Last change: 29 Jun 1995                    1
+
+
+
+
+
+
+fpp(1)                    User Commands                    fpp(1)
+
+
+
+          directories named with  - I  options,  and  lastly,  in
+          directories from the standard list.  For #include files
+          with names enclosed in angle-brackets (<>), the  direc-
+          tory  of  the  file  with  the  #include  line  is  not
+          searched.
+
+     -Ydirectory
+          Use the specified  directory in place of  the  standard
+          list of directories when searching for files.
+
+     -w0   Don't output warnings from fpp to stderr.
+
+     -Xw   For fixed form source files (See  below)  fpp  assumes
+          that  the  symbol  '  '  (space)  is insignificant.  By
+          default for this form the 'space' symbol is the  delim-
+          iter of tokens.
+
+     -fixed
+          The format of source is assumed to be fixed.
+
+     -free
+          The format of source is assumed to be free.
+
+     -Xl   Do not put to the output file  lines  specifying  line
+          numbers such as
+          #line-number file-name
+
+     -Xu Convert upper-case letters to lower-case, except  within
+     character-string  constants.  The  default is to not convert
+     upper-case letters  to  lower-case.
+
+     fpp  also understands some FORTRAN 77 compiler options  (See
+          f77(1)):
+
+     -e    Accept extended source lines,  up  to  132  characters
+          long.
+
+     -w    Do not output warnings to stderr.
+
+USAGE
+  Source files
+     fpp operates on both fixed and free form source files. Files
+     with  '.F'  extension  are  assumed to be in fixed form, and
+     files with '.F90' extensions (and all others) are assumed to
+     be in free form by default. There is the '-fixed' option for
+     using fixed form in Fortran 90. fpp recognizes the tab  for-
+     mat of a source line when in fixed mode.
+
+     A source file may contain fpp tokens. fpp tokens  are  close
+     to those of Fortran. They are:
+
+
+
+
+
+SunOS 5.4           Last change: 29 Jun 1995                    2
+
+
+
+
+
+
+fpp(1)                    User Commands                    fpp(1)
+
+
+
+     - fpp directive names.
+
+     - symbolic names including Fortran keywords. fpp permits all
+     symbols in names that Fortran does.
+
+     - constants. Integer, real, double and quadruple  precision,
+     binary,  octal,  hexadecimal  including  alternate notation,
+     character and hollerith.
+
+     - comments. There are Fortran comments and fpp comments.
+
+     - others. Special characters, space, tab, newline, etc.
+
+  Output
+     Output consists of a modified copy of the input, plus  lines
+     of the form:
+
+          #line_number  file_name
+
+     inserted to indicate the original  source  line  number  and
+     filename  of  the  following output line.  There is the 'Xl'
+     option (See above) which disables the  generation  of  these
+     lines.
+
+  Directives
+     Syntax and semantics of fpp directives are the same  as  cpp
+     directives (See cpp(1)).
+
+     All fpp directives  start with the hash symbol (#)   as  the
+     first character on a line. White space (SPACE or TAB charac-
+     ters) can  appear after the initial '#' for proper  indenta-
+     tion.   The   directives  can be divided  into the following
+     groups:
+
+     - macro definitions;
+
+     - conditional source code selection;
+
+     - inclusion of external files;
+
+     - line control.
+
+  Macro definition.
+     The #define directive is used to define both  simple  string
+     variables and more complicated macros:
+
+     #define name  token-string
+
+     This is the definition of a fpp  variable.  Wherever  'name'
+     appears  in  the  source  lines  following  the  definition,
+     'string' will be substituted for 'name'.
+
+
+
+
+SunOS 5.4           Last change: 29 Jun 1995                    3
+
+
+
+
+
+
+fpp(1)                    User Commands                    fpp(1)
+
+
+
+     #define name(argument [, argument] ...  )  token-string
+
+     This  is  the   definition   of   a   function-like   macro.
+     Occurrences  of  the  macro  'name'  followed  by the comma-
+     separated list of arguments within parentheses  are  substi-
+     tuted  by  the  token string produced from the macro defini-
+     tion. Every occurrence of an argument  identifier  from  the
+     macro  definition's  arguments  list  is  substituted by the
+     token sequence representing the corresponding  macro  actual
+     argument.
+
+     In these definitions, spaces between the macro name and  the
+     '('  symbol  are  prohibited  to prevent the directive being
+     interpreted as a fpp variable definition with  the  rest  of
+     the  line beginning with the '(' symbol being interpreted as
+     a token-string.
+
+     #undef name
+
+     Remove any definition for 'name' (produced by  'D'  options,
+     #define  directives or by default). No additional tokens are
+     permitted on the directive line after the name.
+
+  Including External Files.
+     There are two forms of file inclusion:
+
+     #include "filename"
+
+     #include <filename>
+
+     Read in the contents of filename at this location. The lines
+     read  in from the file are processed by fpp as  if it were a
+     part of the current file.
+
+     When the  <filename> notation is   used,  filename  is  only
+     searched  for  in the standard ``include'' directories.  See
+     the 'I' and 'Y' options above for  more  detail.   No  addi-
+     tional  tokens are permitted in the directive line after the
+     final  `"'  or `>'.
+
+  Line control.
+     #line-number "filename"
+
+     Generate line control information for the next  pass of  the
+     compiler.  The  integer-constant is  interpreted as the line
+     number of  the next line and the  filename  is   interpreted
+     as  the name of the file from where it comes.  If "filename"
+     is not given, the current filename is unchanged.
+
+  Conditional inclusion of source text.
+     There are two forms of conditional inclusion of source text
+
+
+
+
+SunOS 5.4           Last change: 29 Jun 1995                    4
+
+
+
+
+
+
+fpp(1)                    User Commands                    fpp(1)
+
+
+
+     1)         #if condition_1
+                     block_1
+                #elif condition_2
+                     block_2
+                #else
+                     block_n
+                #endif
+
+     2)         #ifdef name
+                     block_1
+                #elif condition
+                     block_2
+                #else
+                     block_n
+                #endif
+
+     or         #ifndef name
+                     block_1
+                #elif condition
+                     block_2
+                #else
+                    block_n
+                #endif
+
+     else- and elif-part are optional.  There may  be  more  than
+     one elif-part. Condition is an expression involving fpp con-
+     stants, macros  and intrinsic  functions. Condition  expres-
+     sions  are  similar to  cpp expressions, and may contain any
+     cpp operations and operands with the exception  of  c  long,
+     octal  and  hexadecimal  constants.  Additionally,  fpp will
+     accept and evaluate Fortran logical operations  .NOT.  .AND.
+     constants .TRUE. .FALSE.
+
+Details
+  Scope of macro or variable definitions.
+     The scope of a definition  begins  from  the  place  of  its
+     definition  and  encloses  all  the source lines (and source
+     lines from included files) from that definition line to  the
+     end of the current file.
+
+     There are the following exceptions to the scope effected  by
+     an fpp definition:
+
+     - files included by Fortran INCLUDE statements;
+
+     - fpp and Fortran comments;
+
+     - IMPLICIT single letter specifications;
+
+     - FORMAT specifications;
+
+
+
+
+
+SunOS 5.4           Last change: 29 Jun 1995                    5
+
+
+
+
+
+
+fpp(1)                    User Commands                    fpp(1)
+
+
+
+      - numeric, typeless and character constants.
+
+     The scope of the macro effect can be limited by means of the
+     #undef directive.
+
+  End of macro definition
+     Macro definition can be of any length and is limited only by
+     the  'newline'  symbol.  A  Macro can be defined in multiple
+     lines. A Macro can be continued to the next  line  with  the
+     insertion of ''. So, the occurrence of a 'newline' without a
+     macro-continuation signifies the end of  the  macro  defini-
+     tion.
+
+  Function-like macro definition
+     The number of macro call arguments should be the same as the
+     number of arguments in the corresponding macro definition.
+
+  Cancelling macro definitions of both kinds
+     #undef name
+
+     After this directive,  'name' would not interpreted  by  fpp
+     as  a  macro  or  variable  name.  If this name has not been
+     defined earlier as a macro name, then  the  given  directive
+     has no effect
+
+  Conditional source code selection
+     - Constant-expression
+
+     Subsequent lines up to the matching #else, #elif, or  #endif
+     directive,  appear  in  the  output  only if their constant-
+     expression yields a true value.
+
+     The lines following the #elif directive appear in the output
+     only if all of the following conditions hold:
+
+     -  The constant-expression  in the   preceding #if directive
+     evaluated  to  .FALSE.   or the name in the preceding #ifdef
+     directive is not  defined  or  the  name  in  the  preceding
+     #ifndef directive is defined.
+
+     -  The constant-expression in all intervening #elif   direc-
+     tives  evaluated to .FALSE.
+
+     -  The  current constant-expression   evaluates to .TRUE.
+
+     If  the  constant-expression  evaluates  to  .TRUE.,  subse-
+     quent  #elif   and   #else  directives are ignored up to the
+     matching #endif.  Any  constant-expression allowed in an #if
+     directive is allowed in  an #elif directive.
+
+     The intrinsic function `defined' can be used in a  constant-
+     expression also.
+
+
+
+SunOS 5.4           Last change: 29 Jun 1995                    6
+
+
+
+
+
+
+fpp(1)                    User Commands                    fpp(1)
+
+
+
+     The following items are permitted:
+
+     - C language operations: <, >, ==, !=, >=, <=, +, -,  /,  *,
+     %,  <<,  >>, &,  ~, |, &&, || They are interpreted by fpp in
+     accordance to the C language  semantics  (this  facility  is
+     provided for compatibility with "old" Fortran programs using
+     cpp)
+
+     - Fortran language operations: .AND., .OR.,  .NEQV.,  .XOR.,
+     .EQV.,  .NOT.   ,  .GT.,  .LT.,  .LE.,  .GE., .NE., .EQ., **
+     (power).
+
+     - Fortran logical constants: .TRUE. ,  .FALSE.   Only  these
+     items,  integer  constants,  and  names can be used within a
+     constant-expression. Names which have not been defined  with
+     the  help  of  the  'D'  option,  a  #define directive or by
+     default, get 0 as the value.   The  C  operation  '!='  (not
+     equal)  can  be  used  in #if or #elif directive, but NOT in
+     #define directive, where the symbol '!' is considered as the
+     Fortran comment symbol.
+
+     #ifdef name
+          Subsequent lines up to the matching  #else,  #elif,  or
+          #endif  appear  in the output only if the name has been
+          defined, either by a #define directive or  by  the  'D'
+          option,  and  in  the  absence of an intervening #undef
+          directive. No additional tokens are  permitted  on  the
+          directive line after name.
+
+     #ifndef name
+          Subsequent lines up to the matching  #else,   #elif, or
+          #endif  appear in the output only  if name has not been
+          defined, or if its definition has been removed with  an
+          #undef  directive.  No additional tokens  are permitted
+          on the directive line after name.
+
+     #elif constant-expression .
+          Any number of #elif directives may  appear   between an
+          #if,  #ifdef, or #ifndef directive and a matching #else
+          or #endif  directive.
+
+     #else
+          This inverts the sense  of  the  conditional  directive
+          otherwise in effect. If the preceding conditional would
+          indicate that lines are  to  be  included,  then  lines
+          between  the #else and the matching #endif are ignored.
+          If the preceding conditional indicates that lines would
+          be  ignored,  subsequent lines are included in the out-
+          put.
+
+     Conditional directives and corresponding #else directives
+          can be nested.
+
+
+
+SunOS 5.4           Last change: 29 Jun 1995                    7
+
+
+
+
+
+
+fpp(1)                    User Commands                    fpp(1)
+
+
+
+     #endif
+          End a section of lines begun by one of the  conditional
+          directives   #if, #ifdef, or #ifndef.  Each such direc-
+          tive must have a matching #endif.
+
+  Including External Files
+     Is the same as it is for cpp.  Files are  searched  as  fol-
+     lows:
+
+     for  #include "file_name":
+
+     - in the directory, in which the  processed  file  has  been
+     found;
+
+     - in the directories specified by the -I option;
+
+     - in the default directory .
+
+     for #include <file_name>:
+
+     - in the directories specified by the -I option;
+
+     - in the default directory.
+
+     fpp directives (beginning with the #  symbol  in  the  first
+     position  of lines) can be placed anywhere in a source code,
+     in particular before a Fortran continuation line.  The  only
+     exception  is  the  prohibition  of  fpp directives within a
+     macro call divided on several lines by means of continuation
+     symbols.
+
+  Comments
+     fpp permits comments of two kinds:
+
+     1) Fortran language comments.  A source line containing  one
+     of  the symbols 'C', 'c', '*', 'd' or 'D' in the first posi-
+     tion, is considered as a comment  line.  Within  such  lines
+     macro  expansions  are  not  performed.   The  '!' symbol is
+     interpreted as the beginning of a comment extending  to  the
+     end  of  the  line. The only exception is the case when this
+     symbol occurs within a constant-expression in #if and  #elif
+     directives (See above).
+
+     2) fpp comments enclosed in the '/*' and  '*/'  parasymbols.
+     They  are  excluded from the output and macro expansions are
+     not performed within these  symbols.  fpp  comments  can  be
+     nested  and  for  each  parasymbol  '/*'  there  must  be  a
+     corresponding parasymbol '*/'.  fpp  comments  are  suitable
+     for  excluding  the  compilation of large poriotns of source
+     instead of commenting every line with Fortran  comment  sym-
+     bols.
+
+
+
+
+SunOS 5.4           Last change: 29 Jun 1995                    8
+
+
+
+
+
+
+fpp(1)                    User Commands                    fpp(1)
+
+
+
+  Intrinsic functions
+     The intrinsic function
+
+     defined(name)   or defined name
+
+     Returns:
+
+       .TRUE. - if name is defined as a macro.
+
+       .FALSE.- if the name is not defined.
+
+  Macro expansion
+     If, during expansion of a macro, the column width of a  line
+     exceeds  column 72 (for the fixed format) or column 132 (for
+     the  free  format),  fpp  inserts  appropriate  continuation
+     lines.
+
+     In the fixed form there is limitation on macro expansions in
+     label fields (positions 1-5):
+
+     - a macro call (together with possible arguments) should not
+     extend more than the column 5 position;
+
+     - a macro call whose name begins with  one  of  the  Fortran
+     comment symbols is considered as a part of a comment;
+
+     - a macro expansion may produce a text extending beyond  the
+     column 5 position. In such a case a warning will be issued.
+
+     In the fixed form when the '-Xw' option has  been  specified
+     an  ambiguity  may appear if a macro call occurs in a state-
+     ment position and a macro name begins or  coincides  with  a
+     Fortran keyword. For example, in the following text:
+
+       #define callp(x)   call f(x)
+               call p(0)
+
+     fpp can not determine with certainty how  to  interpret  the
+     'call  p'  token sequence. It could be considered as a macro
+     name. The current implementation does the following:
+
+     - the longer identifier is chosen (callp in this case);
+
+     - from this identifier the longest macro name or keyword  is
+     extracted;
+
+     - if a macro name has been extracted a  macro  expansion  is
+     performed.  If the name begins with some keyword fpp outputs
+     an appropriate warning;
+
+     - further the rest of the  identifier  is  considered  as  a
+     whole identifier.
+
+
+
+SunOS 5.4           Last change: 29 Jun 1995                    9
+
+
+
+
+
+
+fpp(1)                    User Commands                    fpp(1)
+
+
+
+     In the above example the macro expansion would be  performed
+     and the following warning would be output:
+
+     warning: possibly incorrect substitution of macro callp
+
+     It should be noted that this  situation  appears  only  when
+     preprocessing  a fixed format source code and when the space
+     symbol is not interpreted as a token delimiter.   It  should
+     be  said  also that if a macro name coincides with a keyword
+     beginning part, as in the following case:
+
+          #define INT    INTEGER*8
+                  INTEGER k
+
+     then in accordance with the described algorithm, the INTEGER
+     keyword will be found earlier than the INT macro name. Thus,
+     there will be no warning when  preprocessing  such  a  macro
+     definition.
+
+DIAGNOSTICS
+     There are three kinds of diagnostic messages:
+
+     - warnings.  preprocessing of source code is  continued  and
+     the return value remains to be 0.
+
+     - errors.  fpp continues preprocessing but sets  the  return
+     code to a nonzero value, namely number of errors.
+
+     - fatal error.  fpp  cancels  preprocessing  and  returns  a
+     nonzero return value.
+
+     The messages produced  by  fpp  are  intended  to  be  self-
+     explanatory.  The  line  number and filename where the error
+     occurred are printed along with the diagnostic.
+
+SEE ALSO
+     cpp(1), f77(1)
+
+
+
+SunOS 5.4           Last change: 29 Jun 1995                   10
+

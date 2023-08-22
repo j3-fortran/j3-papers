@@ -1,0 +1,628 @@
+
+                                                           X3J3/96-156
+
+Date:       October 12, 1996
+To:         X3J3
+From:       R. Baker Kearfott
+Subject:    Interval Arithmetic - The Data Type and Low-Level Operations
+
+                             INTERVAL ARITHMETIC
+
+                    THE DATA TYPE AND LOW-LEVEL OPERATIONS
+
+The following is a synthesis of extensive email discussions
+between Keith Bierman, George Corliss, David Hough, Andrew
+Pitonyak, Michael Schulte, William Walster, Wolfgang Walter, and
+me. This represents substantial refinement over corresponding
+portions of paper 1996-066. I am now presenting it for X3J3's
+consideration.
+
+R. Baker Kearfott
+
+================================================================
+
+Name and Structure
+____ ___ _________
+
+The INTERVAL type is a numeric type. Its values are closed and
+bounded real intervals which are defined by an ordered pair of
+real values. The first real value is the lower bound (or
+infimum), the second real value is the upper bound (or supremum).
+The lower bound shall be less than or equal to the upper bound.
+The continuum of real numbers between and including these two
+bounds (or endpoints) is said to be contained in the interval.
+
+Note: Thus intervals contain real numbers that are not otherwise
+      machine representable.
+
+The actual internal structure of an interval data type is
+implementation-dependent, and the bit structure is not directly
+accessible to the user. That is, the user may change the values
+of the endpoints of an interval only through setting
+an entire interval, through the IVAL constructor described
+below, or through an implicit conversion to interval.
+The values of the lower bound and upper bound of an interval can
+be obtained with the functions INF and SUP defined below.
+
+The precision of each interval data type shall correspond to the
+precision of a real data type. The kind type parameter of each
+supported interval type shall be the same as the kind type
+parameter of the corresponding real type.
+
+Note: Although the interval data type is opaque, a common model
+      of intervals is that of two reals. For example, for the interval
+      data type corresponding to the DOUBLE PRECISION IEEE binary type,
+      the lower bound can be viewed as an IEEE DOUBLE PRECISION type
+      and the upper bound can be viewed as an IEEE DOUBLE PRECISION
+      type.
+
+Note: It is recommended that the default INTERVAL kind correspond
+      to a REAL kind with at least 64 bits. ("DOUBLE PRECISION" on
+      many machines). It is the consensus of experts that 32-bit
+      interval arithmetic is of limited use.
+
+Interval Constants
+________ _________
+
+Both where literal constants are admitted in expressions and in
+input or output data, INTERVAL's shall be represented by a single
+REAL or INTEGER or a pair of REAL's, INTEGER's, or combinations
+thereof, beginning with "(<", separated by "," if there are two
+numbers, and ending in ">)". For example
+
+(<1, 2>), (<1E0, 3>), (<1>), and (<.1234D5>)
+
+are all valid INTERVAL constants. An INTERVAL constant specified
+by a single number is the same as an INTERVAL constant specified
+by two numbers, both of whose endpoints are equal to the single
+number. When such a decimal constant is converted to its internal
+representation, the internal representation shall contain the
+decimal constant, regardless of how many digits are specified by
+the decimal constant. For example, upon execution of the
+statement:
+
+X = (<0.31415926535897932384626433832795028Dÿ2D01>)
+
+the interval X shall contain the smallest-width machine interval
+that contains the number 3.1415926535897932384626433832795028.
+
+Interval constants shall admit kind type parameters, such as in
+the construction (<1,2>)_2. An interval constant with no kind
+type parameter shall be of default type.
+
+Note: Thus, on machines in which the interval data type X
+      appearing in the example above contained endpoints with accuracy
+      that corresponded to less than 35 decimal digits, the interval X
+      would contain the mathematical number PI.
+
+Note: The statement
+            X = 0.31415926535897932384626433832795028Dÿ2D01,
+      is allowed, with mixed-mode operations as defined below.  The
+      result of this statement is an interval in X that contains
+      3.1415926535897932384626433832795028, just as as
+      with the statement
+            X = (<0.31415926535897932384626433832795028Dÿ2D01>)
+
+Arithmetic Operations
+__________ __________
+The four basic operations ÿ2D, -, *, and / are defined to contain
+the ranges of the corresponding operations on real numbers.
+Specifically, let X = [xl,xu] and Y = [yl,yu] be intervals, where
+xl, xu, yl, and yu represent the lower and upper bounds of X and Y,
+respectively. Then:
+
+X ÿ2D Y shall contain the exact value [xl ÿ2D yl, xu ÿ2D yu],
+
+X - Y shall contain the exact value [xl - yu, xu - yl],
+
+X * Y shall contain the exact value
+      [min{xl*yl, xl*yu, xu*yl, xu*yu}, max{xl*yl, xl*yu, xu*yl, xu*yu}],
+
+1 / X shall contain the exact value  [1/xu, 1/xl] if   xu < 0 or xl > 0,
+      and shall signal 'denominator contains zero' otherwise.
+
+X / Y shall contain the exact value
+      [min{xl/yu, xl/yl, xu/yu, xu/yl}, max{xl/yu, xl/yl, xu/yu, xu/yl}]
+      if yu < 0 or yl > 0, and shall signal 'denominator contains zero'
+      otherwise.
+
+Note: Particular processors may support an extended interval
+      data type, in which division by intervals that contain zero
+      yields a meaningful result. For example, a meaningful
+      interpretation of [1,2]/[-1,2] is the set-theoretic union of the
+      two intervals (-infinity,-1] and [1/2,infinity).
+
+Note: Using floating point arithmetic, the operations on the
+      right-hand sides may first be computed, then the lower bound may
+      be rounded down to a number known to be less than or equal to the
+      exact mathematical result, and the upper bound may be rounded up
+      to a number known to be greater than or equal to the exact
+      mathematical result. If a processor provides directed roundings
+      upwards (towards plus infinity) and downwards (towards minus
+      infinity), then the operation and the rounding can be performed
+      in one step, e.g. if the processor conforms to the IEEE 754
+      standard. The excess interval width caused by this outward
+      rounding is called ROUNDOUT ERROR.
+
+Note: There is an alternate implementation of interval
+      multiplication that also gives the range of the real operator "*"
+      over the intervals X and Y. This alternative involves nine cases
+      determined by the algebraic signs of the endpoints of X and Y;
+      see page 12 of R. E. Moore, "Methods and Applications of Interval
+      Computations," SIAM, Philadelphia, 1979. The average number of
+      multiplications required for this alternative is less than above,
+      but one or more comparisons are required.
+      Implemented in software, the relative efficiencies of the
+      alternative above and the nine-case alternative are
+      architecture-dependent, although the nine-case alternative is
+      often preferred in low-level implementations designed for
+      efficiency.
+
+Note: The only processor requirement is that the computed
+      intervals contain the exact mathematical range of the
+      corresponding point operations. In an ideal implementation (not
+      required), the result of the operations is the smallest-width
+      machine interval that contains the exact mathematical range.
+
+Note: IEEE arithmetic can be used to perform ideal (minimum width)
+      interval operations. For example, take
+
+                   [xl,xu] ÿ2D [yl,yu] = [xlÿ2Dyl,xuÿ2Dyu]
+
+      in exact interval arithmetic. The IEEE 754 standard defines a
+      downwardly (upwardly) rounded operation as producing the same
+      result as would be obtained by computing the exact result, then
+      rounding it to the nearest floating point number less (greater)
+      than or equal to the exact result. Thus, if the result xlÿ2Dyl is
+      rounded down and xuÿ2Dyu is rounded up according to the IEEE
+      specifications, the result is an ideal interval addition.
+
+Mixed Mode Operations and Conversions
+_____ ____ __________ ___ ___________
+
+Explicit conversion to interval is performed with the
+constructor IVAL as follows:
+
+Z = IVAL(R,S[,kind]) Z <-- [R,S]  or Z = IVAL(R[,kind])  Z <-- [R,R],
+
+where Z is an interval data type, and R and S are real or
+integer data types. The optional argument "kind" is the kind type
+parameter of the target interval. If "kind" is omitted, the
+result of IVAL shall be of default interval kind.  If both
+R and S are present, then R shall be less than or equal to S.
+The interval value stored in Z shall be an enclosure for the
+specified interval, with an ideal enclosure equal to a machine
+interval of minimum width that contains the exact mathematical
+interval in the specification.  When the argument(s) of IVAL
+are literal constants, the specification of IVAL shall be the same
+as if "(<" and ")>" were used.
+
+Example: IVAL(1.1,2.2) and (<1.1,2.2>) yield the same INTERVAL's.
+
+Note: The specification of IVAL for literal constants may be best
+      done with special handling by the compiler.  This is because,
+      if IVAL were an ordinary Fortran function, the literal
+      constants may first be converted to their internal
+      representations.  For example, for IVAL(1.1,2.2),
+      1.1 and 2.2 could first be converted to internal
+      representations, and IVAL(1.1,2.2) would then not
+      necessarily contain the actual decimal interval
+      [1.1,2.2].
+
+Note: An IVAL with correct specifications can be designed
+      without special compiler handling.  In particular,
+      it can round EACH lower bound down and EACH upper bound
+      up, if conversion accuracies are known.
+      However, such an IVAL would then not be optimally
+      accurate, since IVAL(1,1) or IVAL(R), R a floating point
+      variable, would be intervals of non-zero width.  The width
+      of the returned interval would necessarily correspond to
+      the minimum precision of any real data type supported by the
+      processor.  Note that, although the specification of IVAL
+      is the same for literal constant arguments, the actual
+      value returned may be different from the internal
+      representation generated by a literal constant.
+
+Mixed-mode INTERVAL/REAL and mixed mode INTERVAL/INTEGER
+operations shall be defined. The implicit conversions shall
+be such that, at each conversion to interval, the resulting
+interval shall contain the exact mathematical value specified
+by the floating point or integer variable.  Conversion of literal
+constants to interval shall be as if the literal constant were
+converted directly to interval, with no intervening conversion
+to an internal floating point representation.
+
+Examples:
+
+ 1. If X is an interval variable, then the expression
+    2*X**2 ÿ2D 3.1D0*X ÿ2D 0.1
+    shall be evaluated in such a way that the interval result is the
+    same as if the literal constants 2, 3.1D0 and 0.1 were first
+    replaced by interval variables of the same type as X, such that
+    each interval variable contains the exact mathematical
+    values represented by these constants.  This does not preclude
+    2, 3.1D0, and 0.1 from first being converted to internal
+    REAL representations;  however, the ultimate
+    conversion to interval would then need to encompass the
+    conversion errors of the original conversion to internal
+    REAL representation.
+
+ 2. If X is an interval variable and A, B, and C are real or integer
+    variables, then the expression
+    A*X**2 ÿ2D B*X ÿ2D C
+    shall be evaluated in such a way that the interval result is the
+    same as if the real variables A, B, and C were first converted
+    to interval variables of the same type as X, such that each
+    interval contains the exact mathematical result represented by
+    these real or integer variables.
+
+3.  If X is an interval and A is either a real or integer variable,
+    then execution of
+    X = A
+    shall cause an interval to be stored in X that contains the exact
+    value represented in A. (Note: Most implementations will give
+    xl = xu = A.)
+
+4.  If X is an interval, then execution of
+    X = 2.7
+    shall cause an interval to be stored in X that contains the exact
+    value  2.7.
+
+5. If X is an interval, then execution of
+   X = 2.7 ÿ2D 1.1 ÿ2D 3.3 ÿ2D 4.9 ÿ2D R
+   will be an interval that may not necessarily contain the
+   exact value 12ÿ2DR.  This is because the 2.7, 1.1, 3.3,4.9, and R
+   may first be added as single precision floating point numbers,
+   then converted.  This is analogous to 0 being stored in the
+   real variable R, with the statement.
+   R = 1/7
+   Users should be made aware of this possibility, and should
+   be encouraged to avoid it.
+
+6. Similarly, if R is a real and X is an interval, then the
+   statements
+   R = 0.1
+   X = R
+   may result in the degenerate interval X <-- (<R,R>), and
+   X will not contain the decimal constant 0.1.  Good programming
+   practice would be to avoid such constructs.
+
+7. In general, if X is an interval, then the assignment
+   X = <<integer or real expression>>
+   does not require that an interval containing the exact mathematical
+   value of <<integer or real expression>> be stored in X. Ideally,
+   whenever the compiler performs this assignment without
+   containment, the compiler should issue a warning.
+
+Conversion between intervals of different types is also
+possible, either implicitly or with the function IVAL. Conversion
+with IVAL is with the expression IVAL(X,KIND), where X is the
+interval to be converted and KIND is the kind type parameter of the
+target interval. The result IVAL(X,TYPE) shall be an interval of
+type KIND that contains or is equal to the exact interval
+represented by X.
+
+Implicit conversion between intervals of one kind and another
+within expressions obeys the same rules as conversion between
+reals and integers and intervals.  In expressions that contain
+more than one kind of interval, the conversion shall be to the
+kind corresponding to highest precision.
+
+Example: Suppose the kind type parameter 1 represents "single
+    precision" intervals, while the kind type parameter 2 represents
+    "double precision" intervals, and consider the following
+    program.
+
+      PROGRAM CONVERT_INTERVALS
+         INTERVAL(KIND=2) X=(<0.1_2>)
+         INTERVAL(KIND=1) Y
+         Y = X
+      END PROGRAM CONVERT_INTERVALS
+
+    Execution of this program will cause a machine interval that
+    contains the mathematical number 0.1 to be stored into the
+    single precision interval variable Y.
+
+Note: Mixed-mode INTERVAL/COMPLEX is not defined.
+
+Implicit conversion from interval to other data types, except to
+other kinds of interval, shall not be allowed.
+
+Note: The functions INF and SUP defined below may be used to
+      convert an INTERVAL to another data type. Similarly, MID may
+      also be viewed as producing a real approximation to an
+      interval, while IVAL converts from real to interval.
+
+In some computations, the implicit or default conversions will
+not be adequate to ensure enclosure of the intended quantity.
+
+Example:
+      3.14159 is a six-digit representation of the
+      mathematical constant pi. However, suppose X is an interval
+      variable of a type with precision equal to approximately 15
+      decimal digits. Then execution of the statement
+            X = 3.14159
+      may cause an interval to be stored into X that is contained in
+      the mathematical interval [3.141589999999999,3.141590000000001].
+      Yet this interval does not contain the actual value of pi.
+      This is the reason for the following special conversion function
+      CONVERT_DECIMAL_DIGITS.
+
+The conversion function CONVERT_DECIMAL_DIGITS shall be of the form
+
+CONVERT_DECIMAL_DIGITS(<single_number>, <ndigits>[, <kind>])
+
+where <single_number> is a character string representing a valid
+integer or real literal constant, where <ndigits> is a
+non-negative integer constant or variable, and where <kind> is a
+valid interval kind type parameter. The return value of
+CONVERT_DECIMAL_DIGITS shall be an interval of kind <kind>. This
+interval shall contain the mathematical interval [l,u], where
+l and u are constructed from <single_number> by subtracting and
+adding 5 to the <ndigits>ÿ2D1 digit of <single_number>, respectively.
+Thus, after being rounded to <ndigits> digits, l and u will be equal,
+but after being rounded to <ndigits>ÿ2D1 digits, they will not.
+
+Note: Thus, the function CONVERT_DECIMAL_DIGITS provides an
+      internal mechanism for constructing intervals from a single
+      number in precisely the same way as the SE and SF Edit
+      Descriptors (to be described later in I/O).
+
+Example: Suppose a kind parameter of 2 corresponds to real and
+      interval data types with approximately 15 decimal digits of
+      precision. Then CONVERT('3.14159',6,2) will be an interval that
+      contains the mathematical interval [3.141585, 3.14195].
+      CONVERT('3.14159',20,2) will be a machine interval (kind
+      parameter 2) of non-zero width that contains the decimal
+      constant 3.14159.  This is precisely the same result that
+      will be obtained using single number I/O.
+
+The function CONVERT_WITHIN_BOUNDS shall be available to convert
+REAL values with known relative error bounds, as follows.
+
+CONVERT_WITHIN_BOUNDS(R,EPS[,KIND])
+
+where R is a REAL value to be converted, EPS is a real value
+that represents relative error, and the optional argument KIND
+represents the target kind type parameter, shall return an
+interval that contains the mathematical interval
+[R*(1-EPS),R*(1ÿ2DEPS)].  This holds true even if R or EPS or both
+are literal constants.
+
+Note: Design of CONVERT_WITHIN_BOUNDS has similar considerations
+      as the design of IVAL;  see the notes below IVAL.
+
+Example: Suppose it is known that the real value R has been
+         computed to within an accuracy of one part in a
+         thousand, and R happens to be equal to 2.  Then the
+         call
+
+         CONVERT_WITHIN_BOUNDS(R,0.001)
+
+         will return an INTERVAL of default kind that contains
+         the mathematical interval [0.999,1.001].
+
+New Infix Operators
+___________________
+
+The following infix operators shall be a part of standard interval
+support.
+
+  Syntax           function
+  ______           ________
+
+Z = X.IS.Y         Z <-- intersection of X and Y, that is,
+                         [max{xl,yl},min{xu,yu}] if
+                         max{xl,yl} < = min{xu,yu} and
+                         signals an "intersection of disjoint
+                         intervals"  otherwise.
+
+Z = X.CH.Y         Z <-- [min{xl,yl},  max{xu,yu}]
+                   ("interval hull" of X and Y.  The mnemonic is
+                   "convex hull")
+
+  X.SB.Y           .TRUE. if X is a subset of Y
+                    ( i.e. if xl >= yl .AND. xu <= yu )
+
+  X.PRSB.y         .TRUE. if X is a proper subset of Y
+                   ( i.e. if X.SB.Y .AND. (xl > yl .OR. xu < yu )
+
+  X.SP.Y           .TRUE. if and only if Y.SB.X is true
+                   ( i.e. if xl <= yl .AND. xu >= yu )
+
+  X.PRSP.Y         .TRUE. if and only if Y.PSB.X is true
+                   ( i.e. if Y.SB.X .AND. (yl > xl .OR. yu < xu )
+
+  X.DJ.Y           .TRUE. if X and Y are disjoint sets
+                   ( i.e. if xl > yu or xu < yl )
+
+  R.IN.X           .TRUE. if the REAL value R is contained in the
+                   interval X  (i.e. if xl <= R <= xu)
+
+Note: Intervals are closed. So, if R.IN.X, then R may be equal
+      to one of the endpoints of X.
+
+Interval Versions of Relational Operators
+_________________________________________
+
+The following relational operators shall be extended to interval
+operations, in the "certainly true" sense. That is, the result
+is .TRUE. if and only if it is true for each pair of real values
+taken from the corresponding interval values.
+
+  Syntax       function
+  ______       ________
+
+  X.LT.Y       .TRUE. if xu < yl
+
+  X.GT.Y       .TRUE. if xl > yu
+
+  X.LE.Y       .TRUE. if xu <= yl
+
+  X.GE.Y       .TRUE. if xl >= yu
+
+Another set of relational operators, the POSSIBLY TRUE relationals,
+shall be defined as follows.
+
+  Syntax       function
+  ______       ________
+
+  X.PLT.Y       .TRUE. if xl < yu       (i.e. if .NOT.(X.GE.Y) )
+
+  X.PGT.Y       .TRUE. if xu > yl       (i.e. if .NOT.(X.LE.Y) )
+
+  X.PLE.Y       .TRUE. if xl <= yu      (i.e. if .NOT.(X.GT.Y) )
+
+  X.PGE.Y       .TRUE. if xu >= yl      (i.e. if .NOT.(X.LT.Y) )
+
+Finally, equality and inequality of intervals are defined by viewing
+the intervals as sets.
+
+  Syntax       function
+  ______       ________
+
+  X.EQ.Y       .TRUE. if xl=yl and xu=yu
+
+  X.NE.Y       .TRUE. if .NOT. (X.EQ.Y)
+
+Operator Precedence
+________ __________
+
+The precedence of these operators is as follows:
+
+Category of              Operators                        Precedence
+operation
+_____________________________________________________________________
+_____________________________________________________________________
+Extension         <defined-unary-op>                        Highest
+Numeric                   **                                   .
+Numeric                  *, /, .IS.                            .
+Numeric              unary ÿ2D or -                              .
+Numeric             binary ÿ2D or -, .CH.                        .
+Character                 //                                   .
+Relational .EQ., .NE., .LT., .PLT., .LE., .PLE., .GT., .PGT.,  .
+           .GE., .PGE., .SB., .PRSB., .SP., .PRSP., .DJ.,.IN.  .
+Logical                 .NOT.                                  .
+Logical                 .AND.                                  .
+Logical                 .OR.                                   .
+Logical             .EQV. or .NEQV.                            .
+Extension        <defined-binary-op>                        Lowest
+_____________________________________________________________________
+
+Special Interval Functions
+_______ ________ _________
+
+The following utility functions shall be provided for conversion from
+INTERVAL to REAL, etc.
+
+  Syntax      function                 attainable accuracy
+  ______      ________                 ___________________
+
+R = INF(X)    Lower bound of X         (the value in the lower
+                                        storage unit of the interval
+                                        datum X)
+
+R = SUP(X)    Upper bound of X         (the value in the upper
+                                        storage unit of the interval
+                                        datum X)
+
+R = MID(X)    Midpoint of X            (a floating point approximation,
+                                        always greater than or equal to
+                                        the value returned by INF and
+                                        less than or equal to the value
+                                        returned by SUP)
+
+R = WID(X)    R <-- xu - xl            (the value shall be rounded up,
+              "Width"                   to be greater than or equal to
+                                        the actual value)
+
+R = MAG(X)    R <-- max { |xl|, |xu| }
+              "Magnitude"
+
+                   | min { |xl|, |xu| } if .NOT.(0.IN.X),
+R = MIG(X)    R <--|
+                   | 0 otherwise.
+
+              "Mignitude"
+
+                    |
+Z = ABS(X)    Z <-- | [min{|x|}, max{|x|}]
+                    |  x.IN.X    x.IN.X
+
+              Range of absolute value
+
+Z = MAX(X,Y)  Z <-- [max {xl,yl}, max {xu,yu}]
+
+              Range of maximum
+              MAX shall be extended analogously
+              for more than two
+              arguments.
+
+Z = MIN(X,Y)  Z <-- [min {xl,yl}, min {xu,yu}]
+
+              Range of minimum
+              MIN shall be extended analogously
+              for more than two
+              arguments.
+
+N = NDIGITS(X) Number of leading decimal digits that are the same in
+              xl and xu.  n digits shall be counted as the same if
+              rounding xl to the nearest decimal number with n
+              significant digits gives the same result as rounding
+              xu to the nearest decimal number with n significant
+              digits.  If xl=xu, , then NDIGITS(X) shall return
+              PRECISION(R)ÿ2D1, where R is any real of kind the same as
+              the kind of the INTERVAL X (that is, whose precision
+              is the same as the precision of X).
+
+Note: On many machines, INF, SUP, MAG, MIG, ABS, MAX, and MIN
+      can be exact, if the target is of a type that corresponds to the
+      input. This is because these functions merely involve storing
+      one of the endpoints of the interval into the target variable.
+      Similarly, the conversion function IVAL can be exact on such
+      machines if it specifies conversion from REAL data of
+      corresponding type.
+
+Except for NDIGITS, all of these special interval functions
+shall be elemental.
+
+Note regarding NDIGITS: For example, if X = [0.1996,0.2004],
+      then three leading decimal digits of this function are the same,
+      and NDIGITS(X) is equal to 3. This is because, if .1996 and .2004
+      are each rounded to the nearest decimal number with three
+      significant digits, they both round to .200, yet they round to
+      different four-digit decimal numbers.  This value can
+      be computed as INT(-LOG10(2.004-1.996).  In many cases,
+      the value can be computed as INT(-LOG10(xu-xl) ÿ2D e LOG10(b)),
+      where e = MAX(EXPONENT(xl),EXPONENT(xu)) and b=RADIX(X).
+
+Note: three interval functions, MAG, MIG, and ABS, correspond to
+      the point intrinsic ABS. The specification of ABS is as the
+      range of the absolute value function, consistent with the general
+      principle that the results of interval functions shall contain
+      the ranges of corresponding point intrinsics. Although "MAG(X)"
+      is written |X| in much of the interval literature, it is more
+      natural in various applications to have ABS(X) denote the range
+      of the absolute value function.
+
+If WID(X) is not exact, then its value shall be upwardly rounded.
+
+Note: WID(X) often appears in convergence criteria of the form
+      WID(X) < EPS. The criterion is certain to be satisfied if the
+      computed value WID(X), used in the comparison, is greater than
+      or equal to the exact value.
+
+Optimization of Interval Expressions
+____________ __ ________ ___________
+
+In an interval expression, any transformations by the optimizer
+that are permissible for REAL's shall also be permissible for
+INTERVAL's. For example 1/x/y may be replaced by 1/(x*y).
+
+Note: Different code optimizations may yield significantly
+      different interval values, but each will be an enclosure of the
+      range of the expression over the input intervals.
+Note: If the program requires the precise form of an interval
+      expression, then either parentheses may be used or
+      optimization may be turned off through compiler options.
+

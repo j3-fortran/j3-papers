@@ -1,0 +1,63 @@
+                                                            10-228
+To: J3
+From: Nick Maclaren
+Subject: Interop TR: CFI_cdesc_to_bounds
+Date: 2010 October 07
+Reference: 10-165r2.pdf
+
+
+This was raised before, though I cannot remember where, but seems to
+have been forgotten.  CFI_cdesc_to_bounds is either trivial or almost
+unimplementable.  The problem is what it returns for the strides.  There
+are two possible interpretations:
+
+    1) One is that it returns the strides as would be used in an array
+section to recreate the array, and that is almost unimplementable and
+would need a lot of wordsmithing to turn it into a specification.
+The killer is that Fortran supports some pretty weird shapes of array.
+Here is one example that would cause trouble:
+
+    PROGRAM Main
+        INTERFACE
+            SUBROUTINE Hyrax (kit) BIND(C)
+                REAL(KIND=KIND(0.0D0)) :: kit(:,:)
+            END SUBROUTINE Hyrax
+        END INTERFACE
+        TYPE :: Coney
+            REAL(KIND=KIND(0.0D0)) :: x
+            REAL :: y
+        END TYPE Coney
+        TYPE(Coney) :: rabbit(20,20)
+        CALL Hyrax(TRANSPOSE(rabbit(3:18:5,5:19:7)%x))
+    END PROGRAM Main
+
+    2) The other is that it returns the strides in terms of element
+count rather than bytes, and that is trivial.  Most C programmers will
+simply code the calculations inline, because they will usually need only
+one of the fields (almost always the upper bound).  Here is a complete
+and portable implementation to show how easy it is:
+
+    int CFI_cdesc_to_bounds ( const CFI_cdesc_t * cdesc,
+            CFI_bounds_t bounds[] ) {
+        int i;
+        CFI_index_t x;
+        if (cdesc->base_addr == NULL) return 1;
+        for (i = 0; i < cdesc->rank; ++i) {
+            bounds[i].lower_bound = x = cdesc->dim[i].lower_bound;
+            bounds[i].upper_bound = (cdesc->dim[i].extent-1)+x;
+            bounds[i].stride = cdesc->dim[i].sm/cdesc->elem_size;
+        }
+        return 0;
+    }
+
+For these reasons, the function should simply be removed.
+
+
+Edits to 10-165r2:
+
+[11:3] Fix appropriately.
+
+[12:24-29] Remove CFI_cdesc_to_bounds.
+
+
+

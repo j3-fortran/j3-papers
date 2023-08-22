@@ -1,0 +1,84 @@
+                                                           J3/16-126r1
+To: J3
+From: Van Snyder & Malcolm Cohen
+Subject: Not an interp concerning asynchronous and defined I/O
+Date: 2016 February 10
+
+1. The problem statement
+
+16-126 asks us to consider something not entirely unlike:
+
+  Module m1
+    Type t1
+      Real,Pointer :: c1
+    Contains
+      Procedure t1_uread
+      Generic :: read(unformatted) => t1_uread
+    End Type
+  Contains
+    Subroutine t1_uread(dtv,unit,iostat,iomsg)
+      Class(t1),Intent(InOut) :: dtv
+      Integer,Intent(In) :: unit
+      Integer,Intent(Out) :: iostat
+      Character(*),Intent(InOut) :: iomsg
+      !
+      Character tmp
+      !
+      Read(unit,Iostat=iostat,Iomsg=iomsg) tmp
+      If (iostat/=0) Return
+      If (tmp=='A') Then
+        Allocate(dtv%c1)
+        Read(unit) dtv%c1
+      Else If (tmp=='N') Then
+        Nullify(dtv%c1)
+      Else
+        iostat = 12345
+        iomsg = 'Bad T1 format'
+      End If
+    End Subroutine
+  End Module
+  Program test1
+    Use m1
+    Implicit None
+    Integer i
+    Type(t1) x1
+    Open(10,File='f1',Form='Unformatted',Status='Old',Action='Read')
+    Open(20,File='f2',Form='Unformatted',Asynchronous='Yes')
+    ! Start asynchronous output.
+    Write(20) (i,i=1,2**30)
+    ! Do some defined input
+    Read(10) x1
+    Print *,Associated(x1%c1)
+  End Program
+
+16-126 goes on to conjecture that the READ statement for unit 10 is not
+permitted, due to
+
+  "When a parent READ statement is active, an input/output statement
+   shall not read from any external unit other than the one specified
+   by the \cf{unit} dummy argument and shall not perform output to any
+   external unit."
+
+3. The analysis
+
+On inspection it can be seen that the READ of X1 invokes module procedure
+T1UREAD which obeys the quoted requirement.
+
+One might conjecture that 16-126 is theorizing that the WRITE statement to
+unit 20 has not completed execution.  This theory would be mistaken, as
+2.3.5 "Execution sequence" specifies sequential, not overlapping,
+execution of statements.
+
+It is true that on some processors the actual physical transfer of data
+between the program memory and the external unit might overlap, especially
+when the transfer is with asynchronous i/o.  This does not negate the fact
+that the data transfer statement which initiated the transfer must have
+completed before execution of the next statement in the execution sequence
+can begin.  Any ongoing output (or input) is being performed by the
+processor (or the part of it called the async i/o library), and not by the
+data transfer statement that has already completed its part of the
+execution.
+
+Therefore there is no problem and no cause for an interp.
+
+===END===

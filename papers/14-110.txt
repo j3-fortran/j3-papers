@@ -1,0 +1,294 @@
+To:      J3                                        J3/14-110
+From:    Reinhold Bader and John Reid
+Subject: Coshaping and coindexing in teams
+Date: 2014 January 27
+References: N1996, N1999
+
+Discussion:
+~~~~~~~~~~~
+
+An issue with the TEAM feature noted in N1999 is the lack of a precise
+definition for what the corank and cobounds of a coarray are when
+the team execution context changes. Further problems dealt with are:
+
+(1) The specification of image selector is not integrated
+    well with the text in the Fortran 2008 standard in the TS draft,
+    and
+(2) The concept of a coarray established in a team is defined here
+    and we suggest a way to inquire about it in our paper on
+    intrinsics, but whether it is really needed depends on how
+    coarray dummy arguments are cosubscripted on ancestors.
+
+J3 discussion about cosubscripting dummy arguments on ancestors is
+needed.
+
+We have abandoned the idea of adding a RECODIMENSION statement;
+an explanation of the reason is provided in a separate section of
+the paper.
+
+Two examples are provided for inclusion in the Annex.
+
+
+Edits to N1996:
+~~~~~~~~~~~~~~~
+
+Section 5.1:
+
+[9:4-6] Replace "Syntax ... current team." by
+
+"Syntax and semantics of <image-selector> (R624 in ISO/IEC
+ 1539-1:2010) have been extended to determine how coindices are
+ mapped to image indices for both current and ancestor team
+ references."
+
+
+Section 5.3:
+
+[10:23+] add
+
+"In a CHANGE TEAM construct, the corank and cobounds of a coarray
+ are those it has in its parent team, apart from the final upper
+ cobound, which is determined from the number of images in the team
+ that is current in the construct."
+
+------ for discussion by J3------
+Additional edit:
+"For a coarray that is a dummy argument or is host associated with a
+  dummy argument, the corank and cobounds in a team that is an ancestor
+  of the team current at invocation of the procedure are those of the
+  dummy argument, apart from the last upper cobound, which is determined
+  from the number of images in the ancestor team."
+
+First alternative edit - DISALLOW ancestor addressing of dummy
+with respect to teams started outside the procedure:
+ "A coarray that is a dummy argument or is host associated with a
+  dummy argument is not established in any team that is an ancestor
+  of the team current at invocation of the procedure."
+(If this alternative is chosen, changes to A.1.3 of this paper are
+necessary.)
+
+Second alternative edit:
+ "For a coarray that is a dummy argument or is host associated with a
+  dummy argument, the corank and cobounds in a team that is an ancestor
+  of the team current at invocation of the procedure are those of its
+  actual argument in the ancestor team."
+This has the disadvantage that implementations will need to provide
+information on the coshape of a coarray dummy argument on all
+ancestors, perhaps by using a linked list.
+-----------------------------------
+
+[[Definition of "established" is in section 8 edits for clause
+  2.4.7]]
+
+---
+"NOTE 5.0+1
+ Inside a scoping unit, corank and cobounds (as defined in section
+ 5.3.6 of ISO/IEC 1539-1:2010) are therefore valid for performing
+ coindexing that specifies the team that is current when the scoping
+ unit starts execution, or any ancestor of it on which the coarray is
+ established.
+
+ NOTE 5.0+2
+ For a coarray established by an ancestor team that has corank
+ greater than one or a lower cobound other than zero or one,
+ the cobounds of the ancestor may be inappropriate. In this
+ case, the coarray may appear as an actual argument corresponding
+ to a dummy argument that has declared cobounds that are
+ appropriate for the current team."
+---
+
+Section 5.4:
+
+[11:1-7] Replace by
+
+"If <team-variable> appears,
+ * it shall be defined with a value that represents an ancestor of the
+   current team, and
+ * the object shall be established in the specified team.
+ If <team-variable> does not appear, the specified team is the current
+ team."
+
+[[ How image indices are determined is described by the section
+   8 edits for clause 6.6 para 2. ]]
+[[ Coindexed access with a team is described by a section 8 edit for
+   clause 2.4.7. ]]
+
+
+Section 8:
+
+{In 2.3.4 Program execution, paragraph 1, edit the last sentence as
+follows:
+change "identifies an image" to "identifies an image of the current
+team" and "number of images" to "number of images of the current
+team"}
+
+{In 2.4.7 Coarray.
+
+After paragraph 1, add a new paragraph:
+
+"A non-allocatable coarray that is neither a dummy argument nor host
+ associated with a dummy argument is established in the initial team.
+ An allocatable coarray is established in a team if it is allocated
+ in that team. A non-allocatable coarray that is a dummy argument or
+ host associated with a dummy argument is established in a team if
+ the ultimate argument of the dummy argument is established in that
+ team."
+
+In paragraph 2, change "an image" to "an image of a
+team", and "other image" to "other image of that team".
+
+In paragraph 3, edit the first sentence as follows:
+change "all images" to "all images of a team".
+
+In paragraph 4, edit the first sentence as follows:
+change "any image" to "any image of the current team";
+
+At the end of paragraph 4, add new sentence
+"On any image of an ancestor team, a coarray established there
+ can be accessed in the current team by specifying the ancestor team
+ together with cosubscripts in an image selector."
+
+In paragraph 6, change "image index" to "image index in the specified
+team"}
+
+{In 6.6 Image selectors. In paragraph 2, change "the image
+ index in the same way" to "the image index in the specified team in
+ the same way", and "number of images" to "number of images in the
+ specified team".}
+
+
+Comments on not adding RECODIMENSION
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Malcolm Cohen suggested (see the vote of John Reid in N1999) that the
+RECODIMENSION statement should declare a construct entity that is
+associated with the local entity of the same name. While this would work
+satisfactorily for code in the construct, it would mean that when a
+procedure is invoked and the coarray is accessed in the procedure by use
+or host association, the revision of the coshape will be ignored. This
+makes the feature unfriendly and unsafe.
+
+Our conclusion is that what is needed is that a CHANGE TEAM construct be
+treated as a scoping unit, but this would require more changes to the
+standard, particularly in connection with host association (already
+complicated), than is justified. Therefore, the attempt to add this
+feature was abandoned.
+
+
+
+N1996 Annex A examples:
+~~~~~~~~~~~~~~~~~~~~~~~
+
+
+"A.1.3 Nesting of CHANGE TEAM with subprogram invocation
+
+The following program shows how ancestor coarrays are accessed if
+the coarray is a dummy argument and the team execution context
+changes before the subprogram is invoked.
+
+
+MODULE library
+  USE, INTRINSIC :: iso_fortran_env, ONLY: team_type
+  IMPLICIT NONE
+CONTAINS
+  SUBROUTINE use_coarray(a, t)
+    REAL :: a[*]
+    TYPE(team_type) :: t
+    INTEGER ::  ic
+
+    IF ( established(a, t) ) THEN
+
+      ! calculate valid coindex that references an image of t
+      ! (typically not a member of the current team)
+      ic = ...
+      IF (ic < 1 .or. ic > ucobound(a,1,t)) &
+          ERROR STOP 'library::use_coarray: invalid coindex.'
+
+      ! address corank 1 coarray in the ancestor team
+      a[t :: ic] = ...
+    ELSE
+      ERROR STOP 'library::use_coarray: invalid team coarray reference.'
+    END IF
+  END SUBROUTINE
+END MODULE
+PROGRAM
+  USE library
+  IMPLICIT NONE
+  TYPE(team_type) :: team, initial_team
+  INTEGER :: id, lca, uca
+  REAL, ALLOCATABLE :: xa[:,:]
+
+  initial_team = current_team()
+  lca = ... ; uca = ...           ! same value on all images
+  ALLOCATE(xa[lca:uca,*])
+  id = ...                        ! team ID
+  FORM TEAM(id, team)
+
+  CHANGE TEAM(team)
+    : ! do team-dependent processing of xa
+
+    SYNC TEAM (initial_team)
+
+    ! all subteams invoke the procedure
+    CALL use_coarray(xa, initial_team)
+  END TEAM
+
+END PROGRAM"
+
+
+"A.1.4 Reducing the codimension of a coarray
+
+This example illustrates how to use a subroutine to
+coordinate cross-image access to a coarray for row and column
+processing.
+
+
+PROGRAM
+  USE, INTRINSIC :: iso_fortran_env, ONLY : team_type
+  IMPLICIT NONE
+
+  TYPE(team_type), target :: row_team, col_team
+  TYPE(team_type), pointer :: used_team
+  REAL, ALLOCATABLE :: a(:,:)[:,:]
+  INTEGER :: ip, na, p, me(2)
+
+  p = ... ; q = ... ! such that p**q == num_images()
+  na = ...          ! local problem size
+
+  ! allocate and initialize data
+  ALLOCATE(a(na,na)[p,*])
+  a = ...
+
+  me = this_image(a)
+
+  FORM TEAM(me(1), row_team, NEW_IMAGE=me(2))
+  FORM TEAM(me(2), col_team, NEW_IMAGE=me(1))
+
+  ! make a decision on whether to process by row or column
+  IF (...) THEN
+     used_team => row_team
+  ELSE
+     used_team => col_team
+  END IF
+
+  ... ! do local computations on a
+
+  CHANGE TEAM (used_team)
+
+    CALL further_processing(a, ...)
+
+  END TEAM
+CONTAINS
+  SUBROUTINE further_processing(a, ...)
+    REAL :: a(:,:)[*]
+    INTEGER :: ip
+
+    ! update ip-th row or column submatrix
+    a(:,:)[ip] = ...
+
+    SYNC ALL
+    ... ! do further local computations on a
+
+  END SUBROUTINE
+END PROGRAM"
+

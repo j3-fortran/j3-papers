@@ -1,0 +1,154 @@
+To: J3                                                     J3/21-157r2
+Subject: Conditional expressions - syntax
+From: Malcolm Cohen
+Date: 2021-June-30
+Reference: 18-274, 20-142, 21-157, 21-159, 21-165.
+
+
+1. Introduction
+
+This paper contains the syntax for conditional expressions and conditional
+arguments.
+
+For background, please see 18-274.
+For formal specifications, please see 20-142.
+
+
+2. Syntax example
+
+Conditional expression with elseif-chaining:
+    ( cond ? expr : cond2 ? expr2 : expr3 )
+
+Recommended form for conditional arg with optionality:
+    ( cond ? arg : cond2 ? arg2 : arg3 )
+where the special token .NIL. means there is no argument
+(this does not conflict with user operators, as this special
+ token is always followed by colon or right parenthesis, and
+ that cannot happen for operators).
+
+Previous form for conditional arg with optionality:
+    ( cond ? arg : cond2 ? arg2 ) ! else absent arg
+
+Note: Section 5 below is applicable only if the previous form is chosen
+      instead of the recommended form.
+
+
+3. Formal Syntax
+
+3.1 General
+
+A <conditional-expr> is a primary (<primary>).
+A <conditional-arg> is an actual argument (<actual-arg>).
+
+In the syntax descriptions below, the separate parts are on separate lines
+only for ease of reading - in the standard they would either be on one long
+line, or multiple lines joined with the "smudge" BNF continuation markers.
+
+
+3.2 Syntax details
+
+<conditional-expr> ::= ( <scalar-logical-expr> ? <then-expr>
+                       [ : <scalar-logical-expr> ? <elseif-expr> ]...
+                       : <else-expr> )
+
+<conditional-arg> ::= ( <scalar-logical-expr> ? <consequent-arg>
+                      [ : <scalar-logical-expr> ? <consequent-arg> ]...
+                      : <consequent-arg> )
+
+<consequent-arg> ::= <actual-arg>
+                  |  .NIL.
+
+
+3.3 Constraints and other requirements.
+
+Constraint: Each <expr> in a <conditional-expr> shall have the same
+            declared type, kind type parameters, and rank.
+
+Constraint: In a <conditional-arg>, each <expr> or <variable> that is a
+            <consequent-arg> shall have the same declared type, kind type
+            parameters, and rank.
+
+Constraint: At least one <consequent-arg> of a <conditional-arg> shall not
+            be .NIL..
+
+Constraint: A <consequent-arg> shall not be .NIL. unless the corresponding
+            dummy argument is optional.
+
+Constraint: In a <conditional-arg> that corresponds to an INTENT(OUT) or
+            INTENT(INOUT) dummy, each <consequent-arg> shall be a
+            <variable>.
+
+Constraint: If the corresponding dummy argument is allocatable, a pointer,
+            or a coarray, the attributes of each <consequent-arg> shall
+            satisfy the requirements of that dummy argument.
+
+This is to eliminate the possibility of an argument mismatch error at
+runtime depending on the results of the <scalar-logical-expr>s. The wording
+permits a consequent argument to be a pointer, allocatable, or have corank
+indepently of the other consequent arguments but not independently of the
+dummy argument.
+
+Constraint: In a reference to a generic procedure, each <consequent-arg> in
+            a <conditional-arg> shall have the same corank, and if any
+            <expr> in a <conditional-arg> has the allocatable or pointer
+            attribute, each <expr> shall have that attribute.
+
+This retains generic resolution at compile time.
+
+
+3.4 Examples
+
+  y = ( i>=1 .And. i<=Size(a) ? a(i) : -Huge(y) )
+  x = ( Out_Of_Range(y,x) ? Ieee_Value(Ieee_Quiet_NaN,x) : y )
+
+
+4. Semantics
+
+This all follows directly from the specifications.
+
+Evaluating a <conditional-expr> or <conditional-arg> selects an <expr> or
+<consequent-arg> by evaluating each <scalar-logical-expr> in turn until one
+of them is true, or there are no more. If all the <scalar-logical-expr>s
+evaluate to false, the final <expr> or <consequent-arg> is selected.
+
+The declared type, type parameters, and rank of a <conditional-arg> or
+<conditional-expr> is that of the <expr>s or <actual-arg>s that it
+contains.
+
+The value of a <conditional-expr> is the value of the selected <expr>.
+
+If evaluating a <conditional-arg> selects .NIL., there is no effective
+argument associated with the dummy argument. Otherwise, the selected <expr>
+or <variable> is the effective argument.
+
+All static requirements from a dummy argument on effective arguments apply
+to any <consequent-arg>, for example if coindexed objects are prohibited as
+an actual argument they are also prohibited as a consequent argument.
+
+
+5. Previous form syntax and semantics (changes)
+
+This section contains the BNF, constraints, and semantic description parts
+that differ from the recommended syntax.
+
+<conditional-arg> ::= ( <scalar-logical-expr> ? <consequent-arg>
+                      [ : <scalar-logical-expr> ? <consequent-arg> ]...
+                      [ : <consequent-arg> ] )
+
+Constraint: If the corresponding dummy argument is not optional, the
+            final optional ": <consequent-arg>" shall appear.
+
+Evaluating a <conditional-expr> or <conditional-arg> selects an <expr> or
+<variable> by evaluating each <scalar-logical-expr> in turn until one of
+them is true, or there are no more. If all the <scalar-logical-expr>s
+evaluate to false, and the last <expr> or <variable> is immediately
+preceded by a colon, that <expr> or <variable> is selected.
+
+If evaluating a <conditional-arg> selects no <expr> or <variable>, there is
+no effective argument associated with the dummy argument.  Otherwise, the
+selected <expr> or <variable> is the effective argument.
+
+
+===END===
+
+

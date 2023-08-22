@@ -1,0 +1,101 @@
+To:      J3                                       J3/13-334
+From:    John Reid
+Subject: Events problem
+Date: 2013 September 30
+Reference: N1983
+
+Discussion
+----------
+
+I think there are problems with the producer-consumer program on page
+34 of N1983. The essence of the body of the inner do loop is
+   CALL EVENT_QUERY(EVENT[I], COUNT)
+   IF (I/= THIS_IMAGE) THEN
+      IF (COUNT==0) THEN
+         ! Produce some work for image I
+         EVENT_POST(EVENT[I])
+      END IF
+   ELSE
+      EVENT_WAIT(EVENT)
+      ! Consume some work
+   END IF
+If the executing image produces some work for image I, where does it
+put it? Presumably on image I, so that the consumer has ready access
+to it. There is nothing to stop two images producing work for image I
+at the same time - an obvious data race.
+
+The most satisfactory solution that I have found so far is to limit
+count values to 0 and 1 and make it an error to post to an event with
+count 1. This allows the code to be changed to
+
+   IF (I/= THIS_IMAGE()) THEN
+      EVENT_POST(PRODUCE[I],STAT=STATUS)
+      IF (STATUS==ALREADY_POSTED) CYCLE
+      ! Produce some work for image i
+      EVENT_POST(CONSUME[I])
+   ELSE
+      EVENT_WAIT(CONSUME)
+      ! Consume some work
+      EVENT_WAIT(PRODUCE)
+   END IF
+
+Now, if the executing image manages to post to PRODUCE[I], it knows
+that only it is producing work for image I and it is safe to place
+the work in the agreed coarrays on I. When the work has been produced,
+it posts to CONSUME[I]. Image I waits for this post and then consumes
+the work. The event PRODUCE remains posted while this is done, which
+prevents other images overwriting the data with a new work item.
+
+A further advantage of this is that the work is well balanced - we
+cannot have a large number of work items waiting on one image while
+others have none.
+
+There are two further problems with the existing example. First, there
+is no exit. Second, all images start by trying to post to image I.
+These are fixed in the replacement below.
+
+To keep the code simple, I have made the effect of finding an erroneous
+stat value be a simple exit.
+
+Bill Long has suggested an alternative change, which is to have an
+optional specifier that returns the value .true. if the count is found
+to be positive. In this case, the count would not be changed. This
+effectively makes the event post usable as a binary event facility
+without taking away the counting version that we have now.
+
+Edits to N1983
+--------------
+
+Full edits will be supplied in a revision of this paper if one or other
+of the two ideas is favoured. This is the changed example with the first
+alternative.
+
+[34:19-48] Replace example by
+
+PROGRAM PROD_CONS
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+INTEGER I, STATUS
+TYPE(EVENT_TYPE) :: PRODUCE[*], CONSUME[*]
+I = THIS_IMAGE()
+DO
+   I = I + 1
+   IF (I>NUM_IMAGES()) I = 1
+   IF (I/= THIS_IMAGE()) THEN
+      EVENT_POST(PRODUCE[I],STAT=STATUS)
+      IF (STATUS==ALREADY_POSTED) CYCLE
+      IF (STATUS/=0) EXIT
+      ! Produce some work for image i
+      EVENT_POST(CONSUME[I],STAT=STATUS)
+      IF (STATUS/=0) EXIT
+   ELSE
+      EVENT_WAIT(CONSUME,STAT=STATUS)
+      IF (STATUS/=0) EXIT
+      ! Consume the work
+      EVENT_WAIT(PRODUCE,STAT=STATUS)
+      IF (STATUS/=0) EXIT
+   END IF
+   ! If all work done, exit
+END DO
+! If work remaining, print message
+END PROGRAM PROD_CONS
+

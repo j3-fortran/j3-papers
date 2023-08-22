@@ -1,0 +1,95 @@
+To: J3                                                     J3/18-254
+From: Dan Nagle
+Subject: real-complex interoperability
+Date: 2018-October-01
+
+
+I Introduction
+
+Many Fortran codes are rather old, and were written to previous
+standards.  The now-deprecated EQUIVALENCE statement could be used
+to cause two arrays to share storage.  If these arrays has different
+types, one would be undefined when the other was defined.
+
+However, in a storage sequence context, a real array and a complex array
+are considered identical.  Thus,
+
+real, dimension( n) :: roo
+complex, dimension( m) :: zoo
+equivalence( roo, zoo)
+
+allows a complex array to be addressed as a real array, and vice versa.
+
+When trying to modernize these older codes, a problem arises
+when this kind of real-complex storage sharing is encountered.
+Declaring separate real and complex arrays is a non-starter,
+as the copying between them kills performance.
+
+And while it is technically non-conforming, many f77 processors
+did not, or could not, check when real arrays were passed to complex
+dummies, or vice versa.  This was guaranteed to work by the identity
+of real and complex in a storage sequences.
+
+
+II Use-case
+
+When modernizing an older Fortran code containing an equivalence
+between real and complex arrays, a modern equivalent is needed
+to allow the same array to be addressed as real or complex
+without introducing repeated copying operations.
+
+
+II What I have in mind
+
+I believe Fortran would benefit if a way can be found to allow
+a given storage sequence to be treated as real and complex,
+without requiring a copy to be made.  That is, to keep this functionality
+while removing equivalence.
+
+This can be as simple as allowing a real pointer to point to a complex
+target, and vice versa.
+
+Thus, given
+
+real, dimension( :), pointer :: rp
+complex, dimension( 100), target :: zt
+and/or
+real, dimension( 100), target :: rt
+complex, dimension( :), pointer :: zp
+
+the programmer could code
+
+rp => real( zt)
+and/or
+zp => cmplx( rt)
+
+and rp and zt, and zp and rt, refer to the same memory without copying.
+
+The intention of these statements is that the programmer acknowledges
+the type-conversion while retaining the full set of operations.
+The type conversion function here is different from other appearances:
+here it merely signals the conversion rather than producing a new value.
+
+I would be happy with any other decoration scheme that preserves
+the application programmer's ability to treat the same storage sequence
+as real and complex sans copying.
+
+In any case, a reference to an element that does not exist
+should be a bounds error, like any other.  For example, a complex
+pointer pointing to a real array of odd size leaves one element
+whose reference would be a bounds error.  Depending on details
+of definition, it could be either the real or complex element.
+I would expect these bounds errors to be caught by ordinary bound
+checking options.
+
+Once equivalence is finally gone from the standard,
+(it will never leave compilers) the status quo will leave
+conversion programmers who are trying to modernize
+an older code containing this structure with nothing better to say
+than "modern Fortran is too cool to efficiently code
+your archaic Fortran" which is not a good pitch.
+
+If the pointer/target approach is disfavored, I hope another tact
+is fruitful.
+
+

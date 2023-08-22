@@ -1,0 +1,161 @@
+
+                                                          J3/00-270
+
+ To:       J3
+ From:     John Reid
+ Date:     23-August-2000
+ Subject:  Overloading Structure Constructors
+
+ Here is a copy of N1407, which was prepared by WG5 at Oulu
+ in the hope of aiding the work of J3.
+
+ .................................................................
+
+                                           ISO/IEC JTC1/SC22/WG5 N1407
+
+                   Overloading Structure Constructors
+
+                            Malcolm Cohen
+
+ 1. Introduction
+
+ Resolution C1(b) from the Cadarache meeting of WG5 requested, as a
+ Fortran 200x requirement, the generalisation of structure contructors
+ as described in WG5/N1355.  This paper reaffirms the requirement and
+ provides suggested edits needed to the draft standard WG5/N1391
+ (J3/00-007r2) to fulfill the requirement.
+
+ 2. Requirements
+
+ That the user be allowed to specify a generic name (for a set of
+ functions) that is the same as the name of a derived type, visible in
+ the same scoping unit.  This will allow the user to provide constructor
+ functions for that type which may be accessible even if the type is
+ opaque.
+
+ 3. Specification
+
+ The restriction in Chapter 14 which prevents a name referring both to a
+ derived type and to a generic procedure shall be removed.  If the
+ "intrinsic" constructor is potentially accessible (e.g. if the type is
+ not opaque), a reference shall be taken to be the generic procedure (if
+ the argument lists match) rather than the "intrinsic" constructor.
+
+ 4. Syntax
+
+ The existing syntax for declaring generic names (viz interface blocks)
+ shall be used for declaring generic names that may be the same as
+ derived type names.
+
+ For example:
+
+ MODULE mytype_module
+   TYPE mytype
+     PRIVATE
+     COMPLEX value
+     LOGICAL exact
+   END TYPE
+   INTERFACE mytype
+     MODULE PROCEDURE int_to_mytype
+   END INTERFACE
+   ! Operator definitions etc.
+   ...
+ CONTAINS
+   TYPE(mytype) FUNCTION int_to_mytype(i)
+     INTEGER,INTENT(IN) :: i
+     int_to_mytype%value = i
+     int_to_mytype%exact = .TRUE.
+   END FUNCTION
+   ! Procedures to support operators etc.
+   ...
+ END
+ PROGRAM example
+   USE mytype_module
+   TYPE(mytype) x
+   x = mytype(17)
+ END
+
+ The same syntax is used if a type has type parameters.  For example:
+
+ MODULE m
+   TYPE t(kind)
+     COMPLEX(kind) value
+   END TYPE
+   INTEGER,PARAMETER :: single = KIND(0.0), double = KIND(0d0)
+   INTERFACE t
+     MODULE PROCEDURE real_to_t1, dble_to_t2, int_to_t1, int_to_t2
+   END INTERFACE
+   ...
+ CONTAINS
+   TYPE(t(single)) FUNCTION real_to_t1(x)
+     REAL(single) x
+     real_to_t1%value = x
+   END FUNCTION
+   TYPE(t(double)) FUNCTION dble_to_t2(x)
+     REAL(double) x
+     dble_to_t2%value = x
+   END FUNCTION
+   TYPE(t(single)) FUNCTION int_to_t1(x,mold)
+     INTEGER x
+     TYPE(t(single)) mold
+     int_to_t1%value = x
+   END FUNCTION
+   TYPE(t(double)) FUNCTION int_to_t2(x,mold)
+     INTEGER x
+     TYPE(t(double)) mold
+     int_to_t2%value = x
+   END FUNCTION
+   ...
+ END
+ PROGRAM example
+   USE m
+   TYPE(t(single)) x
+   TYPE(t(double)) y
+   x = t(1.5)            ! References real_to_t1
+   x = t(17,mold=x)      ! References int_to_t1
+   y = t(1.5d0)            ! References dble_to_t2
+   y = t(42,mold=y)      ! References int_to_t2
+ END
+
+ 5. Edits to 00-007r2
+
+ Note to WG5:
+
+ We are adding constraints below to "turn off" ambiguous syntax.  After
+ we allow type names and generic names to be the same, the BNF terms
+ <structure-constructor> and <function-reference> would become ambiguous
+ if we did not have these constraints.  Constraints are used to similar
+ purpose in the pointer assignment statement to disambiguate between "=>
+ variable" and "=> expr".
+
+ [55:24+] Insert
+   "Constraint: If <derived-type-spec> is a type name that is the same
+                as a generic name, the <component-spec-list> shall not
+                be valid as an <actual-arg-spec-list> that is consistent
+                with one of the specific interfaces of the generic
+ interface.
+
+    Note 4.44a
+    The form 'name(...)' is interpreted as a generic <function-reference>
+    if possible, and as a <structure-constructor> only if it cannot be
+    so interpreted."
+
+ [249:3+] Insert
+     "A generic name may be the same as a derived type name, in which
+     case all of the procedures in the interface block shall be
+ functions."
+
+ [254:13+] Insert
+   "Constraint: If <function-name> is a generic name that is the same
+                as a type name, the <actual-arg-spec-list> shall be
+                consistent with one of the specific interfaces of the
+                generic interface."
+
+ [342:14] After "names" insert ". A generic name may be the same as the
+          name of a procedure".
+          After "(12.3.2.1)" insert "or the same as the name of a derived
+          type (4.5.6)".
+
+ [419:11+] Insert
+          "C.1.5 Structure constructors and generic names"
+          and then the above examples.

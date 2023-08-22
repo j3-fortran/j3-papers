@@ -1,0 +1,55 @@
+                                                           J3/16-216
+To: J3
+From: Bill Long
+Subject: Noncontiguous array with SHARED locality
+Date: 2016 June 03
+References: J3/16-007r1
+
+Discussion:
+-----------
+
+Para 3 of 8.1.7.5 Additional semantics for DO CONCURRENT constructs
+specifies limitations on how a program can use a variable with SHARED
+locality. Basically, the actions on the variable in one iteration
+should not affect the value seen in a different iteration.  However,
+there is a case that is not covered by explicit definition and
+reference of the shared variable.
+
+Suppose X is a discontiguous array that is specified to have SHARED( )
+locality.  If X is passed to a subroutine that has a dummy argument
+that is contiguous, there will be a copy-in/copy-out of the actual
+(discontiguous) actual argument. In particular, the copy-out has the
+effect of redefining all the values of the elements of X, some of
+which might have been also defined by a different iteration.  This
+results in unacceptable behavior, and needs to be avoided.  For example:
+
+subroutine outer (X)
+  real :: x(:)  ! Potentially discontiguous array
+...
+  do concurrent (i=1:n) shared(X)
+  ...
+  call sub (X,i,b)  ! Copy-in/copy-out of all of X here
+  c = X(i)
+...
+end subroutine outer
+
+subroutine sub (x,i,b)
+  real :: x(*)     ! Contiguous dummy array
+  x(i) = b
+end subroutine sub
+
+Here the subroutine only disturbs X(i) in the do concurrent construct,
+so satisfies the current limitations.  However, the copy-out of ALL of
+the elements of X causes a problem.
+
+An edit is suggested to disallow this case.
+
+
+Edit to J3/16-007r1:
+--------------------
+
+[185:24] In 8.1.7.5 Additional semantics for DO CONCURRENT constructs,
+at the end of para 3, add a new sentence: "If it is an array that is
+not contiguous, it shall not be an effective argument that corresponds
+to a contiguous dummy array."
+

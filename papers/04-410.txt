@@ -1,0 +1,145 @@
+
+                                                     J3/04-410
+
+
+Date:       October 20, 2004
+Subject:    ANDTHEN and ORELSE pseudo functions
+From:       Dick Hendrickson
+Reference:  J3/04-390, 04-193, 04-357R1
+
+This proposal is an attempt to combine the two work items in
+papers J3/04-193 and J3/04-357 and their descendants.
+
+In what follows, I'll only discuss the "ANDTHEN" form.  It's
+just easier to write about singular things and not have to
+carry along the other case.  The "ORELSE" case is the same,
+only the internal logical testing is different.
+
+There has been considerable e-mail discussion of a way to
+perform shortcircuiting of tests, usually to allow writing
+things simply.  Various forms of an .ANDTHEN. operator have
+been proposed.  A canonical example is
+       I > 0 .AND. I < 10 .ANDTHEN. A(I) /= 0
+the .ANDTHEN. guarantees that A(I) won't be referenced if I
+is out of range.
+
+Most of the discussion has centered on the priority of the
+new operators.  Should they be:  highest, lowest, the same
+or different, or the same as .AND. and .OR.?  Reasonably
+compelling arguments have been made for all of the
+possibilities.  This proposal replaces the operators with
+functions and thus resolves the priority issue.
+
+For now, the functions are called pseudo-functions to
+emphasize that they are different from normal functions.  An
+alternate name could be "selector functions".  I believe
+that they can be used anyplace that an ordinary function
+could be used, including in declarations, if they follow
+whatever normal rules apply to that use.  However, if
+restrictions are necessary, I think it will be easier to
+write the standard if they are in a separate class.  That
+can be decided as final edits are proposed.
+
+The functionality is to guarantee that the argument
+expressions will be executed in the listed order, left to
+right, one at a time, and that argument evaluation will stop
+when the result can be determined, and that exceptions and
+side effects won't occur for unrequired evaluations.  They
+effectively require short-circuiting.
+
+The basic idea is to add two new intrinsic elemental
+functions (spelling and punctuation is illustrative):
+
+ANDTHEN (A1 [,A2, A3, ...] [: R1,R2] )
+ORELSE  (A1 [,A2, A3, ...] [: R1,R2] )
+
+Arguments:
+A1, ...AN       Logical, of any kind, they must be
+                 conformable
+
+R1, R2          Any type, but must be of the same TKR, etc.,
+                 with enough restrictions to allow them to be
+                 sensibly used in expressions that are
+                 compiled, not interpreted.  They must be
+                 conformable with the AIs.
+
+The semantics is that the logical arguments are evaluated
+first, in sequence, left to right, one at a time. Evaluation
+of the logical arguments stops when ANDTHEN encounters a
+FALSE value or ORELSE encounters a TRUE value, or when the
+last logical argument has been evaluated.  The result of the
+logical evaluation is the value of the last logical argument
+evaluated.  (This is equivalent to the AND or OR,
+respectively, of all of the evaluated arguments.)
+
+If R1 and R2 are absent, the function result is the result
+of the logical evaluation.  If R1 and R2 are syntactically
+present, the result is R1 if the logical result is TRUE,
+otherwise R2.  Only the appropriate one of R1 or R2 is
+evaluated.  (However, see options below.)
+
+Entities in terms which are not evaluated need not be
+defined, present, allocated, evaluatable, etc.  Note that
+for elemental usage, different result elements will usually
+evaluate a different set of arguments.
+
+I believe this can easily be made consistent with the
+embedded conditionals proposed in 04-357 which proposes that
+the result be R1 or R2, not it's value, in some
+circumstances.  I'm sure this wouldn't allow an elemental
+invocation.
+
+Option 1: Rather than evaluating R1 and R2, the results
+could simply "Be" R1 or R2, in the same way 04-357 proposed.
+
+Option 2: Invent a new function, patterned on the highly
+successful NULL() intrinsic, that Does The Right Thing based
+on context.  Examples could be something like
+
+      CALL SUB (ANDTHEN(PRESENT(X), DTRT(X(1:10)), DTRT()))
+or
+      CALL SUB (ANDTHEN(PRESENT(X), DTRT(X(1:10)),
+                DTRT(local_X(1:10)))
+
+If X is present, then X(1:10) would be passed as an actual
+argument, otherwise an absent optional argument (with enough
+of the right characteristics) would be passed.  Rules,
+similar to 04-357, could make it work the right way when
+used as an argument.
+
+Option 3:  Extend the PRESENT intrinsic to have 2 more
+arguments.
+PRESENT ( X, Y, Z)
+would be Y if X is present, otherwise Z.  The example could
+be
+
+      CALL SUB (PRESENT(X, X(1:10), something_interesting))
+or
+      CALL SUB (PRESENT(X, X(1:10), local_X(1:10)))
+
+where something_interesting could possibly be jiggered up to
+be an absent argument, or not.
+
+Personally, I'd prefer option 2.  I think that mixing up
+expressions versus simple variables as arguments with option
+1 will be more trouble than it's worth.  There's
+considerable confusion expressed on comp.lang.fortran about
+the difference between
+     CALL SUB( X )
+and
+     CALL SUB((X))
+Option 3 is a little more ad hoc than I'd like.  But, I
+think it covers the likely (only?) interesting case.
+
+
+Examples:
+
+    IF ( ANDTHEN(I > 0, I<10, A(I) > 0 ) ) A(I) = log(A(I))
+
+    local_value = ANDTHEN(present(X)  :  X, 3.14)  !safe MERGE
+or
+    local_value = PRESENT(X, X, 3.14)
+
+    real :: Temp( ANDTHEN (present(x), size(x)>100: size(x), 100)
+
+    Array = ANDTHEN (Array > 0, Array <= 1.0: log(Array)*asin(Array), -1.0)

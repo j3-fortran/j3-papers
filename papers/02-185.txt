@@ -1,0 +1,272 @@
+
+                                                        J3/02-185
+
+Date:    26 April 2002
+To:      J3
+From:    Kurt W. Hirchert
+Subject: Type-bound assignment/operator ambiguity     
+
+
+===========
+The Problem
+===========
+
+During our discussions of type-bound assignment and operators, one
+of the recurring questions was whether, for example, there could
+be a conflict between a type-bound assignment defined in the type
+of the left hand side and one defined in the type of the right
+hand side.  The answer always given, some times quickly and some
+times after much thought, was that this couldn't happen because
+both types had to be known in the scoping unit where they type-
+binding is defined, so the local generic rules in that scoping
+unit would cover things.
+
+I think we may have failed to take into account some of the effects
+of inheritance.  Consider the following example:
+
+! two base types (could be defined the same or different modules)
+MODULE t0mod; TYPE, EXTENSIBLE :: t0; END TYPE t0; END MODULE t0mod
+MODULE u0mod; TYPE, EXTENSIBLE :: u0; END TYPE u0; END MODULE u0mod
+
+! an extension of the first type, defining assignment on the LHS
+MODULE t1mod; USE t0; USE u0; PRIVATE; PUBLIC t0, t1
+   TYPE, EXTENDS(t0) :: t1; CONTAINS
+     GENERIC, PASS_OBJ :: ASSIGNMENT(=) => asgt1l
+   END TYPE t1
+CONTAINS
+   SUBROUTINE asgt1l(x,y)
+     CLASS(t1),INTENT(OUT) :: x; CLASS(u0),INTENT(IN) :: y
+   END SUBROUTINE asgt1l
+END MODULE t1mod
+
+! an extension of the second type, defining assignment on the RHS
+MODULE u1mod; USE t0; USE u0; PRIVATE; PUBLIC u0, u1
+   TYPE, EXTENDS(u0) :: u1; CONTAINS
+     GENERIC, PASS_OBJ :: ASSIGNMENT(=) => asgu1r
+   END TYPE u1
+CONTAINS
+   SUBROUTINE asgu1r(x,y)
+     CLASS(t0),INTENT(OUT) :: x; CLASS(u1),INTENT(IN) :: y
+   END SUBROUTINE asgu1r
+END MODULE u1mod
+
+! usage demonstrating the problem (and workarounds)
+PROGRAM example; USE t1; USE u1
+   TYPE(t0) :: t0obj; TYPE(t1) :: t1obj
+   TYPE(u0) :: u0obj; TYPE(u1) :: u1obj
+   t1obj = u0obj         ! unambiguously uses asgt1l
+   t0obj = u1obj         ! unambiguously uses asgu1r
+   t1obj = u1obj         ! ambiguous - could use either
+! ^^^^^^^^^^^^^         the problem !
+! possible workarounds follow
+   CALL forcet1l(t1obj,u1obj)    ! force choice through
+   CALL forceu1r(t1obj,u1obj)    !  argument association
+   u0ptr => u1obj                ! if u1obj were a target
+   t1obj = u0ptr                 !  this would force asgt1l
+   t0ptr => t1obj                ! if t1obj were a target
+   t0ptr = u1obj                 !  this would force asgu1r
+   SELECT TYPE u1obj             ! if this SELECT TYPE were legal
+   TYPE IN (u0); t1obj = u1obj   !  this would force asgt1l
+   END SELECT
+   SELECT TYPE t1obj             ! if this SELECT TYPE were legal
+   TYPE IN (t0); t1obj = u1obj   !  this would force asgt1l
+   END SELECT
+CONTAINS
+   SUBROUTINE forcet1l(lhs,rhs)
+     TYPE(t1) :: lhs; CLASS(u0) :: rhs
+     lhs = rhs           ! as above, unambiguously uses asgt1l
+   END SUBROUTINE forcet1l
+   SUBROUTINE forceu1r(lhs,rhs)
+     CLASS(t0) :: lhs; TYPE(u1) :: rhs
+     lhs = rhs           ! as above, unambiguously uses asgu1r
+   END SUBROUTINE forceu1r
+END PROGRAM example
+
+This ambiguity requires the use of extension types.  I believe a
+similar ambiguity can be constructed with t1 and u1 being base
+types and using CLASS(*) in place of CLASS(t0) and CLASS(u0).
+
+===================================
+Possible Solutions (Specifications)
+===================================
+
+I have thought of a wide range of possible ways to address this
+ambiguity:
+
+1. Do nothing.  (It can be argued that the conditions necessary to
+    create such an ambiguity are so perverse that it is highly
+    unlikely that it would occur in a real program.)  [In essence,
+    this means hoping the example would never be presented to a
+    compiler.]
+
+    Even if this were true, would the implementors let us get away
+    with not addressing the issue?
+
+2. Remove type-bound assignment and operators from the standard.
+    [The example would generate errors in modules t1mod and u1mod
+    and in program example, as the features it tries to use would
+    not be available.]
+
+    In my opinion, that would be "throwing out the baby with the
+    bath water".  In addition, I believe it would be a non-trivial
+    editorial task.
+
+3. Restrict the argument receiving the object under to PASS_OBJ to
+    be the first argument.  [Type u1 would be illegal because of
+    the binding to asgu1r.]
+
+    This would certainly be editorially simpler, but the loss of
+    functionality seems painful.
+
+4. Impose rules that would prohibit the definition of such an
+    ambiguity.  [Type t1 or type u1 or both would be illegal.]
+
+    The rules to do this most exactly would be moderately
+    complicated and might be fragile in the face of language
+    extensions.  Simpler, more robust rules would unnecessarily
+    exclude more useful functionality.  Even the complex, fragile
+    rules would exclude significant useful functionality -- such
+    rules would have to prohibit the definition of t1 or u1 (or
+    both) in our example because of the _possibility_ that the
+    other definition might exist in another scoping unit elsewhere
+    in the program, but program that had only one of these type
+    definitions might be useful without presenting any ambiguity.
+
+5. Allow the definitions, but disallow their being available in
+    the same scoping unit.  [Program example would be illegal
+    because both t1 and u1 were available in it.]
+
+    Note that the wording (and implementations) would have to deal
+    the availability of the two types or of objects of those types.
+    This is similar to how we handle ambiguities for generics
+    defined by interface blocks.  I find this minimally acceptable
+    but unattractive, because it appears that the workarounds would
+    be difficult.
+
+6. Allow the types to be available in a scoping unit, but disallow
+    the ambiguous references.  [The ambiguous assignment statement
+    in program example would be illegal.]
+
+    This could be seen as analogous to the way we handle conflicts
+    in entities made accessible by USE.  However, it can argued to
+    be inconsistent with our other handling of generics.  (We could
+    attempt to address the latter point by adopting a similar rule
+    for interface block generics, at least with respect to the
+    conflict between types that are different but related by
+    inheritance.)
+
+7. Allow the ambiguous reference, but provide a rule to decide
+    which procedure is actually called.  [The ambiguous assignment
+    statement in program example would be legal and some rule
+    in the standard would determine whether asgt1l or asgu1r is
+    referenced.]
+
+    This could be seen as analogous to the way we handle the
+    ambiguity between elemental specific procedures in a generic
+    and specific procedures that explicitly deal with array
+    arguments.  (As with 6 above, this means we either treat
+    conflicts in type-bound generics differently from those in
+    interface block generics or we change the rules for the
+    latter.)  Since our rule here is likely to be fairly
+    arbitrary, it is quite possible that the interpretation we
+    select will not be the one the programmer intended, so
+    that eliminating the syntax error would just be creating a
+    logic error in the program.
+
+    A hybrid of 6 and 7 might be possible, resolving some
+    ambiguities and making others illegal.  Presumably, the
+    rules would be designed to provide resolution in cases where
+    we are reasonably confident that we can identify the "right"
+    resolution and prohibiting the "iffy" cases.  (I would
+    qualify the specific example in this paper as "iffy".)
+
+8. Allow the ambiguous reference, put make its resolution
+    processor dependent.
+
+    This _might_ allow the processor to be cleverer than whatever
+    rule we would choose, but it gives the programmer less
+    portability.
+
+9. Allow the ambiguous reference, but disallow its execution.
+
+    This is analogous to how we handle references to non-existent
+    procedures with implicit interfaces.  It appears to me that
+    this hides some errors by deferring them to run time, without
+    enlarging the class of useful executions.
+
+For any of the last 4 alternatives, it may be useful to look at
+the workarounds that allow the programmer to control the
+resolution of the ambiguity:
+
+a. The helper procedure workaround is legal now, but it is a
+    bit verbose and somewhat awkward because the helper procedure
+    has to be placed elsewhere.
+
+b. The pointer approach is legal now and quite compact, but it
+    only works for targets.  Because of the performance effects
+    of making things targets, this is unlikely to gain wide
+    acceptance.
+
+c. The SELECT TYPE approach would be fairly compact and could
+    be generally applicable, but it is not legal.  We might
+    want to consider making the following changes to SELECT TYPE:
+
+    i.   Allow the <selector> to be of fixed type.
+    ii.  Allow the <extensible-type-name> to be the name of a type
+         that is an extension of the type of the <selector> or
+         that extends to that type.
+    iii. Allow * as an alternative to <extensible-type-name>.
+    iv.  Impose different constraints on the collective set of
+         <extensible-type-name>s in a <select-type-construct>
+         so there are no blocks that cannot possibly be executed.
+
+    A more ambitious but conceptually simpler alternative might be
+    to extend the ASSOCIATE construct to allow declarations of the
+    <associate-name>s as though they were dummy arguments, with the
+    same coercion of attributes.
+
+========
+Strawman
+========
+
+My preference would be alternative 6.  (Alternative 7 and the 6-7
+hybrid would then be valid extensions.)
+
+Although we could get by with just workarounds a. and b., I would
+be more comfortable if we did something to support workaround c.
+Although the ASSOCIATE construct modifications would require more
+editorial work than the SELECT TYPE modifications, the ASSOCIATE
+modifications offer so much more functionality that I believe they
+would be the better choice.
+
+As noted above, the simplest application of alternative 6 treats
+type-bound generics inconsistently with the way interface block
+generics are handled.  Ideally, we should reconcile this
+inconsistency.  If that is too much work to do before releasing
+the public comment draft, we should find a time as soon as possible
+when we can do it.  I would recommend an approach where we formally
+recognize that there are preferences in argument association
+beyond the simple question of whether a particular actual argument
+can be associated with a particular dummy argument.  For example,
+although an argument of an extension type can be associated with
+a dummy of the parent type, it "better" if it is associated with
+a dummy of matching type; similarly, an actual argument with the
+pointer attribute is "better" reflected by association with a dummy
+argument that has that attribute than by association with a dummy
+argument that lacks the attribute.  Interfaces that differ on the
+basis of such preferences would be considered distinguished and
+allowed to exist in the same generic interface.  When resolving a
+particular reference to that generic, if one of the specifics is
+"best" with respect to all of the preferences, it is selected.
+When different specifics are "better" according to different
+criteria, as in our original example, the _reference_ would be
+considered non-conforming.
+
+=====
+Edits
+=====
+
+After we decide which alternative specification we wish to pursue,
+I can produce a revision of this paper that has edits.
+
+                              - end -

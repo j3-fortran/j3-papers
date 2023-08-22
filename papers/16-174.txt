@@ -1,0 +1,220 @@
+To:      J3                                           J3/16-174
+From:    R. Bader
+Subject: properties of coarray dummy arguments
+Date: 2016 April 07
+References: 16-007, TS18508
+
+
+Discussion:
+~~~~~~~~~~~
+
+Section 12.5.2.8 discusses the properties of coarray dummy arguments.
+These appear to be insufficiently specified; in particular, the NOTEs
+12.32 and 12.33 in 16-007 refer to semantics that are not stated in
+normative text. Furthermore, coindexed accesses to dummy arguments
+appear to be prohibited in general, due to the anti-aliasing rules
+in 12.5.2.13.
+
+As an illustration of the issues (not meant to be a recommended
+programming practice), consider the following procedures:
+
+
+SUBROUTINE S1(A, IL)
+  INTEGER :: A[*]
+  INTEGER :: IL
+  SYNC IMAGES ( [1,2]] )
+  IL = A                    ! (A)
+END SUBROUTINE
+
+SUBROUTINE S2(A, IL)
+  INTEGER :: A
+  INTEGER :: IL
+  SYNC IMAGES ( [1,2] )
+  IL = A
+END SUBROUTINE
+
+and the following execution sequence on 2 images:
+
+Image 1:
+
+INTEGER  ::  I[*] = 0
+
+I[2] = I[2] + 1
+SYNC IMAGES( [1,2] )
+
+Image 2:
+
+INTEGER :: IL
+
+CALL S1(I, IL)
+
+The current text in the standard causes the above to be non-conforming
+for two reasons:
+
+(1) the dummy argument A of procedure S1 is modified by a different
+    image, in violation of 12.5.2.13 para 3+4. Since the ability to do
+    such modifications is part of the coarray design, further
+    exceptions need to be added to the above paragraphs. The exceptions
+    apply for coarray dummy arguments only, so replacing the call to
+    S1 above by a call to S2 remains non-conforming even with the
+    suggested relaxation of the anti-aliasing rules (moving the image
+    control statement outside S2 to come before the invocation of S2
+    resolves this).
+(2) no interpretation is established in normative text on which coarray
+    statement (A) performs its action; the same applies for coindexed
+    definitions and references from inside the procedure on its dummy
+    argument, or for actions by other images that access the coarray
+    on the executing image. 12.5.2.8 para 2 and the non-normative
+    examples following this paragraph strongly hint that it must be
+    the ultimate argument, so this is spelled out explicitly.
+
+
+
+Edits to 16-007:
+~~~~~~~~~~~~~~~~
+
+[307:] after para 2, add new paragraph
+"The coarray identified by a coarray dummy argument is its ultimate
+ argument; its corank and cobounds are those specified in the dummy
+ argument's <i>coarray-spec</i> (5.5.6.1). The procedure's executing
+ image accesses the identified coarray by noncoindexed references
+ or definitions of the dummy argument, or coindexed references or
+ definitions of the dummy argument on any other image of the current
+ team. Coindexed access to the identified coarray on the executing
+ image by any other image on which it is established causes the
+ dummy argument to be referenced or defined."
+
+{complete the description of the argument associated coarray. The
+term "identified by" is also used in TS 18508 [10:23+]. The wording,
+I think, implies that no copy-in/out can be done on the processor's
+part, at least not without significant performance impact.}
+
+[307:] After above para, replace NOTEs 12.32 and 12.33 by the following
+text:
+
+"NOTE 12.32
+
+Consider the invocation of a procedure
+
+SUBROUTINE SUB(X, J)
+  REAL :: X[*]
+  INTEGER, INTENT(IN) :: J
+  SYNC ALL
+  ... = X[J]
+  SYNC ALL
+  ... ! Calculations on local portion of X
+END SUBROUTINE SUB
+
+from the following program fragment:
+
+REAL :: A(1000)[*]
+INTEGER :: Q, P
+...
+P = ...; Q = ...; A = ...
+CALL SUB(A(Q), P)
+
+During execution of an invocation of SUB, the executing image has
+coindexed access to A(Q) on image P. The values of Q and P might be
+different on different images.
+
+
+NOTE 12.33
+
+ Invocation of a procedure with a nonallocatable coarray dummy argument
+ establishes a dummy coarray for the image with locally declared
+ cobounds. The image can use these to access either parts or the whole
+ of the identified coarray on any other image:
+
+INTERFACE
+  SUBROUTINE SUB(X,N)
+    INTEGER :: N
+    REAL :: X(N,N)[N,*]
+  END SUBROUTINE SUB
+END INTERFACE
+...
+REAL :: A(1000)[*]
+...
+CALL SUB(A,10)
+
+During execution of an invocation of SUB, each executing image has, for
+example, access through the syntax X(1,2)[3,4] to A(11) on the image
+with image index 33.
+
+NOTE 12.33+1
+
+ For invocation of a procedure with an allocatable coarray dummy
+ argument it will often be necessary to perform an allocation
+ before any coindexed accesses are done:
+
+ SUBROUTINE CREATE_FIELD(A, FNAME)
+   REAL, ALLOCATABLE, INTENT(OUT) :: A(:)[:]
+   CHARACTER(*), INTENT(IN) :: FNAME
+   INTEGER :: N
+   ... ! establish value of N from file FNAME
+   ALLOCATE(A(N)[*])
+   ... ! read local part of A from FNAME
+ END SUBROUTINE
+
+ If this is the case, the procedure must be invoked from all images,
+ supplying the same actual argument on each image (6.7.1.2):
+
+ REAL, ALLOCATABLE :: X(:)[:]
+ CHARACTER(...) :: FILE = ...
+
+ CALL CREATE_FIELD(X, FILE)
+
+ For the above example, the procedure invocation will synchronize all
+ images both at the beginning of its execution (because the coarray
+ dummy argument becomes deallocated) and when the ALLOCATE statement
+ is executed."
+
+{It might be more appropriate to move all these examples to Appendix
+ C.9.}
+
+[310:11+] Add another bullet item
+  "(d) the dummy argument is a coarray and the action is a
+   coindexed access to its identified coarray executed on any image on
+   which it is established."
+
+[310:20+] Add another bullet item
+  "(d) the dummy argument is a coarray and the reference is a
+   coindexed access to its identified coarray executed on any image on
+   which it is established."
+
+{Necessary loosening of anti-aliasing rules.}
+
+[312] After NOTE 12.39 add
+  "NOTE 12.39+1
+   The exception to the above rules for dummy coarrays enables
+   cross-image accesses for them within the procedure, or from
+   other procedures that have access to the identified coarray
+   (12.5.2.8)"
+
+Open question:
+~~~~~~~~~~~~~~
+
+The modified NOTE 12.32 demonstrates that procedure invocations
+from different images might associate different coarray actuals
+with a given coarray dummy. Furthermore, it is in principle even
+possible to perform cross-image accesses from different procedure
+contexts.
+
+There exist scenarios where this is either confusing or outright
+wrong. For example, a parallel algorithm might implicitly assume that
+the actual argument corresponds to the same coarray on each image,
+or the procedure might invoke a collective subroutine on its coarray
+dummy.
+
+A possible way for the programmer to indicate proper usage might be to
+add an attribute that can only be specified for coarray dummies, say
+
+REAL, INTENT(INOUT), SYMMETRIC :: X[*]
+
+The actual argument must then either be a SYMMETRIC dummy, or
+the same non-dummy coarray on each image. ALLOCATABLE dummy
+coarrays have this attribute by default. The attribute does not,
+by itself, enforce that the procedure must be invoked on all images.
+Unfortunately, it is probably not compile-time checkable on the
+top level.
+
+

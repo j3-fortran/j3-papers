@@ -1,0 +1,138 @@
+To: J3                                                     J3/18-260
+From:    R. Bader / DIN
+Subject: Generic programming in future Fortran
+Date: 2018-October-07
+References: Fortran 202X feature collection
+
+This is an attempt to put together a minimal set of desiderata for the
+support of generic programming (aka "templates") in a future Fortran
+standard. It is intended to serve as a starting point for establishing
+the list of formal requirements to be decided upon by WG5 at the next
+joint meeting.
+
+(A) It should be possible to declare a generic type whose type
+    components are parameterized by a type placeholder, e.g.
+
+    TYPE, GENERIC :: fraction(T)
+      TYPE(T) :: numerator, denominator
+    END TYPE
+
+    Such a type might also be an extension of another (generic or
+    non-generic) type. Both polymorphic and non-polymorphic components
+    should be permitted.
+
+(B) It should be possible to implement procedures that can make use
+    of such a type as dummy arguments or function results, e.g.
+
+    PURE TYPE(fraction(T)) FUNCTION add_fractions(s1, s2)
+      TYPE(fraction(T)), INTENT(in) :: s1, s2
+      ... ! implement s1+s2 in terms of the type components
+    END FUNCTION
+
+(C) It should be possible to overload operators or declare user-defined
+    operations based on such procedures, e.g.
+
+    GENERIC :: operator(+) => add_fractions
+
+(D) It should be possible to implement generic procedures that take
+    an object of placeholder type as dummy arguments or function
+    results, e.g. 
+
+    TYPE(T) FUNCTION max ( x, y )
+      TYPE(T), INTENT(in) :: x, y
+      IF ( x < y ) THEN
+        max = y
+      ELSE
+        max = x
+      END IF
+    END FUNCTION
+
+    Both polymorphic and non-polymorphic objects should be permitted.
+    Some care will likely be needed if the currently available PDTs
+    should also be able to partake in instantiations, because of the
+    specific syntax required in declaring procedure arguments for
+    objects of such types.
+   
+(E) It should be possible to instantiate concrete realizations of a
+    generic type or generic procedure in the sense given above, using
+    either intrinsic types or derived (but non-generic) types for the
+    placeholder where possible. Note that an instantiation of a generic
+    type is not itself considered generic.
+
+(F) Mechanisms should be provided to control the instantiation,
+    that permit to
+    - limit the instantiation to certain subsets of types,
+    - perform the instantiation for (possibly large and maybe
+      even nested) sets of types with a concise notation, and
+    - guarantee that an instantiation for a given type is performed
+      only once, to avoid code bloat and potential name space
+      collisions.
+    The rules should enable efficient source code handling,
+    automatable deduction of build dependencies for use of facilities
+    like "make", as well as offering the possibility to implementors
+    to add hooks for correctness and performance analysis tools.
+
+(G) If implementation code makes use of specific properties of a type
+    placeholder (e.g. existence of specifically named and typed type
+    components, existence of generic procedures defined for that type,
+    possibly existence of type parameters etc.), a way of specifying
+    requirements on the type placeholder should be possible and maybe
+    obligatory. This permits compile-time rejection of instantiations
+    that do not fulfill the requirements.
+
+    For example, the implementation for add_fractions above would need
+    to place (at least) the requirement on the type components that the
+    concrete type must support the arithmetic operation "+".
+
+    If the concept for generic programming turns out to also comprise
+    parameters other than types, it may be appropriate to require
+    declarations for the specific set a parameter is intended to be
+    a member of.
+
+    For the example given in (A) above, one therefore might need to
+    have a declarative statement like
+
+    T is TYPE with DYADIC OPERATOR(+)
+
+(H) It is desirable to keep the usage of generic objects and procedures
+    as close as possible to current Fortran style. Therefore, the naming
+    scheme should exploit the existing generic disambiguation rules, and
+    access to generic objects should be based on a suitable extension of
+    the USE statement.
+    
+    For example, objects of the above fraction type might be declared
+    like
+
+    USE mod_fraction(T={mytype,othertype})
+
+    TYPE(fraction(mytype)), ALLOCATABLE :: mf(:)
+    TYPE(fraction(othertype)) :: x
+
+    if instantiations of the generic types exist for the two referenced
+    types "mytype" and "othertype", and invocation of the above
+    procedure (if PUBLIC) might be done via
+
+    mf(1) = add_fractions(mf(1), mf(2))
+
+    making use of an auto-generated call in the instantiation.
+    Specializations or extensions could be achieved by specifying an
+    ONLY clause on the USE statement and adding the special purpose
+    code or the extension code locally.
+
+
+
+
+
+
+   
+
+
+   
+ 
+
+   
+
+   
+  
+
+

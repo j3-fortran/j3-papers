@@ -1,0 +1,251 @@
+                                                            12-157r1
+To: J3
+From: Malcolm Cohen
+Subject: Interp NAMELIST and type specification
+Date: 2012 June 24
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0079
+TITLE: NAMELIST and type specification
+KEYWORDS: NAMELIST
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Q1.  Consider
+
+  Module m198_002a
+    Type t
+      Real c
+    Contains
+      Procedure :: fwrite => fwrite_t
+      Generic ::       
+    End Type
+    Type,Extends(t) :: t2
+      Logical ok
+    End Type
+  Contains
+    Subroutine fwrite(dtv,unit,iotype,v_list,iostat,iomsg)
+      Class(t),Intent(In) :: dtv
+      Integer,Intent(In) :: unit,v_list(:)
+      Character(*),Intent(In) :: iotype
+      Integer,Intent(Out) :: iostat
+      Character(*),Intent(InOut) :: iomsg
+      If (iotype/='NAMELIST' .And. iotype/='LISTDIRECTED') &
+        Stop 'NYI'
+      Select Type (dtv)
+        Class Is (t)
+          Write(unit,*,Iostat=iostat,Iomsg=iomsg) 'T',dtv%c
+        Class Is (t2)
+          Write(unit,*,Iostat=iostat,Iomsg=iomsg) 'T2',dtv%c,dtv%ok
+      End Select
+    End Subroutine
+  End Module
+  Program test
+    Use m198_002a
+    Class(t),Pointer :: x                ! A
+    Namelist/n/x
+    Allocate(x,Source=t(1.5))            ! B
+    Write (*,n)
+    Allocate(x,Source=t2(1.5,.True.))    ! C
+    Write (*,n)
+  End Program
+
+The standard requires, at 5.6p5,
+   "A namelist group object ... shall have its type ... specified
+    by previous specification statements ...".
+
+The declared type of X is specified by the type declaration marked
+"! A", but the dynamic type of X is specified by one of the assignment
+statements (either "! B" or "! C").
+
+Is this program intended to be standard-conforming?
+
+
+Q2.  Consider
+
+  Module m198_002b
+    Use Iso_Fortran_Env
+    Type t(p)
+      Integer,Kind :: p
+      Real(Selected_Real_Kind(p)) c
+    Contains
+      Procedure :: fwrite => fwrite_t
+      Generic ::       
+    End Type
+    Type,Extends(t) :: t2(k)
+      Integer,Kind :: k
+      Integer(k) e
+    End Type
+  Contains
+    Subroutine fwrite(dtv,unit,iotype,v_list,iostat,iomsg)
+      Class(t),Intent(In) :: dtv
+      Integer,Intent(In) :: unit,v_list(:)
+      Character(*),Intent(In) :: iotype
+      Integer,Intent(Out) :: iostat
+      Character(*),Intent(InOut) :: iomsg
+      If (iotype/='NAMELIST' .And. iotype/='LISTDIRECTED') &
+        Stop 'NYI'
+      Select Type (dtv)
+        Class Is (t(6))
+          Write(unit,*,Iostat=iostat,Iomsg=iomsg) 'T',dtv%c
+        Class Is (t2(6,int32))
+          Write(unit,*,Iostat=iostat,Iomsg=iomsg) 'T2',dtv%c,dtv%e
+        Class Is (t2(6,int64))
+          Write(unit,*,Iostat=iostat,Iomsg=iomsg) 'T2',dtv%c,dtv%e
+      End Select
+    End Subroutine
+  End Module
+  Program test
+    Use m198_002b
+    Class(t(6)),Pointer :: x                  ! A
+    Namelist/n/x
+    Allocate(x,Source=t(6,1.5))               ! B
+    Write (*,n)
+    Allocate(x,Source=t2(6,int32)(1.5,2**30)) ! C
+    Write (*,n)
+    Allocate(x,Source=t2(6,int64)(1.5,2**60)) ! D
+    Write (*,n)
+  End Program
+
+The standard required, at 5.6p5,
+  "A namelist group object ... shall have its ... type parameters
+   ... specified by previous specification statements ...".
+This was modified by Corrigendum 1 to read
+  "A namelist group object ... shall have its ... kind type
+   parameters ... specified by previous specification statements ...".
+
+The declared type of X has the kind type parameter P, and this is duly
+specified at the statement marked "! A", but the dynamic type of X
+after either of the assignment statements marked "! C" or "! D" has an
+additional kind type parameter K, and this specification does not
+precede the NAMELIST statement.
+
+Is this program intended to be standard-conforming?
+
+Q3.  Consider the program consisting of the same module as in Q2, but
+     with the revised main program:
+
+  Program test
+    Use m198_002b
+    Implicit Type(t(6)) (a-z)
+    Namelist/n/x
+    Class(t(6)),Pointer :: x                  ! A
+    Allocate(x,Source=t(6,1.5))               ! B
+    Write (*,n)
+    Allocate(x,Source=t2(6,int32)(1.5,2**30)) ! C
+    Write (*,n)
+    Allocate(x,Source=t2(6,int64)(1.5,2**60)) ! D
+    Write (*,n)
+  End Program
+
+The standard says at 5.6p5
+  "If a namelist group object is typed by the implicit typing rules,
+   its appearance in any subsequent type declaration statement shall
+   confirm the implied type and type parameters."
+
+The declared type of X, and its declared kind type parameters, are
+specified at "! A", and these are indeed the same type and type
+parameters that appear in the IMPLICIT statement, but X is CLASS(T(6))
+not TYPE(T(6)).
+
+Is this program intended to be standard-conforming?
+
+Q4.  Consider
+
+  Module m198_002d
+    Use Iso_Fortran_Env
+    Type t(mp)
+      Integer,Len :: mp
+      Integer c(mp)
+    Contains
+      Procedure :: fwrite => fwrite_t
+      Generic ::       
+    End Type
+    Type,Extends(t) :: t2(mk)
+      Integer,Len :: mk
+      Integer e(k)
+    End Type
+  Contains
+    Subroutine fwrite(dtv,unit,iotype,v_list,iostat,iomsg)
+      Class(t),Intent(In) :: dtv
+      Integer,Intent(In) :: unit,v_list(:)
+      Character(*),Intent(In) :: iotype
+      Integer,Intent(Out) :: iostat
+      Character(*),Intent(InOut) :: iomsg
+      If (iotype/='NAMELIST' .And. iotype/='LISTDIRECTED') &
+        Stop 'NYI'
+      Select Type (dtv)
+        Class Is (t(*))
+          Write(unit,*,Iostat=iostat,Iomsg=iomsg) 'T',dtv%c
+        Class Is (t2(*,*))
+          Write(unit,*,Iostat=iostat,Iomsg=iomsg) 'T2',dtv%c,'E',dtv%e
+      End Select
+    End Subroutine
+  End Module
+  Program test
+    Use m198_002d
+    Implicit Type(t(1)) (a-z)
+    Namelist/n/x
+    Class(t(:)),Pointer :: x                        ! A
+    Allocate(x,Source=t(1,[15]))                    ! B
+    Write (*,n)
+    Allocate(x,Source=t2(2,4)([15,30],[3,2,1,0]))   ! C
+    Write (*,n)
+    Allocate(x,Source=t2(2,5)([15,30],[4,3,2,1,0])) ! D
+    Write (*,n)
+  End Program
+
+The declared type of X, and its declared kind type parameters (of
+which there are none), are specified at "! A", and these are indeed
+the same type and kind type parameters that appear in the IMPLICIT
+statement, but the length type parameters are not the same.  However,
+after Corrigendum 1 there is no requirement for prior specification of
+the length type parameters, so it is unclear whether the requirement
+for confirmation is intended to apply to length type parameters as
+well as kind type parameters.
+
+Is this program intended to be standard-conforming?
+
+ANSWER:
+
+A1.  This program was intended to be conforming.  The requirement for
+     prior specification of the type was intended to mean the declared
+     type only.  An edit is supplied to clarify the intent.
+
+A2.  This program was intended to be conforming.  The requirement for
+     prior specification of the kind type parameters was intended to
+     apply only to type parameters of the declared type.  An edit is
+     supplied to clarify the intent.
+
+A3.  This program is conforming.
+
+A4.  This program is not conforming.  If the IMPLICIT statement were
+       Implicit Type(t(:)) (a-z)
+     it would be conforming.  No edit is necessary.
+
+Note: The requirement for prior declaration before the NAMELIST
+      statement does not appear to be useful.  A much simpler fix
+      would be to simply delete the entire paragraph 5.
+
+EDITS:
+
+[111:19-20] In 5.6 paragraph 5,
+  Change what was originally
+    "type, type parameters, and shape"
+  but which was changed by Corrigendum 1 to
+    "type, kind type parameters, and rank"
+  to
+    "declared type, kind type parameters of the declared type, and
+     rank".
+{It would be nice to be able to say "declared kind type parameters"
+ but that phrase it not used in the standard at present.}
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 12-157    m198  F03/0079 submitted with wrong question.
+         12-157r1  m198  Revised question, answer, and edits.
+
+----------------------------------------------------------------------

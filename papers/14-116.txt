@@ -1,0 +1,118 @@
+To:      J3                                             J3/14-116
+From:    Reinhold Bader
+Subject: Support for computational domains
+Date: 2014 February 08
+References: N1996, 13-300
+
+Discussion:
+~~~~~~~~~~~
+
+The FORM TEAM statement allows to establish a team decomposition via
+purely algorithm-driven methods. However, for performance optimization
+purposes it would be very useful to be able to generate teams optimized
+for machine architecture. For example, on a cluster of SMPs it will
+often be more efficient to use teams whose member images exactly match
+the cores in an SMP, most especially so if the Fortran run time is aware
+of the difference between communication (as well as synchronization)
+across and within SMPs. Because further hierarchy levels usually exist
+and/or various ways of interoperating with other parallel paradigms
+should be possible, it is not considered sufficient to base team
+establishment on e.g., membership of images on a specific node.
+
+This paper (an update of 13-300) suggests adding an optional argument
+DOMAIN to the FORM TEAM statement; an illustrative example is also
+provided.
+
+
+EDITS to N1996:
+~~~~~~~~~~~~~~~
+
+[11:12+] add line to R507
+
+"               or DOMAIN = <scalar-int-expr>"
+
+[11:14+] add line
+
+"C510    (R507) Only one of the specifiers NEW_INDEX or DOMAIN shall
+ appear in a <form-team-spec-list>"
+
+[11:4-5]  Replace "The value" by
+
+"If DOMAIN appears in the <form-team-spec-list>,
+ * it shall have a non-negative integer value that is the same on
+   each image that executes the FORM TEAM statement,
+ * the number of created teams decreases with an increasing value
+   of DOMAIN,
+ * <team-id> shall be definable; on each image of the invoking
+   team it is assigned a value between 1 and the number of created
+   teams, and
+ * if two images from the initial team are assigned the same value
+   of the <team-id> in an invocation of FORM TEAM from the initial
+   team, they will also become members of a single team in an
+   invocation of FORM TEAM with the same value of DOMAIN from any
+   descendant team that contains these images.
+ Otherwise, the number and size of the created teams is processor
+ dependent.
+
+ The processor-dependent integer DOMAIN_LEVELS is declared in the
+ ISO_FORTRAN_ENV intrinsic module and has the PROTECTED attribute.
+ It specifies the largest value of DOMAIN for which more than one
+ team might be created in an invocation of FORM TEAM.
+
+ The value"
+
+[12:7-] Add
+
+"NOTE 5.4+
+ It is intended that the implementation generate teams whose global
+ communication and synchronization efficiency decreases with an
+ increasing value of DOMAIN if this specifier is present. A FORM
+ SUBTEAM statement that uses the DOMAIN specifier might create teams
+ of differing sizes, especially if it is executed only by a small
+ subset of the images in the initial team."
+
+[37:10+] Add example that illustrates the use of the DOMAIN specifier.
+
+"A.1.3 Using the DOMAIN specifier for setting up teams
+
+ The following code sets up teams that map to shared memory nodes for
+ all parallel computations. Because coarrays are only used within a
+ shared memory node, all communication and synchronization can likely be
+ handled in a more efficient manner than for the case that cross-node
+ traffic occurs; an implementation might even use hardware-provided
+ facilities for more efficiency.
+
+ PROGRAM work_decomposition
+   USE, INTRINSIC :: iso_fortran_env
+   IMPLICIT NONE
+   INTEGER :: my_level, my_domain_id, local_size
+   TYPE(team_type) :: team_domain
+
+   my_level = GET_DOMAIN("NODE","PHYSICAL_CORES")
+                      ! user-implemented integer function
+                      ! based on compiler documentation
+   IF (my_level < 1) ERROR STOP
+   FORM TEAM(my_domain_id, team_domain, DOMAIN=my_level)
+   CHANGE TEAM(team_domain)
+     BLOCK
+       REAL, ALLOCATABLE :: a(:)[:]
+       LOGICAL, ALLOCATABLE :: continue[:]
+
+       local_size = ... ! may vary between different teams
+                        ! but must be the same within a team
+       ALLOCATE(a(local_size)[*], continue[*])
+       continue = .true.
+       : ! set initial values of A
+       DO WHILE (continue)
+         : ! computation/communication involving A
+         : ! consistent update of "continue"
+       END DO
+       SYNC ALL
+       IF (this_image() == 1) THEN
+          : ! perform I/O of results A[m] stored on the images
+          : ! of the current team
+       END IF
+       DEALLOCATE(a, continue)
+     END BLOCK
+   END TEAM
+ END PROGRAM"

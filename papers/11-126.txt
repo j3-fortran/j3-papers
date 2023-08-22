@@ -1,0 +1,99 @@
+                                                            11-126
+To: J3
+From: Nick Maclaren
+Subject: Interop TR: CFI_desc_t copying and ALLOCATABLE
+Date: 2011 January 26
+Reference: 10-251.pdf, 10-235, 11-122
+
+
+
+1. Summary
+----------
+
+This issue was raised in 10-235, but there are no minutes of the
+subgroup, so I do not know what happened and what decisions were taken.
+Because of that, this merely raises issues and provides no edits.
+
+In C, all structures are copyable in one of three ways[*]:
+
+    1) Explicit member-by-member copying.  This is not possible for
+CFI_desc_t, because vendors are allowed to have 'hidden' members.
+
+    2) Direct assignment of structure values to structure lvalues.
+
+    3) memcpy and friends.
+
+10-251.pdf/N1838.pdf does not constrain this, therefore it is possible
+for descriptors passed as arguments and, in most cases, that works.
+However, there is a very serious problem with allocatable arguments,
+because Fortran requires the allocation and deallocation of any one
+associated variable to be reflected in all others [N1826 6.7.1.3 p3 and
+6.7.3.2 p1].
+
+If a descriptor is copied, the Fortran run-time system does not get an
+opportunity to chain such descriptors, and this becomes unimplementable.
+It cannot be solved by indirection, as some of the properties that
+must be maintained are the bounds, which are in the descriptor itself.
+
+As I said in 10-235, I attempted to think of wording within the design
+of 10-251, and failed.
+
+
+[*] This is not strictly correct, as volatile confuses the issue, but
+that is not relevant here.
+
+
+
+2. Example
+----------
+
+The Fortran standard requires the allocation in Joe to be reflected
+in what the main program sees, and the following is required to print
+10 and 5:
+
+    PROGRAM Main
+        INTERFACE
+            SUBROUTINE Fred (y)
+                REAL, ALLOCATABLE :: y(:)
+            END SUBROUTINE Fred
+        END INTERFACE
+        REAL, ALLOCATABLE :: x(:)
+        ALLOCATE(x(10))
+        PRINT *, SIZE(x)
+        CALL Fred(x)
+        PRINT *, SIZE(x)
+    END PROGRAM Main
+
+    SUBROUTINE Fred (y)
+        INTERFACE
+            SUBROUTINE Joe (z)
+                REAL, ALLOCATABLE :: z(:)
+            END SUBROUTINE Joe
+        END INTERFACE
+        REAL, ALLOCATABLE :: y(:)
+        CALL Joe(y)
+    END SUBROUTINE Fred
+
+    SUBROUTINE Joe (z)
+        REAL, ALLOCATABLE :: z(:)
+        DEALLOCATE(z)
+        ALLOCATE(z(5))
+    END SUBROUTINE Joe
+
+Now, what if Fred were a BIND(C) function written in C, such as:
+
+    #include "ISO_Fortran_binding.h"
+    #include <stdlib.h>
+
+    void Fred (CFI_desc_t *y) {
+        size_t n = sizeof(CFI_desc_t)+y->rank*sizeof(CFI_dim_t);
+        CFI_desc_t *z = malloc(n);
+        memcpy(z,y,n);
+        Joe(z);
+    }
+
+That is not going to work but is implicitly allowed by C and is not
+forbidden by the TR.  Furthermore, simply forbidding the copying of
+descriptors is an unreasonable constraint on the use of non-allocatable
+descriptors, not least because it forbids function arguments of type
+CFI_desc_t.

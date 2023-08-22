@@ -1,0 +1,163 @@
+                                                      J3/98-196r1
+
+          Date:        1998/08/13
+          To:          J3
+          From:        Interop
+          Subject:     Interoperability syntax (Part 3):  Global Data
+                       and Name Mangling
+          References:  J3/98-132r1, J3/98-139, J3/98-165r1
+
+          Global Data
+          -----------
+
+          In Fortran, there are two facilities for specifying global
+          data:  common blocks and modules.  The existing practice for
+          sharing global data between Fortran and C is to use common
+          blocks with the same name as the C object with external
+          linkage.  The interoperability facility could build off of
+          such existing practice.
+
+          Alternatively, the facility proposed in the Interoperability
+          PDTR could be used.  That facility permitted the BIND(C)
+          attribute to be specified for variables declared in the
+          scope of a module.  This has the virtue that it builds upon
+          the more modern Fortran feature.  It has the disadvantage
+          that, the way it was specified, it brought the baggage of
+          common association with it.  For example,
+
+                module mod
+                  integer, bind(c, name='cglob') :: i
+                  integer, bind(c, name='cglob') :: j
+                end module mod
+
+                program p
+                  use mod
+                  j = 3
+                  i = 17
+                  print *, j  ! Now j has the value 17!
+                end program p
+
+          We propose to use the same specification, with the
+          restriction that only one variable that is associated with a
+          particular C variable with external linkage is permitted to
+          be declared within a program.  This eliminates the common
+          association baggage.  In addition, the BIND(C) attribute
+          will be permitted to be specified for a named common block,
+          to facilitate support of existing practice.
+
+          For uniformity with other attributes, a BIND(C) attribute
+          statement will also be introduced.
+
+          For example,
+
+                integer, bind(c) :: i
+                integer :: j, k
+                common/com/ k
+                bind(c) :: j, /com/
+
+          The BIND(C) attribute shall only be specified for a variable
+          if it is declared in the scope of a module.  The variable
+          shall interoperate with the C type of the associated C
+          variable that has external linkage.  The variable shall not
+          be explicitly initialized, it shall not have the POINTER
+          attribute, the ALLOCATABLE attribute, appear in an
+          EQUIVALENCE statement or be a member of a common block.
+
+          If a common block is given the BIND(C) attribute, it shall
+          be given the BIND(C) attribute in all scoping units in
+          which it is declared.  A C variable with external linkage
+          interoperates with a common block that has the BIND(C)
+          attribute, if the C variable is of a struct type and the
+          variables that are members of the common block interoperate
+          with components of the struct type, or if the common block
+          contains a single variable, and the variable interoperates
+          with the C variable.
+
+          A variable in a common block with the BIND(C) attribute
+          shall not be explicitly initialized and it shall not be the
+          parent object of an <equivalence-object> in an EQUIVALENCE
+          statement.
+
+          If a variable or common block has the BIND(C) attribute, it
+          has the SAVE attribute as well.
+
+          A variable with the BIND(C) attribute is a global entity of
+          a program (14.1.1).  Such an entity shall not be declared in
+          more than one scoping unit of the program.
+
+          Name Mangling
+          -------------
+
+          Paper 98-139 contained an outline for syntax for mapping
+          Fortran variable and procedure names to C variable and
+          function names.  That proposal is restated here.
+
+          The BIND <prefix-spec> and attribute have an additional,
+          optional specifier, NAME=.  If neither NAME= nor BINDNAME=
+          is specified, NAME= is assumed to have a value that is the
+          same as the name specified for the variable or procedure in
+          lower case.
+
+          Note:  This is an arbitrary choice, but it seems like the
+                 reasonable one, since few users of C write their
+                 functions with names that are entirely in upper case.
+
+          An additional BINDNAME= attribute may also appear.  At most
+          one NAME= specifier is permitted to appear in a BIND
+          <prefix-spec> or attribute.  More than one BINDNAME=
+          specifier may appear in a BIND <prefix-spec> for a
+          subprogram, but not an interface body or the BIND attribute
+          for a variable.
+
+          Any leading and trailing blanks in the value of a NAME=
+          specifier are ignored.  The value of the NAME= specifier on
+          an interface body or variable must correspond to some C
+          function or variable, respectively, with the same name.
+
+          Note:  The intent here is that NAME= allows the user to
+                 specify C names that are not valid Fortran names, and
+                 provides a mechanism through which the processor can
+                 distinguish between upper and lower case.
+
+          Section 14.1.1 states that "A name that identifies a global
+          entity shall not be used to identify any other global
+          entity in the same program."  This rule needs to be extended
+          to make it clear that the value of the NAME= specifier might
+          identify a global entity, and it shall not be used to
+          identify any other global entity - the value isn't
+          necessarily a name in the Fortran sense, so some
+          modification of the existing rule is required.
+
+          This has the effect that two external procedures might have
+          the same name, but still be distinct entities, because the
+          values specified by NAME= specifiers might be different.
+          For example,
+
+                program p
+                  interface
+                    bind(c,name='CSub') subroutine c_sub
+                    end subroutine c_sub
+                  end interface
+
+                  call f_sub
+                end program p
+
+                subroutine f_sub
+                  interface
+                    bind(c,name='CSub2') subroutine c_sub
+                    end subroutine c_sub
+                  end interface
+                end subroutine f_sub
+
+
+          The meaning ascribed to the BINDNAME= specifier is
+          processor-dependent.
+
+          Note:  The value of the BINDNAME= specifier is intended to
+                 specify one or more alternative names by which a
+                 procedure defined by Fortran may be referenced from
+                 C, when a user wants to build a library that supports
+                 multiple C processors at once.  The name is a
+                 (potentially) mangled name, rather than the name that
+                 is actually specified in the C code.
+

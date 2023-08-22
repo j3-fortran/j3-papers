@@ -1,0 +1,98 @@
+                                                            J3/12-143
+To: J3
+From: Malcolm Cohen
+Subject: Executing a type-bound procedure on a coindexed object
+Date: 2012 February 16
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0043
+TITLE:  Executing a type-bound procedure on a coindexed object
+KEYWORDS: coarrays, polymorphism
+DEFECT TYPE: Erratum
+STATUS: J3 consideration on progress
+
+QUESTION:
+
+Consider the following program:
+
+  module m
+    type :: foo
+      integer :: i = 0
+    contains
+      procedure, pass :: op
+    end type
+  contains
+    subroutine op(this, i)
+      class(foo) :: this
+      this%i = i
+    end subroutine
+  end module m
+  program p
+    use m
+    class(foo), allocatable :: o_foo[:]
+    integer :: me
+    allocate(foo :: o_foo[*])
+
+    me = this_image()
+    if (me == 1) then
+      call o_foo[2]%op(1)             ! Type-bound call.
+    end if
+    sync all
+    if (me == 2) write(*,*) o_foo%i
+  end program p
+
+This program is not standard-conforming, as it violates one of the
+requirements of 12.5.2.4p2 [293], viz
+  "If the actual argument is a polymorphic coindexed object,
+   the dummy argument shall not be polymorphic."
+
+However, if the type-bound call were replaced by
+
+  SELECT TYPE(o_foo)
+  TYPE IS (foo)
+    CALL o_foo[2]%op(1)
+  END SELECT
+
+appears to be standard-conforming.
+
+The example program appears to be harmless, so the requirement appears
+to be unnecessary.  It is conjectured that the requirement is
+misworded and should instead be
+  "If the actual argument is a polymorphic subobject of a coindexed
+   object, the dummy argument shall not be polymorphic."?
+
+Q1. Is this requirement intentional?
+
+Furthermore, constraint C1229 says of a <data-ref> that is the object
+for a type-bound procedure reference, that it
+  "shall not be a polymorphic subobject of a coindexed object";
+however, C617 already prohibits any <data-ref> from being a
+polymorphic subobject of a coindexed object except as the subject of
+a type parameter inquiry or as the actual argument in an intrinsic
+inquiry function reference, so C1229 appears to be completely
+redundant.
+
+Q2. Is constraint C1229 redundant?
+
+ANSWER:
+
+A1. The requirement is intentional.
+
+A2. Yes, constraint C1229 is redundant.  An edit is supplied to remove
+    this unnecessary redundancy.
+
+EDITS to 10-007:
+
+[289:24] In 12.5.1, delete C1229.
+
+SUBMITTED BY: R. Bader
+
+HISTORY: 10-208    m193  F08/0043 submitted
+         10-208r1  m193  Revised - Passed by J3 meeting
+         11-129    m194  Passed by J3 letter ballot #22 10-254
+         11-006Ar1 m196  Adjust edits to reference 10-007r1
+         N1889     m197  Failed Wg5 ballot N1877
+         12-143    m197  Removed attempt to explain the rationale.
+
+----------------------------------------------------------------------

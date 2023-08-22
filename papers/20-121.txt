@@ -1,0 +1,199 @@
+To: J3                                                     J3/20-121
+From: Zach Jibben & Srinath Vadlamani
+Subject: Protected components: specifications & syntax
+Date: 2020-February-27
+Reference: 19-214r1 19-161 19-135r1 20-106
+
+
+1. Introduction
+===============
+
+This paper contains the formal specifications & syntax for protected
+components of a type. This supersedes the specifications outlined by
+19-214r1, as the result of subgroup discussion, in which we decided the
+restrictions on type extension were too drastic. Furthermore, this
+clarifies the possibility of using protected in combination with private
+and public access specifiers. In particular, requirements L and Q have been
+modified, and new requirements L2 and AA were added.
+
+Although this is a formal syntax paper, the syntax will be defined by prose
+and by example, not by BNF. This is to aid comprehension without having to
+expand a set of BNF rules in one's head.
+
+
+2. Specifications
+=================
+
+A. A variable whose declared type has a protected component shall not
+   appear in a variable-definition context, except within the module
+   wherein its type is defined.
+
+B. A protected component shall not appear in a variable-definition
+   context, except within the module wherein its type is defined.
+
+C. A local variable with protected components is allowed outside the
+   module in which the type is defined.
+   - If some action is needed when the variable goes out of scope (and
+     is thus destroyed unless it has the SAVE attribute) its type should
+     have a final procedure.
+
+D. A local pointer of a type with a protected component is allowed
+   outside the module in which the type is defined.
+   - Otherwise use case 2.1 in 19-135r1 is not satisfied.
+
+E. Deallocating an object with a protected component outside the module
+   in which the type is defined is prohibited.
+   - Otherwise for pointer, use case 2.1 in 19-135r1 is not satisfied.
+   - Allowing it for remote/dummy allocatable would prohibit an
+     allocatable variable in the module where the type is defined to be
+     PUBLIC. PROTECTED attribute for the object would prevent modifying
+     nonprotected components.
+   - Allowing for local allocatable breaks rule (A) about not appearing
+     in a variable definition context.
+
+F. Allocating an object with protected components outside the module in
+   which the type is defined is prohibited.
+   - Pointer would almost certainly leak memory.
+   - Allowing for remote/dummy allocatable would have same problems as
+     (E).
+   - Allowing for local allocatable would have same problems as (E).
+
+G. A protected component or a subobject of a protected component can
+   only be argument associated with INTENT(IN) dummy, even if the
+   referenced procedure is in the module in which the type is defined.
+
+H. A protected component or subobject of a protected component cannot be
+   the target in a pointer assignment outside the module, as that would
+   lose the protection.
+
+I. A protected component or subobject of a protected component cannot be
+   allocated or explicitly deallocated except within the module in which
+   the type is defined.
+   - Otherwise it's too easy to bypass the protection.
+   - Automatic deallocation on scope exit will invoke any final
+     procedure for the object as a whole.
+
+J. A dummy variable of a type with a protected component can be
+   INTENT(IN) or INTENT(INOUT) in any procedure anywhere.  A dummy
+   variable of such a type shall not have INTENT(OUT) or unspecified
+   intent except within the module in which the type is defined.
+
+K. Can modify (or allocate/deallocate) an unprotected component anywhere
+   (provided it's not a subobject of a protected component, or subject to
+   some other rule).
+
+L. No intrinsic assignment to an object that has a protected component,
+   or to a protected component or subobject thereof, outside the module
+   in which the protected component is defined.  (These are all covered
+   by the "shall not appear in a variable definition context" rule in
+   the Formal Requirements in 19-135r1.)
+
+L2. Polymorphic allocatable assignment of a parent type without a
+    protected component is permitted even when the dynamic type has a
+    protected component.
+   - This presents a loophole which may allow a programmer to write to a
+     protected component outside the module in which it is defined.
+     However, subgroup did not like the alternative of disallowing
+     protected components in extensions of parent types without any
+     protected component.
+
+M. A function defined outside the module may have a result variable of a
+   type with a protected component.
+   - This is same as ordinary local variables (case A).
+   - The function result shall not be a pointer.
+   - The function result will (hopefully) be finalised after its use.
+
+N. Structure constructor outside the module in which the type is allowed
+   if and only if no value is supplied for any protected component
+   (otherwise this would subvert the module's control over what values
+   are acceptable in the protected component).
+
+O. Another type may have a component of a type that has a protected
+   component.
+   - The protection rules apply to types with "protected potential
+     subobject components" not just types with immediate protected
+     components.
+
+P. Extension of a type that has a protected component is permitted.
+
+Q. An extension type may have a protected component even if the parent type
+   does not have a protected component. Requiring the parent type to
+   have a protected component is too restricted for many uses.
+
+R. Type-wide default protected/unprotected status, like PRIVATE, is
+   provided.  Default is not protected. PROTECTED statement changes the
+   default. UNPROTECTED and PROTECTED attributes in a component
+   definition stmt confirm or override the default.
+
+S. An object with a protected component is prohibited to be the target
+   of an unlimited polymorphic pointer.
+   - This rule applies even inside the module, even if the polymorphic
+     pointer is private, because its target might thereafter become
+     associated with a public polymorphic pointer.
+
+T. If an actual argument with a protected component is associated with
+   an unlimited polymorphic dummy, the dummy shall have INTENT(IN) or
+   INTENT(INOUT) and shall not have TARGET (or POINTER, which implies
+   TARGET).
+   - If the dummy has TARGET it might become associated with an
+     unlimited polymorphic pointer.
+   - If the dummy has POINTER, its target might eventually
+     become associated with an unlimited polymorphic pointer (see P.)
+
+U. SEQUENCE and BIND(C) types shall not have protected components.
+   - This includes any level of component selection, because
+     non-SEQUENCE types are not allowed in SEQUENCE, and similarly
+     BIND(C)).
+
+V. The definition status of a protected ultimate component shall not be
+   changed by means other than Fortran.
+
+Z. Additional non-constraint rule, to address the things that cannot be
+   reliably detected at compile time:
+        A protected structure component of a nonpointer nonallocatable
+        unsaved variable shall not have its definition status changed
+        outside the module where the component is defined, except that
+        on entry to a procedure, a default-initialised component of a
+        local variable may become defined, and on exit from the
+        procedure, the component may become undefined.
+   (Not quite bullet-proof standardese, but indicates the idea.)
+
+AA. A component may be PROTECTED and PRIVATE or PROTECTED and PUBLIC.
+    - Since intrinsic assignment is prohibited on types which contain
+      protected components, then a private, protected component acts to
+      prevent intrinsic assignment without adding new exposed data members.
+
+
+3. Syntax
+=========
+
+One may add the PROTECTED attribute to component definitions.
+
+    type :: foo
+      real, protected :: a
+      real, private, protected :: b
+      real, public, protected :: c
+    end type foo
+
+The requirement R allows a type-wide PROTECTED status, which may be
+overridden for an individual component using the UNPROTECTED attribute.
+
+    type :: foo
+      protected
+      real :: a
+      real, unprotected :: b
+    end type foo
+
+The attributes PRIVATE and PROTECTED may be used together for all
+components:
+
+    type :: foo
+      private
+      protected
+      real :: a
+      integer :: b
+    end type foo
+
+===END===
+
+

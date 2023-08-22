@@ -1,0 +1,63 @@
+To: J3                                                        09-241r1
+From: John Reid
+Subject: LOCK and intent(out)
+Date: 2009 August 11
+References: J3/09-007r2
+
+Discussion
+
+It has always been the intention that the only way that a program is
+allowed to alter a lock variable is via the lock and unlock statements.
+This is expressed by C1303 and C1304:
+
+"C1303 A lock variable shall not appear in a variable definition context
+except as the lock-variable in a LOCK or UNLOCK statement, or as an
+actual argument in a reference to a procedure with an explicit
+interface where the corresponding dummy argument has INTENT(INOUT).
+
+C1304 A variable with a subobject of type LOCK TYPE shall not appear in
+a variable definition context except as an actual argument in a
+reference to a procedure with an explicit interface where the
+corresponding dummy argument has INTENT (INOUT)."
+
+A variable definition context (16.6.7) includes
+
+"(11) ... , <allocate-object>, ...
+
+"(12) an actual argument in a reference to a procedure with an explicit
+interface if the associated dummy argument has the INTENT (OUT) or
+INTENT (INOUT) attribute;"
+
+We certainly want to allow allocatable coarrays of locks since they may 
+be needed to provide separate locks for data that is dynamically 
+partitioned. We therefore need to alter these constraints.  The 
+deallocation of a coarray of locks some of which are locked does not
+present a problem since this implies the synchronization of all images. 
+However, SOURCE= in an ALLOCATE statement might suddenly created some
+new locked variables. Let's disallow this. 
+
+The constraints cover many cases where a lock variable has
+intent(out), but not all (the interface need not be explicit if the
+procedure has a dummy argument that is not a coarray but has a coarray
+component of type LOCK TYPE). Furthermore, they allow the programmer to
+write a procedure with a dummy lock variable of intent(out), but
+disallow any invocation of it. An edit is provided to correct this.
+
+
+Edits to 09-007r2
+
+[97:14+] In 5.3.10 INTENT attribute after C541 add
+
+"C541a An entity with the INTENT(OUT) attribute shall not be of the type
+LOCK_TYPE (13.8.2.16) of the intrinsic module ISO_FORTRAN_ENV or have a
+subcomponent of this type."
+
+[127:9]. In 6.7.1 ALLOCATE statement, 6.7.1.1 Syntax, C642, change 
+"C_PTR" to "LOCK_TYPE (13.8.2.6), C_PTR,".
+
+[400:30] In 13.8.2.16, LOCK_TYPE, constraint C1303, add 
+"as an <allocate-object>," after "statement,".
+
+[400:33] In 13.8.2.16, LOCK_TYPE, constraint C1304, add 
+"<allocate-object> or" after "except as an".
+

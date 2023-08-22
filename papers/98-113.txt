@@ -1,0 +1,211 @@
+
+                                                      J3/98-113
+
+Date:     30 Jan 1998
+To:       J3
+From:     Dick Hendrickson
+Subject:  4f:  Constants for Opaque Data Types
+
+This is a discussion paper and Specs for item 4f, Constants for Opaque Data
+Types, for Interval Arithmetic Enabling Technologies.  Assuming there is
+general agreement, I think this is detailed enough to also be the syntax
+document.
+
+The driving force behind this is to provide a way to specify constants for
+interval arithmetic that would be useful even IF interval arithmetic were
+implemented as a user written module.  The problem is that Fortran regards
+a literal constant, like 3.14, as a literal constant and it is converted to
+an internal floating point representation before it gets special cased as
+an opaque constant.  This is one of the reasons why something simple like
+
+interval_constructor_function(3.14)
+
+won't work.  Unless the function is truly intrinsic the compiler will
+convert 3.14 to binary and pass that to the function: all accuracy is lost.
+ Also, creating a magic constructor for interval constants doesn't help
+anyone who wants to invent their own derived type and have constants for
+it.  Similarly, inventing a new operator pair, like [3.14] doesn't help.
+We could make the [...] combination be magic for intervals, but what will a
+user do?  It's really no different from a function reference.
+
+OVERLOADED CONSTRUCTOR FUNCTIONS
+
+I think the solution is to build on the already existing derived type
+constructor functions by allowing overloads.  It's up to the module writer
+to provide as many options as necessary, subject to the normal Ch 14 rules
+that they must be unique at compile time.  We probably want an additional
+rule saying an overload can't exactly match the normal derived type
+constructor function, although that wouldn't be necessary for opaque types.
+ So, the interval arithmetic module would probably define overloaded
+constructor functions which take one or two character strings as arguments
+and returns an interval.  Something like
+
+interval("3.14") or
+interval("3.135, 3.145") or
+interval("3.14", ".00001")
+
+For interval arithmetic it's natural to use character strings as the
+arguments to avoid having the automatic conversion to internal floating
+point before the function invocation.  If a person forgot the quote marks
+he'd get a compile time error for a missing interface (unless the interval
+module definers choose to define an overload for ordinary reals as well).
+To know exactly what the different forms mean a user would have to read the
+interval module documentation, but that's already true of many existing
+non-interval-constructor functions.  Presumably the interval module
+designers will make the constructor interface independent of the details of
+the opaque type.
+
+This is really just the normal function notation for a function with some
+arguments that returns a result of user defined type.  This adds a little
+syntactic sugar to make it more obvious what is going on and to make it
+possible to construct entities with opaque insides without having to know
+the representation.
+
+MAGIC CHARACTER TO DERIVED TYPE CONVERSION
+
+That's a pretty verbose notation for a constant and since the "..." is
+likely to be a useful way to send information into an opaque type (for
+example intervals) I propose that we also "overload" the conversion between
+characters and other types.
+
+The logic when the compiler sees an operation on a character string is:
+
+1)  is it an intrinsic operation?  If so, do it
+
+2)  is it a user defined operation in the F95 sense?  If so, do it
+
+3)  is there an accessible overload to a constructor function that will
+unambiguously turn the character string into the needed type?  If so, do
+that and then perform the operation using the result.
+
+4)  issue an error message or start WWIII or whatever
+
+In effect, the compiler uses a constructor function to convert the
+character string to the type of the other operand.
+
+If X is a type(interval) variable then
+
+X = "3.14"
+is equivalent to
+X = interval("3.14")
+
+and
+
+print *, X+"3.14"
+is equivalent to
+print *, X+interval("3.14")
+
+assuming the interval module defines an overload to convert character
+strings into entities of type(interval).
+
+Something like
+
+call a_routine_that_expects_an_interval_argument("3.14")
+
+could, in principle, be defined to automatically invoke the constructor IF
+the compiler could see an unambiguous interface and know that the routine
+wanted an interval argument.  Since we don't do this with calls in general
+I wouldn't do it here either.
+
+Things like
+"3.14" + 2.71
+or
+"3.14" + "2.71"
+will NOT invoke the character to interval constructor because there is
+nothing in the expressions to imply invervalness.  Someone might choose to
+define overloads for C+R or C+C, but that's the normal Fortran 95 operator
+overloading process.
+
+I don't think this causes parsing problems even if there are variables with
+different types involved.  Suppose X is of type(interval) and Y is of
+type(complex_interval) then I think
+
+X + "3.14" + Y
+
+is unambiguous by the current chapter 7 rules.  It's equivalent to
+
+(X + interval("3.14)) + Y
+
+just as
+
+X + 3.14 + Y
+is
+(X + 3.14) + Y    when the types are user defined.
+
+People who write code which has multiple opaque derived types might have a
+confusing time sorting out the different meanings of the strings; they
+should use the named constructor functions.
+
+OPAQUE CONSTANTS AS INITIALIZERS
+
+To be useful we also have to allow constructor functions as initialization
+expressions in type declaration statements.
+
+For initialized entities I think the only two additional rules we need are
+1) the user defined interval constructor function must meet the rules for
+specification functions (96:13 in F95) and have initialization expressions
+as arguments, and 2) these entities can appear in other initializers, but
+not in specification expressions.
+
+Taken together, these 2 rules allow (but don't require) the compiler to
+defer evaluation of the initialization expression until run-time.  The
+first rule allows the compiler to evaluate the "parameters" in any order
+and to evaluate them every time a subroutine is entered.  The second rule
+means they can't be used for things that must be known at compile-time,
+such as type parameters or array bounds.  The latter is maybe a little
+restrictive and we could relax this somewhat.
+
+In a procedure a compiler would be free to evaluate the constructors at
+compile time (perhaps by examining the constructor function), to evaluate
+them every time the procedure is entered, or to evaluate them on the first
+entry and save the results.
+
+For parameters and initialized variables above a contains statement in a
+module the compiler will probably have to come up with a new strategy if it
+defers initialization until runtime.  One possibility is for the "linker"
+to build a start-up procedure that computes and assigns the values before
+the real program starts.  Another is for the compiler to create hidden
+accessor functions and reference the values with a function call.
+
+This can be used with explicit constructor functions and also with the
+magic character form.
+
+type (interval), parameter  ::  pi = "3.14"
+type (person)  ::  Al = person("married, with children")
+
+Currently initialization expressions are limited to intrinsic operations.
+For derived types that are pretty much numeric it would be nice to be able
+to initialize related variables, things like:
+
+type (interval), parameter  ::  twopi = 2*pi
+
+I think that is too much to put in at this time and am not proposing this.
+Besides, it is sort of available with the constructor model.  There's no
+reason why the module designer can't provide an overload that takes two
+operands (as character strings) and a character string operator.  Something
+like:
+
+type (interval), parameter  ::  twopi = interval("2", "*", "3.14")
+
+Summary and proposal:
+
+1)  Allow overloading of the derived type constructor function with
+CONSTRUCTOR (type-name) as the generic-spec on the interface statement.
+The overload can't exactly match the existing constructor function unless
+the type is opaque.
+
+2)  Allow magic invocation of a CONSTRUCTOR function when the compiler sees
+an operation between a derived type and a character string that isn't a
+defined operation if there is an appropriate CONSTRUCTOR available.
+
+3)  Allow form 1) above in initialization expressions with the appropriate
+rules
+
+4)  Also allow form 2) in initialization expressions
+
+potential straw votes
+
+Broaden 2) to allow character variables.
+
+Allow derived type parameters (and constructors) in dimension bound
+expressions.  (the likely implementation will be similar to automatic arrays)

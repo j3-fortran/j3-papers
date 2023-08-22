@@ -1,0 +1,299 @@
+
+                                                               J3/06-200
+                   
+Date:    July 23, 2006
+To:      J3
+From:    Aleksandar Donev
+Subject: Interop TR: Binary Compatibility, TKR Genericity
+         and Character Strings
+
+References: Addresses issues raised by J3/06-171r1
+
+I will refer to the new TR meant to address "interoperability of
+optional, assumed-shape, allocatable, and pointer dummy arguments" as
+the "Interop TR". Since there is more time to finish the specification
+and edits for this feature, it is worthwhile to give more careful
+consideration to some of the basic design features. Following a long
+e-mail exchange between several interested J3 members and a community
+member, I am submitting my own *personal* set of proposed changes
+to the specification of the TR. This paper does not address edits,
+as a fixed specification is needed first.
+
+________________________________
+I. BINARY COMPATIBILITY
+________________________________
+
+The present specification of the Interop TR focuses on an opaque
+API for passing array descriptors via descriptor handles (Descriptor
+API). The idea was to enable vendors to make minimal changes to their
+implementation, and in particular, to enable vendors to use the native
+descriptors in interoperable procedures. This idea however fails in
+several respects:
+
+A) Binary compatibility completely fails with the present design. At
+the very best, binary compatibility would be such that a given C
+program can call Fortran routines compiled by several different
+compilers. This is a loafty goal. However, a more modest, yet
+manageable goal is to be able to change Fortran compilers at link time,
+without requiring re-compilation. In order to do this the Descriptor
+API needs to be binary compatible, for example, handles cannot be
+opaque but must be of a specified type (say "void*"), integers cannot
+be of an unspecified integer kind, etc.
+
+B) The current design requires adding rank and type information to
+the descriptor. Vendors that do not have that information, and there
+are at least two I know of, will need to add this. I will argue below
+that in fact without additional changes to the Interop TR adding rank
+and type information to the descriptors is completely unnecessary
+and only places a burden on certain vendors. In particular, TKR info
+can be added to the descriptors automagically by the compiler in the
+header of the interoperable procedure, i.e., the callee, rather than
+by the callers using the API.
+
+C) Most vendors have special fields in their descriptors (such as
+compilation flags etc.), which cannot reasonably be filled in by C
+callers or even the vendor RTL upon creating the descriptor. If the
+vendor is to continue using the same descriptor for interoperable
+procedures, these fields will have to be filled in the callee. If the
+vendors are already to massage the descriptors, they might as well
+completely convert the descriptors from a non-opaque one to their
+internal one.
+
+Given these issues, I see two main approaches to providing some level
+of binary compatibility:
+
+i) Make a binary (C struct) specification of the interoperable
+descriptors, rather than using opaque descriptors. This has the
+advantage of being easier to use by C callers, simplifies the API a
+lot, and provides full binary compatibility among different Fortran
+compilers. It has the added cost of requiring massaging the descriptor
+in the (interoperable) Fortran callee by all vendors, even if the
+caller is actually Fortran.
+
+ii) We can leave the descriptors opaque and continue to use descriptor
+handles and API routines to manipulate those descriptors. However, we
+make the API binary-compatible among multiple Fortran compilers. For
+efficiency, some compilers may choose to inline some of the API
+calls. We should suggest or require that processors provide a way
+(typically via some macro define/undefine or compilation option)
+to compile C code so that no-inlining is done, so that the users can
+change Fortran compilers at link time.
+
+I believe there will be resistance to option i (which I deem superior),
+and therefore will focus on option ii. Here is (likely incomplete)
+list of changes to the API proposed in 06-171r1 needed to make the
+API more binary-compatible-friendly:
+
+1) We should make descriptor handles void pointers, i.e.:
+#include <stddef.h>
+typedef void* FDesc_Assumed_t;
+typedef void* FDesc_Pointer_t;
+typedef void* FDesc_Alloc_t;
+#define FDESC_NULL NULL
+
+Another option is to make the descriptor handle types "incomplete C
+types", which forces them to be used as pointers only (I believe this
+is only in C99?), and in practice this will enable binary compatibility
+(I am not sure how binary specification standards handle incomplete
+types).
+
+2) We should specify all integer types in terms of standard C integer
+kinds, say:
+#include <stddef.h>
+typedef ptrdiff_t F_stride_t;
+typedef size_t F_extent_t;
+
+3) We should specify that the processor is to provide a way to
+compile C code so that the API calls are not inlined but rather invoke
+externally-linked procedures (which would of course be supplied by
+the linked Fortran RTL).
+
+________________________________
+II. TKR Genericity
+________________________________
+
+The present design of the Interop TR requires that C callees specify
+TKR info for every array descriptor. On the other hand, it seems that
+the present design of interop (from F2003) requires that TKR info
+be fixed for a given interoperable procedure. That is, one cannot
+write or use in any way TKR-generic routines with C Interop. This
+is because (I am told) a given binding label can only be used once
+(for one procedure or one interface block) in a Fortran program, and
+therefore there is no way to use one C procedure with arguments of
+different TKR signatures. If the interoperable procedure itself is
+written in Fortran, it has to have a single TKR signature since we
+do not have (even in F2008) a way to write interoperable procedures
+without fixing the type, kind and rank of every argument.
+
+Given this, adding TKR information to the descriptors is an unnecessary
+burden on users. We are requiring C callers to provide TKR info even
+though this info is already known in the callee. We are supplying
+TKR info to C callees from Fortran callers even though this info
+must also be known to the interoperable C procedure. This redundant
+information complicates the API significantly without any visible
+benefit. The original argument for it was that vendors already have
+such info in their descriptors. I, however, gave reasons why this
+"spare the vendors from massaging the descriptors" argument fails.
+
+I see two possible fixes:
+
+1) Remove TKR info from the descriptors, only keeping array bound,
+stride, and base address information. There is at least one vendor
+that already uses such a minimal descriptor. No other fields are
+strictly necessary in Fortran 2003 or Fortran 2008.
+
+2) Keep TKR info in the descriptors, but allow this information to
+actually be used, as discussed below.
+
+I very strongly prefer option 2, and will discuss it next. There are
+two possibilities to consider: the interoperable procedure is written
+in Fortran, or it is written in C.
+
+_____________________
+Rank genericity
+_____________________
+
+If an interoperable procedure is to be able to handle arrays of
+different ranks, it must be written in C, since we have no tools in
+Fortran to write rank-generic procedures. Therefore, it is sufficient
+to allow such a C procedure to be given a generic interface in Fortran,
+with multiple ranks, so that it can be called by Fortran callers. For
+example:
+
+double SumArray_double(FDesc_Assumed_t array);
+   // Sums an double array of arbitrary rank
+
+can be used from Fortran:
+
+USE ISO_C_BINDING
+INTERFACE, BIND(C,NAME="SumArray_double") :: SumArray
+   REAL(C_DOUBLE) FUNCTION SumArray_d1(array)
+      IMPORT
+      REAL(C_DOUBLE), INTENT(IN) :: array(:)
+   END SUBROUTINE
+   REAL(C_DOUBLE) FUNCTION SumArray_d2(array)
+      IMPORT
+      REAL(C_DOUBLE), INTENT(IN) :: array(:,:)
+   END SUBROUTINE
+   ... ! All ranks of interest (one can use macros in F2008)
+END INTERFACE
+
+_____________________
+Type genericity
+_____________________
+
+It is possible to write C procedures that handle arrays of different
+types (for example, by using void pointers). One way to enable such
+a routine to be called from Fortran is to allow a generic interface
+to be given a binding label, as suggested above for rank genericity.
+
+It is however also possible to write a Fortran routine that handles
+different types. In particular, unlimited polymorphic (CLASS(*))
+arguments serve this purpose. It is best to allow interoperable
+procedures to have unlimited polymorphic dummy arguments. Such
+arguments would be handled using the Descriptor API. Namely, the
+type information would be passed as part of the descriptor. The
+only problem is that CLASS(*) is type compatible with all types,
+including ones that are not interoperable. It is not clear that C
+callees can do anything useful or well-defined with arrays of types
+that are not interoperable. I therefore propose that we add new syntax,
+CLASS(*,BIND(C)), to indicate an unlimited polymorphic variable that is
+only type compatible with interoperable types or other CLASS(*,BIND(C))
+entitites. I will call these "interoperable unlimited polymorphic"
+or IUP objects.
+
+IUP semantics would latch onto the already existing mechanisms for
+polymorphism, so few changes would be needed in the standard. Changes
+will, however, be required in Interop TR, and in particular the
+Descriptor API. First, mechanisms should be provided for C callers to
+add type information to array descriptors (including rank-0, i.e.,
+scalars) that can be used by Fortran callees. The goal would be for
+vendors to keep existing type descriptors for handling polymorphism,
+so that the type descriptors would be opaque. Secondly, the API needs
+to provide routines for C programmers for extracting type information
+from descriptors.
+
+The type information that is needed is the following:
+A) Whether the type is intrinsic, and if it is, which one it is. In
+particular, one should be able to specify type descriptors for all
+of the type/kind combinations specified in clause 15, such as, for
+example, INTEGER(C_INT) or COMPLEX(C_DOUBLE).
+B) If the type is derived, the size of the type in bits or bytes. I
+don't think any other information is needed for derived types (C
+structs). This information might be useful even for the intrinsic
+types, for additional safety.
+
+A possible specification for this is the following:
+
+a) Add a new type
+FDesc_Type_t
+which is a handle for a type. There are predefined constants
+of this type for each of the intrinsic types/kinds in
+ISO_C_BINDING. For example, INTEGER(C_INT) has a constant called
+FDESC_INTEGER_C_INT. Those ones which are negative in Fortran (i.e.,
+there is no corresponding Fortran type) are FDESC_NULL in C.
+
+b) Add a new routine
+
+int FDesc_Type_Create
+  (
+  FDesc_Type_t * fdesc,
+  size_t elem_size,
+  char * type_name
+  );
+
+which creates a type handle for a derived type (struct) of size
+elem_size. The string type_name can be used for debugging or other
+internal identification purposes. It is not essential.
+
+Note: Joe thinks that a better solution is to use two arguments,
+without type_name. One argument is an enum, either an intrinsic type or
+'derived'. The other argument is a size.
+
+c) Replace the elem_size formal argument in FDesc_Assumed_Create and
+related routines to be of type FDesc_Type_t.
+
+________________________________
+III. Character strings
+________________________________
+
+At present only characters with LEN=1 are interoperable. Other lengths,
+and in particular assumed LEN=* and deferred LEN=: (for allocatable
+and pointers) are not interoperable. It seems natural to handle such
+string arguments using the Descriptor API. They can be passed by a
+descriptor, which would include the length of the string in the type
+information, for example, in the elem_size.
+
+________________________________
+IV. Misc.
+________________________________
+
+Several additional improvements to the Descriptor API were mentioned,
+which I tried to keep track of:
+
+1) (Joe)  Add an array-size inquiry function, which returns the size
+of an array given a descriptor handle.
+
+2) (Joe) Clarify the rules for errors better, i.e., what happens
+if some of the API routines are not called correctly, for example,
+NULL addresses are passed etc.
+
+3) (Bill) One of the desired improvements in the current edits paper
+is to write the function descriptions using the same format as for
+regular intrinsics in the standard.
+
+4) (Joe) Add a function like FDesc_Associated and FDesc_Allocated
+for assumed-shape arrays. It will return true if FDesc_Assumed_Set
+was already called successfully for the descriptor. In practice this
+will just check if the base address is non-NULL. This way one does
+not call FDesc_Assumed_Get on an uninitialized descriptor.
+
+5) (Bill) Change the creation routines like FDesc_Assumed_Create
+to be functions returning a handle instead of being subroutines. If
+it fails FDESC_NULL is returned. Possibly also merge the different
+creation routines into one and having a switch argument to decide
+which type of descriptor it is.
+
+____
+EOF
+____

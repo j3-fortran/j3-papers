@@ -1,0 +1,272 @@
+
+                                                          J3/00-271
+
+ To:       J3
+ From:     John Reid
+ Date:     23-August-2000
+ Subject:  Destructors
+
+ Here is a copy of N1417, which was prepared by WG5 at Oulu
+ in the hope of aiding the work of J3.
+
+ .................................................................
+
+                                            ISO/IEC JTC1/SC22/WG5 N1417
+                               Destructors
+
+                         Malcolm Cohen, 16th August 2000
+ 1. Introduction
+
+ This paper contains recommended specifications for the WG5 destructor
+ requirement.
+
+ 2. General Specifications
+
+ That when defining a derived type, a user can specify a set of <<final
+ subroutines>>.  A final subroutine is executed when objects of that type
+ are
+ destroyed.  This also occurs for function results (after they have been
+ used.)
+ - Rationale: Basic functionality
+
+ The user shall be able to specify a generic set of final subroutines.
+ - RAT: To enable the use of final subroutines with parameterised derived
+   types, and to handle array objects with a single procedure call.
+
+ Final subroutines shall be module procedures.
+ - RAT: Safety, brevity, consistency with type-bound procedures.
+
+ Final subroutine shall not be blocked by "PRIVATE" or "USE,ONLY", i.e.
+ they
+ are always "accessible" in the sense of being available for automatic
+ execution by the processor.  In this sense they shall be like type-bound
+ procedures.  However, unlike other type-bound procedures, they shall not
+ be
+ inherited through type extension.
+ - RAT: It should not be possible to "lose" final subroutines.  The
+   finalisation algorithm will handle type extension without recourse to
+   inheritance.
+
+ If program execution is terminated, either by an error (e.g. an
+ allocation
+ failure) or by execution of a STOP or END PROGRAM statement, there is no
+ need
+ to final subroutines for objects existing at the time execution is
+ terminated.
+ - RAT: We do not want to impose on processors the need to hunt down
+   finalisable objects when a program is terminated.
+
+ If an object is allocated via pointer allocation and later becomes
+ unreachable
+ due to all pointers to that object having their pointer association
+ status
+ changed, it is processor dependent whether any final procedure for that
+ object will be called.  If the final procedure is called, it is processor
+ dependent as to when it is called.
+ - RAT: We neither wish to require garbage collection, nor to make it
+   difficult.
+ An alternative approach would be never to call final subroutines for
+ "leaked"
+ objects.
+
+ When multiple separate objects are "finalised", e.g. as a result of
+ exiting
+ from a subprogram, the order of execution of the final procedures shall
+ be
+ unspeficied.  If the order matters, the user should program this
+ explicitly.
+ - RAT: Dependence on any ordering specification would result in extremely
+   fragile programs that would be likely to break under program
+ maintenance.
+   We do not want to encourage this, nor do we wish to impose an ordering
+   burden upon implementations.
+
+ A finalisable object cannot have the SEQUENCE attribute.
+ - RAT: This would be useless since final subroutines are to be module
+   procedures.
+
+ We should probably not consider allowing a finalisable object to have the
+ BIND(C) attribute.
+ - RAT: This could be useful, but would be problematic if the C processor
+ could
+   destroy objects of such a type, e.g. by assigning to them via a
+ pointer.
+
+ 3. Detailed Specifications
+
+ 3.1 Definitions
+
+ A derived type is <<finalisable>> if it has any final subroutines, or if
+ it
+ has any nonpointer nonallocatable components whose type is
+ finalisable.  An
+ object is finalisable if it is a nonpointer nonallocatable object whose
+ type
+ is finalisable.
+
+ A finalisable object is <<finalised>> by the process of calling its final
+ procedures, including any final procedures for its subobjects.
+
+ 3.2 When a finalisable object is finalised
+
+ A pointer or allocatable object is finalised when it is deallocated.
+
+ A nonpointer nonallocatable object is finalised immediately before it
+ would
+ become undefined due to execution of a RETURN or END statement (see
+ 14.7.6,
+ item (3)).
+
+ If an unSAVEd finalisable object is defined in a module and there are no
+ longer any active procedures referencing the module, it is
+ processor-dependent
+ whether it is finalised.  If the object is not finalised, it shall return
+ its
+ definition status and not become undefined.
+ - RAT: Many existing processors do not keep track of module usage, so
+ even
+   unSAVEd module variables may retain their values.  We wish to maintain
+ this
+   freedom of the processor, but ensure that if the module variables do
+ not
+   retain their values then the processor will execute any relevant final
+   subroutines.
+
+ If an executable construct references a function whose result is
+ finalisable,
+ the result is finalised after execution of the innermost executable
+ construct
+ containing the reference.  (NB: An ordinary executable statement - such
+ as an
+ assignment statement - is in itself an executable construct.)
+
+ If a specification expression in a scoping unit references a function
+ whose
+ result is finalisable, the result is finalised before execution of the
+ first
+ executable statement in the scoping unit.
+
+ When a procedure is invoked, a nonpointer nonallocatable object that is
+ an
+ actual argument associated with an INTENT(OUT) dummy argument is
+ finalised.
+
+ When an intrinsic assignment statement is executed, the <variable> is
+ finalised before the assignment takes place.
+
+ 3.3 Objects that are not finalised
+
+ A finalisable object is not finalised:
+ - if it has the SAVE attribute
+ - if it occurs in the main program
+ - on termination of the program by a STOP statement or an
+ <end-program-stmt>
+ - on termination of the program by some error (e.g. an allocation error
+ or
+   an i/o error)
+ - if it is defined in a module and if the processor retains its
+ definition
+   status (and thus value) even when there is no active procedure
+ referencing
+   the module.
+
+ 3.4 The Finalisation Algorithm
+
+ When an object is finalised, the following steps are done in sequence:
+ - If the object has a final procedure, it is called with the object as an
+   actual argument.  The selection of the procedure is by the usual method
+ of
+   generic resolution (by kind or rank); if no specific procedure is
+   consistent with the object, no procedure is called at this point.
+ - Each finalisable component that appears in the type definition is
+ finalised.
+   (For extended types, this only finalises the "extra" components added
+ in the
+   type, not the inherited components).
+ - If the object is of extended type and the parent type is finalisable,
+ the
+   parent subobject is finalised.
+
+ 4. Syntax
+
+ These examples illustrate the suggested syntax.
+
+ Example with parameterised derived type:
+
+ MODULE m
+   TYPE t(k)
+     REAL(k),POINTER :: vector(:) => NULL()
+   CONTAINS
+     FINAL :: finalise_t1s, finalise_t1v, finalise_t2e
+   END TYPE
+ CONTAINS
+   SUBROUTINE finalise_t1s(x)
+     TYPE(t(KIND(0.0))) x
+     IF (ASSOCIATED(x%vector)) DEALLOCATE(x%vector)
+   END SUBROUTINE
+   SUBROUTINE finalise_t1v(x)
+     TYPE(t(KIND(0.0))) x(:)
+     DO i=LBOUND(x,1),UBOUND(x,1)
+       IF (ASSOCIATED(x(i)%vector)) DEALLOCATE(x(i)%vector)
+     END DO
+   END SUBROUTINE
+   ELEMENTAL SUBROUTINE finalise_t2e(x)
+     TYPE(t(KIND(0.0d0))),INTENT(INOUT) :: x
+     IF (ASSOCIATED(x%vector)) DEALLOCATE(x%vector)
+   END SUBROUTINE
+ END MODULE
+
+ SUBROUTINE example(n)
+   USE m
+   TYPE(t(KIND(0.0))) a,b(10),c(n,2)
+   TYPE(t(KIND(0.0d0))) d(n,n)
+   ...
+   ! Exiting will effectively do
+   !    CALL finalise_t1s(a)
+   !    CALL finalise_t1v(b)
+   !    CALL finalise_t2e(d)
+   ! No final subroutine will be called for variable C because the user
+   ! omitted to define a suitable specific procedure for it.
+ END SUBROUTINE
+
+ Example with extended types:
+
+ MODULE m
+   TYPE,EXTENSIBLE :: t1
+     REAL a,b
+   END TYPE
+   TYPE,EXTENDS(t1) :: t2
+     REAL,POINTER :: c(:),d(:)
+   CONTAINS
+     FINAL :: t2f
+   END TYPE
+   TYPE,EXTENDS(t2) :: t3
+     REAL,POINTER :: e
+   CONTAINS
+     FINAL :: t3f
+   END TYPE
+   ...
+ CONTAINS
+   SUBROUTINE t2f(x) ! Finaliser for TYPE(t2)'s extra components
+     TYPE(t2) :: x
+     IF (ASSOCIATED(x%c)) DEALLOCATE(x%c)
+     IF (ASSOCIATED(x%d)) DEALLOCATE(x%d)
+   END SUBROUTINE
+   SUBROUTINE t3f(y) ! Finaliser for TYPE(t3)'s extra components
+     TYPE(t3) :: y
+     IF (ASSOCIATED(y%e)) DEALLOCATE(y%e)
+   END SUBROTUINE
+ END MODULE
+
+ SUBROUTINE example
+   USE m
+   TYPE(t1) x1
+   TYPE(t2) x2
+   TYPE(t3) x3
+   ...
+   ! Exiting will effectively do
+   !    ! Nothing to x1, it is not finalisable
+   !    CALL t2f(x2)
+   !    CALL t3f(x3)
+   !    CALL t2f(x3%t2)
+ END

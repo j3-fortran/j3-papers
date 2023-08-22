@@ -1,0 +1,92 @@
+
+                                                               J3/06-201
+
+Date:       July 23, 2006
+To:         J3/WG5
+From:       Aleksandar Donev
+Subject:    Impure ELEMENTAL integration
+References: J3/06-143, Resubmit of J3/06-159
+
+Discussion:
+__________
+
+Impure elementals would be better-integrated and more functional
+if we remove the following restriction:
+
+"In a reference to an elemental subroutine, either all actual
+arguments shall be scalar, or all actual arguments associated with
+INTENT (OUT) and INTENT (INOUT) dummy arguments shall be arrays of
+the same shape..."
+
+Instead, it should be OK to have a scalar actual corresponding to
+INTENT(IN/INOUT) dummies for impure elementals, since the order of
+operations is prescribed (array-element order), and this there is
+no indeterminacy in using the same scalar argument.
+
+Edits:
+__________
+
+[289:3] At the start of the second-sentence of the paragraph, replace
+"In a reference to an elemental subroutine" with "In a reference to
+a pure elemental subroutine"
+
+[289:5] Add a new sentence after the second sentence of the paragraph:
+In a reference to an impure elemental subroutine, all actual arguments
+shall be conformable.
+
+[289:5+] In the third sentence of the para, replace:
+"the actual arguments associated"->"some actual arguments associated"
+
+Example:
+__________
+
+By allowing impure ELEMENTALs, as well as scalar INTENT(OUT) arguments,
+the following example becomes legal:
+
+module RandomElemental
+   use iso_c_binding
+   implicit none
+   private
+
+   type, abstract, public :: Random_Sequence
+   contains
+      procedure(RandomNumber), deferred, pass(sequence) :: Generate
+   end type   
+
+   abstract interface
+      impure elemental subroutine RandomNumber(sequence,number)
+         import
+         class(Random_Sequence), intent(inout) :: sequence
+         real, intent(out) :: number
+      end subroutine
+   end interface
+
+   type, extends(Random_Sequence), public :: Fortran_Random_Sequence
+      integer(c_long_long) :: count=0
+   contains
+      procedure :: Generate=>FortranRandomNumber
+   end type
+
+contains
+
+   elemental subroutine FortranRandomNumber(sequence,number)
+      class(Fortran_Random_Sequence), intent(inout) :: sequence
+      real, intent(out) :: number
+      
+      sequence%count=sequence%count+1 ! Check for sequence exhaustion
+      call random_number(number)
+      
+   end subroutine
+   
+end module
+
+program TestRandom
+   use RandomElemental
+   
+   type(Fortran_Random_Sequence) :: sequence
+   real, dimension(100,100) :: array
+   
+   call sequence%Generate(array)
+   write(*,*) "Generated ", sequence%count, " random numbers"
+   
+end program

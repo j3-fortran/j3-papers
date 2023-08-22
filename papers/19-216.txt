@@ -1,0 +1,231 @@
+To: J3                                                     J3/19-216
+From: Van Snyder
+Subject: Enumeration types [US21]
+Date: 2019-August-08
+Reference: 18-114r1 18-256r1
+
+Introduction
+============
+
+ENUM, BIND(C) was added for C interoperability.
+
+C has enumerators because they are useful.
+
+Pascal, Modula-2, Ada, ... have proper enumeration types, and
+enumerators of those types, because they are useful.
+
+Applications
+============
+
+Do these really need use-case code snippets and examples?
+
+1.  Enumerators are useful to avoid
+      integer, parameter :: A = 1
+      integer, parameter :: B = A + 1
+      integer, parameter :: C = B + 1
+      etc.
+    which is fragile if additional "enumerators" are required.
+2.  Type-safe argument association, which ENUM, BIND(C) does not
+    provide, is useful.
+3.  Type-safe intrinsic assignment, which ENUM, BIND(C) does not
+    provide, is useful.
+4.  Generic resolution, which ENUM, BIND(C) does not provide, is useful.
+
+Formal requirements (conflated with formal specifications)
+==========================================================
+
+1.  Enumeration types shall be provided.
+
+2.  Enumerators are not of integer type.  They have an internal
+    representation that is the same as a processor-dependent kind of
+    integer.
+
+3.  An enumeration type consists of names of enumerators.  Each name
+    shall be different.  Each enumerator of an enumeration type has a
+    different integer representation.  The type of each enumerator is
+    the type in which it is defined to be an enumerator.
+
+4.  Enumeration types shall be extensible.  The extension type includes
+    all the enumerators of the parent type.  An enumerator of an
+    extension type shall not have the same name as an enumerator of its
+    parent type.
+
+5.  The integer representation of the first enumerator of an enumeration
+    type that is not an extension type is 1.  The integer representation
+    of the first enumerator of an extension enumeration type is one more
+    than the integer representation of the last enumerator of its parent
+    type.  The integer representation of each enumerator after the first
+    one is one more than the integer representation of the previous
+    enumerator.
+
+6.  Enumerators of a type are considered to be ordered, in the order
+    they appear in the type definition.  [This contradicts 18-256r1, but
+    if unordered the DO construct does not make sense, and a range in a
+    CASE statement is impossible.]
+
+7.  The integer representation of an enumerator may be accessed using
+    the INT intrinsic function.  The KIND argument specifies the kind
+    type parameter value of the result.
+
+8.  Definition of an enumeration type defines a type constructor of the
+    same name.  The argument of an enumeration type's constructor may
+    be:
+
+    8a. An integer having a value within the range of values of the
+        integer representations of enumerators of the type.  Invoking
+        the constructor with a value outside this range is an error
+        condition.  Whether the constructor function has STAT= and
+        ERRMSG= arguments can be decided in due course.  This would make
+        the constructors impure.
+
+    8b. An enumerator of the constructor's enumeration type.
+
+9.  Different enumeration types may have enumerators that have the same
+    names.  This does not imply that they have the same numeric
+    representation.  If enumerators of different type, that have the
+    same name, are accessible within a scoping unit, reference to them
+    requires application of their enumeration type's constructor
+    function.
+
+    E.g., if the enumeration types NAMES and COLORS both have
+    enumerators named GREEN that are accessible within a single scoping
+    unit, they would need to be referenced as NAMES(GREEN) and
+    COLORS(GREEN).
+
+10. The <expr> in a SELECT CASE statement may be of enumeration type. 
+    Enumerators may be used to specify the values of expressions in CASE
+    statements.  The enumerators in the CASE statements shall be of the
+    same type as the <expr> in the SELECT CASE statement.
+
+11. Variables may be of enumeration type.  Their <initialization>, if
+    any, shall be of the same type.  In a DATA statement, the
+    <data-stmt-value> shall be of the same type as the <variable> or
+    <data-i-do-object>.
+
+12. Named constants may be of enumeration type.  Their <initialization>
+    shall be of the same type.
+
+13. Type components may be of enumeration type.  If they have default
+    initialization, their <initialization> shall be of the same type.
+
+14. The only intrinsic operators defined for objects of enumeration
+    types are comparison operators.  The one operand of a comparison
+    operator is of an enumeration type, the other shall be of the same
+    type.
+
+15. Expressions may have results of enumeration type.
+
+16. Functions may have results of enumeration type.
+
+17. Enumeration types are used for generic resolution.
+
+18. Where a variable of an enumeration type appears in a
+    variable-definition context, the value assigned must be within the
+    range of enumerators of the type of the variable.
+
+19. Variables of enumeration type are not polymorphic.
+
+20. The type of an actual argument shall be the same as the type of a
+    dummy argument.  Enumeration types are not an exception to this
+    rule.
+
+21. Enumeration types are considered to have connected functions that
+    are referenced as if they were type-bound functions.  Maybe they
+    will be called type-bound functions.  If E is a named data object of
+    enumeration type:
+
+    21a. E%INT() or E%INT(KIND=n) returns the numerical representation
+         of E.
+    21b. E%FIRST() returns the first enumerator of the type of E.  This
+         enumerator might have been inherited from the type of its parent.
+    21c. E%LAST() returns the last enumerator of the type of E.  This
+         will not return an enumerator of an extension of the type or E.
+    21d. E%PRED() returns the enumerator whose integer representation is
+         one less than the integer representation of E.  If E is the
+         first enumerator of its type (which might have been inherited
+         from its parent type), an error condition occurs.
+    21e. E%SUCC() returns the enumerator whose integer representation is
+         one more than the integer representaiton of E.  If E is the
+         last enumerator of its type, an error condition occurs.
+
+22. Formatted input/output of objects of enumeration type uses '(A)'
+    format.  The text produced or expected is the name of the
+    enumerator.  Input is case insensitive.  Whether case of output can
+    be controlled can be decided in due course.
+
+    E.g., write ( *, '(a)' ) GREEN
+          produces GREEN on standard output
+
+          type(colors) :: MyHouse
+          MyHouse = green
+          write ( *, '(a)' ) MyHouse
+          produces GREEN on standard output
+
+23. Unformatted input/output uses a processor-dependent representation.
+
+24. Accessing an enumeration type by use association provides access to
+    the names of all enumerators of the type, including those inherited
+    from its parent type.  Whether a mechanism is provided to access an
+    enumeration type by use association without accessing its enumerator
+    names can be decided in due course.  Accessing an enumerator by use
+    association does not provide access to the enumerator's type's name,
+    or the name of any other enumerator of the type.
+
+25. The <do-variable> of a DO construct, <io-implied-do>, or
+    <ac-do-variable> may be of an enumeration type.  If so, the first
+    and second <scalar-int-expr>s shall be of that type.  If the third
+    <scalar-int-expr> appears, it shall be of integer type.  If the
+    ordering relationship of the first and second <scalar-int-expr>s is
+    different from the sign of the third <scalar-int-expr>, the range of
+    the DO is empty.  This requires changing the syntax so as not to
+    require <integer-type-spec> if the <ac-do-variable> is declared
+    within the constructor.
+
+26. The <index-name> in a DO CONCURRENT construct may be of enumeration
+    type.  If so, the <concurrent-limit>s shall be of the same type. 
+    This requires changing the syntax so as not to require
+    <integer-type-spec> if the index name is declared within the
+    statement.  The <concurrent-step>, if it appears, shall be of
+    integer type.  If the relationship of the ordering the first and
+    second <concurrent-limit> is different from the sign of
+    <concurrent-step>, the set of index values is empty.
+
+27. Objects of enumeration type are not directly interoperable.
+
+Suggested syntax for enumerator type definition
+===============================================
+
+  ENUMERATION [, EXTENDS(<parent-type-name>), <access-spec> ] :: &
+    & <enumeration-type-name>
+
+      ENUMERATOR :: <enumerator-name> [, <enumerator-name> ] ...
+      [more ENUMERATOR statements, as necessary]
+  END ENUMERATION [ <enumeration-type-name> ]
+
+There is no ambiguity with ENUM, BIND(C).
+
+Alternative:
+
+  TYPE, ENUMERATION [, EXTENDS(<parent-type-name>), <access-spec> ] :: &
+    & <enumeration-type-name>
+
+      ENUMERATOR :: <enumerator-name> [, <enumerator-name> ] ...
+      [more ENUMERATOR statements, as necessary]
+  END TYPE [ <enumeration-type-name> ]
+
+Suggested syntax for enumeration type object declaration
+========================================================
+
+<type-spec> is extended to allow TYPE(<enumeration-type-name>)
+
+Questions
+=========
+
+Should the definition of an enumeration type be allowed to specify a
+default initial value for variables of the type, so that they do not
+spring into existence undefined?  Should it be required?
+
+Should the underlying representation be specified to be default integer,
+or left processor defined?  Does this affect extension?
+
+

@@ -1,0 +1,193 @@
+
+                                                       J3/00-165
+
+Date:    4 May 2000
+To:      J3
+From:    John Reid
+Subject: Interpretation 191
+
+
+Here are draft replacements for the ANSWER and EDITS sections of 191.
+I would like to thank Malcolm Cohen and Henry Zongaro for their help in
+private email discussions, specially Malcolm who suffered my early 'top
+of the head' thoughts on this one. Malcolm would prefer to split this
+into two interpretations, since the question as posed is
+straightforward.  I would not object strongly to such a split, but
+prefer to keep it as one since the questions are so closely related. I
+would also like to thank Erik Kruyt for pointing out that the text in
+the second paragraph of 4.4.2 is broken (in our opinion).
+
+I found the ambiguity interesting and challenging. 
+
+For your convenience, the current 191 is attached. I propose 
+replacing the first edit, because the root of the problem is in the
+second paragraph of 4.4.2 and needs to be fixed. The second edit
+of the current 191 is not needed in view of NOTE 4.32. 
+
+ANSWER:  
+Yes, T and T2 are the same type. This is because each type definition
+has a single component that is a scalar pointer of the type that is
+defined in the module.
+
+The sentence 'In the context of the main program, type T is a derived
+type that contains one component that is a pointer to a different
+derived type.' is incorrect since the main program has a use statement
+for the module. The same type definition is used for both components,
+so their types must be the same.
+
+The intention is that two data entities declared with reference to
+separate derived-type definitions of the same sequence type should
+always have the same type. The first edit makes this apparent. 
+
+Unfortunately, if the example is altered to  
+
+   MODULE M
+     TYPE T
+       SEQUENCE
+       TYPE (T), POINTER :: P
+     END TYPE
+   END MODULE
+
+   USE M, T2=>T
+   TYPE T
+    SEQUENCE
+       TYPE (T), POINTER :: P
+   END TYPE
+   TYPE (T) X
+   TYPE (T2) Y
+   X = Y
+   END
+
+an ambiguity is exposed. If the types are the same, then their
+components have the same type, which is consistent.  If the types are
+different, then their components have different types, which is again
+consistent. The intention was that the types be the same in this case,
+and the second edit specifies this. 
+
+Similar problems occur with indirect recursions. Consider, for example,
+
+  TYPE H
+    SEQUENCE
+    TYPE(E),POINTER :: F
+  END TYPE
+  TYPE E
+    SEQUENCE
+    TYPE(H),POINTER :: P
+  END TYPE
+
+Now E and H stand or fall together. If the two Hs are different,
+the two Es must be different, and vice-versa. The compiler has
+to consider the two together. In general, if there is a set of k
+sequence types that are coupled in a mutual recursion, the compiler
+must consider them all together. 
+
+EDITS:
+
+1. Page 143, Section 4.4.2, lines 5-7 [43:26-28]. Change 'Data ... same
+   name,' to 'Data entities also have the same type if they are declared
+   with reference to separate derived-type definitions that are in
+   different scoping units, have the same name,'
+
+
+2. Page 44, end of Section 4.4.2 [44:31+], add new paragraphs:
+
+   In the case of recursive data types with the SEQUENCE property, the
+   rules of the previous paragraph do not always determine whether two
+   entities have the same type. For example, suppose the type declaration
+     TYPE T
+       SEQUENCE
+          TYPE (T), POINTER :: P
+     END TYPE
+   appears identically in two scoping units. If the components have the
+   same type, any data entities declared with the two type definitions
+   have the same type. On the other hand, were the components to have
+   different types, any data entities declared with the two type
+   definitions would have different types. Whenever such a situation
+   occurs, any data entities declared with the two type definitions shall
+   have the same type.
+   
+   Similar problems occur with indirect recursions. Suppose, for example,
+   the type declarations
+     TYPE H
+       SEQUENCE
+       TYPE(E),POINTER :: F
+     END TYPE
+     TYPE E
+       SEQUENCE
+       TYPE(H),POINTER :: P
+     END TYPE
+   appear identically in two scoping units. Now the types must be
+   considered together. If the two components P have different types,
+   entities declared with the two type H definitions have different types.
+   In general, if there is a set of k sequence types that are coupled in a
+   mutual recursion, all k must be considered together. If it is possible
+   to interpret two entities declared with corresponding types to be of
+   the same type, this shall be done.
+
+--------------------------------------------------------------------------------
+
+NUMBER: F90/000191
+TITLE: Interaction of SEQUENCE derived types and rename
+KEYWORDS: SEQUENCE, derived type, use association, derived type
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:  Consider the following:
+
+   MODULE M
+     TYPE T
+       SEQUENCE
+       TYPE (T), POINTER :: P
+     END TYPE
+   END MODULE
+
+   USE M, T2=>T
+   TYPE T
+    SEQUENCE
+       TYPE (T2), POINTER :: P
+   END TYPE
+   TYPE (T) X
+   TYPE (T2) Y
+   X = Y
+   END
+
+Section 4.4.2, 'Determination of derived types', seems to indicate that types T
+and T2 in the main program refer to the same type.  Note that both types have
+structure components that agree in order, name, and attributes.  However,
+considering type T in the context of module M only, type T is a derived type
+that contains one component that is a pointer to itself.  In the context of the
+main program, type T is a derived type that contains one component that is a
+pointer to a different derived type.
+
+Are types T and T2 considered to be the same type?
+
+ANSWER:  Yes, T and T2 are the same type.  An edit is provided to clarify this
+conclusion.
+
+Discussion: The first sentence in section 4.4.2 states, "a particular type name
+may be defined at once in a scoping unit." However, by the use of rename, it's
+possible for a scoping to have access to two separately defined derived types,
+that were originally defined the same name, by two different local names.  For
+derived types made accessible by use association, the derived type name referred
+to in section 4.4.2 is <type-name> in the corresponding <derived-type-stmt>.
+Edits are provided to clarify this.
+
+EDITS:
+1.  In section 4.4.2, add the following to the end of the first paragraph:
+    [35:39]
+
+     "In addition, two derived types accessible in the same scope might be the
+      same if one or both are accessible by use association."
+
+2.  In section 4.4.2, after the second paragraph, add the following independent
+    paragraph: [35:46]
+
+     "Note that the criterion that the two types have the same name applies
+     to the <type-name> of the respective <derived-type-stmt>."
+
+SUBMITTED BY: Janice C. Shepherd
+HISTORY: 94-273   m130 submitted
+         94-377   m131 Response submitted, approved  u.c.
+         95-034r1 m132 X3J3 ballot failed 15-5
+
+--------------------------------------------------------------------------------

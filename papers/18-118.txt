@@ -1,0 +1,163 @@
+To: J3                                                     J3/18-118
+From: Reinhold Bader
+Subject: Improved memory control
+Date: 2018-February-08
+
+
+Introduction
+~~~~~~~~~~~~
+
+With recent hardware generations, new types of memory have become
+available like
+
+* high-bandwidth ("stacked") memory
+* non-volatile memory
+* device memory
+
+Such memory is usually supplied in addition to regular DIMM-based
+RAM, but future hardware generations might only supply a subset of
+conceivable memory types, depending on the targeted applications.
+While in some cases the use of such memory is regulated by the
+hardware, it is becoming more common that the programmer needs to
+exercise explicit control; this is currently done via non-portable
+compiler directives.
+
+Furthermore, modern HPC system's access hierarchies to any kind of
+memory are quite deep, resulting in significant NUMA characteristics
+for data accesses (whether cache coherent or not).
+
+This paper makes the request to add features to the language
+that enable the programmer to handle these hardware features
+both more efficiently and more portably than is currently the case.
+
+Some suggestions are made below on how this might be done, based on
+expected usage patterns. 
+
+
+Usage scenario 1: memory kinds 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To support the various memory subtypes mentioned in the introduction,
+it must be decided whether to do this for static memory, dynamic
+memory, or both.
+
+In the latter case, it might be most appropriate to specify an
+additional attribute, say
+
+REAL(..., memkind=high_bandwidth) :: static_array(NDIM)
+REAL(..., memkind=high_bandwidth), ALLOCATABLE :: dyn_array(:)
+
+If only dynamic memory will be supported, it would likely be
+sufficient to add an option to the ALLOCATE statement:
+
+REAL, POINTER :: p(:)
+
+ALLOCATE(p(NDIM), memkind=high_bandwidth, stat=ias)
+
+Also, it would be nice to have inquiry functions that permit
+to judge availability / capacity / performance for the various
+memory kinds. For example, 
+
+IF ( MEMORY_AVAILABLE(memkind=high_bandwidth) ) THEN
+  ALLOCATE(p(NDIM), memkind=high_bandwidth, stat=ias)
+ELSE		    
+  ALLOCATE(p(NDIM), stat=ias) ! assuming default memory kind is
+                              ! DIMM-based
+END IF
+
+Finally, it might be of interest to use a file or the file system
+as a (slow) memory variant; one of the available memory kinds
+should denote this variant.
+
+Note: the current OpenMP 5.0 draft (TR 6) defines memory kinds by
+introducing predefined memory allocators; from the draft's
+text one can draw the conclusion that additional allocators
+might be available.
+
+
+Usage scenario 2: memory affinity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For parallel processing with DO CONCURRENT, memory affinity can be
+an issue. For example, in
+
+REAL :: A(NDIM, NDIM)
+
+A(:,:) = ...  ! first touch executed serially
+
+DO CONCURRENT (I=1:NDIM, J=1:NDIM)
+  A(J, I) = ...
+END DO
+
+the DO CONCURRENT might be executed by threads distributed to
+all parts of the system, while all memory pages used by A will
+reside "near" the CPU used by thread 0. As a result, systems
+with strong NUMA characteristics are likely to incur a large
+performance hit for this construct, because a single memory
+channel must be shared by all CPUs while processing the DO
+CONCURRENT construct.
+
+For the above situation it might be sufficient to replace the
+first executable statement by a semantically equivalent DO CONCURRENT
+block to ensure that memory pages are distributed appropriately
+among available memory channels, but there exist many situations
+where this is not feasible, for example
+
+* sourced allocation
+* auto-allocation
+* allocation of arrays of derived type with default initialization
+
+Also, parallel processing access patterns might change throughout
+program execution, so maintaining a static assignment of pages to
+memory subsets will in general be insufficient (this would especially
+apply to OpenMP-style tasking).
+
+For this reason, it is considered desirable to add language features
+that enable control of the memory affinity.
+
+Assuming that a concept analogous to OpenMP places, but relating to
+memory placement rather than thread placement, is introduced, an
+intrinsic might be defined that modifies the affinity of a
+contiguous object or subobject, say
+
+CALL PLACE_MEMORY(A(:,1), place(1))
+
+One difficulty would be that there would be some fuzziness to deal with,
+since the granularity is on the page level, and therefore outside
+the processor's control.
+Another one would be that at least for the case of DO CONCURRENT some
+additional prescription on the loop iteration scheduling must
+potentially be passed to the construct, say
+
+DO CONCURRENT(...., AFFINITY=A)
+...
+
+especially if apart from the array A further arrays (with possibly
+different affinity) need to be processed inside the construct.
+
+
+Usage scenario 3: coarrays in teams
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The team feature in Fortran 2018 permits coarray data to be allocated
+on image subsets. Apart from the implied support for MPMD-style
+programming, the following usage can be considered:
+
+* reduce communication and synchronization times by placing coarray
+  objects onto computational nodes in an optimal manner (e.g.,
+  all member images of a team reside within a computational node)
+* improve support for heterogeneous systems by assigning images
+  or teams to computational resources whose memory equipment is
+  commensurate with the image's or team's specific requirements.
+
+For both, some additional options on the FORM TEAM statement
+would likely be needed that enable setting up teams whose images obey
+additional constraints.
+
+While one certainly can envision that some third-party library might
+mostly solve this problem, a standardized interface is favoured.
+
+
+
+
+

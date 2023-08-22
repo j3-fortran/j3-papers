@@ -1,0 +1,78 @@
+To: J3                                                     J3/18-136r1
+From: Van Snyder
+Subject: Use cases for default value for optional argument
+Date: 2018-February-14
+
+Reference: 18-122r1
+
+Here's a simple and common use case for default values for optional
+arguments, to be used in case the argument is absent.
+
+  subroutine S ( ..., Do_More_Stuff )
+    logical, intent(in), optional :: Do_More_Stuff
+    logical :: My_Do_More_Stuff
+    My_Do_More_Stuff = .false.
+    if ( present(Do_More_Stuff) ) My_Do_More_Stuff = Do_More_Stuff
+
+Some people try to do
+
+  My_Do_More_Stuff = merge ( Do_More_Stuff, .false., &
+                           &  present(My_Do_More_Stuff) )
+
+but this gets a seg fault because of our eager-evaluation semantics.
+
+People would like to be able to write
+
+  subroutine S ( ..., Do_More_Stuff )
+    logical, intent(in), optional :: Do_More_Stuff = .false.
+
+The desired semantics are that if Do_More_Stuff is absent
+
+  (1) present(Do_More_Stuff) still has the value .false., but
+  (2) Do_More_Stuff has the value .false.
+
+If the INTENT isn't IN, one can change the value.  If it has the
+ALLOCATABLE or POINTER attribute, one can allocate it, etc.
+
+A more interesting case might be
+
+  subroutine S2 ( ...,  Info )
+    real, intent(inout), optional :: Info = [ -huge(0.0), huge(0.0) ]
+or
+    real, allocatable, intent(inout), optional :: Info =  &
+             [ -huge(0.0), huge(0.0) ]
+
+In this case, if Info is absent, it behaves internally as if it were an
+automatic array of size(2) with the specified value.  The procedure can
+change its value, deallocate it (if it's allocatable), etc -- which
+can't affect a corrresponding actual argument because there isn't one.
+
+The upshot is that an absent dummy argument with a default initial value
+behaves like an automatic variable with all the specified attributes
+(and respecting INTENT(IN) if it appears), that is initially allocated
+on every invocation if it is allocatable (and of course deallocated upon
+return).
+
+If I were a developer, I would create the same sort of descriptor as
+would be used for an automatic variable.  If the argument is present,
+fill the descriptor from the dummy argument.  If the argument is absent,
+create an automatic variable in the stack or heap, and describe it in
+the descriptor.
+
+Alternative features that would solve some of the same sorts of problems
+are short-circuit logical operators (for the logical case):
+
+  My_Do_More_Stuff = present(Do_More_Stuff) .andthen. Do_More_Stuff
+
+or conditional expressions
+
+  real, allocatable :: My_Info
+  My_Info = present(info) .then. info .else. [ -huge(0.0), huge(0.0) ]
+
+These are both somewhat more general, but less terse, and need a local
+variable instead of an anonymous automatic variable known by the same
+name as the dummy argument if it's absent.
+
+
+
+

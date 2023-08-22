@@ -1,0 +1,192 @@
+                                                         07-260
+
+To: J3                                                   07-xxx
+From: Craig Rasmussen
+Subject: Integration of co-arrays with shift functions
+Date: 2007 July 22
+
+1. Introduction
+
+In the process of integrating co-arrays into Fortran, the array
+construction functions, cshift and eoshift, have been overlooked.  As
+individual processors scale to hundreds of individual cores, leading to
+machines with potentially millions of threads of control, the challenges
+of programming and managing this level of parallelism are daunting.
+Because the data-parallel programming model provides simultaneous
+operations across independent array elements, it is has received renewed
+interest because it substantially reduces program complexity as compared
+to explicitly programming separate threads of control.  In addition,
+programs written in data-parallel languages have been successfully
+targeted to run on hybrid processing elements like graphical processing
+units (GPUs), with an order of magnitude increase in speed on some
+algorithms.
+
+Fortran with the co-array addition provides an ideal platform for a
+data-parallel style of programming.  Co-array [] notation can be used
+when explicit indexing of array elements is required (e.g.,
+initialization of array elements), while a data-parallel notation can be
+used in other portions of the program.  Array variables (without the
+explicit index notation) naturally allow the programmer to think of a
+co-array as a global data structure with data-parallel operations
+applied across all co-array elements on all images.  For example, if
+variables A, B, and C have been declared as co-arrays, the statement
+
+     A = B + C
+
+applies the binary sum operation to co-array elements on all images.
+
+2. The need for new shift functions
+
+The intrinsic function cshift provides the capability to circular shift
+an array section along a given dimension; similarly with eoshift, except
+that array elements are shifted off at one end of a section.  If a
+cshift is applied to a co-array, the circular shift will be applied
+separately to the local array on each image, without any regard to the
+co-array declaration.  For example, if A is declared as
+
+    real :: A(4)[*]
+
+and run on two images and initialized so that
+
+            Image [1]    Image [2]
+
+    A   =   [1,2,3,4]    [5,6,7,8]
+
+then CSHIFT(A, SHIFT=1) would result in
+
+            Image [1]    Image [2]
+
+    A   =   [2,3,4,1]    [6,7,8,5]
+
+The programmer has no recourse for a circular shift to be applied
+globally, i.e.,
+
+            Image [1]    Image [2]
+
+    A   =   [2,3,4,5]    [6,7,8,1]
+
+other than to do so explicitly with indexing to denote which array
+elements are to be transferred between images and branching to control
+which image initiates the communication.  Both indexing and branching
+are disallowed in a purely data-parallel program section.
+
+The same problem exists for higher-dimensional arrays (in either the
+normal or the co-dimension).  For example, if B(2,3)[2,*] is run on four
+images,
+
+           Image [1,1]   Image [1,2]
+
+             |1,2,3|       |7,8,9|
+             |4,5,6|       |1,2,3|
+
+    B   =  Image [2,1]   Image [2,2]
+
+             |4,5,6|       |1,2,3|
+             |7,8,9|       |4,5,6|
+
+then the programmer would like a global circular shift of 1 on dimension
+2 to result in
+
+           Image [1,1]   Image [1,2]
+
+             |2,3,7|       |8,9,1|
+             |5,6,1|       |2,3,4|
+
+    B   =  Image [2,1]   Image [2,2]
+
+             |5,6,1|       |2,3,4|
+             |8,9,4|       |5,6,7|
+
+
+3. Description of CO_SHIFT and CO_EOSHIFT.
+
+Two new intrinsic functions CO_CSHIFT and CO_EOSHIFT are proposed as
+described below.
+
+CO_CSHIFT (CO_ARRAY, SHIFT [, DIM])
+
+  Description. Circular shift on a co-array expression of rank one or
+  circular shifts on all the complete rank one sections along a given
+  dimension of a co-array expression of rank two or greater.  Elements
+  shifted out at one end of a section are shifted in at the other end;
+  the shifts are done respecting the global representation of the
+  co-array.  Different sections may shifted by different amounts and in
+  different directions.
+
+  Class. Transformational function.
+
+  Arguments.
+
+  CO_ARRAY          shall be a co-array of any type.  It shall not be a
+                    co-scalar.
+
+  SHIFT             shall be of type integer and shall be scalar if
+                    CO_ARRAY has rank one; otherwise, it shall be scalar
+                    or of rank n - 1 and of shape (d1, d2, ..., dDIM ,
+                    dDIM+1, ..., dn) where (d1, d2, ..., dn) is the
+                    shape of CO_ARRAY.
+
+  DIM (optional)    shall be a scalar and of type integer with a value
+                    in the range 1 <= DIM <= n, where n is the rank of
+                    CO_ARRAY. If DIM is omitted, it is as if it were
+                    present with the value 1.
+
+  Result Characteristics. The result is an array of the type and type
+  parameters of CO_ARRAY, and has the shape of CO_ARRAY.
+
+  Example. If A is declared A(3)[*] and initialized so that A(:)[1] =
+  [1,2,3] and A(:)[2] = [4,5,6] on two images, then CO_CSHIFT(A,2) is
+  [3,4,5] on image 1 and [6,1,2] on image 2.
+
+
+CO_EOSHIFT (CO_ARRAY, SHIFT [, BOUNDARY, DIM])
+
+  Description. End-off shift on a co-array expression of rank one or
+  end-off shifts on all the complete rank one sections along a given
+  dimension of a co-array expression of rank two or greater.  Elements
+  are shifted out at one end of a section and copies of a boundary value
+  are shifted in at the other end; the shifts are done respecting the
+  global representation of the co-array.  Different sections may have
+  different boundary values and may be shifted by different amounts and
+  in different directions.
+
+  Arguments.
+
+  CO_ARRAY          shall be a co-array of any type.
+
+  SHIFT             shall be of type integer and shall be scalar if
+                    CO_ARRAY has rank one; otherwise, it shall be scalar
+                    or of rank n - 1 and of shape (d1, d2, ..., dDIM ,
+                    dDIM+1, ..., dn) where (d1, d2, ..., dn) is the
+                    shape of CO_ARRAY.
+
+  BOUNDARY (optional) shall be of the same type and type parameters as
+                    CO_ARRAY and shall be scalar if CO_ARRAY has rank
+                    one; otherwise, it shall be either scalar or of rank
+                    n - 1 and of shape [d1, d2, ..., dDIM+1, ..., dn].
+                    BOUNDARY may be absent for the types in the
+                    following table and, in this case, it is as if it
+                    were present with the scalar value shown converted,
+                    if necessary, to the kind type parameter value of
+                    CO_ARRAY.
+
+                      Type of CO_ARRAY    Value of BOUNDARY
+                     _______________________________________
+                      Integer             0
+                      Real                0.0
+                      Complex             (0.0, 0.0)
+                      Logical             false
+                      Character (len)     len blanks
+                      Bits                B'0'
+
+  DIM (optional)    shall be a scalar and of type integer with a value
+                    in the range 1 <= DIM <= n, where n is the rank of
+                    CO_ARRAY.  If DIM is omitted, it is as if it were
+                    present with the value 1.
+
+  Result Characteristics. The result has the type, type parameters, and
+  shape of CO_ARRAY.
+
+  Example. If A is declared A(3)[*] and initialized so that A(:)[1] =
+  [1,2,3] and A(:)[2] = [4,5,6] on two images, then CO_CSHIFT(A,1,-1) is
+  [2,3,4] on image 1 and [5,6,-1] on image 2.

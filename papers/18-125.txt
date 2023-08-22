@@ -1,0 +1,79 @@
+To: J3                                                     J3/18-125
+From: Dan Nagle
+Subject: Asynchronous subroutine execution
+Date: 2018-February-14
+
+
+Discussion
+----------
+
+Modern processors are multicore.  Each generation changes
+the core count.  On a shared node, the number of cores
+may be highly variable over time.  Different images may execute
+on nodes with different numbers of cores.  Some cores
+may be highly specialized (integer-only encryption cores,
+for example).  Some nodes may have off-die cores, but others not.
+Asynchronous input/output now is limited to a single transfer statement.
+There may be advantages to several transfers per wait.
+
+Modern software engineering prefers to contain one logical function
+within one procedure, rather than interleaving unrelated instructions.
+
+The result of the above is that opportunities for asynchronous
+execution abound, but as of today, Fortran does not have a ready
+way for applications programs to avail themselves of all assets
+present.
+
+
+Proposal
+--------
+
+If a subroutine could be executed on an image asynchronously,
+applications programmers would have a tool to access the resources
+now present, and a way to readily take advantage of future hardware.
+
+How to achieve this with minimal effort?
+
+I propose a simple asynchronous execution for subroutines.
+Functions are not included due to the value provided by a function
+reference must be consumed immediately, so the advantages are not
+there.
+
+The basic idea is to mark the CALL statement, but not the subroutine
+statement, with a means of notifying the program when execution
+from a marked reference completes.  Currently, Fortran has two
+candidate mechanisms for the notification:  events and asynchronous
+i/o identifiers.
+
+Now:
+
+CALL FOO( whatever)
+
+could be generalized to
+
+CALL FOO( whatever), EV= <event-name>
+or
+CALL FOO( whatever), ID= <int-name>
+
+where <event-name> is the name of a variable of type EVENT_TYPE,
+and <int-name> is the name of an integer.
+
+This approach allows a simple dispatch-then-await-completion model.
+
+Image data that may be updated by the asynchronous procedure
+is marked with the ASYNCHRONOUS attribute in those scopes where
+the asynchronous execution is active.  This follows the model
+of asynchronous input/output and asynchronous execution of C functions.
+
+
+Straw Vote
+----------
+
+Should the model use events or i/o ID= and WAIT statements?
+
+Advantages of events:  are visible from other images
+Advantages of identifiers:  this is more like i/o, so use i/o options
+
+I prefer events, but I can be persuaded.
+
+

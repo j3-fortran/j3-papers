@@ -1,0 +1,146 @@
+To: J3                                                     J3/19-207
+From: Steve Lionel
+Subject: User notification of system and library exceptions
+Date: 2019-August-07
+
+Reference: 18-133r2
+
+Introduction
+------------
+
+When users were surveyed as to what new features they wanted in Fortran,
+"exceptions" was a vey popular choice, second only to "templates/generics".
+"Exceptions" is one of the "large" features on the WG5 work item list. But
+what, exactly, is wanted here and how can it be made to play well with
+Fortran?
+
+Many languages have some form of exception handling built in, but when J3
+started discussing possible approaches, it became clear that any approach
+that involved changing control flow or "fixing up" the result of an
+operation, would encounter strong resistance. There was also strong 
+opposition to any change that would seriously degrade run-time performance.
+Also, some of the proposals would be very difficult to implement.
+
+Paper 18-133r2 enumerates various use cases for exception handling:
+
+1) Errors from library calls
+2) Software testing frameworks
+3) Software contracts
+4) System-generated errors
+
+This paper proposes a somewhat simpler approach that directly addresses 
+use cases 1 and 4, and could be useful for cases 2 and 3. The notions of
+changing control flow ("long jumps") or fixups are excluded. This proposal
+enables notification of a user routine when an error condition occurs. 
+
+The proposal is modeled, somewhat, on the OpenVMS Common Language
+Environment nested exception handling mechanism. The names of keywords in
+this proposal are inspired by those in OpenVMS but are just placeholders
+here; they may change when/if the proposal is fleshed out.
+
+This paper is intended to serve as a high-level concept, not detailed
+specification nor syntax. The advantage of this approach is that the only
+run-time cost is when establishing the handler and an extra call when an
+error condition has been detected. No other changes to normally executing
+code are needed.
+
+Outline of Proposal
+-------------------
+
+Add an intrinsic subroutine ESTABLISH whose purpose is to register a user
+error handler.
+
+ESTABLISH (NEW_HANDLER, NEW_CONTEXT[, PREV_HANDLER, PREV_CONTEXT,
+STATUS, ERRMSG])
+
+NEW_HANDLER - shall be an external function with an interface as
+PROCEDURE(HANDLER_INT) where HANDLER_INT is an abstract interface declared
+in intrinsic module ISO_FORTRAN_ENV
+
+NEW_CONTEXT - shall be a scalar of some useful type. For this paper,
+INTEGER(C_INTPTR_T) is used. It is INTENT(IN)
+
+PREV_HANDLER (optional) - shall be POINTER, PROCEDURE(HANDLER_INT). It is
+INTENT(OUT)
+
+PREV_CONTEXT (optional) - shall be a scalar of the same type and kind as
+NEW_CONTEXT. It is INTENT(OUT)
+
+STATUS (optional) shall be a scalar of type integer with a decimal 
+exponent range of at least four. It is an INTENT (OUT) argument. It is 
+assigned a processor-dependent positive value if the registration fails. 
+Otherwise it is assigned the value 0. 
+
+ERRMSG (optional) shall be a default character scalar. It is an 
+INTENT (INOUT) argument. It is assigned a processor-dependent explanatory 
+message if the registration fails. Otherwise, it is unchanged. 
+
+The use of INTEGER(C_INTPTR_T) might be replaced with some type added to
+ISO_FORTRAN_ENV.
+
+ESTABLISH registers NEW_HANDLER as an error handler for the current image,
+and saves NEW_CONTEXT to be passed to the handler when it is called.
+
+If PREV_HANDLER and/or PREV_CONTEXT are present, they are assigned the
+handler procedure and context, if any, that were registered at the
+time of the call. If no such handler was registered, PREV_HANDLER is
+nullified and PREV_CONTEXT is assigned zero.
+
+The following abstract interface is defined in ISO_FORTRAN_ENV:
+
+ABSTRACT INTERFACE
+  FUNCTION HANDLER_INT (STATUS, ERRMSG, SEVERITY, PROGRAM_HANDLES, 
+     CONTEXT)
+    USE, INTRINSIC :: ISO_C_BINDING
+    INTEGER, INTENT(IN) :: STATUS
+    CHARACTER(*), INTENT(IN) :: ERRMSG
+    LOGICAL, INTENT(IN) :: CONTINUABLE
+    LOGICAL, INTENT(IN) :: PROGRAM_HANDLES
+    INTEGER(C_INTPTR_T), INTENT(IN) :: CONTEXT
+  END FUNCTION HANDLER_INT
+END INTERFACE
+
+When a condition occurs that would otherwise trigger some sort of
+run-time handling (anything that would set an IOSTAT or STATUS
+value to non-zero), the currently registered handler procedure (if any)
+is called before the default processing (display an error, stop
+execution, take an ERR= branch, etc.) The arguments passed to the
+handler procedure are as follows:
+
+STATUS - the integer value that would be assigned to an IOSTAT= or
+STATUS= variable
+
+ERRMSG - a processor-dependent explanatory message
+
+CONTINUABLE - True if execution can continue, false if not
+
+PROGRAM_HANDLES - True if the program supplies an error-handling
+keyword such as ERR=, EOF=, IOSTAT= STAT=, or STATUS=, if applicable. 
+Otherwise, false. Not all conditions may result from operations 
+that allow such keywords.
+
+CONTEXT - the context registered along with the handler
+
+The user procedure may choose to display its own message, show
+a traceback, log the error, or do nothing.
+
+Result characteristics - default logical scalar
+
+The handler function should return true if it "handled" the error.
+This tells the processor to not display its own message, but 
+other processing as specified in the standard should proceed.
+If the handler returns false, this signifies that the error
+was not handled and the processor should take its default action.
+
+Other Procedures
+----------------
+
+Procedures could be added to:
+- Retrieve the current handler and context, if any
+- Invoke the current handler and context, if any (useful
+  for libraries)
+  
+  --END--
+     
+
+

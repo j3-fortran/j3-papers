@@ -1,0 +1,157 @@
+                                                            J3/14-220
+To:      J3
+From:    Nick Maclaren
+Subject: Interpretation of values of type C_BOOL
+Date: 2014 August 07
+
+----------------------------------------------------------------------
+
+NUMBER: TBD
+TITLE: Interpretation of values of type C_BOOL
+KEYWORD: C_BOOL
+DEFECT TYPE: Clarification
+STATUS: J3 consideration in progress
+
+
+In all cases except question 2, they assume that the companion processor
+supports more than one value bit for the C type _Bool or allows padding
+bits to be set.  Most C compilers do one of those.
+
+
+QUESTION 1:
+
+If a Fortran variable of type LOGICAL(C_BOOL) is passed to a C function,
+is the Fortran processor required to represent .TRUE._C_BOOL by all bits
+zero except the one required bit?
+
+
+QUESTION 2:
+
+If a processor and its companion processor support a negative integer
+zero, is the Fortran processor required to represent .FALSE._C_BOOL by
+all bits zero?
+
+
+QUESTION 3:
+
+Is a companion processor allowed to return a non-zero value other than
+all bits zero except the least significant as an object of type
+LOGICAL(C_BOOL)?  And, if it allowed to, is a Fortran processor required
+to treat it as equivalent to .TRUE._C_BOOL?
+
+
+QUESTION 4:
+
+Is a companion processor allowed to return a zero value other than with
+all bits zero as an object of type LOGICAL(C_BOOL)?  And, if it is
+allowed to, is a Fortran processor required to treat it as equivalent to
+.FALSE._C_BOOL?
+
+
+EXAMPLE:
+
+The following is an example program for questions 3 and 4 that may
+be used for testing.  Of the compilers I have access to, I have seen
+'T T T T F 0 1/T T T T F 0 1', 'F F F F T 0 1/F F F F T 0 1' and
+'T T F T T 0 1/T T F T T 0 1'.
+
+Fortran:
+
+PROGRAM Main
+    USE ISO_C_BINDING
+    INTERFACE
+        SUBROUTINE Fred (a, b, c, d, e) BIND(C,NAME="Fred")
+            USE ISO_C_BINDING
+            LOGICAL(C_BOOL), INTENT(OUT) :: a, b
+            INTEGER(C_INT), INTENT(OUT) :: c, d
+            LOGICAL(C_BOOL), VALUE :: e
+         END SUBROUTINE Fred
+    END INTERFACE
+    LOGICAL(C_BOOL) :: a, b
+    INTEGER(C_INT) :: c, d
+    CALL Fred(a,b,c,d,.FALSE._C_BOOL)
+    PRINT *, a, b, a.AND.b, a.OR.b, a.EQV.b, c, d
+    CALL Fred(a,b,c,d,.TRUE._C_BOOL)
+    PRINT *, a, b, a.AND.b, a.OR.b, a.EQV.b, c, d
+END PROGRAM Main
+
+C:
+
+void Fred (_Bool *a, _Bool *b, int *c, int *d, _Bool e) {
+    if (e) {
+        *(unsigned char *)a = 2;
+        *(unsigned char *)b = 4;
+    } else {
+        *(unsigned char *)a = 128;
+        *(unsigned char *)b = 64;
+    }
+    *c = *a&*b;
+    *d = (*a && *b);
+}
+
+
+
+DISCUSSION:
+
+ISO/IEC 9899:2011 is referred to as C11 in this paper.
+
+In C, the canonical values for true and false for type _Bool are 1 and
+(positive) 0, respectively (C11 7.18p2,3), and any other value is
+replaced by one of those when converted to a _Bool (C11 6.3.1.2p1).
+These are all bits zero except the least significant, and all bits zero.
+However, those are only the canonical values, and other values may also
+be valid representations of true and false, even in objects of type _Bool.
+
+A _Bool is an integer type made up of at least one byte (C11 6.2.5p6,
+6.2.6.1p2), a conforming compiler may allow it to hold other values (C11
+4p6,7, note 5, 6.2.6.2p2), and there are several strictly conforming
+ways to store other values in a _Bool variable, though it is unclear
+whether there are any strictly conforming ways to use it as a value (C11
+6.2.6.1p5 and footnotes 50 and 122).  C11 6.2.5p2 was raised in this
+context during the standardisation of C99, and the general agreement in
+WG14 was that it was relevant solely to 6.7.2.1p11.
+
+A value of type _Bool, when used as a truth value, is treated as true if
+it is non-zero and false otherwise (C11 6.3.1.1p2, 6.5.9p4, 6.5.15p4,
+6.8.4.1p2).  Therefore any other non-zero value will be treated as
+representing true, unless it represents a trap representation.
+
+Also, systems may support a negative integer zero, if they use signed
+magnitude or ones' complement (C11 6.2.6.2p2,3).  Again, C requires that
+to be treated as representing false, unless it represents a trap
+representation.  This is implementation-defined.
+
+Padding bits are not value bits and how they are used is unspecified
+(C11 6.2.6.2p1).  These are ignored (C11 6.2.6.1p4 and footnote 53)
+unless they specify a trap reresentation; however, they can be set by
+treating the object as an array of unsigned char.
+
+The result of this is that it is possible (in most implementations) to
+have two objects of type _Bool, a and b, that evaluate as true in
+truth-value contexts, but where (say) a&b evaluates as false.
+
+Some Fortran compilers used to use and probably still do use values
+other than 0 and 1 for LOGICAL, and it is simpler and more efficient for
+them to pass the values over unchanged.  Questions 1 and 2 ask
+whether that is allowed.
+
+Questions 3 and 4 ask whether, if a companion processor can produce
+other values that are not trap representations, a Fortran processor is
+required to treat them as representing .TRUE. and .FALSE., or is
+allowed to treat them as C treats variables of type _Bool.
+
+
+ANSWER:
+
+Awaiting statement of direction.
+
+
+EDITS:
+
+Awaiting statement of direction.
+
+
+SUBMITTED BY: Nick Maclaren
+
+
+HISTORY: m205   14-nnn   Submitted

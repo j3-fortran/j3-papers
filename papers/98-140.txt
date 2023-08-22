@@ -1,0 +1,207 @@
+
+                                                                J3/98-140
+								
+Date:    19th February 1998
+To:      J3
+From:    Malcolm Cohen
+Subject: Generic Type-Bound Procedures - Discussion Paper
+
+1. Introduction
+
+The current proposals for type-bound procedures (97-230r1 specs, 98-136
+proposed syntax) only allow for specific (i.e. ordinary) procedures.  It
+would be possible to extend this to allow generic type-bound procedures.
+This would work in a similar fashion to existing generic names, but
+invoking type-bound procedures instead of ordinary procedures.
+
+2. Example with Illustrative Syntax
+
+	TYPE,EXTENSIBLE :: myreal
+		REAL :: value = 0
+	CONTAINS
+		GENERIC,PASS_OBJ :: add => add_i,add_r
+	END TYPE
+	...
+	SUBROUTINE add_i(m,i)
+		OBJECT(myreal),INTENT(INOUT) :: m
+		INTEGER,INTENT(IN) :: i
+		m%value = m%value + i
+	END SUBROUTINE
+	SUBROUTINE add_r(m,r)
+		OBJECT(myreal),INTENT(INOUT) :: m
+		REAL,INTENT(IN) :: r
+		m%value = m%value + r
+	END SUBROUTINE
+	...
+	! Simple Usage
+	!
+	TYPE(myreal) myvar
+	CALL myvar%add(42)      ! Invokes add_i
+	CALL myvar%add(3.5)	! Invokes add_r
+
+3. With Type Extension - Adding to Generic Set
+
+	TYPE,EXTENDS(myreal) :: mycomplex
+		REAL :: ivalue = 0
+	CONTAINS
+		! GENERIC add_r, add_i still suitable (no need to override)
+		GENERIC,PASS_OBJ :: add => add_c	! Add another specific
+	END TYPE
+	...
+	SUBROUTINE add_c(m,c)
+		OBJECT(mycomplex),INTENT(INOUT) :: m
+		COMPLEX,INTENT(IN) :: c
+		m%value = m%value + REAL(c)
+		m%ivalue = m%ivalue + IMAG(c)
+	END SUBROUTINE
+	...
+	! Simple Usage
+	!
+	TYPE(mycomplex) myvar
+	CALL myvar%add(42)      ! Invokes add_i
+	CALL myvar%add(3.5)	! Invokes add_r
+	CALL myvar%add((0,1))	! Invokes add_c
+
+4. With Type Extension - Overriding
+
+Changing our example slightly, we get
+
+	TYPE,EXTENSIBLE :: myreal
+		REAL value
+	CONTAINS
+		GENERIC,PASS_OBJ :: multiply_by => mul_i,mul_r
+	END TYPE
+	...
+	TYPE,EXTENDS(myreal) :: mycomplex
+		REAL :: ivalue = 0
+	CONTAINS
+		GENERIC,PASS_OBJ :: multiply_by => cmul_i,cmul_r
+	END TYPE
+	...
+	SUBROUTINE mul_i(m,i)
+		OBJECT(myreal),INTENT(INOUT) :: m
+		INTEGER,INTENT(IN) :: i
+		m%value = m%value * i
+	END SUBROUTINE
+	SUBROUTINE cmul_i(m,i)
+		OBJECT(mycomplex),INTENT(INOUT) :: m
+		INTEGER,INTENT(IN) :: i
+		m%value = m%value * i
+		m%ivalue = m%ivalue * i
+	END SUBROUTINE
+	...
+	! A more interesting usage example
+	!
+	TYPE(myreal) myr
+	TYPE(mycomplex) myc
+	!
+	myr = myreal(1)
+	myc = mycomplex(2,3)
+	!
+	CALL process(myr)
+	CALL process(myc)
+	!
+	! At this point, myr is myreal(27), myc is mycomplex(54,81)
+	!
+	...
+	SUBROUTINE process(mynumber)
+		OBJECT(myreal) mynumber
+		CALL mynumber%multiply_by(27)
+	END SUBROUTINE
+
+5. Implementation
+
+Each generic type-bound procedure would have several dispatching slots in
+the runtime dispatch table - one for each specific procedure.  However, the
+specific slots would not have individual names; basically the non-dispatching
+arguments would be used at compile-time to determine which slot is to be
+used for the dispatch at runtime.  This is the same as our existing generic
+resolution rules, the only change is that instead of resolving to a specific
+procedure, it resolves to a specific (not user-visible) runtime dispatch
+slot.
+
+6. Assignment and Operators
+
+There is a natural extension to handling generic assignment and operators.
+In these cases, the PASS_OBJ attribute would not be used, rather the
+normal assignment statement and operators would be overloaded.
+
+For example:
+	TYPE,EXTENSIBLE :: myreal
+		REAL value
+	CONTAINS
+		ASSIGNMENT(=) myreal_asgn_i,i_asgn_myreal
+	END TYPE
+	TYPE,EXTENDS(myreal) :: mycomplex
+		REAL ivalue
+	CONTAINS
+		ASSIGNMENT(=) mycomplex_asgn_i
+	END TYPE
+	...
+	SUBROUTINE myreal_asgn_i(m,i)
+		OBJECT(myreal),INTENT(INOUT) :: m
+		INTEGER,INTENT(IN) :: i
+		m%value = i
+	END SUBROUTINE
+	SUBROUTINE i_asgn_myreal(i,m)
+		INTEGER,INTENT(OUT) :: i
+		OBJECT(myreal),INTENT(IN) :: m
+		i = m%value
+	END SUBROUTINE
+	SUBROUTINE mycomplex_asgn_i(m,i)
+		OBJECT(mycomplex),INTENT(INOUT) :: m
+		INTEGER,INTENT(IN) :: i
+		m%value = i
+		m%ivalue = 0
+	END SUBROUTINE
+
+Additionally to providing dispatching forms of the operators and assignment,
+this facility allows the module-writer to prevent the accidental loss of the
+defined assignment (with concommitant breakage of abstraction) in the case
+where the user of the module does "USE,ONLY:" and forgets to include the
+assignment operation in the ONLY LIST (cf M16).
+
+7. Specific Type-bound Procedures and Generics
+
+A specific type-bound procedure may be overridden/overloaded with a generic
+type-bound procedure set; from this point downwards in the type tree, the
+generics added become available.
+
+For example:
+	TYPE,EXTENSIBLE :: mytype
+	CONTAINS
+		PROCEDURE proc => mytype_proc
+	END TYPE
+	...
+	TYPE,EXTENDS(mytype) :: type2
+	CONTAINS
+		GENERIC proc => proc2,proc3
+	END TYPE
+	...
+	SUBROUTINE mytype_proc
+		PRINT *,'hello world'
+	END SUBROUTINE
+	SUBROUTINE proc2
+		PRINT *,'hello proc2'
+	END SUBROUTINE
+	SUBROUTINE proc3(message)
+		CHARACTER*(*) message
+		PRINT *,message
+	END SUBROUTINE
+	...
+	! Usage
+	!
+	TYPE(mytype) x
+	TYPE(type2) y
+	!
+	CALL x%proc		! Invokes mytype_proc
+	CALL y%proc		! Invokes proc2
+	CALL y%proc('hi')	! Invokes proc3
+
+A generic type-bound procedure set cannot be overridden with a specific
+type-bound procedure set, i.e. the following example is NOT allowed:
+
+	TYPE,EXTENDS(type2) :: type43
+	CONTAINS
+		PROCEDURE proc=>proc43		! Not allowed
+	END TYPE

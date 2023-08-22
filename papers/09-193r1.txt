@@ -1,0 +1,64 @@
+To: J3                                                     09-193r1
+From: Aleksandar Donev
+Subject: LOCKs and segment ordering
+Date: 2009 May 5th
+
+Discussion:
+
+All of the synchronization primitives, including CRITICAL (see
+[174:23-24]), include a description of how they affect segment
+ordering. This seems to be missing for the LOCK and UNLOCK
+statement. This omission has led some external readers
+of our draft to believe that the
+segment ordering semantics of locks is contained in the implicit
+SYNC MEMORY statement ([193:17]). I propose to add appropriate
+words concerning segment ordering to the LOCK/UNLOCK clause, and
+eliminate the implied SYNC MEMORY statement.
+
+The semantics of CRITICAL blocks should conform to the common
+model that there is a global shadow lock variable associated with the
+construct that was LOCKED on entry and UNLOCKED on exit. I believe
+the words already there for CRITICAL are appropriate, and all that
+is needed is to remove the implied SYNC MEMORY.
+
+Justification:
+
+The implicit SYNC MEMORY in LOCK/UNLOCK will have efficiency
+penalties and has the wrong semantics of a two-way code motion
+barrier (see Note 8.38). Some readers and implementors may assume
+that every LOCK/UNLOCK statement must include a full memory fence,
+which may increase implementation cost on some architectures. This is
+particularly true for unsuccessful LOCK statements, but it is also
+true for successful ones. Namely, locks only cause one-way segment
+ordering. The segment before an UNLOCK statement precedes the segment
+that follows the next successful LOCK statement. This one-way ordering
+allows for code motion in one direction. The implicit SYNC MEMORY,
+on the other hand, would block code motion in both directions. If we
+give a guarantee of an implied SYNC MEMORY now, we cannot go back in
+a future revision because some users may start relying on it (for
+example, in conjuction with atomic intrinsics). We therefore ought
+to remove the implicit SYNC MEMORY now.
+
+Edits:
+=====================
+
+-------------------------------------------------------
+[193:17-19] In 8.5.5, SYNC MEMORY statement, replace para 5 by
+"All the other image control statements 
+except CRITICAL, END CRITICAL, LOCK, and UNLOCK
+include the effect of executing a SYNC MEMORY statement."
+
+-------------------------------------------------------
+[195:4+] Add a new paragraph p4+:
+"During the execution of the program, the value of a lock variable
+changes through a sequence of locked and unlocked states due to the
+execution of LOCK and UNLOCK statements.
+If image M executes an UNLOCK statement that causes a lock variable to
+become unlocked, and image T is the next to execute a LOCK statement
+that causes that variable to become locked, then the segments that
+execute on image M before the UNLOCK statement precede the segments
+that execute on image T after the LOCK statement. Execution of a
+LOCK statement with an ACQUIRED_LOCK= specifier that does not cause
+the lock variable to become locked does not affect segment ordering."
+
+-------------------------------------------------------

@@ -1,0 +1,241 @@
+                                                            11-180
+To: J3
+From: Nick Maclaren
+Subject: Interop TR: CFI_other
+Date: 2011 June 11
+Reference: N1854, N1820, 11-173
+
+
+This paper is produced for background, and to explain why the type
+code issue is important.  I apologise for its length.
+
+
+1. Requirements
+---------------
+
+There are a large number of outstanding requirements that are not
+formally within the TR's scope, but the current specification of
+CFI_type_other makes it harder both for vendors to provide extensions
+to meet them and for future versions of the standard to support them.
+They include:
+
+    1.1) There is a major need for types to use in Fortran applications
+that rely heavily on passing array variables to a C library, and most
+use either Fortran's default types or selectable KINDs, for good
+reasons.  Neither are supported by the current interoperability design.
+See section 4.
+
+    1.2) The current approach enourages the use of C's standard types
+throughout that sort of Fortran application, and they match only a few
+of Fortran's requirements at all well.  It is also a myth that C types
+are any more 'stable' than Fortran ones (see section 3), and it is
+unreasonable that Fortran is subservient to C in its own standard!
+
+    1.3) TYPE(*) does allow MPI to implement 'choice' arguments, but it
+would not extend to any interface that did not pass a separate argument
+to specify the type.  Fortran is more strongly typed language than C
+and can do better.
+
+    1.4) On many systems, the basic type and size are enough to define the
+type precisely, but it is not possible to write companion processor code
+that uses that fact.  This would not be fully portable, but Fortran does
+not support ONLY fully portable code.
+
+I do NOT propose to address these problems for interoperability as a
+whole, but do want to ensure that this TR does not prevent them being
+implemented as compatible vendor extensions or being fully compatible in
+a future standard.  There are at least the following options:
+
+    A) To abolish the type field entirely.  This is compatible with
+N1820 requirement 2, using the 'reasonably feasible' exemption, and I
+will write a paper on it.
+
+    B) To add a type CFI_type_interoperable for interoperable derived
+types, and to make CFI_type_other processor dependent for all other
+types.  This punts on the issue, but is compatible with N1820
+requirements 2 and 3, and is therefore formally acceptable.  I really
+don't like this one.
+
+    D) To extend the types to support interoperable derived types and
+some or all of the above.  I will try to turn my draft into a proper
+paper, but I may not have time.
+
+The rest of this paper tries to explain why I hold these views so
+strongly.  Please note that these are NOT the first time these have
+been raised, and some of them have been raised by several people,
+include by the MPI committee.
+
+
+2. Current Problems with the TR
+-------------------------------
+
+    2.1) The current approach does not allow extending the type member
+without changing the interface version, which completely prevents
+vendors from providing conforming, enhanced facilities.  11-173 has
+the same problem.  There are also potential problems with extending
+it fully compatibly in future versions of the standard, though they
+might be soluble.
+
+    2.2) The current specification does not distinguish forms of derived
+type, but 'simply copyable types' can be transferred as data and others
+cannot.  'Simply copyable' is a C++ term, with the obvious meaning.
+However, the situation is not simple in Fortran:
+
+        a) Fortran intrinsic, sequence and interoperable derived types
+are almost required to be simply copyable.
+
+        b) Derived types with allocatable or pointer components or
+type-bound procedures, and possibly other forms of them, are extremely
+unlikely to be simply copyable.
+
+        c) There are very good implementation arguments both for and
+against making extended types and derived types with large arrays
+contiguous.  See section 5.
+
+I do not think that this TR should constrain implementations any more
+than the current standard does.  Certainly, if it does introduce such a
+constraint, then it it needs significant discussion outside the
+interoperability group.
+
+On this matter, the rules for C_PTR and C_LOC are a bit of a mess, which
+doesn't help.  There is clearly no time to fix them, even if that was
+within the scope of the TR.
+
+11-173 attempts to address this, but does NOT help with the first
+problem, and it adds implementation constraints that are not present in
+the main standard.
+
+
+3. C Uniformity
+---------------
+
+On most systems, there are a large number of compiler options that
+affect the ABI, and which must be used compatibly for both Fortran and
+C, and a significant number of them are used by C applications.  For the
+near-universal x86 and derivative systems, that is made vastly more
+confusing by the plethora of compilers.
+
+I took a look at Intel's and GNU's man pages for x86 alone, and found a
+very large number of options that apply to C but not Fortran, and which
+would affect the representation of the interoperable types.  Even
+ignoring the ones that are clearly architecture- or ABI-specific, there
+are at least the following that seem likely to be used by ordinary
+applications and are particularly relevant to Fortran/C
+interoperability:
+
+    icc:    -fshort-enums, -long-double, -malign-double
+
+   gcc: -m96bit-long-double, -m128bit-long-double, -malign-double,
+ -fpack-struct
+
+Older compiled code often defaulted to 80-bit long double, but none
+of the current Linux compilers that I tested still does.  However, the
+above options remain for compatibility.
+
+Curiously, I didn't find any options for flipping between 32- and 64-bit
+longs (which can also affect long long), but I was looking at only Linux
+compilers and I believe that it exists for some for Microsoft systems.
+
+All of this means that C standard types are no more consistent than
+Fortran default ones, and the only reasonable approach is to say that a
+Fortran and its companion processor must use compatible options.
+
+
+4. Choosing Application Data Type
+---------------------------------
+
+There are essentially two choices here: to use the Fortran type
+mechanisms (default types and selectable KIND) or to use ISO C BINDING
+and the C types.  This section describes why essentially requiring the
+second in Fortran applications that use C interfaces heavily, by
+providing first-class support for only those types, is unreasonable.
+
+    4.1) Using Fortran default types for variables where the precision
+is not critical (such as most integers) is much the simplest.  This
+particularly applies to procedure arguments, because Fortran has no
+automatic type conversion.  Almost all existing code does this, and will
+continue to do so.
+
+    4.2) Fortran's conventions on how implementations should select the
+default types is both stable and sane; for example, default integer is
+suitable for the indices of almost all arrays.  C's conventions on the
+use of types changed significantly and incompatibly between K&R C, C90
+and C99, which is one reason that many inferfaces still specify C90
+explicitly.  They are also not what most people think they are and do
+not match Fortran's needs very well.
+
+    4.3) A huge number of C interfaces have fiendishly complicated
+autoconfiguration, and it is often impossible to tell in advance what
+actual C type they end up using.  In many cases, it is not even one of
+the ones listed as interoperable in the Fortran standard.
+
+    4.4) There is no direct match between Fortran's selectable KIND
+mechanism and anything in C, so applications that use it have to jump
+through hoops to interoperate.  MPI specifies such a mechanism, but it
+is NOT done by using one of the list of interoperable types.
+
+Whether or not one regards the use of Fortran default types and the
+selectable KIND mechanism as desirable, it is not reasonable for
+deprecate them in favour of using C types.
+
+
+5. Requiring Contiguity
+-----------------------
+
+The TR and 11-173 seem to be specifying contiguity of derived types in
+cases where the main standard does not.  I do not regard that as a good
+idea, or even reasonable without proper discussion in plenary.
+
+Let's ignore sequence and interoperable derived types here, as they
+ARE required to be contiguous.
+
+    5.1) Since time immemorial, one standard performance recommendation
+has been to order variables in COMMON blocks by increasing size, subject
+to appropriate alignment.  Those are deprecated, but the same
+recommendation applies to derived types.
+
+This is because it often needed multiple or slower instructions to
+access data beyond a certain (short) distance from a base register; to
+some extent, that is still true.  But, more recently, caches have come
+into near-universal use, and that can make it significantly advantageous
+to store the meta-data of large aggregates (e.g. array descriptors)
+together with the scalars, and to keep the data as such out-of-line.  A
+long time ago, I experimented, and could sometimes get a factor of two
+improvement that way.
+
+    Aside: the reason is that it is bad news to cache miss on an address
+    load that is immediately followed by a data load using that address.
+    That can stop the whole pipeline until the processor knows that the
+    loaded address is not the same as an address in a store.  Nowadays,
+    most CPUs have logic to optimise that case, but they are often
+    restricted in how many such potential conflicts can be outstanding.
+
+There is also one other very good reason to put arrays out of line in
+derived types: it enables common logic with the case where they are
+allocatable or pointers.  Not every vendor will want to take advantage
+of that, but it is unreasonable to forbid it.
+
+    5.2) There are two main ways to implement extended types, where the
+base types are implemented as aggregates:
+    by concatenating the base type and extension,
+and:
+    by having a pointer to the base type in the extended type.
+
+C++ has chosen the first route, though its standard does not specify it
+in so many words, but there are good arguments both ways.
+
+For example, Fortran does not support multiple inheritance, for good
+reasons, but it is unreasonable to assume that it never will.  C++ and
+followers include multiple copies of common parents and ignore all but
+one, which I agree is horrible.  It is also possible to include only one
+copy and to forbid all inconsistent inheritance (much as in USE
+renaming).  However, that requires the base types to be indirected to,
+and not included inline.
+
+There are also type safety arguments when Fortran is compiled into a
+strongly-typed 'assembler' that does not provide direct support for
+class extension.  I don't think that any systems currently do that, but
+some certainly used to.  While there are no signs that strong security
+and high RAS are making a comeback in general-purpose computer systems,
+it isn't something that should be assumed will not happen in Fortran's
+lifetime.

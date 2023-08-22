@@ -1,0 +1,128 @@
+
+                                                         J3/01-232
+
+Date:    June 2, 2001
+To:      J3
+From:    Aleksandar Donev <donev@pa.msu.edu>
+Subject: The need for C-like array pointers in Fortran
+
+
+In my extensive work in Fortran 95 on algorithms using graph
+and tree-like dynamic data-structures I have found a very strong need for
+C-like array pointers, and have recently concluded that exitsting
+workarounds in F95 are unsatisfactory and will further deter the usage of
+Fortran in certain areas of computer science.
+
+I wish to document my need with an example and propose a possible addition
+to accomodate for this need:
+
+Assume we wish to represent a graph (an object that is a collection of
+vertices, or points, and a collection of edges, or lines, connecting the
+vertices) with adjacency lists. This means that for each vertex we want to
+have a list of the edges that are incident upon it.
+One standard representation is to make two integer arrays, one which I will
+call NEIGHBOURS, and another which I will call MY_NEIGHBOURS. Assuming we
+number the nodes from 1 to N, then the elements:
+NEIGHBOURS(MY_NEIGHBOURS(I):MY_NEIGHBOURS(I+1)-1)
+give the indices of the nodes that neighbour node I. In a sense, we
+represent the list of neighbours using an array, and concatenate all of
+these small arrays into one big array NEIGHBOURS, and we use the array
+MY_NEIGHBOURS to chop the large array into pieces.
+
+This representation is efficient and can be used in FORTRAN 77. However
+it suffers from a lack of modularity and dynamic character, which I feel is
+not necessary to describe in detail, since they are relatively obvious.
+A much more dynamic and easier to use
+in a modular fashion is an approach in which each node is a user-defined
+data-type that contains its list of nodes. Depending on the kind of dynamic
+character needed, many schemes are possible, but I will use a very simple
+one sufficient to illustrate my point:
+
+TYPE vertex
+   INTEGER, DIMENSION(:), POINTER :: neighbors ! The list of neighbors
+END TYPE vertex
+
+Now, one has freedom of where the neighbors are stored and how they are
+allocated, and can simply use pointer assignment on neighbors to change
+this. For efficiency reasons, one would almost always allocate a large array
+NEIGHBOURS when initializing the graph, and then chop this array into small
+pieces, this time using the array pointer neighbours instead of the global
+index array MY_NEIGHBOURS. An example code segment might be:
+
+TYPE(vertex), DIMENSION(N) :: V ! Vertex set
+INTEGER, DIMENSION(N*d) :: N ! Neighbour set, d is maximal degree
+INTEGER :: vertex, counter, degree
+
+counter=1
+DO vertex=1, N
+  degree=... ! Assign value
+  V(vertex)%neighbors=>N(counter:counter+degree) ! Pointer assignment
+  counter=counter+degree
+END DO
+
+This approach is nice to use and allows one to have freedom in how the
+neighbour lists are allocated, for example.
+
+The above code has a big efficiency problem though, which is very important
+in practice. The array pointer neighbours in the type vertex usually takes a
+lot of memory, since the array pointer concept of Fortran 90 requires that
+adress, stride and bound information be stored. The compilers I have used
+usually pad this to some large value such as 16 or 32 bytes. This storage
+requirement is excessive and in many cases not necessary. For example,
+stride information is often not needed since the user knows that he will
+only use memory contigous blocks, and in some cases, such as skip linked
+search lists, the size (bound) information is also not needed.
+
+In my opinion, if one had a C-like array pointers in Fortran 90, similar to
+assumed-size array arguments, that is, deferred-shape arrays which rely on
+sequence association and do not store an array descriptor, but rather just a
+memory address (C-pointer), then efficient implementations of very
+sophisticated dynamic data-structures are possible.
+
+One possible syntax for this is to add a deffered-shape dimension
+declaration that has a * in the last dimension, just like assumed-size
+array arguments. For example, here is a possible declaration of the type
+vertex with this approach:
+
+TYPE vertex
+   INTEGER :: degree=0
+   INTEGER, DIMENSION(*), POINTER :: neighbours
+END TYPE vertex
+
+then the assignment of the neighbour list in the above code would be
+substituted with:
+
+V(vertex)%degree=degree
+V(vertex)%neighbors=>N(counter) ! Or maybe N(counter:)
+   ! Or maybe N(counter:counter+degree)
+
+I can not say with certainty how such a syntax would fit into the standard,
+and would greatly appreciate suggestions from J3. However, I strongly
+believe in the need for this kind of contiguous deferred-shape arrays, and
+have strong Fortran 95 experience to support this claim. I have advocated,
+taught and used Fortran 95 extensively, and believe this change will make
+the language much more attractive to computer scientists. Applications
+include better interfacing with C (think of buffer creation for MPI
+applications, interfacing with external C-based memory allocators, better
+interfacing with FORTRAN 77 procedures accepting assumed-size arguments,
+etc.)
+
+Also, since we have assumed-size arrays in Fortran, the same restrictions
+that apply to these inside procedures (such as the fact that they can not be
+used in array statments without explicit bounds, or can not be used in
+certain array inquiry functions, etc.), can be applied in this case. So I
+expect this will not require a big change of the standard. I may be wrong of
+course.
+
+There are other changes that I would like to see in F2k, particularly
+pertaining to adding features for restricting aliasing of pointers in the
+form of programmer guarantees for non-alising, but the above addition is
+becoming increasingly important as I program more dynamic data-structures
+and use C graph libraries (which are abundant). So I am very interested in
+seeing this considered carefully by committee members.
+
+Thank you for your time,
+Aleksandar
+______________
+Physics and Astronomy Department, Michigan State University
+http://www.pa.msu.edu/~donev

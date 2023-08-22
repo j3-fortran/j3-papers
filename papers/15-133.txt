@@ -1,0 +1,236 @@
+                                                             J3/15-133
+To: J3
+From: Malcolm Cohen
+Subject: Coarray allocate sync semantics
+Date: 2015 February 16
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0130
+TITLE: Does coarray allocation sync even with stopped images?
+KEYWORDS: ALLOCATE, DEALLOCATE, coarray, synchronization, stopped
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Example 1: Consider the trivial program
+
+  Program m206c7e1
+    Use Iso_Fortran_Env
+    Implicit None
+    Real,Allocatable :: x[:](:)
+    Integer :: me[:],i
+    Integer stat
+    me = This_Image()
+    If (Num_Images()<3) Error Stop 'Need at least 3 images'
+    If (me==1) Then
+      Stop 'Image 1 is now stopping'
+    End If
+    Allocate(x(100),Stat=stat)
+    !
+    If (me==2) Print *,'Arrived'                !***A
+    !
+    If (stat==0) Error Stop 'INCONCEIVABLE'
+    If (stat/=Stat_Stopped_Image) Error Stop 'Bad STAT'
+    !
+    Do i=1,Num_Images()
+      If (me[i]/=i) Error Stop 'me not right?'  !***B
+    End Do
+  End Program
+
+Q1. On images other than image 1, does execution ever reach the
+    statement with comment "!***A"?
+
+    6.7.1.2 Execution of an ALLOCATE statement, p4 says
+      "When an ALLOCATE statement is executed for which an
+       allocate-object is a coarray, there is an implicit
+       synchronization of all images.  On each image, execution of the
+       segment (8.5.2) following the statement is delayed until all
+       other images have executed the same statement the same number
+       of times."
+
+    The second sentence seems to say that execution on images>1 is
+    delayed forever, since image 1 will never execute that ALLOCATE
+    statement.
+
+Example 2: Consider the program
+
+  Program m206c7e2
+    Use Iso_Fortran_Env
+    Implicit None
+    Real(real32),Allocatable :: x[:](:,:,:,:),y(:,:,:,:)
+    Integer :: me[:],i
+    Integer stat
+    me = This_Image()
+    If (Num_Images()<3) Error Stop 'Need at least 3 images'
+    If (me==1) Then
+      Allocate(y(1000,1000,1000,1000))                !***C
+    End If
+    Allocate(x(1000,1000,1000,1000),Stat=stat)        !***D
+    !
+    If (me==1 .And. stat==0) Error Stop 'Inconceivable!'
+    !
+    If (stat==0) Print *, 'ALLOCATE ok on image', me  !***E
+    !
+    Do i=1,Num_Images()
+      If (me[i]/=i) Error Stop 'me not right?'        !***F
+    End Do
+  End Program
+
+For purposes of discussion, let us assume that each image has 6
+Terabytes of memory available to it for dynamic allocation.
+
+The ALLOCATE statement commented "!***C" will allocate 4 terabytes of
+memory on image 1.  Execution of the ALLOCATE statement commented
+"!***D" will attempt to allocate 4 terabytes on each image; this will
+fail on image 1 as there is insufficient memory available, but could
+succeed on other images.
+
+Q2. Is the success of an ALLOCATE statement the same on every image,
+    or may it fail on some images and succeed on others?  That is,
+    might the statement commented "!***E" execute the PRINT on some
+    images (but not all).
+
+Q2 continuation:
+    If the answer is that the ALLOCATE must either succeed or fail on
+    all images, can the STAT= value differ by image (for example,
+    might a processor return a different STAT= code for "no memory on
+    this image" and "no memory on some other image").
+
+Example 3: Consider the program
+
+  Program m206c7e3
+    Use Iso_Fortran_Env
+    Implicit None
+    Real,Allocatable :: x[:](:)
+    Integer :: me[:],i
+    Integer stat
+    me = This_Image()
+    If (Num_Images()<3) Error Stop 'Need at least 3 images'
+    If (me==1) Then
+      Call do_something_that_takes_a_very_long_time
+    End If
+    Allocate(x(100),Stat=stat)                  !***G
+    !
+    If (stat==0) Error Stop 'INCONCEIVABLE'
+    !
+    Do i=1,Num_Images()
+      If (me[i]/=i) Error Stop 'me not right?'  !***H
+    End Do
+  End Program
+
+Let us imagine that the processor operates some form of "timeout"
+mechanism, for example, if an image fails to reach a synchronization
+point within an hour of the first image reaching that statement, an
+error is returned.  (If the slow image subsequently reaches that
+statement, one might conjecture that it will also get an error, but
+probably STAT_YOU_ARE_TOO_SLOW rather than STAT_TIMEOUT).
+
+In the example above, let us assume that the ALLOCATE statement
+commented "!***G" fails, e.g. with a timeout error as we imagined above.
+
+Q3. After resolution of question 1, which images are synchronized
+    after execution of an ALLOCATE statement that fails?  That is,
+    is execution of the statements commented "!***B" (in Q1), "!***F"
+    (in Q2) and "!***H" (above) permitted, or are they impermissible
+    references to variables in unordered segments?
+
+    In the case of "!***B", one might conjecture that all the
+    non-stopped images are synchronized.
+
+    In the case of "!***F" the text of the standard appears to require
+    that image 1 has to wait for all the other images, but it might
+    equally be conjectured that that is a mistake and that since it
+    knows straightaway that it cannot satisfy the memory allocation it
+    should be allowed to return straightaway without synchronizing,
+    i.e. the "!***F" is not allowed.
+
+    In the case of "!***H", image 1 has still not even reached the
+    ALLOCATE statement (after an hour of the others waiting), so it
+    would seem that it is impossible for it to have synchronized as
+    required by the standard, and therefore that (for i==1 at least)
+    the execution of "!***H" is not allowed.
+
+Q4. When allocation of a coarray is involved, and an error occurs
+    (e.g. as in the examples above, plus other cases), under what
+    situations does the coarray in question become allocated?
+
+    In particular, can a coarray be allocated on some images but not
+    others?  If the answer is that the coarray never becomes
+    allocated, that means that in the case of a stopped image, the
+    remaining images cannot allocate any coarray.
+
+Q5. Do the answers to Q1-Q4 also apply to DEALLOCATE statements?
+
+ANSWER:
+
+A1. In the case of stopped images, the requirement in 6.7.1.2 was only
+    intended to apply to the non-stopped images.  An edit is provided
+    to correct this mistake.
+
+A2. Allocation of a coarray was intended only to succeed if it
+    succeeds on all images.  An edit is provided to add this missing
+    requirement.
+(A2 continuation)
+    There was not intended to be any requirement that a nonzero STAT=
+    value be the same on each image.  No edit is provided to add such
+    a requirement.
+
+A3. After execution of an ALLOCATE statement that returns an error
+    other than STAT_STOPPED_IMAGE, there was not intended to be any
+    requirement for synchronization.  An edit is provided to correct
+    this mistake.
+
+A4. The coarray can become allocated on an image if and only if it can
+    become allocated on all other images.  An edit is provided to add
+    this requirement.  The consequence in the case of a stopped image
+    is indeed that no image can subsequently change the allocatation
+    status of any coarray.
+
+A5. Yes, the answers also apply to DEALLOCATE statements.
+    Corresponding edits are supplied.
+
+EDITS:
+
+[128:16-17] 6.7.1.2 Execution of an ALLOCATE statement, p4,
+  Change "On each image"
+  to     "If no error condition apart from STAT_STOPPED_IMAGE occurs,"
+  Change "all other images"
+  to     "all non-stopped images",
+{A1,A3: Synchronization only applies to successful allocations and to
+         allocations that fail only due to STAT_STOPPED_IMAGE.}
+  Append a sentence requiring allocation success consistency for
+  coarrays, making the whole paragraph read:
+    "When an ALLOCATE statement is executed for which an
+     <allocate-object> is a coarray, there is an implicit
+     synchronization of all images.  If no error condition apart from
+     STAT_STOPPED_IMAGE occurs, execution of the segment following the
+     statement is delayed until all non-stopped images have executed
+     the same statement the same number of times.  The coarray shall
+     not become allocated on an image unless it is successfully
+     allocated on all images."
+{A2,A4: Last sentence is the consistency requirement.}
+
+[131:17-18] 6.7.3.2 Deallocation of allocatable variables, p11,
+  Change "On each image"
+  to     "If no error condition apart from STAT_STOPPED_IMAGE occurs,"
+  Change "all other images"
+  to     "all non-stopped images",
+  Append a sentence requiring deallocation consistency, making the
+  whole paragraph read:
+    "When a DEALLOCATE statement is executed for which an
+     <allocate-object> is a coarray, there is an implicit
+     synchronization of all images.  If no error condition occcurs,
+     execution of the segment (8.5.2) following the statement is
+     delayed until all non-stopped images have executed the same
+     statement the same number of times.  If the coarray is a dummy
+     argument, its ultimate argument (12.5.2.3) shall be the same
+     coarray on every image.  The coarray shall not become deallocated
+     on an image unless it is successfully deallocated on all images."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 15-nnn   m206 F08/0130  Submitted
+
+----------------------------------------------------------------------

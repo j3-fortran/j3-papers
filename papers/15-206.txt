@@ -1,0 +1,226 @@
+                                                     J3/15-206
+To: J3
+From: Malcolm Cohen
+Subject: Functions, elemental procedures, image control etc.
+Date: 2015 August 06
+References: 15-185
+
+1. Introduction
+
+This paper answers some questions raised in 15-185.
+
+2. Evaluation of operations
+
+7.1.4 Evaluation of operations says
+    "the evaluation of a function reference shall neither affect nor be
+    affected by the evaluation of any other entity within the statement"
+
+15-185 asserts
+  "In a parallel context, even the meaning of "within" (and, in other
+   contexts, "while" etc.) is unclear"
+
+This claim is unfounded.
+
+15-185 suggests
+  "there are three possibilities:
+
+    1) It refers only to direct actions (i.e. on that image), or
+    2) it also includes directly-caused actions on other images, or
+    3) it also includes all actions in unordered segments."
+
+No, it refers to evaluation of other entities with the same statement,
+just as it says.
+
+15-185 opines
+  "I believe that the intent is (3)"
+
+This belief is unfounded.  The semantics of accessing variables on other
+images is defined by the segment rules.
+
+
+3. Ordinary Function Calls
+
+Consider:
+
+    PROGRAM Function_One
+    ! Are functions required to be called in the same order under all
+    ! circumstances?  If not, this is undefined, but it breaks no rules.
+        PRINT *, Fred()+Joe()
+    CONTAINS
+        INTEGER FUNCTION Fred ()
+            INTEGER :: Fred
+            Fred = THIS_IMAGE()
+            CALL CO_SUM(Fred)
+        END INTEGER FUNCTION
+        INTEGER FUNCTION Joe ()
+            INTEGER :: Joe
+            Joe = THIS_IMAGE()
+            CALL CO_MAX(Joe)
+        END INTEGER FUNCTION
+    END PROGRAM Function_One
+
+The standard permits Fred and Joe to be evaluated in any order.
+On a processor that evaluates them in a different order on different
+images, this code is not standard-conforming.  On a processor that
+evaluates the functions in the same order on all images, it is
+conforming.
+
+Consider:
+
+    PROGRAM Function_Two
+    ! Are functions allowed to be interleaved?  If so, this is
+    ! undefined, despite there being no overlap of anything between
+    ! functions Fred and Joe.  Function interleaving is very common
+    ! in combination with inlining.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(LOCK_TYPE) :: lock1[*], lock2[*]
+        PRINT *, Fred()+Joe()
+    CONTAINS
+        INTEGER FUNCTION Fred ()
+            INTEGER :: Fred
+            LOCK (lock1)
+            Fred = THIS_IMAGE()
+            UNLOCK (lock1)
+        END INTEGER FUNCTION
+        INTEGER FUNCTION Joe ()
+            INTEGER :: Joe
+            LOCK (lock2)
+            Joe = THIS_IMAGE()
+            UNLOCK (lock2)
+        END INTEGER FUNCTION
+    END PROGRAM Function_Two
+
+This program appears to be standard-conforming and uninteresting.
+
+Consider:
+
+    PROGRAM Function_Three
+    ! This is a sort-of hybrid of Function_One and Function_Two,
+    ! and is undefined if either are.  Note that there is no aliasing
+    ! on any single image, and ample synchronisation.
+        INTEGER :: data[*]
+        IF (NUM_IMAGES() /= 8) STOP
+        PRINT *, Fred()+Joe()
+    CONTAINS
+        INTEGER FUNCTION Fred ()
+            INTEGER :: Fred
+            SYNC ALL
+            data[MOD(THIS_IMAGE()+7,8)+1
+            Fred = data[MOD(THIS_IMAGE()+1,8)+1
+            SYNC ALL
+            CALL CO_SUM(Fred)
+        END INTEGER FUNCTION
+        INTEGER FUNCTION Joe ()
+            INTEGER :: Joe
+            SYNC ALL
+            data[MOD(THIS_IMAGE()+2,8)+1
+            Fred = data[MOD(THIS_IMAGE()+5,8)+1
+            SYNC ALL
+       END INTEGER FUNCTION
+    END PROGRAM Function_Three
+
+This program is not syntactically correct.  Ignoring the lines
+beginning "data["...
+
+On a processor which evaluates function references in a different order on
+different images, it will not terminate (some images waiting for a second
+SYNC ALL in JOE, while other images are waiting for them to execute the
+CO_SUM in FRED).  This is a defect in the program, not a defect in the
+standard.
+
+Consider:
+
+    PROGRAM Function_Four
+    ! This shows that the above issues can become visible with atomics.
+    ! In this case, there is an evaluation of atom1[1] and atom2[1]
+    ! outside the functions, but there are examples where there are
+    ! only definitions outside the functions.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom1[*] = 0, atom2[*] = 0
+        INTEGER :: temp[10], i
+        IF (NUM_IMAGES() /= 2) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            PRINT *, Fred()+Joe()
+        ELSE
+            DO i = 1,5
+                 CALL ATOMIC_REF(temp(2*i-1),atom1[1])
+                 CALL ATOMIC_REF(temp(2*i),atom2[1])
+            END DO
+            PRINT *, temp
+        END IF
+    CONTAINS
+        INTEGER FUNCTION Fred ()
+            INTEGER :: Fred, n
+            DO n = 1,5
+                CALL ATOMIC_DEFINE(atom1[1],n)
+            END DO
+            Fred = 0
+         END INTEGER FUNCTION
+         INTEGER FUNCTION Joe ()
+            INTEGER :: Joe, n
+            DO n = 1,5
+                CALL ATOMIC_DEFINE(atom2[1],n)
+            END DO
+            Joe = 0
+        END INTEGER FUNCTION
+    END PROGRAM Function_Four
+
+There is no coherent question being asked about this example; however,
+the atomic references and definitions are in unordered segments, and
+therefore the interleaving thereof is processor dependent, and thus the
+output is processor dependent.
+
+It is further noted that this (processor-dependent output) occurs, and has
+occurred, in Fortran without any need for parallelism, but which has
+external file output within external functions referenced in the same
+expression.  This is not considered to be a problem.
+
+
+4. Impure Elemental Procedures
+
+15-185 notes
+  "7.2.1.5p2, 12.8.2p1 and 12.8.3p1 say that the values of the result and
+   INTENT(OUT) or INTENT(INOUT) arguments are the same as if the procedure
+   were called in array element order, but stop short of saying that the
+   procedure must be executed in that order."
+
+The procedure is inescapably executed in the same order as the order of
+invocation; this is determined by the sequence of execution rules.
+Impure procedure invocations are not permitted to be executed in
+parallel.
+
+15-185 further claims
+  "There is a further problem in that the restrictions on aliasing etc. in
+   12.5.2 are all in terms of the dummy arguments, and entities associated
+   with those dummy arguments (12.5.2.13 is a clear example).  For an
+   elemental procedure, the dummy arguments are scalar, but some people
+   believe that the rules were intended to apply to the array actual
+   argument.  That is definitely NOT what the normative words say."
+
+The normative words could be clearer.  However, in the elemental
+procedure reference
+   CALL esub(whatever)
+there is only one CALL statement, and therefore the entire actual
+argument "whatever" is associated with the dummy arguments of the
+elemental procedure invocations.  Thus the anti-aliasing rules apply.
+
+Even were this not the case, the standard does not provide an
+interpretation of a program with aliasing and therefore by clause 1 such a
+program is not conforming.
+
+Some words should be added to an appropriate place in the standard to make
+this easier to understand.
+
+5. Edits to 15-007r1
+
+[320:19] 12.8.1 Elemental procedure declaration and interface, p3,
+  Append
+    "An array actual argument is considered to be associated with the
+     scalar dummy arguments of the procedure throughout the entire
+     execution of the elemental reference; thus, the restrictions on
+     actions specified in 12.5.2.13 [\ref{D12:Restrictions on entities
+     associated with dummy arguments}] apply to the entirety of the
+     actual array argument."
+{Make the anti-aliasing rule application more explicit.}
+
+===END===

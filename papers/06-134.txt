@@ -1,0 +1,491 @@
+
+                                                          J3/06-134
+
+Date:        05-February-2006
+To:          J3
+From:        Bob Numrich
+Subject:     Simplification of the co-array proposal
+References:  Feature UK-001, J3/05-208, J3/05-272r2, J3/06-120 J3/06-121,
+             J3/06-122, J3/06-129, J3/06-130, J3/06-132
+
+The proposal for adding co-arrays to the language is becoming bloated.  Some
+features seem like good ideas but are not essential to the model.  John Reid
+and I proposed some of them in our 1998 report and the current proposal J3/06-122
+contains several new features.  In addition, several other papers
+(for example, J3/06-120, J3/06-121, J3/06-129, J3/06-130, J3/06-132) have suggested
+further extensions.  Many of these ideas seriously compromise the
+model's simplicity and may discourage vendors who want to implement it.
+
+The underlying philosophy of the co-array programming model is that it is
+simple to understand and simple to implement.  It deliberately makes the
+programmer responsible for data distribution, data communication, memory
+consistency, and explicit synchronization.  It is designed so that existing
+compilers and run-time systems can implement it with only minimal new
+technology.
+
+The co-array model is not a data-parallel model.  Co-array indices in a
+statement have nothing to do with which image executes the statement.
+
+Six basic features define the essence of the model:
+(1) a syntax for data distribution;  (2) a syntax for data communication;
+(3) a full barrier; (4) a partial barrier between pairs of images; (5) allocatable
+co-arrays; and (6) allocatable components of co-array derived types.  Although these
+features may not address every problem encountered in parallel applications, they
+cover a very large percentage of current practice.  We should be careful adding
+complicated features before we have solid implementations of the simple features
+and good evidence of what more is needed.
+
+The co-array model is a local model.  It is deliberately designed so
+that the compiler is not required to perform global optimization, is not
+expected to perform global optimization, and is in fact prevented from
+performing global optimization.  Adding anything to the model that requires
+the compiler to analyze global information (J3/06-121) destroys the local model,
+makes it difficult to implement, and deters the compiler from performing
+its more important responsibility for local optimization.
+
+Co-array syntax implies nothing about execution control.  It has been suggested,
+that statements containing an explicit co-array reference should somehow be
+"optimized" by the compiler (J3/06-130) so that some other image is responsible
+ for executing the statement.  It has also been suggested that procedures be 
+defined for creation and management of subsets of images (J3/06-121, J3/06-132) 
+so that the compiler can optimize predefined communication patterns.  Both 
+these ideas are antithetical to the co-array model.  They put too high a burden 
+on compiler technology that will defeat adoption of the model. 
+
+As it is, some of the simple features themselves may be difficult for vendors to
+implement.  Most systems have no fast barrier mechanism and none
+have a fast subset barrier mechanism.  Allocating co-arrays is a hard
+problem for many systems.  Allocating components of co-array derived types is
+an even harder problem.  Vendors need to focus on these simple problems first
+before they diffuse their efforts to even harder problems. 
+
+Looking at the totality of the edits in J3/06-122 has led me to ask J3
+(and WG5) to consider the following simplifications, which, by the way, produce a
+document approximately half the size of J3/06-122.
+
+1. Delete user-defined ordering constructs (8.5.5 in J3/06-122) and
+the SYNC_MEMORY statement.
+
+The SYNC_MEMORY function was part of the 1998 proposal
+(Report RAL-TR-1998-060) and was useful then since it provided a basic
+building block upon which other co-array features could be built. The
+situation changed with the addition of NOTIFY/WAIT (NOTIFY/QUERY in
+J3/06-122).
+
+SYNC_MEMORY is difficult to explain and programmers are likely to make errors
+using it.  The only examples for a user-defined order construct is a spin-loop,
+which waits for a co-array variable to change.  Implementing such spin-loops
+efficiently is likely to be a problem for many vendors.  Differences in
+implementation from vendor to vender may result in ticking time bombs that go
+off in unexpected ways.  It is difficult to understand or debug code using
+spin-loops because there is no way of knowing which image is expected to
+change the variable.
+
+The QUERY statement effectively spins internally and must be implemented
+correctly by each vendor.  The vendor only needs to concentrate on making
+the QUERY statement efficient.  The programmer should use it to write portable
+code.
+
+I have yet to see an example with a spin-loop that cannot be rewritten with
+greater clarity with NOTIFY/QUERY.  It is a strong claim to make that there is
+anything that requires a spin-loop that cannot be implemented any other way.
+
+Vendors may want to make spin-loops work as a nonstandard extension.  Let them 
+do so. We can monitor the benefits for future consideration.
+
+2. Delete the collective subroutines
+
+The collectives were added hastily in Delft and have changed significantly
+since then as the details have been worked out. This seems a good moment to
+check that we really do need them.
+
+The collectives in J3/06-122 are not as convenient to use as the
+corresponding transformational intrinsics. A note has been added as
+C.9a.2 to show how to sum all the elements of a co-array with a local
+mask. It offers no masking over the images. To add this would require
+the construction of an integer array containing the set of image indices,
+perhaps by repeated calls of IMAGE_INDEX.
+
+A further disadvantage is that the set of images that do the work has to
+be the same as the set of images that hold the data. One of the design
+objectives of co-array Fortran was to allow the separation of work from
+data storage.  Why shouldn't all images be able to sum over the second 
+co-dimension, for example?
+
+The collectives have been changed to subroutines rather than functions because
+there are side effects due to implicit synchronization in the procedures themselves.
+These procedures are more naturally defined as functions, for example, s=coSum(a),
+where the result can be used in expressions.  Furthermore, there is no reason to
+restrict the argument to a co-array variable.  I have found it very annoying to have
+to copy a non-co-array variable into a co-array variable before calling a reduction
+function.  This copy, if necessary, can be done internally inside the function.
+For example, look at the code samples in C.9a.2 of J3/06-122.
+ 
+These procedures belong initially in a support library not included as
+intrinsic procedures.  It puts too heavy a burden on the vendors.  It is
+unclear what we want them to do.  It is very easy for a programmer to
+write a procedure to perform a specific function for a specific type of
+co-array.  It is extremely difficult to write procedures for all possible
+types of co-arrays and all possible functions.  After we have had some experience
+with defining and using the support library, we can reconsider whether these
+procedures should be included as intrinsics.
+
+3.  It is not clear to me what the VOLATILE attribute should mean for
+co-array variables.  Do we want to say anything at all about the VOLATILE attribute
+for co-array variables?  What would they be used for?  What problem would they
+solve?  Does it require new compiler technology to implement?  Are they useful only
+for spin-loops?  Can VOLATILE be defined in such a way that spin-loops
+work without the need for sync_memory?  To me, a natural definition would be that
+any reference to or definition of a VOLATILE co-array variable forces the processor
+to flush memory, locally and remotely.  It essentially prevents compiler optimization
+and it forces co-arrays to be visible to other images.  Such a definition, however,
+is different from definitions in other languages that seem to care only
+about the right side of assignment statements but not the left side.  For co-array
+variable, both sides matter. 
+
+4.  There should be one statement that implements a full barrier for all
+images.  It should be called SYNC, or possibly BARRIER, with no arguments.
+The optional STAT= and ERRMSG= arguments are not useful and should be
+omitted.  The SYNC_IMAGES statement should be deleted.  It is redundant.
+Synchronization for a subset of images can be done with NOTIFY/QUERY.
+Synchronization using external synchronization procedures, such as
+MPI_BARRIER for example, should be non-conforming.  Calls to these
+external procedures should be replaced by the conforming SYNC statement.
+
+5.  I raise a cautionary flag about NOTIFY/QUERY, although I don't
+really know if there is a problem or not.  This feature was added in haste after
+the original 1998 report.  Although paper J3/06-122 contains examples of ways to
+use the NOTIFY/QUERY statements, I am uncertain that we have really defined them
+correctly. For example, should a NOTIFY be required to match a corresponding QUERY?
+Should there be a way to identify which NOTIFY is being matched by a given QUERY?
+Are they actually intended to provide the functionality we used to call 
+EVENTPOST/EVENTWAIT in other programming models?  Should there be something 
+like an event tag attached to NOTIFY/QUERY pairs?  Or should NOTIFY/QUERY be 
+attached to objects as in Java? I don't know the answers, but I am uneasy about 
+the questions.
+
+6.  We should be very careful about dictating the behavior of a
+parallel I/O system.  Following the basic philosophy of the co-array model,
+we should make the minimum changes required and no more.  The only problem
+seems to be the restriction that a program is allowed to execute the OPEN statement
+with the same unit number only once unless there is a intervening CLOSE statement.
+I suggest that the minimum change we need to make is to relax this restriction for
+direct access mode and use the the notation ACCESS=* to define a shared, direct
+access file.  An open statement without ACCESS=* connects the file to the image
+that invokes the statement and follows the normal rules.
+
+The only way to get parallel I/O is through direct access mode.  There is nothing 
+to be gained by allowing shared files with sequential access mode.  And there is 
+much to lose because vendors must alter their implementations of backspace, 
+rewind, endfile, and so forth, which do not apply to direct access files.
+
+I propose that we allow shared files only in direct access mode.  We alter the
+open statement so that the file descriptor is visible to all images in such a way
+that the implementation can handle it locally without sharing global tables if it
+wants to.  I suggest the syntax
+
+open(unit=,file=,access=*,recl=,...)
+
+All keywords must be identical on all images and there is an implicit synchronization
+for the open statement.  There is also an implicit synchronization for the 
+corresponding close statement.  It is not clear to me that there is any real 
+advantage connecting a file to a subset of images.  If there is an advantage,
+I suggest the syntax ACCESS=connectList(:) to specify the connected images.
+
+Standard input and standard output are special cases.  They are always
+connected to all images by default.  Only image one is allowed to read standard
+input.  All images are allowed to write to standard output, and the system is
+required to make sure the records from different images are not mixed together.
+
+7.  Delete all of Section 8.5.2 from J3/06-122.  The TEAM idea has assumed a 
+much larger importance than it deserves.  The programmer can easily form 
+teams without making TEAM a formal part of the extension.
+On the face of it, the TEAM idea seems to apply to the problem
+of coupling together different applications such as ocean and atmosphere
+models.  In practice, however, I have been unsuccessful in getting anyone
+in the weather or climate modeling community to buy into the idea.
+The co-array model was not intended to be a component architecture.  Trying
+to make it into one will not work.  New procedures for TEAM creation and TEAM 
+management have been suggested (J3/06-132).  Such suggestions do not fit the 
+basic philosophy for the co-array model that only the minimum required be 
+added to the language.  
+
+8.  Alternative program execution model
+
+The execution sequence on each image is as specified in 2.3.4.
+
+A.  Execution Model
+
+The following statements are called <<segment boundary statements>>.
+
+1.  Program
+2.  Sync
+3.  Notify([list])
+4.  Query([list] [,ready])
+5.  Allocate(x[*])
+6.  Deallocate(x)
+7.  Critical
+8.  End Critical
+9.  Open(unit=u,access=*)
+10. Close(u)
+11. End (procedure)
+12. Return (procedure)
+13. Stop
+14. End Program
+
+A <<segment>> is the sequence of statements between two segment boundary statements.
+The notation X:Y represents the segment between the two segment boundary
+statements X and Y.  A segment may be empty, and it need not contain any executable
+statements.
+  
+On each image, the processor executes the same program, which shall have the
+same Program statement and the same End Program statement.
+Each image executes independently of the others except possibly at certain
+segment boundary statements.
+
+The compiler may apply all normal optimization techniques within a segment.
+
+The processor must complete all memory references to co-arrays that occur
+in the sequence of statements that precede a segment boundary statement before
+performing whatever action is specified for the segment boundary statement.
+
+The actions performed by the processor at each segment boundary statement are
+as follows:
+
+1.  PROGRAM:  The processor immediately processes each statement following the
+Program statement according to the normal rules of Fortran.  
+
+2.  SYNC:  The processor suspends execution on each image until all
+images have encountered a SYNC.
+
+3.  NOTIFY[([list])]:  The processor notifies each image in the list that
+the invoking image has encountered a notify statement.  If the list is not
+present, the processor notifies all images.
+
+4.  QUERY[([list][,ready])]:  If the second argument is not present, the
+processor suspends execution until the invoking image has been notified by
+each image in the list at least as many times as it has invoked the query
+statement for that image.  The processor increases the count by one before  
+resuming execution.
+
+If the second argument is present, the processor determines whether the invoking
+image has been notified by each image in the list at least as many times as it
+has invoked the query statement for that image.  If that condition is satisfied,
+the processor increases the count by one and sets ready = .true. before
+resuming execution.  If that condition is not satisfied,
+the processor does not increase the count and sets ready = .false. before
+resuming execution.
+
+If the first argument is not present, the processor queries all images.
+
+The logical variable ready shall not be a co-array.
+
+5.  ALLOCATE: The processor allocates memory and then suspends execution
+on the invoking image until all images have encountered the same ALLOCATE
+statement and have allocated memory.  Size, shape and order of co-arrays
+involved in the allocate shall be the same on all images.
+
+6.  DEALLOCATE: The processor suspends execution on the invoking image until all
+images have encountered the same DEALLOCATE  statement and then deallocates
+memory.
+
+7.  CRITICAL:  The processor allows one and only one image at a time to pass
+the critical statment.
+
+8.  END CRITICAL:  The processor allows a new image to enter the critical
+region.
+
+9.  OPEN(unit=u,access=*):  The processor connects unit=u to all images in
+DIRECT ACCESS mode and suspends execution on the invoking image until all
+images have encountered the same OPEN statement.  All keywords shall be
+the same on all images.
+
+10.  CLOSE(u):    The processor suspends execution on the invoking image until
+all images have encountered the same CLOSE statement and then
+disconnects unit=u from all images.
+
+11.  END (procedure):  Same behavior as DEALLOCATE when there is an implicit
+deallocation of a co-array at the end of a procedure.
+
+12. RETURN (procedure):  Same behavior as DEALLOCATE when there is an implicit
+deallocation of a co-array at the end of a procedure.
+
+13. STOP:  All images stop execution whenever one image executes a STOP
+statement.
+
+14. END PROGRAM:  The processor performs all the activities implied by the
+normal rules for Fortran.
+
+B.  Program state
+
+As the program executes, each image is in one and only one segment at a time.
+That segment is the current segment for each image.  The current
+<<program state>> is the set of current segments on each image.  The current
+program state persists until at least one image crosses to
+a new segment.  The new program state becomes the current program state.
+
+C.  Memory consistency
+
+For any program state, if one image defines a co-array variable,
+no other image shall reference or define the same co-array variable.
+
+A segment W:X in Program State I and segment Y:Z in Program State J>=I are paired if
+execution of statement X on Image P changes Program State from I to I+1
+and allows execution of statement Z on Image Q to change Program State from J to J+1.
+Image Q, in Program State J+1, may reference a co-array variable defined by Image P,
+in Program State I<J+1, if and only if no image defines the variable for any possible
+Program State K with I<=K<=J.
+
+The programmer is responsible for avoiding memory race conditions for any possible
+sequence of program states as the program executes.
+
+D.  Example
+
+Consider the following program:
+
+Program NonConforming 
+    real :: a[*]
+    integer :: Iam
+        :
+     Iam = this_image
+     a = 0
+     sync
+     if (Iam==1)then
+         notify(2)  ! This statement should be after the next
+         a = 1
+     else if (Iam==2)then
+         query(1)
+         a[1] = a[1] + 1
+     end if
+     sync
+     if (Iam==1) write(*,*) a
+     sync
+end Program NonConforming 
+
+To see why this program is non-conforming, let
+
+P = PROGRAM
+S = SYNC
+N = NOTIFY
+Q = QUERY
+E = END PROGRAM
+     
+and let X:Y mean the segment between segment boundary statements X and Y.
+     
+Then as the program executes we have
+     
+     Program State      |   Image 1  |  Image 2
+----------------------- | ---------- | --------
+          0             |    P:S a=0 |   P:S a=0
+          1             |    S:N     |   S:Q
+          2             |    N:S a=1 |   Q:S  a[1]=a[1]+1
+          3             |S:S write a |   S:S
+          4             |    S:E     |   S:E
+
+The notation
+
+          0             |    P:S a=0 |   P:S a=0
+
+means that both Image 1 and Image 2 define the variable a=0 in program
+state 0 while they are both in their own segment P:S.  The notation
+
+          2             |    N:S a=1 |   Q:S  a[1]=a[1]+1
+
+means that in program state 2, Image 1 defines a=1 while in its segment N:S
+and Image 2 both references and defines a[1]=a[1]+1 while in its segment Q:S.
+The program is non-conforming in Program State 2 because we cannot predict,
+from run to run, what order the statements in that program state will execute
+on each iamge.
+
+On the other hand, the program conforms if we move the notify statement
+one line down:
+
+Program Conforming 
+    real :: a[*]
+    integer :: Iam
+        :
+     Iam = this_image
+     a = 0
+     sync
+     if (Iam==1)then
+         a = 1
+         notify(2)  ! This statement is now in the right place
+     else if (Iam==2)then
+         query(1)
+         a[1] = a[1] + 1
+     end if
+     sync
+     if (Iam==1) write(*,*) a
+     sync
+end Program Conforming 
+
+     Program State      |   Image 1  |  Image 2
+----------------------- | ---------- | --------
+          0             |    P:S a=0 |   P:S a=0
+          1             |    S:N a=1 |   S:Q
+          2             |    N:S     |   Q:S a[1]=a[1]+1
+          3             |S:S write a |   S:S
+          4             |    S:E     |   S:E
+
+The notation
+
+          1             |    S:N a=1 |   S:Q
+
+means that Image 1 defines a=1 while the program is in program state 1
+with Image 1 in its segment S:N and Image 2 in its segment S:Q.  When
+Image 1 executes its NOTIFY, both images move to their next segment:  Image 1
+goes to its segment N:S and Image 2 goes to its segment Q:S.  Now it is
+safe for Image 2 to reference and define a[1].  The notation
+
+          2             |    N:S     |   Q:S  a[1]=a[1]+1
+
+means that Image 2 executes a[1]=a[1]+1 while the program is in
+program state 2 and Image 2 is in its segment Q:S while Image 1 is in its
+segment N:S.
+
+Segment S:N for Image 1 in Program State 1 is paired with segment S:Q for Image 2
+in the same Program State 1.  Image 1, and only Image 1, defines variable a=1 in State 1.
+Execution of the NOTIFY statement by Image 1 at the end of its segment S:N allows
+Image 2 to resume execution beyond the QUERY statement at the end of its paired segment S:Q.
+The program state changes from State 1 to State 2.  Since no other image defines the
+variable in either State 1 or State 2, Image 2 may reference the value defined by
+Image 1 and may define a new value in the memory of Image 1.
+  
+
+If for some reason Image 2 does not immediately resume execution past its QUERY statement,
+for example, it has been interrupted, Image 1 may carry on to other segments of its own
+that change the program state.  For example, it may notify other images:
+ 
+     Program State      |   Image 1  |  Image 2
+----------------------- | ---------- | --------
+          0             |    P:S a=0 |   P:S a=0
+          1             |    S:N a=1 |   S:Q
+          2             |    N:N     |   S:Q
+          3             |    N:N     |   S:Q
+          4             |    N:N     |   S:Q
+          5             |    N:S     |   Q:S a[1]=a[1]+1
+          6             |S:S write a |   S:S
+          7             |    S:E     |   S:E
+
+No image may define the co-array variable a[1] on Image 1 for any of the Prgoram
+States 2,3, or 4.
+
+
+9.  Remove constraint C541 (R510 and 510a) in J3/06-122: The sum of the rank 
+and co-rank shall not exceed fifteen.
+
+This constraint violates one of the basic principles of the co-array model:  
+the rules for co-dimensions are the same rules as for normal dimensions unless 
+there is a compelling reason to make them different.  For example, the rule 
+that omitting the co-dimension defaults to the local variable is different 
+from the rule that omitting a normal dimension defaults to the entire array.  
+The compelling reason for this difference is that the overwhelming use of 
+co-array variables in a program will be for local variables.  The programmer 
+should not be forced to write a[this_image] for every local variable or, 
+worse yet, to write a[me], which forces the compiler to perform analysis to
+figure out if the reference is local or to give up performance by assuming 
+that it might be remote. 
+
+There is no compelling reason to restrict the number of co-dimensions to less 
+than 15 just as the normal dimensions are not restricted to less than 15.  
+It adds a new rule to the language with no benefit.

@@ -1,0 +1,398 @@
+To: J3                                                   12-136r2
+From: Bill Long
+Subject: Coarray TS features
+Date: 2012 February 17
+References: 09-184, 11-256r2, N1858, N1906
+
+
+Summary:
+=======
+
+Proposal 11 in 11-256r2 concerns the overall scope of the proposed
+Technical Specification for Fortran Coarray extensions.  The consensus
+of J3 is that the scope should be limited. This recommendation is in
+keeping with the general purpose of a TS, which is to address
+circumstances "when there is an urgent market requirement for such
+documents".
+
+Of the remaining 10 Proposals in 11-256r2, these features, as
+described in this paper, are recommended by J3 for inclusion in the TS
+in this order of priority, assuming no serious technical flaw is
+found:
+
+1) Teams
+2) Collectives
+3) Atomic Operations
+4) Synchronization using events
+5) Parallel I/O
+
+J3 recommends that these features from 11-256r1 not be included in the
+TS.
+
+6) Remove restrictions on coarray components
+7) THIS_IMAGE(X) be scalar if X has corank 1
+8) Global pointers / Copointers
+9) Asymmetric allocatable and pointer objects
+10) Predicated copy_async intrinsic
+
+Beyond the Proposals in 11-256r1, no other features are recommended.
+
+
+Feature Descriptions:
+=====================
+
+Feature 1: Teams
+----------------
+
+Teams provide a capability to restrict the image set of remote memory
+references, coarray allocations, and synchronizations to a subset of
+all the images of the program.  This simplifies code for some
+applications that involve segregated activities (parts of a climate
+model, for example). Teams also provide a mechanism for limiting
+activity to a subset of the computer system that might result in
+better performance within the team (such as within a local SMP
+domain.)
+
+The simplest form of a team feature, as described in N1858, is not
+adequate. A richer form of teams is proposed with these
+characteristics:
+
+- A team of all images exists at the beginning of program execution.
+
+- An image is always a member of some team, and a member of only one
+  team at a time.
+
+- Team variables, of type TEAM_TYPE (defined in ISO_FORTRAN_ENV), are
+  used to identify new teams. The type has one public component with
+  its value equal to the number of images in the team.
+
+- New teams can be formed with a new statement (SPLIT TEAM, or FORM
+  TEAM) that defines the specified teams. The aggregate number of
+  images in the teams shall equal the number of images in the current
+  team. The new teams are composed of images with consecutive image
+  numbers in the current team. A team variable cannot be defined other
+  than by execution of the statement used to form teams.
+
+- A construct is provided to specify a new current team for the
+  executing image. Possibilities are a WITH TEAM ... END WITH TEAM
+  construct, or a SELECT TEAM ... END SELECT construct. Execution
+  within the construct is on the context of the specified team.  Image
+  numbers are relative to the team, starting at 1 and ending with the
+  number of images in the team. Collective activities, such as SYNC
+  ALL, allocation and deallocation of coarrays, collective subroutine
+  execution, and inquiry intrinsics such as THIS_IMAGE and NUM_IMAGES
+  are relative to the team.  All coarrays (including those with the
+  SAVE attribute) allocated during execution of the construct shall be
+  deallocated before execution of the construct completes.  When
+  execution of the construct completes, the current team reverts to
+  its previous value.
+
+- Access to variables on images outside the current team is not
+  permitted.
+
+The feature will require significant revision of the text in the
+standard, but the capabilities are sufficiently useful to justify the
+effort.
+
+
+Feature 2: Collectives
+----------------------
+
+Collective subroutines offer the possibility of substantially more
+efficient execution of reduction operations than would be possible by
+non-expert programmers. Corresponding routines are widely used in MPI
+programs.  This feature has been the most widely requested in the
+discussion of coarrays.
+
+
+Intrinsic Collective subroutines:
+
+CO_SUM
+CO_MAX
+CO_MIN
+CO_BROADCAST
+CO_REDUCE
+
+See 11-193 for detailed descriptions of these subroutines. If Feature
+1 (Teams) is accepted, the collective subroutines would not have a
+team argument.  Instead, the collective operation is done by the
+members of the current team.  If there is no form of teams
+implemented, a different method to specify a subset of the images is
+needed. An array specifying the list of images, similar to the array
+used for specifying an image list for SYNC IMAGES, should be
+considered.
+
+
+Feature 3:  Atomic operations
+-----------------------------
+
+Intrinsic subroutines implementing atomic memory operations provide
+the capability to write simple and efficient code for several common
+operations used in parallel programs.  These capabilities are provided
+in other parallel programming models and have been available as
+extensions in some Fortran implementations (though with different
+syntax). A standard specification would improve the prospects for code
+portability.
+
+All of the proposed subroutines are intrinsic atomic subroutines,
+expanding the Fortran 2008 list of ATOMIC_DEFINE and ATOMIC_REF.
+Paper 09-184 provides a detailed description of ATOMIC_CAS. The other
+routines have similar semantics. The ATOM argument is atomically
+modified, based on the other arguments. If an optional OLD argument is
+present, it is assigned the value of ATOM immediately before the
+specified operation is performed.
+
+New Intrinsic Atomic subroutines:
+
+ATOMIC_CAS (ATOM, OLD, COMPARE, NEW)  ! Compare-and-swap
+ATOMIC_ADD (ATOM, VALUE [,OLD])       ! Atomic integer add
+ATOMIC_AND (ATOM, VALUE [,OLD])       ! Atomic bitwise AND
+ATOMIC_OR  (ATOM, VALUE [,OLD])       ! Atomic bitwise OR
+ATOMIC_XOR (ATOM, VALUE [,OLD])       ! Atomic bitwise exclusive OR
+ATOMIC_SWAP (ATOM, VALUE)             ! Atomic swap
+ATOMIC_AX   (ATOM, MASK, VALUE [,OLD])! Atomic bitwise and-xor
+
+The atomic and-xor operation replaces ATOM with
+ieor(iand(ATOM,MASK),VALUE). The atomic and-xor operation also
+provides the capability to perform atomic definitions of a subset of
+the bits of ATOM.
+
+Integrating this feature into the Fortran standard should be
+straightforward. New intrinsic procedures are added. Implications for
+the memory model semantics are already specified for execution of an
+atomic subroutine.
+
+
+Feature 4: Synchronization using events
+---------------------------------------
+
+Events provide a capability for an image to signal (an)other image(s)
+which can then detect that the event has been posted. This replaces the
+NOTIFY/QUERY feature of N1858. It is superior to the old feature
+because the events are associated with user variables, so multiple events
+can exist for an image, and a library routine could establish events
+internally that would not interfere with notifications that might be
+occurring on an image separate from the library code.
+
+Terminology:
+
+An "event" is an abstraction of an issue of common interest to two or
+more images that is supposed to "occur" at a moment the "interested"
+images are "active".
+
+An image can "post" notification of the occurrence of an event to
+other image(s).
+An image can "query" for notification of the occurrence of an event, or
+it can "wait" for the notification of its occurrence.
+
+Functionality offered:
+
+1. An image can notify other image(s) of the occurrence of an event.
+2. An image can query the status of the event or wait for it to
+   be notified.
+3. Allow multiple images to wait/query for the notification of a single event.
+   On waiting, one of them will quit waiting when notified.
+
+Syntax:
+
+EVENT POST  (EVENT)       ! Post notification of the occurrence of EVENT
+EVENT QUERY (EVENT,STATE) ! Query whether EVENT has occurred or not
+EVENT WAIT  (EVENT)       ! Wait for notification on EVENT having occurred
+
+Semantics:
+
+EVENT is a data item accessible on all images interested in being
+notified of the occurrence of the associated event.
+
+EVENT is established as being a data item describing an event by the
+execution of EVENT POST on the image that wants to signal the
+occurrence of EVENT and by EVENT QUERY or EVENT WAIT on the image(s)
+that want to query or wait for EVENT to have occurred.
+
+Challenges/Questions:
+
+1. It is an open question whether it is necessary to have a separate type
+   for EVENTs; A scalar coarray of type integer might be sufficient.
+
+2. Should definition of an event variable be prohibited other than by
+   execution of EVENT POST or EVENT WAIT statements?
+
+3. Another open question is how we specify that EVENT should start being
+   "cleared", i.e., that the associated event hasn't occurred yet.
+
+   1. and 2. are decided/solved by defining a derived type for EVENT
+   with a default initializer that sets it "cleared".
+
+4. The following has to be translated to standardese to prevent illogical
+   programs from being valid:
+
+   The dynamical scope of EVENT must be such that it "exists" before,
+   during and after all NOTIFY's and WAIT's/QUERY's on it are/have been
+   processed.
+
+5. The following syntax is proposed for (non-)local access to EVENT:
+
+   POST(EVENT   ) Notification on the local EVENT variable.
+   POST(EVENT[n]) Notification on image n in the current TEAM.
+   POST(EVENT[*]) Notification on all images in the current TEAM.
+
+   QUERY/WAIT(EVENT) will likely refer to the local variable, as that
+   is more efficient.
+
+
+Feature 5: Parallel I/O
+-----------------------
+
+The purpose of the proposed parallel I/O feature is to allow
+multiple images to access the same file.
+
+This proposal extends the OPEN statement to allow a file to be
+connected to a collection of images.  If teams are available,
+a TEAM= specifier that takes the values YES or NO is added to
+the OPEN statement.  If the TEAM= specifier appears and its
+value is YES, the current team becomes the connect team for the
+unit; otherwise, the file is connected for the current image
+only.  If the teams proposal is not adopted, a new specifier,
+possibly IMAGES=, is added to specify the connect team for the
+unit.
+
+The unit number specified in the OPEN statement references the same
+file on all images in the connect team.  All images in a connect team
+shall execute an OPEN statement with the same unit number and
+connect-specs except for the ERR=, IOMSG=, IOSTAT=, and NEWUNIT=
+specifiers.  The OPEN statement acts as an implicit image
+synchronization for the images in the connect team.
+
+Files connected for parallel I/O shall be opened for direct-
+access only.
+
+If an image executes a CLOSE statement on a unit, all images in
+the unit's connect team shall close the unit with the same file
+disposition.  The CLOSE statement performs a implicit image
+synchronization for the images in the connect team.
+
+The FLUSH statement shall make data written to an external unit by the
+executing image available to all other images in the unit's connect
+team which execute a FLUSH statement for that unit in a subsequent
+segment.
+
+If teams are available, a TEAM= specifier will be added to the
+INQUIRE statement.  If the teams proposal is not adopted, a new
+specifier, possibly IMAGES=, will be added instead.
+
+The NEXT_REC= specifier in an INQUIRE statement executed in an
+image will be assigned the value n + 1, where n is the record
+number of the last record read or written by the image.
+
+J3 recommends against allowing parallel I/O for access methods
+other than direct-access.
+
+Questions:
+
+1) It is necessary that the CLOSE statement include synchronization?
+
+2) Can the same file be opened by more than one team?
+
+
+Feature 6: Removing restrictions on coarray components
+------------------------------------------------------
+
+The current restrictions on coarray components result in a poor
+integration of coarrays with the object oriented programming features
+of Fortran.
+
+The restriction in C432 that a coarray component cannot be added to a
+type through type extension unless the parent type has a coarray
+component limits the use of coarray components. It would prohibit
+using a base type that had no components from ever having a coarray
+component added, for example.
+
+The restriction in C444 that the parent of a coarray component cannot
+be a coarray limited the declaration of some variables as a coarray.
+
+However, there were reasons for these restrictions. For example, in
+the code fragment
+
+! The definition of type t does not include a coarray component
+
+class(t),allocatable :: x
+class(t) :: y
+
+x = y  
+
+! which is equivalent to 
+! deallocate(x)
+! allocate(x, source=y)
+
+may or may not involve synchronization depending on whether the
+dynamic type of t is one that has a coarray. With that possibility a
+code section would need to be called on all images of the current team
+to avoid deadlock in the case of a coarray component. If the user
+needs to add coarray components, the original parent type could
+include an allocatable coarray scalar, avoiding the problems here.
+
+The possible problems with the feature outweigh the possible benefits.
+
+
+Feature 7: THIS_IMAGE(X) be scalar if X has corank 1 
+----------------------------------------------------
+
+The function this_image should allow a scalar return value for coarray
+arguments with just one codimension as:
+
+	integer :: me
+	real    :: x[*]
+	me = this_image(x)
+
+As concluded in 11-251r1, this is not accepted since it would be
+inconsistent with the characteristics of similar intrinsics.  The
+functionality is available as
+
+	this_image(x, 1)
+
+
+Feature 8: Global pointers / Copointers
+---------------------------------------
+
+Some algorithms involve large data structures, such as graphs or
+linked lists, that span many images. These codes would benefit from a
+pointer-like object for which a remote target is allowed.
+
+Copointers provide a mechanism for associating a pointer with a target
+on a different image. Association is allowed with a local target or a
+coindexed target. Like ordinary pointers, copointer assignment to
+another copointer results in association with the target of the other
+copointer.  A method is provided to determine the image number of the
+target of a copointer.  Copointer references include an empty [] to
+signal a potentially remote reference. Copointers are allowed as
+components. If the parent object is a coarray, it is possible to
+associate a remote copointer with a target.
+
+The interaction of copointers with the existing memory model is
+nontrivial. In the context of teams the status of copointers would be
+difficult to determine if the target was on an image that is no longer
+part of the current team.  Significant revision of the standard would
+be needed to accommodate what is fundamentally a new data concept. The
+cost of this feature is too high to justify for a TS.
+
+
+Feature 9: Asymmetric allocatable and pointer objects
+-----------------------------------------------------
+
+If the teams feature is adopted, this feature is less important since
+allocation is done only on images of the current team. It is also
+possible to have different size allocations on different images by
+employing components of coarray structures.
+
+The potential usefulness of this feature is not high enough for the
+amount of implementation work required.
+
+
+Feature 10: Predicated copy_async intrinsic
+-------------------------------------------
+
+This feature is inconsistent with the basic design of coarrays that
+provides for definition and reference of variables on different images
+using simple syntax.  In many of the cases where this might be used, a
+compiler could perform comparable optimization anyway.
+

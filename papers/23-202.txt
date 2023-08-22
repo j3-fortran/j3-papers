@@ -1,0 +1,227 @@
+To: J3                                                     J3/23-202
+From: Aleksandar Donev & Generics
+Subject: Packaging long argument lists of templates
+Date: 2023-June-14
+
+1. Background
+=============
+
+This paper relates to one of the unresolved technical issues (UTIs) in the
+current generic programming proposal.
+
+We are all familiar with Fortran 77 procedures with very long lists of
+arguments, and how error prone and tedious in typing it is to call them
+correctly with the right number of arguments and in the right order. Cut
+and paste are commonly used, but errors are very hard to catch since a
+code may compile even if there are swapped arguments, for example, and the
+error can then be cut and paste many times. Fortran 90 solves this problem
+by allowing one to package multiple parameters into a derived type, which
+acts as a container that can store multiple related variables/parameters.
+Only a single scalar argument of that derived type needs to be passed by
+the user. Default values for many parameters can be specified as
+initializations of variables inside the derived type definition. This
+further avoids using long lists of default arguments.
+
+2. The Problem
+==============
+
+The same situation that happens for procedure argument lists happens for
+template arguments in INSTANTIATE statements in the current proposal for
+generic programming. There is no mechanism to package a set of types and a
+set of operations acting on those types into a unit that can then be
+passed as an argument when instantiating templates. Such a unit has been
+referred to by others as a signature (taken from Ada's rationale/textbook)
+or witness.
+
+We believe the lack of ability to encapsulate long argument lists in the
+current design is a shortcoming, but one that is difficult to resolve.
+This paper proposes to learn from Ada 2005/2012 in exploring solutions.
+
+3. Rejected Solution: TBPs
+==========================
+
+It is worth noting that the object-oriented features of F2003 allow a type
+to be used as a mechanism to package a type along with operations as
+type-bound procedures. This mechanism is not available in templates in the
+current proposal since there is no way to even have CLASS(T) in a
+template, where T is a deferred type.
+
+However, there are some deficiencies with using TBPs to package procedures
+acting on objects of a given set of types. Most importantly, every use of
+a given template that relies on TBPs will require extending a specific
+type, which will require writing wrapper types, but can be hard or
+impossible to combine with existing type hierarchies since we do not have
+multiple inheritance in Fortran. The solution proposed below can in some
+sense be seen as an alternative to multiple inheritance, and is similar to
+the way interfaces are used in Java or other languages as an alternative
+to C++'s multiple inheritance.
+
+4. Signatures in Ada 2005
+=========================
+
+The Ada community was aware of this issue when they added generic
+programming features to Ada 2005, and has already developed a solution.
+It is therefore worthwhile to first briefly discuss signatures in Ada
+as per the Ada rationale.
+
+In Ada, generic programming is done via generic packages, which can be
+thought of as generic (parameterized) modules. In Ada, requirements,
+templates, and signatures are all just (generic) packages, instead of
+being three different features. This is flexible but can make the
+code hard to read and understand.
+
+5. Proposal
+===========
+
+We propose that subgroup explores solutions to managing long lists of
+template and requirement arguments.
+
+One of the examples in the Ada rationale is taken from scientific
+computing and is relevant for Fortran.
+The basic idea in Ada is that packages can be parameters of packages. This
+way, one can pass to a generic complex vector package a package that
+implements a generic complex type and a package that implements generic
+vectors of type R, to produce an implementation of a generic complex
+vector. In the proposal below, this means that TEMPLATEs can have
+SATISFACTIONs as arguments. Key to safety is to have a mechanism that
+ensures that the signatures for the complex type and the vector are based
+on the same type, R (typically real).
+
+A possible approach for Fortran would be to introduce a new concept
+that is inspired by signatures/witnesses from other languages.
+A name for the new feature could be SATISFACTION, as in a satisfaction
+of a named requirement.
+
+Instead of trying to write a detailed specification or syntax, an
+illustration inspired by the example in the Ada rationale is provided.
+
+! ==============================================
+module basic_requirements
+
+   requirement ComplexNumber(R,C,cabs)
+      type, deferred :: R ! Type typically a real number
+      type, deferred :: C ! Type typically a complex number
+
+      elemental function cabs(number)
+         type(C), intent(in) :: number
+         type(R) :: cabs
+      end function
+
+   end requirement
+
+   requirement RealArrayOps(R,norm)
+      type, deferred :: R  ! Type typically a real number
+
+      function norm(vec) ! Norm of a vector
+         type(R), dimension(..), intent(in) :: vec
+         type(R) :: norm
+      end function
+
+   end requirement
+
+end module basic_requirements
+! ==============================================
+
+We want to write a template that provides a vector of complex numbers
+by combining a package defining a type corresponding to a "complex"
+number with a package defining a vector of numbers:
+
+! ==============================================
+module complex_vectors
+use basic_requirements
+
+template ComplexVector(Complex,ArrayOps)
+
+   ! Complex satisfies the ComplexNumber REQUIREMENT
+   SATISFACTION :: Complex = ComplexNumber
+
+   ! This brings the names from ComplexNumber into scope
+   import Complex, only: R, C, cabs
+
+   SATISFACTION :: ArrayOps = RealArrayOps
+
+   ! Need to specify that the types, R, from both satisfactions
+   ! must be the same type
+   requires same_type(ArrayOps%R, R) ! not currently supported
+
+contains
+
+   function norm(vec) result(norm) ! Norm of a complex vector
+      type(C), dimension(..), intent(in) :: vec
+      type(R) :: norm
+
+      norm=ArrayOps%norm(cabs(vec))
+
+   end function
+
+end template ComplexVector
+end module complex_vectors
+! ==============================================
+
+Before we instantiate this template we must provide some implementations
+of the types R and C, and the procedures cabs and norm. Here we use
+default reals for R, and make C use a polar representation:
+
+! ==============================================
+module basic_implementations
+
+   template PolarComplex(wp)
+      integer, constant :: wp ! Working precision
+
+      type :: PolarComplex
+         real(wp) :: r=0.0_wp, theta=0.0_wp
+      end type
+
+   contains
+
+      elemental function cabs(number)
+         type(PolarComplex), intent(in) :: number
+         real(wp) :: cabs
+
+         cabs=number%r
+      end function
+
+   end template
+
+   template IntrinsicRealArrayOps(wp)
+      integer, constant :: wp ! Working precision
+   contains
+      function norm(vec)
+         real(wp), dimension(..), intent(in) :: vec
+         real(wp) :: norm
+         add = sqrt(sum([vec]**2)) ! L2 norm via intrinsic sum
+      end function
+   end template
+
+end module basic_implementations
+! ==============================================
+
+Finally, let us use the template ComplexVector in practice:
+
+! ==============================================
+program polar_vector
+   use basic_requirements
+   use basic_implementations
+   use complex_vectors
+
+   integer, parameter :: sp=kind(0.0), dp=kind(0.0d0)
+   integer, parameter :: wp=dp ! Choose what precision we want to use
+
+   instantiate PolarComplex(wp)
+   instantiate IntrinsicRealArrayOps(wp)
+
+   ! create packaging of types and operations:
+   SATISFACTION :: Complex=ComplexNumber(real(wp), PolarComplex, cabs)
+   SATISFACTION :: Vector=RealArrayOps(real(wp), norm)
+
+   ! combine two packages together into a new one
+   instantiate ComplexVector(Complex, Vector), only: cvnorm => norm
+
+   type(PolarComplex) :: array(10)
+
+   write(*,*) cvnorm(array)
+
+end program polar_vector
+! ==============================================
+
+

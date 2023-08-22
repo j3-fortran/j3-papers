@@ -1,0 +1,86 @@
+From: R. Bader
+To: J3
+Subject: Loosening a restriction in use of submodules
+Date: 2008 April 19
+
+Clause 11.2.2 Paragraph 1 [p268] of 08-007r2 says that
+"a submodule shall not reference its ancestor module
+by use association, directly or indirectly".
+The reason given for this is that all entities are accessible by
+host association anyway. As a consequence of this rule,
+the following code is not standard conforming:
+
+module mod_a
+ type :: a
+   private
+   integer :: i
+ end type
+ interface
+   module subroutine f_a(this, that)
+     type(a) :: this
+     class(*), pointer :: that
+   end subroutine
+ end interface
+end module
+
+module mod_b
+ use mod_a
+ type :: b
+   type(a), pointer :: a => null()
+ end type
+contains
+ subroutine f_b(this, that)
+   type(b), intent(inout) :: this
+   type(a), intent(in), pointer :: that
+   this%a => that
+ end subroutine
+end module
+
+submodule(mod_a) imp_f_a
+ use mod_b, only : b, f_b
+contains
+ module procedure f_a
+   this%i = 1
+   select type (that)
+   type is (b)
+     call f_b(that, this)
+   end select
+ end procedure
+end submodule
+
+
+Based on an e-mail discussion with Bill Long,
+the request is to replace
+the above restriction by the following:
+
+"a submodule shall not reference any entity
+from its ancestor module by use association,
+directly or indirectly."
+
+Rationale:
+1. The above is a commonly occurring programming pattern;
+  note in particular that due to the access restriction
+  on the components of type "a" it is not possible
+  to have imp_f_a as a submodule of mod_b.
+2. No implementation problems should result, since there
+  would not be any conflicts between use and host association
+  for any individual entity,
+  and thus no need for rules to resolve such conflicts.
+3. There appear to be no principal problems with separate compilation;
+  the situation is in this respect analogous to having a module mod_c
+  referencing both mod_a and mod_b by use association. Under the
+  compilation schemes known to me it would be necessary to either have
+  mod_a, mod_b, and imp_f_a in separate files, or to have them in a
+  single file in the order mod_a - mod_b - imp_f_a.
+
+In the above example, specification of the ONLY clause would make
+the code valid under assumption of the above change. Alternatively,
+a blanket PRIVATE could be inserted in mod_b, thereby preventing
+any access to entities from mod_a via indirect use association.
+
+The loosened restriction does place the onus on the compiler to be
+able to detect simultaneous host and use references
+on a per-entity basis whenever a submodule is compiled,
+and to possibly reject any code which happens to do this.
+
+

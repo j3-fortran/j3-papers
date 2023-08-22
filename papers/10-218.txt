@@ -1,0 +1,161 @@
+                                                            J3/10-218
+To: J3
+From: Malcolm Cohen
+Subject: TR: Technical Exposition Problems
+Date: 2010 October 07
+
+
+1. Introduction
+
+This paper discusses various wording issues in 10-165r2, some of which rise
+to the level of technical problems.  It is unclear whether resolving these
+leads to any change in technical content.
+
+No attempt has been made to check to see whether other papers modify the
+wording in these places.
+
+
+2. Problem 1: Functions
+
+5.2.6.1 [11:3] starts with
+  "Eight functions are provided for use in C functions."
+However, I only count 5 functions.
+
+What are the other three?  I assume they don't exist any more.
+
+
+3. Problem 2: Descriptors "for" allocatables
+
+(a) Contradiction.
+
+The last sentence of [12:31-33] is contradictory: it first says that X
+(the base address in the C descriptor for an allocatable object)
+may be initialized to NULL, and then says X shall be modified only by
+CFI_allocate or CFI_deallocate.  Initialization modifies the value
+(from undefined to NULL in this case).
+
+It is also confusingly phrased: X may be initialized, but "X's value"
+cannot be modified.
+
+(b) Technical flaw 1
+
+According to 5.2.6.2, CFI_allocate can only be used on a C descriptor
+with a base address that is NULL.  Therefore, if a "C descriptor for an
+allocatable object" is not initialized to NULL, so that it's base address
+is undefined, the descriptor cannot validly later be modified since the
+rule in [12:31-33] prohibits modification other than via CFI_allocate or
+CFI_deallocate, and neither CFI_allocate nor CFI_deallocate accept a
+descriptor with an undefined base address.
+
+(c) Technical flaw 2
+
+Since initialization only occurs in the declarator (see C99:6.7.8), and the
+fields of CFI_desc_t don't appear in any set order, initialization is
+impossible.  Maybe I missed it, but surely there ought to be some
+initialization function or macro provided, at least for convenience?
+
+(d) Technical flaw 3
+
+Taking the words at [12:31-33] to mean X can be initialized and X can be
+subsequently modified only by CFI_allocate and CFI_deallocate, there is a
+problem if you pass the CFI_desc_t to a Fortran routine that attempts to
+ALLOCATE, DEALLOCATE, or MOVE_ALLOC it, since that would modify the
+CFI_desc_t other than by CFI_allocate or CFI_deallocate.
+
+(e) Vagarity: What does "for" mean?
+
+That is, what does "C descriptor for an allocatable object" mean?
+
+Obvious possibilities are:
+(i)  CFI_desc_t with attribute==CFI_attribute_allocatable;
+(ii) CFI_desc_t currently associated with (or "specifies") an
+     allocatable object;
+(iii) CFI_desc_t that will be associated with, or will specify,
+      an allocatable object.
+
+Together with (b) above, this renders invalid most code that attempts to
+use CFI_desc_t to describe an allocatable object.
+
+(f) Discussion
+
+It seems that these words (5.2.6.2 and 5.2.7) need reconsideration.
+Edits to correct the problems are deferred pending discussion.
+
+
+4. Problem 3: Annex 2 confusing and wrong
+
+(a) unclear terminology
+
+A.2p1 [17:18-21], sentence 2 uses "implementation below" to mean "example",
+but sentence 3 uses "C implementation" to mean ... what, exactly?  Possibly
+to mean "procedure".
+
+The word "implementation" in the Foreword to mean "Fortran processor".
+I think.  Anyway, it is certainly a poor choice of word to mean example.
+
+The use of passive form in the third sentence makes it sound like this is
+some kind of general observation.
+
+I don't know what a "two-dimension" array is.
+
+The C code doesn't accept all 2D integer arrays, only INTEGER(C_INT) ones.
+
+This all needs to be rewritten to be simpler.
+
+(b) example incorrect
+
+The interface in Fortran specifies a default real result, but the
+definition in C specifies an INTEGER(C_INT) result.
+
+The C function returns an error code if all arguments are "int", and
+continues processing if any argument is not an int.
+
+The C function returns an error code if all arguments are rank 2, and
+continues processing if any argument is not of rank 2.
+
+The C function returns an error code if all arguments have the same shape,
+and continues processing if the arguments have different shapes.
+
+The multi-line C statements are unbalanced (that's not an error, but it is
+certainly a very individual style).
+
+Personally I prefer also not to put spaces around "==" and "!=", so that
+the spacing indicates the priority, but I did not include edits for that.
+
+
+5. Edits to 10-165r2 for problems 1 and 3.
+
+[11:3] "Eight" -> "Five".
+
+[17:18] "This example" -> "The example shown below".
+
+[17:19-21] Replace entirely.
+  "The Fortran interface of \cf{elemental_mult} will accept arguments of
+   any type and rank.  However, the C function will return an error code if
+   any argument is not a two-dimensional \cf{int} array.  Note that the
+   arguments are permitted to be array sections, so the C function does not
+   assume that any argument is contiguous."
+{I used \cf{int} instead of INTEGER(C_INT) for brevity.  Either is fine.
+ Plain "integer" is not.}
+
+[17:25+] Insert new lines
+  "use iso_c_binding
+   integer(c_int) err".
+
+[17:30] Replace with "The definition of the C function is:".
+
+[17:46-47] Change all "==" to "!=", and both "&&" to "||".
+{Return error on error, not on ok.}
+
+[17:46-47] Rebalance these two lines, so we get
+  "    if (a_desc->type!=CFI_type_int || b_desc->type!=CFI_type_int ||
+           c_desc->type!=CFI_type_int) {".
+{This edit is optional but recommended.}
+
+[18:3] Change all "==" to "!=" and "&&" to "!=".
+{Return error on error, not on ok.}
+
+[18:11,12] Change all "==" to "!=" and "&&" to "!=".
+{Return error on error, not on ok.}
+
+===END===

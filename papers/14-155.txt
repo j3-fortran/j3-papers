@@ -1,0 +1,95 @@
+To:      J3                                           J3/14-155
+From:    John Reid
+Subject: IMAGE_FAILED intrinsic
+Date: 2014 May 25
+References: N2007, N2013
+
+Discussion
+----------
+
+While looking at the examples in A, I came to the conclusion that there
+should be a way to inquire about a single image. Writing
+  if ( ANY ( FAILED_IMAGES() == i ) ) then
+seems very clumsy. I have recently realized that alternative is
+   CALL EVENT_QUERY(submit[i],count,STAT=status)
+   if (status==STAT_FAILED_IMAGE) then
+but this too seems like a bodge. It would be better to be able to
+express what is wanted directly.
+
+Malcolm Cohen has suggested using an elemental function so that there
+is a very simple mechanism for testing a set of images. This seems
+more attractive than adding extra optional arguments to FAILED_IMAGES.
+
+Malcolm Cohen has also suggested that FAILED_IMAGES should
+
+(1) talk about the number of images "known by the invoking image as having
+failed", otherwise this has to return the same results on all images,
+even ones in different teams which cannot know this fact without either
+substantial "image failure handling and propagation" machinery (which I
+think unlikely to exist) or similar; and
+
+(2) say that after an image control statement that returned a
+STAT_FAILED_IMAGE result, the return value includes the index of at
+least one image in the set of images being communicated with (and that
+failed).  I think that perhaps it should not be required to return the
+indices of all the images that have failed since the communications
+protocol is likely to return STAT_FAILED_IMAGE as soon as one image has
+failed rather than wait to see if there are more that have failed.
+
+Corresponding edits to FAILED_IMAGES are included here.
+
+Edits to N2007:
+---------------
+
+[17:5] After "GET_TEAM," add "IMAGE_FAILED,".
+
+[24:14] Change "failed images in the specified team" to
+"images in the specified team that are known by the invoking image to
+have failed".
+
+[24:16] Change "failed images" to "known failed images".
+
+[24:17] Append "If the executing image has previously executed an image
+control statement whose STAT= specifier assigned the value
+STAT_FAILED_IMAGE or invoked a collective subroutine whose STAT
+argument was set to STAT_FAILED_IMAGE and has not meanwhile entered or
+left a CHANGE TEAM construct, at least one image in the set of images
+participating in that image control statement or collective invocation
+shall be known to have failed."
+
+[24:19] Change "failed images in the current team" to
+"images in the current team that are known by the invoking image to
+have failed".
+
+[25:20+] Add
+
+7.4.13a IMAGE_FAILED (I [, TEAM])
+
+<Description.> Image failure state.
+
+<Class.>  Elemental function.
+
+<Arguments.>
+I shall be of type integer.
+
+TEAM (optional) shall be of the type TEAM_TYPE defined in the
+      ISO_FORTRAN_ENV intrinsic module. Its value shall represent
+      an ancestor team.
+
+<Result Characteristics.> Default logical.
+
+<Result Value> If TEAM is present, its value specifies the team;
+otherwise, the team specified is the current team. The result is
+true if image I of the team has failed and false otherwise.
+
+<Example.> The following code allows for alternative action to be
+taken if image I has failed.
+      IF (IMAGE_FAILED(I)) THEN
+          ! Take alternative action
+      ELSE
+          ! Take normal action using image I
+      END IF
+
+[34:14+] After the entry for GET_TEAM add the entry
+"IMAGE_FAILED    (I [, TEAM])   E   Image failure state."
+

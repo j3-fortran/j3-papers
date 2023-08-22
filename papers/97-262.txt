@@ -1,0 +1,430 @@
+To: J3								J3/97-262
+From: JOR/Bleikamp
+Subject: Further ASYNC I/O edits
+Date: Nov. 12,1997
+
+These edits include:
+  - Fixes for problems described in 97-235.
+  - Fixes for issues raised in a "J3 internal note" in 97-007r1.
+  - Additional editorial changes not included in 97-255.
+
+Edits are not included for edits defered from 97-216r2 (blocks of edits in
+216r2 marked as "no longer part of the edits")
+
+Major functional changes:
+  - we decided to only allow the async attribute to be specified on
+    a whole object (base object name), and not on a component declaration
+    in a derived type definition.
+  - restricted when errors on outstanding requests can occur, to
+    improve the ability to handle expected errors/conditions, like EOF
+    on input.
+
+Section 9.5 [157:37], spell "Sucessful" correctly, unless the alternative
+edit for this sentence is adopted (this later edit is prefered by JOR)..
+Another problem in this sentence may be the definition of "successful
+execution of a data transfer statement".  It could be interpreted as
+meaning the processor did not malfunction, or that any errors were
+successfully handled by an IOSTAT= or ERR= or END= specifier.
+
+Edit: Section 9.5 [157:37] Change "Successful execution of an asynchronous
+      data transfer statement"
+  to
+      "Execution of an asynchronous data transfer statement in which
+       neither an error condition nor an end-of-record nor an end-of-file
+       condition occurs".
+
+
+  -- Richard Maine wrote -- issue 1
+  Do we really want to allow async as a component attribute spec?
+  I sent out an email on this question, but haven't heard a single
+  comment in reply.  Added a J3Note in 4.4.1.
+
+  Answer: No.  JOR (after 2+ hours of discussion) decided to only allow
+          the async attribtute to be specified on an object.  An individual
+          component or element cannot be given the async attribute, either
+          in the ASYNCHRONOUS statement, or in a derived type definition.
+	  When a variable is an affector, its leftmost part shall have
+	  the ASYNC attribute.
+	  JOR also decided to address the issue of implicit acquisition
+	  of the ASYNC attribute (due to I/O lists) to mean the leftmost
+          part of a part-ref, or the whole array, to be the object which
+          implicitly acquires the async attribute.
+
+Edits: 
+  Section 4.4.1 [38:43], delete "or ASYNCHRONOUS" from R426, and the
+  subsequent J3 internal note.
+
+  Section 9.4.1.10 [150:31-36],
+  change "Any variable" to "When a variable"
+  change "is implicitly"
+    to
+  "the <object-name> (when the variable is an <object-name>), or the
+  leftmost <part-name> in the <data-ref> when the variable is a <dataref>,
+  is implicitly"
+
+  Note to Richard M.  I considered using the "base object" term [77:8],
+  but is wasn't clear this covered the array element case.  If it does,
+  you can use "base object of" instead of "leftmost <part-name> in".
+
+  Section 5.1.2.12 [58:36-37] , replace this text with:
+
+    "When a variable is a pending I/O storage sequence affector, the
+     <object-name> (when the variable is an <object-name>), or the
+     leftmost <part-name> in the <data-ref> (when the variable is a
+     <data-ref>), shall have the ASYNCHRONOUS attribute in a scoping
+     unit if"
+
+  and in [58:38] replace "(1) they appear"
+    by
+  "(1) that variable appears"
+
+
+  and in [59:3], change "A variable with"
+    to
+  "If a variable whose <object-name> or leftmost <part-name> has the"
+
+  Note 5.17, change "ine the" to "in the".
+
+  Note to Richard M, the same note about "base object" applies to these edits
+  also.
+
+  -- Richard Maine wrote -- issue 2
+  In 5.1.2.12, the requirements for the async attribute seem a
+  little broad.  Item 2 says "while an [i.e. *ANY*] asynchronous
+  data transfer operation is pending."  Can't we safely narrow this
+  requirement to only apply while the particular data transfer
+  operations are pending?  We could still allow other pending data
+  transfers that this variable has nothing to do with.  I've
+  done nothing on this.
+
+  Answer: no, i don't think we can relax this.  The point was that any
+          variable which is an affector is ONLY an affector while an
+	  asynchronous data transfer operation which references the
+	  same storage units is pending.  Once that data transfer is
+	  waited upon, the variable is not necessarily an affector.
+
+  -- Richard Maine wrote -- issue 3
+  Exactly what variables get the async attribute implicitly?  The
+  text is not clear on the point and I was unable to fix it up because
+  I was unsure of the intent.  recall that subobjects of variables
+  are also variables.  Example:
+     read(...,asyncronous='yes') a(7), b%c%d, e(i)
+  Is just a(7) implicitly async, or all of "a"?  Simillarly, just b%c%d
+  or all of b?  How about if b%c is a pointer?  Is "i" implicitly
+  async (it does "appear in the i/i list).  I need guidance on the
+  technical intent here before I can craft words.  I put the words
+  pretty much from 97-216r2 in, but they aren't really adequate to
+  specify the exact meaning.  Also, does the implicitly conferred
+  async attribute apply only to the current scoping unit or possibly
+  also to the host (if this is in an internal or module procedure)
+  and/or "child" (internal procedure) scoping units.  Added a J3Note
+  in 9.4.1.10.
+
+  Answer: if a(44) is the list item, "a" gets the async attribute.
+          if b%c is the list item, "b" gets the async attribute.
+
+Edits were provided above.
+  
+
+  -- Richard Maine wrote -- issue 4
+  While on the subject of the async attribute, its scoping and
+  inheritance rules are never explicitly stated....and the intent
+  isn't clear to me in all cases.  It is clearly intended that a
+  variable can have the async attribute in some scoping units, but
+  not in others.  But the details of how this works are never
+  specified.  If a module variable is specified as async in the
+  module, does the attribute also apply in scoping units using
+  the module?  How about host association - is a variable that is
+  async in the host also async in the internal or module procedures
+  contained in the host?  And does an async statement in a contained
+  scope "hide" any variable of that name from the host or just apply
+  the async attribute to the variable from the host?  These questions
+  all need to be answered.  (Makes me wonder whether we wouldn't be
+  better off just making async follow the same rules as the other
+  attributes in that a variable either has it or not and it doesn't
+  change from one scoping unit to another - I suppose we already decided
+  not to do it that way).  Added a J3Note in 5.2.10.
+
+  Answer: the async attribute is conferred within the scoping unit it
+          is used in, and any enclosed scoping units (internal procedures).
+          In addition, for module variables given the async attribute
+          explicitly in the module definition, all "users" of the
+          module inherit the async attribute for that variable.  This
+          includes cases where the module variable is not visible, but
+          might be referenced by a namelist I/O statement.  It is not
+          clear if we need to describe this.
+
+Edits: do we need any?  We're lost here, and if edits are needed, we need a
+       pointer to where to start.
+
+  -- Richard Maine wrote -- issue 5
+  Section 9.4.4 "Execution of a data transfer I/O stmt" needs work.  I
+  don't think that the 2 small edits proposed look particularly close.
+  For example, they leave the requirement that file positioning has to
+  occur during execution of the data transfer statement, which isn't
+  what we want to say. 
+
+Answer: we sort of want the file positioning to happen as if the data
+        transfer had already occured (even it it hasn't).  This simplifies
+        many things, including INQUIRE, file positioning for the next
+	statement, etc.
+
+  -- Richard Maine wrote -- issue 6
+  I think what we probably need here is a
+  separate outline of what goes on in an async data transfer, instead
+  of trying to shoehorn it into the outline of the sync case, because
+  there are some things that are pretty different.  In fact, I think
+  it best to perhaps phrase it as a description of the whole
+  operation, identifying which parts have to happen during the data
+  transfer statement itself, which parts happen during the wait
+  operation, and which parts can happen anytime in between.  The
+  9.4.4.x subsections can probably stay largely as is (with one
+  exception noted below) and referenced for both the sync and async
+  outlines.  I was thinking of taking a wing at this myself, but the
+  people working on the proposal probably have a better idea of the
+  steps; if they don't, I'll try.  So I left out the 2 edits to the
+  numbered list in 9.4.4 and instead added a J3Note.
+
+
+  Answer:  A separate outline is the best solution.
+
+Edits: 
+  Section 9.4.4 [153:33] change "executing a" to "executing a synchronous".
+  Section 9.4.4 [153:36+], add a new list item (2.5) (actually renumber the
+  entire list)
+    "(2.5) Perform a wait operation for all pending I/O operations
+     for the unit identified in (2).  If an error condition, end-of-file
+     condition, or end-of-record condition occurs during any of the
+     wait operations, execution of the current data transfer statement
+     is terminated."
+
+  Section 9.4.4 [154:1+], add a new paragraph
+    "The effect of executing an asynchronous data transfer input/output
+     statement shall be as if the following operations were performed
+     in the order specified:
+
+       (1) Determine the direction of data transfer
+
+       (2) Identify the unit
+
+       (3) Establish the format if one is specified
+
+       (4) Position the file prior to data transfer (9.2.1.3.2)
+
+       (5) Establish the set of storage units identified by the input/output
+           list.  For a READ statement, this may require some or all of the
+	   data in the file to be read, if the variable read is used
+	   in an implied-do-loop in the I/O list, as a <subscript>,
+	   <substring-range>, <stride>, or is otherwise referenced.
+
+       (6) Initiate an asynchronous data transfer between the file and the
+           entities specified by the input/output list (if any) or namelist.
+	   The asynchronous data transfer may complete (and trigger an error,
+	   end-of-file, or end-of-record condition) during the execution
+	   of this data transfer statement, or during a later wait operation.
+
+       (7) Determine whether an error condition, and end-of-file condition,
+           or an end-of-record condition has occured.  The conditions may
+	   occur during the execution of this data transfer statement, or
+	   may occur during the execution of the corresponding wait operation.
+	   
+	   Also, any of these conditions which would have occured during
+	   the corresponding wait operation, for an already pending
+	   asynchronous I/O operation whose initiating data transfer
+	   statement did not contain an ID= specifier,
+	   may occur during the execution of this data transfer statement.
+
+       (8) Position the file as if the data transfer had finished (9.2.1.3.3)
+
+       (9) Cause the variable specified in the IOSTAT= specifier to become
+           defined, and the variable specified in the SIZE= specifier to
+	   become undefined.
+
+  -- Richard Maine wrote -- issue 7
+  And possibly related to the preceeding question, I thought that
+  the current model was that the complete i/o list for async i/o
+  was supposed to be established during the data transfer statement,
+  before actually doing the data transfer.  Otherwise, I'm not sure
+  how the pending i/o storage sequence is well defined.  I can't
+  find anywhere that says this, though.  It probably ought to be
+  one of the steps mentioned in the above elaboration.  And
+  paras 2-3 of 9.4.4.4 "Data transfer" directly contradict this,
+  so they may need to be edited to distinguish the sync and async
+  cases.  I added a J3 note in 9.4.4.4.
+
+  Answer: Yes, the addresses  to/from which values are transfered 
+          need to be established during execution of the data transfer
+          statement for every list item.
+          The paragraph on page 150, lines 40-42 ("When an async....")
+          was intended to imply this affect.  
+
+  Edits: the additional outline above addresses this
+
+  The J3 internal note at [155:16-19] can be deleted.  The two paragraphs
+  discussing that certain values are determined in the middle of the
+  list processing/data transfer ARE meant to apply to async I/O, even
+  though they essentially make it impossible to perform the I/O
+  asynchronously.  This greatly simplified the description of how
+  I/O list processing works for async I/O (the synchronous description
+  is correct for async), and allowed to remove 100+ lines of edits that
+  were very hard to understand.
+
+  -- Richard Maine wrote -- issue 8
+  Any particular reason why a WAIT statement can't have more than one
+  ID= specifier (or alternatively a vector-valued one).  It can wait
+  for multiple pending data transfers (in the case where ID= is
+  omitted), so the basic semantics must be defined (in particular that
+  it waits until all of them are done).  I don't see why it couldn't
+  wait for multiple specified ones as well.  I didn't do anything
+  about this because there is nothing wrong with it as is; I just
+  wondered about why the restriction.
+
+  Answer: There is no technical reason for this limitation.  It does
+          seem difficult to use the functionality effectively, and
+          therefore does not warrent the added implementation expense.
+
+  -- Richard Maine wrote -- issue 9
+  Is a WAIT statement allowed on a unit that was not opened for
+  async i/o?  I see no restriction against it.  Of course, it would
+  have to be the form with no ID= specifier because there won't be
+  any pending data transfer operations.  We probably ought to
+  answer this explicitly instead of waiting for the interp request.
+  I'm not sure which answer we want - either would seem to "work."
+
+  Answer: The Oracle says, "You are clearly spending too much time
+          reading and understanding the standard.  Get a life."  :)
+          However, since you mentioned it, we do want to allow a
+	  WAIT (without an ID=) for units OPENed for synchronous
+	  I/O and for unopened units.
+
+  Edits: 
+  Section 9.5.1 [158:26+], add a new paragraph
+    "Execution of a WAIT statement without an ID= specifier specifying
+     a unit that does not exist, has no file connected to it, or was
+     opened for synchronous I/O is permitted, and does not cause an
+     error or end-of-file condition to occur."
+
+  -- Richard Maine wrote -- issue 10
+  The Para in 9.4.1.10 that tries to define pending I/O storage sequence
+  affector variables needs more work than I have time for right now.
+  Paper 97-216R2 put off most of the other material about such affectors
+  til later; this can go with that material.
+
+Note that the term affector is used in 5.1.2.12, and if we decide to
+replace that term, said paragraph needs fixing.
+
+Edits: not available yet
+
+  -- Richard Maine wrote -- issue 11
+  In 14.7.6(16), it violates causality to say that you need to know
+  the results of the data transfer to determine which variables in a
+  namelist group became undefined when the initiating READ statement
+  was executed.  I deleted that exception and left it saying that they
+  all become undefined.  I'm picturing that the "unchanged" ones later
+  get redefined back to their original values, but that's hard to say.
+  But we certainly(?!) can't make the definition status non-causal.  My
+  "cop-out" in the description of the wait operation was
+    "If the data transfer operation is an input operation that
+     completed without error, the storage units of the I/O storage
+     sequence then become defined with the values as described in
+     9.4.1.9 and 9.4.4.4."
+  but I'm not claiming that to be a particularly good wording.
+
+  Answer: JOR disagrees.  It is also very difficult to describe how namelist
+          variables become undefined, and it not read into, magically
+	  re-acquire their original value at the wait operation.  The
+	  causality argument does not appear relevant.  If the user
+	  does not know which variable become undefined, he better not
+	  use any of them.
+
+Edits:
+       Section 14.7.6 item (16) [297:32], change "."
+       to
+       ".  Variables in a namelist group which is specified in an
+       asynchronous READ statement, which will not be defined during
+       the execution of the READ statement or the corresponding wait
+       operation, do not become undefined."
+
+  -- Richard Maine wrote -- issue 12
+  In C.6.3 the consecutive sentences
+          The addresses of the list items must be computed before the
+          asynchronous READ/WRITE statement completes.
+          There is still an ordering requirement on list item processing,
+          to handle things like READ (...) N,(a(i),i=1,N).
+  sound contradictory to me since the value of N changes the addresses
+  of the list items - and potentially in more complicated ways than
+  just the size of a contiguous chunk.  This leaves me uncertain of
+  what the actual spec is.  I added a J3 note as a reminder to address
+  this.
+
+  Answer: We decided to keep Fortran semantics for list processing.  One
+          forced outcome of this requirement is that the above I/O
+          statement will NEVER be done asynchronously.  The processor is
+          required to detect this situation (where any item in the
+          I/O list, or the number of items in the I/O list, is determined
+          by a value READ during the execution of that READ statement),
+          and to perform that READ synchronously.
+
+  Edits: none needed?
+
+  -- Richard Maine wrote -- issue 13
+  I didn't yet add the words to the normative text to go with the
+  explanation in the model C.6.3 that errors can be reported on any
+  subsequent i/o statement for the same unit if there was no ID=.
+  I think the best way to cover all the bases for this case is to
+  say that any such statements may perform the wait operation.
+  That would cover us on such details as making the operation and its
+  async i/o storage sequence no longer be pending.  Probably not
+  very hard to word, but I've just run out of time to make sure I
+  do it right.  (Probably fewer words than this para, but I can be
+  sloppy here).  Added a J3Note in C.6.3.
+
+  Answer:  JOR disagrees.  One problem is that once a wait operation
+  	   has been performed for a particular ID=, the user cannot
+	   then WAIT for that same ID=.
+	   we should not allow an error for another statement that had
+	   an ID= to be reported by any stmt other than the original
+	   READ/WRITE or the corresponding wait operation, and we should
+	   require the processor to queue up pending errors to be reported.
+	   (with some processor defined limit before the processor
+	   terminates execution?)
+
+	   We also decided a synchronous I/O statement on a unit should
+	   explicitly perform a WAIT operation for all pending I/O
+	   operations.
+
+           Also, when an error occurs on any pending I/O request and
+           is reported to the user, all pending requests are 
+           terminated, and there is no way to tell which pending operations
+	   completed successfully.
+
+Edits:
+  Section 9.4.4 [154:12], change "." 
+    to
+  ".  When an condition is raised for a previously executed asnychronous
+   data transfer statement, a wait operation is performed for all pending
+   I/O operations on that unit."
+
+  Section 9.4.4 [154:14+], add a new note:
+    "Note 9.xx
+     Since end-of-file and error conditions for asynchronous data transfer
+     statements which did not contain an ID= may be reported by the processor
+     during the execution of a subsequent data transfer statement, it may
+     be impossible for the user to determine which I/O statement caused
+     the condition.  Reliably detecting which READ statement caused an
+     end-of-file condition requires that all asynchronous READ statements
+     include an ID= specifier."
+
+  Section 9.5.2 [158:36+], add a new paragraph
+    "If an error or end-of-file condition occurs during a wait operation for
+    a unit, the processor will perform a wait operation for all pending data
+    transfer operations for that unit."
+
+  Section 9.5.2 [158:39} in the note, change "or during" to
+    ", a subsequent synchronous data transfer statment for the same unit,
+     or during".
+
+  Section 9.5.2 [158:40] in the note, change "during the data" to
+    "during a data".
+
+-- end of paper --

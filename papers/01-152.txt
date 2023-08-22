@@ -1,0 +1,262 @@
+
+                                                       J3/01-152
+
+Date:    3 March 2001
+To:      J3
+From:    John Reid
+Subject: Interpretation 10 (Meaning of embedded blanks in namelist input name)
+
+There is an ambiguity in the standard since the term 'name' is
+sometimes used in the namelist part of the standard when 'name or
+designator' is intended.  Are spaces allowed inside a subobject
+designator in an input record such as
+
+&ABC LONG__NAME % LEVEL1 ( 20:30 ) % string = '123' /
+
+Here are two alternative draft answers corresponding to:
+
+  Yes, but % is not allowed in a logical value
+  No.
+
+I sent earlier drafts to the WG5 list for comments and would like thank
+those that helped me get to this version, specially Robert Corbett
+and Makki Takata.
+
+..............................................................
+
+NUMBER: 000010
+TITLE: Meaning of embedded blanks in namelist input name
+KEYWORDS: NAMELIST, optional qualification, name, input
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+BACKGROUND:
+In running some older NAMELIST tests, a test case was encountered that has
+embedded blanks within the "optional qualification" following a namelist group
+object name:
+
+    CHARACTER*10 string
+    NAMELIST /junk/ string
+
+    WRITE(9,*) ' $junk string(  :  ) = ''1234567890'' /'
+    REWIND(9)
+    READ(9,junk)
+
+    IF (string .NE. '123457890') THEN
+       PRINT *, 'string NE 1234567890, string = "', string, '"'
+       PRINT *, 'String test FAILED'
+    ELSE
+       PRINT *, 'String test PASSED'
+    END IF
+
+    END
+
+While studying the standard to determine if the above program was standard-
+conforming or not, some questions arose about the use of "name" and embedded
+blanks in the namelist section 10.9.1.1.  Among them were: Since a blank is a
+delimiter, should it be allowed to be embedded in a variety of places in a
+namelist input record that are not currently described by the standard?  Do we
+want to strain namelist input scanning more than a reasonable amount?
+
+In normal Fortran terminology, the term "name" does not include  subobject
+qualification.  In section 2.5.1 Name and designator, lines 2 through 5, the
+standard states:
+
+  A name is used to identify a program constituent, such as a program unit,
+  named variable, named constant, dummy argument, or derived type.  The rules
+  governing the construction of names are given in 3.2.1.  A subobject
+  designator is a name followed by one or more of the following: component
+  selectors, array section, array element selectors, and substring selectors.
+
+In section 10.9.1 Namelist Input, lines 13 to 16, the standard states:
+
+  In each name-value subsequence, the name shall be the name of a namelist
+  group list item with an optional qualification and the name with the optional
+  qualification shall not be a zero-sized array, a zero-sized array section, or
+  a zero-length character string.  The optional qualification, if any, shall
+  not contain a vector subscript.
+
+In section 10.9.1.1 Namelist group object names, lines 32 and 33, the
+standard states:
+
+  The name in the input record may be preceded and followed by one or more
+  optional blanks but shall not contain embedded blanks.
+
+QUESTION:
+
+(1) Does Section 2.5.1 mean that the optional qualification described in the
+    10.9.1 is not part of the name for namelist input?
+
+    If the optional qualification is not part of the name, there seem to be no
+    rules for where blanks and end-of-record may occur within the optional
+    qualification.
+
+    Also note that size of the name and the optional qualification together
+    may be longer than the size of an input record if there are multiple levels
+    of structure component qualification in a structure component reference.
+
+(2) Are embedded blanks allowed within substring and subscript qualifications
+    in the namelist input?  May an END-OF-RECORD occur in these same places?
+
+(3) More specifically, are embedded blanks/END-OF-RECORD allowed in the
+    following places in namelist input?
+
+   1.  Between the name and the left parenthesis of either a substring or
+       subscript qualification?
+
+           e.g.,  string (3:4)  =  '123'
+
+   2.  Between tokens within the parenthesized qualifier?
+
+           e.g.,  string( 3:4)  =  '123'
+           e.g.,  string( 3:4 )  =  '123'
+           e.g.,  string( 3: 4 )  =  '123'
+           e.g.,  string( 3 : 4 )  =  '123'
+
+           e.g.,  string(  :  )  =  '123'
+
+   3.  Between the two sets of parentheses for array and substring notation?
+
+           e.g.,  string (  :  )  (  :  ) =  '123'
+
+   6.  Within the two subscripts or start and end values themselves?
+
+           e.g.,  string ( 2 0 : 3 0 )  =  '123'
+
+(4) Are embedded blanks allowed within a reference to a structure?  May an
+    END-OF-RECORD occur within this reference?
+
+           e.g.,  LONG__NAME % LEVEL1 ( 2 0 : 3 0 ) % string = '123'
+
+(5) Section 10.9.1.1, lines 32 and 33 currently state:
+
+      The name in the input record may be preceded and followed by one or
+      more optional blanks but shall not contain embedded blanks.
+
+    Should the above lines have an addition along the following lines:
+
+      Blanks shall not precede the left parenthesis of a substring or subscript
+      qualification.  Blanks may follow the left parenthesis or precede the
+      right parenthesis of the substring or subscript qualification but shall
+      not be embedded within the subscript or substring themselves.  The end
+      of record shall not occur within any part of the substring or subscript
+      qualification.  Blanks may occur between a subscript and a substring
+      qualification.
+
+    Note to committee:
+
+      The above addition will then allow (  :  )  and ( 2:3 ) but will not
+      allow  (  1 0 : 2 0 ).  Blanks will be allowed in between the subscript
+      and substring reference:  ( 1:2 ) ( 3:4 ).
+
+    The following change is harder.  If the derived type qualification is so
+    long that it will not fit in one record, there are two choices that come
+    to mind:
+
+      * state that the input record must be long enough to contain the entire
+        reference
+
+      * allow the user to break up the structure reference to be able to
+        specify it within an input record.
+
+    The latter ability could be added to the standard via additional text along
+    the following lines:
+
+      Blanks shall not be embedded within the optional qualification provided
+      for a structure reference.  However, an end-of-record may occur after
+      a percent (%) separator in an input record.  The name may continue in
+      the next record.
+
+    This will allow a break at such places as:
+
+         LONG__NAME%LEVEL1(20:30)%EOR
+         string = '123'
+
+    where EOR stands for end-of-record.
+
+ANSWER:
+
+The intention is that the form of namelist input should mirror that of
+free source form (3.3.1), as is made clear in line 5 of 10.9.1.1
+[179:24]: 'the designator of a subobject of that array, using the
+syntax of subobject designators (R602).'  Spaces are not permitted
+within names or constants so the constants 2 0 and 3 0 in examples
+(3)6 and (4) above are not permitted. Otherwise, all the above examples
+are permitted.
+
+The final example, where a subobject designator is split between lines
+at a percent sign, is permitted since (see the first paragraph of
+clause 10.9) the end of a record has the same effect as a blank
+character.
+
+Unfortunately, the term 'name' is sometimes used in this part of the
+standard when 'name or designator' is intended. This was not intended
+in the last sentence of 10.9.1.1 and an edit is provided to make the
+intention clear.
+
+To avoid any ambiguity in namelist input records, the percent sign
+should be added to the set of symbols disallowed in a logical value.
+An example showing the potential ambiguity is
+     &ABC P = F% F% T  = T /
+when the namelist is defined by
+        TYPE DT
+          LOGICAL T
+        END TYPE
+        TYPE(DT) :: F
+        LOGICAL :: P(5), T
+        NAMELIST/ABC/F, P, T
+Does this define
+     P(1) to be false and F%T to be true
+or
+     P(1:2) to be false and T to be true?
+
+EDITS:
+
+Replace the last sentence of subclause 10.9.1.1 [179:32-33] by
+
+   In the input record, a group object name, component name, or
+   constant within a subobject designator may be preceded and followed
+   by one or more optional blanks but shall not contain embedded
+   blanks; a parenthesis or colon within a subobject designator may
+   be preceded and followed by one or more optional blanks.
+
+In the third paragraph of subclause 10.9.1.3 [180:34] add 'percents,'
+after 'blanks,'.
+
+....................................................................
+
+ALTERNATIVE
+
+ANSWER:
+
+Unfortunately, the term 'name' is sometimes used in this part of the
+standard when 'name or designator' is intended. This is the case in
+the last sentence of 10.9.1.1 and an edit is provided to make the
+intention clear. Spaces are not permitted within a subobject
+designator.
+
+If spaces were allowed, there is a potential ambiguity in namelist
+input records, illustrated by the example:
+     &ABC P = F% F% T  = T /
+when the namelist is defined by
+        TYPE DT
+          LOGICAL T
+        END TYPE
+        TYPE(DT) :: F
+        LOGICAL :: P(5), T
+        NAMELIST/ABC/F, P, T
+Does this define
+     P(1) to be false and F%T to be true
+or
+     P(1:2) to be false and T to be true?
+
+EDIT:
+
+Replace the last sentence of subclause 10.9.1.1 [179:32-33] by
+
+   In the input record, an object name or subobject designator may be
+   preceded and followed by one or more optional blanks but shall not
+   contain embedded blanks.
+
+SUBMITTED BY:  Joanne Brixius / Larry Rolison
+HISTORY:  J3/97-253 m143 submitted

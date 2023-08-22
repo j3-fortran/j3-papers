@@ -1,0 +1,235 @@
+To:         J3 Members                                       J3/16-190
+From:       Van Snyder
+Subject:    Inconsistent attributes for construct entities
+Reference:  16-007r1
+Date: 2016 May 23
+
+1. Introduction
+===============
+
+The attributes of construct entities are inconsistent.  Some are
+necessarily inconsistent, but some are gratuitously and confusingly
+inconsistent.  According to UTI 019, construct association in a CHANGE
+TEAM construct is completely broken.
+
+                               Construct
+Attribute        Associate     Select Type   Concurrent Local
+=========        ============================================
+Type and type    Same as       Explicitly    Same as
+parameters       selector      specified     outside name
+
+Allocatable      Not           Not           Prohibited
+                 allocatable   allocatable
+
+Assumed size     Same as       Same as       Prohibited
+                 selector      selector
+
+Asynchronous     Same as       Same as       Same as
+                 selector      selector      selector
+
+Bind type        ??????????    prohibited    No
+
+Bind variable    ??????????    ??????????    No
+
+Bounds           Same as       Same as       Same as outside variable
+                 selector      selector      if not a pointer, else
+                                             undefined
+Contiguous       Same as       Same as       Same as
+                 selector      selector      outside name
+
+Cobounds         Same as       Same as       Prohibited to
+                 selector      selector      be a coarray
+                                             or a
+Corank           Same as       Same as       coindexed
+                 selector      selector      object
+
+Finalizable      ????????      ????????      Prohibited
+
+Pointer          Not           Not           Same as
+                 a pointer     a pointer     outside name
+
+Polymorphic      Same as       Same as       ?????????
+                 selector      selector
+
+Rank             Same as       Same as       Same as
+                 selector      selector      outside name
+
+Target           Same as       Same as       Same as
+                 selector      selector      outside name
+                 or if selector is a pointer
+
+Volatile         Same as       Same as       Same as
+                 selector      selector      outside name
+
+
+
+
+
+
+
+                          Select Rank Construct
+Attribute        Rank DEFAULT  Rank (*)      Rank (#)
+=========        ============================================
+Type and type    Same as       ??????????    Same as
+parameters       selector                    selector
+
+Allocatable      Same as       Prohibited    Same as
+                 selector                    selector
+
+Assumed size     ????????      Defined to    Prohibited
+                               be so
+
+Asynchronous     Same as       ????????      ????????
+                 selector
+
+Bind type        ????????      ????????      ????????
+
+Bind variable    ????????      ????????      ????????
+
+Bounds           Same as       1:*           Same as
+                 selector                    selector
+
+Contiguous       Same as       Same as       Same as
+                 selector      selector      selector
+
+Cobounds         Same as       Same as       Same as
+                 selector      selector      selector
+
+Corank           Same as       Same as       Same as
+                 selector      selector      selector
+
+Finalizable      ????????      ????????      ????????
+
+Pointer          Same as       Prohibited    Same as
+                 selector                    selector
+
+Polymorphic      Same as       ????????      ????????
+                 selector
+
+Rank             Same as       1             Explicitly
+                 selector                    specified
+
+Target           Same as       Same as       ????????
+                 selector      selector
+
+Volatile         Same as       ????????      ????????
+                 selector
+
+Where this inconsistency is not absolutely necessary, it is unhelpful.
+It is especially unhelpful that an associating entity can be
+polymorphic, but is not allocatable, because this prohibits assignment.
+It is also unhelpful, but somewhat less so, that an associating entity
+never has the pointer or allocatable attribute, as this precludes
+allocating or deallocating it.
+
+2. Proposal
+===========
+
+Make the properties of associate names as nearly identical in all
+constructs as is reasonable and possible.  Some inconsistency is
+necessary.  For example, the declared type must be different from the
+declared type of the selector in a SELECT TYPE construct,and the rank
+must be different in a SELECT RANK construct, but in both cases, these
+properties are explicitly specified, not implicit.
+
+Problems with entities having LOCAL or LOCAL_INIT locality in DO
+CONCURRENT constructs are addressed in a different paper.
+
+3. Edits
+========
+
+[xviii, under either "Data declaration" or "Execution control"] insert a
+sentence "Properties of construct entities in ASSOCIATE and SELECT TYPE
+constructs are made more regular."
+
+[174:4- 8.1.3-] Insert a subclause
+
+"8.1.2a Properties of associating entities
+
+8.1.2a.1 Associating entities and entities with which they are
+         associated
+
+The associating entity in a CHANGE TEAM construct is identified by the
+<coarray-name> in the <codimension-decl>.  The associating entity in an
+ASSOCIATE construct is identified by the <associate-name>.  The
+associating entity in a SELECT RANK or SELECT TYPE construct is
+identified by the <associate-name> if it appears, or by the <selector>
+if <associate-name> does not appear.  The entity with which the
+associating entity is associated is the associated entity.  The
+associated entity in a CHANGE TEAM construct is identified by the
+<coselector-name>.  The  associated entity in an ASSOCIATE, SELECT RANK,
+or SELECT TYPE construct is identified by the <selector>.
+
+Execution of a CHANGE TEAM, ASSOCIATE, SELECT RANK, and SELECT TYPE
+construct causes evaluation of every expression within the designator of
+every associated entity that is a variable and evaluation of every
+associated entity that is not a variable, followed by execution of its
+<block>.
+
+During execution of the <block> each associating entity is construct
+associated (16.5.1.6) with its corresponding associated entity.
+
+8.1.2a.2 General properties and attributes
+
+The associating entity is a variable.  If the associated entity is not
+definable, the associating entity shall not be defined or become
+undefined during execution of the <block> of the construct.  If the
+associated entity is a pointer but its pointer association status is
+prohibited to be changed, the pointer association status of the
+associating entity shall not be changed during execution of the <block>
+of the construct.  If the associated entity is an optional dummy
+argument, or a subobject of an optional dummy argument, the dummy
+argument shall be present.
+
+With exceptions listed in 8.1.2a.3, the associating entity has the same
+declared and dynamic type, type parameters, rank, bounds, corank,
+cobounds, finalizability, and polymorphism as the associated entity.
+The associating entity has the ALLOCATABLE, ASYNCHRONOUS, BIND,
+CONTIGUOUS, PARAMETER, POINTER, SAVE, TARGET or VOLATILE attribute if
+and only if the associated entity has the attribute.  The associating
+entity does not have the accessibility, EXTERNAL, INTENT, INTRINSIC,
+OPTIONAL, or PROTECTED, attribute.
+
+C800a The associated entity shall be a data object.
+
+C800b If the associated entity is is not a <variable> or is a <variable>
+      that has a vector subscript, the associating entity shall not
+      appear in a variable definition context (16.6.7).
+
+C800c If the associated entity is constrained not to appear in a pointer
+      association context, the associating entity shall not appear in a
+      pointer association context (16.6.8).
+
+8.1.2a.3 Exceptions to general properties and attributes
+
+The cobounds of the associating entity in the CHANGE TEAM construct are
+described in 8.1.5.
+
+The rank and bounds of the associating entity in the SELECT RANK
+construct are described in 8.1.10.
+
+The declared and dynamic type of the associating entity in the SELECT
+TYPE construct are described in 8.1.11.
+"
+
+[174:16-17 C801] Delete C801 because it is replaced by C800b.
+
+[174:21-22 C805] Delete C805 because it is replaced by C800a.
+
+[174:28-34 8.1.3.2p1-2] Delete the subclause heading for 8.1.3.2 and
+8.1.3.2p1-2 because it is replaced by 8.1.2a.1 and 8.1.2a.2.  Do not
+delete 8.1.3.2p3.
+
+[175:1-16 8.1.3.3] Delete subclause 8.1.3.3 because it is replaced by
+8.1.2a.1 and 8.1.2a.2.
+
+[8.1.5] There are numerous UTIs in 8.1.5.  I have no idea what is
+intended.
+
+[192:17-18 8.1.10.3p1] Delete "and has exactly the same attributes as
+the selector" because it is replaced by 8.1.2a.2.
+
+[192:24-26 8.1.10.3p2] Delete 8.1.10.3p2 because it is replaced by
+8.1.2a.2.
+
+[193:42-43 C857] Delete C857 because it is replaced by C800b.

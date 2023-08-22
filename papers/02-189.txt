@@ -1,0 +1,50 @@
+
+                                                          J3/02-189
+
+Date:     May 6, 2002
+To:       J3
+From:     Rob James
+Subject:  VOLATILE and targets of pointers
+
+At [85:9-10] of 02-007R1, it is stated that, if a variable with the
+POINTER attribute also has the VOLATILE attribute, then the volatility
+applies not only to the pointer, but also to the target.  This could
+be interpreted to mean that _all_ accesses to the target of a volatile
+pointer are considered to be accesses to a volatile object, even those
+that are not made by dereferencing the pointer.  For example:
+
+  INTEGER, TARGET :: A
+  INTEGER, POINTER, VOLATILE :: P
+  P => A
+  A = 4
+  IF (A .EQ. 9) THEN  ! This cannot be optimized out, even if the
+                      ! programmer knows that A should not be
+                      ! considered volatile, but that the pointer
+                      ! should.
+    ...
+  END IF
+
+So, in this situation, it is as if A has the VOLATILE attribute.  The
+situation gets a bit hairier when there are multiple possible targets
+for the pointer.  In this case, all of those possible targets would
+have to be considered volatile, even if only one of them (or only the
+pointer itself) needs to be volatile.
+
+I propose to restrict this "blanket volatility" somewhat.  It would be
+better if we only considered references to the target that are made by
+dereferencing the pointer to be references to volatile objects, rather
+than simply considering all references to the target to be references
+to volatile objects.  That way, if the programmer knows that a given
+object does not need to be volatile, and there is a volatile pointer
+that could be associated with that object, they incur no performance
+penalty by accessing it directly (as in the "A .EQ. 9" in the above
+example).  After all, if the programmer knows that the object should
+be volatile, they should just declare it as such.
+
+Edits:
+
+[85:9-10] Delete: "to the target of the pointer and"
+
+[85:10]   Add: "Any reference to the target of the pointer that is
+                made by dereferencing the pointer is considered to be
+                a reference to a volatile object."

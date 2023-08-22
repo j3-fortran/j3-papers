@@ -1,0 +1,189 @@
+**************************************************
+                                        J3/04-247
+
+Date:      15 February 2004
+To:        J3
+From:      Aleksandar Donev
+Subject:   GENERIC program unit
+**************************************************
+
+Title: 
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: J3/03-260, "Extending Genericity in Fortran", by Aleksandar Donev, 
+to appear in the Fortran Forum.
+
+Basic Functionality:
+
+The above references discuss in detail the issue of extending the facilities 
+for generic programming in Fortran. I will not repeat the discussion here, 
+but rather, simply summarize my proposal for how to allow code parameterized 
+by a type in Fortran.
+
+For this purpose, I propose to introduce a new kind of programming unit, a 
+GENERIC, henceforth called a generic package. The main characteristic of a 
+generic package is that it can be parameterized by one or more types. A 
+GENERIC package has similarities to both type-definitions and to modules. It 
+is similar to a type definition in that one can declare instances of a given 
+generic package, much like declaring variables of a given type (however, 
+these are not variables, for example, no arrays, pointers, or other such 
+things are allowed with instances). Also, I think the definitions of generic 
+packages should be allowed to appear any place a type definition can and 
+should have similar scoping rules (for example, different components can have 
+different accessibilities, the whole package can have a default 
+accessibility, etc.). A generic package is similar to a MODULE in that it can 
+contain variable declarations, constant definitions, type definitions, and 
+contain procedure bodies, and since it provides a host environment for its 
+components.
+
+A generic package can be parameterized by a type, an operator, a procedure and 
+a constant. To actually use a procedure or variable from a generic package in 
+executable code, one must instantiate the generic package with specific 
+parameters. In particular, a specific (i.e., complete, nonparameterized) type 
+must be specified for each type parameter. The generic package itself is thus 
+not executable code, and is not compiled to object code in the usual sense 
+(though it can be parsed).
+
+Certain properties can be specified for the type parameters of a generic 
+package. In particular, it can be specified that the type belong to a certain 
+pre-specified (likely intrinsic) set of types, or that the type have certain 
+components. Inside the generic package, only statements that are 
+syntactically legal for any type that satisfies the specified properties are 
+allowed.
+
+Rationale: 
+
+Allowing code to be parameterized by a type gives great expressive capability 
+and allows one to write code that can operate on a variety of types without 
+duplicating code using preprocessors or other such tricks. At the same time, 
+maximal efficiency is maintained as the actual executable code is generated 
+for specific types only, so that full optimization and inlining is possible 
+without complex global program analysis.
+
+Estimated Impact: 
+
+Detailed Specification: 
+
+Here is a snipplet from a generic package that contains a generic QuickSort 
+procedure, i.e., one that can be used with any ordered type T. The ordering 
+operator is another parameter of the generic package:
+
+GENERIC, PUBLIC :: Sorting(T,OPERATOR(<))
+   ! Sorting of data of any ordered type
+   PUBLIC
+
+   TYPE, PARAMETER :: T ! An ordered type as a parameter
+
+   ABSTRACT INTERFACE OPERATOR(<) 
+      ! An operator parameter
+      FUNCTION Comparison(A,B) RESULT(A_le_B)
+         TYPE(T), INTENT(IN) :: A, B
+         LOGICAL :: A_le_B
+      END FUNCTION
+   END INTERFACE      
+   
+CONTAINS
+
+   SUBROUTINE QuickSort(array)
+      ...
+      TYPE(T), ... :: array
+      ...
+      IF(array(i)<array(j)) THEN ! Comparison
+      ...
+   END SUBROUTINE
+
+END GENERIC Sorting      
+
+The above package accesses its host environment by host association. Inside 
+the package, scoping works much like in a module-all the stuff inside the 
+package is available inside the package.
+
+The only restriction on the type parameter T above is that it be a type, as 
+specified with the declaration:
+
+TYPE, PARAMETER :: T
+
+This syntax of course is very tentative, as it may clash with existing syntax.
+
+To use this package to actually sort things, one needs to declare an instance. 
+For example, let's sort an array of real numbers using the generic:
+
+GENERIC(Sorting(REAL,OPERATOR(<)) :: real_ordering
+   ! Compile the sorting routines for REAL numbers
+   ! Using the default (intrinsic) ordering operator
+REAL, DIMENSION(:) :: real_data
+CALL real_ordering%QuickSort(real_data)
+   ! Sort real numbers
+
+The idea here is that the compiler will actually generate executable code only 
+upon compiling the instance real_ordering. If there is another instance of 
+the same generic with the same parameters, nothing is shared between the 
+instances. Note that syntax similar to component selection is used to refer 
+to the different variables or procedures inside an instance of the generic 
+package.
+
+In many occasions, it is required that certain properties be specified for the 
+type parameter T. Above we only specified that an ordering operator exist and 
+be provided. But other kinds of restrictions are also needed. In particular, 
+it should be possible to specify that the type parameter T belong to a 
+certain fixed set of types (for example, it must be a REAL type). Another 
+kind of restriction is that it be specified that the type T must have certain 
+components or type-bound procedures. For this purpose, one can declare a 
+TEMPLATE of a type. The following example is aimed to illustrate this. It 
+provides a facility for comparing scalars of any type which has an INTEGER or 
+REAL component named key, by comparing the two keys using the intrinsic 
+ordering operators.
+
+GENERIC, PUBLIC :: Ordering(T,P)
+   PUBLIC
+
+   TYPE(INTEGER(*),REAL(*)), PARAMETER :: P
+      ! The type of the key (syntax TBD)
+
+   TYPE, TEMPLATE :: T ! Template for the type parameter
+      TYPE(P) :: key ! Contains such a component
+      ! There may be other components we don't care about
+   END TYPE
+   
+   INTERFACE OPERATOR(<)
+      GENERIC PROCEDURE Comparison ! See below
+   END INTERFACE
+
+CONTAINS
+
+   FUNCTION Comparison(A,B) RESULT(A_le_B)
+      TYPE(P), INTENT(IN) :: A, B
+      LOGICAL :: A_le_B     
+      A_le_B=(A%key<B%key) ! Use intrinsic comparison
+   END FUNCTION
+         
+END GENERIC   
+
+By combining the above two generic packages, we can, for example, sort objects 
+of this user-defined type:
+
+TYPE :: My_Type
+   REAL :: key=0.0 ! The keys are default REALs
+   CHARACTER(10) :: data=""
+END TYPE
+
+GENERIC(Ordering(TYPE(My_Type),REAL)) :: my_ordering
+   ! We now know how to compare objects of type My_Type
+
+We can now use this comparison operator to instantiate a sorting package for 
+objects of the above type:
+
+GENERIC(Sorting(TYPE(My_Type), &
+   my_ordering%OPERATOR(<))) :: my_sorting
+   ! Compile a package to sort objects of My_Type
+   ! Good compilers will inline the key comparison
+
+We can now actually do the sorting:
+   
+TYPE(My_Type), DIMENSION(10) :: my_data
+CALL my_sorting%QuickSort(my_data) ! Sort my data  
+
+History:

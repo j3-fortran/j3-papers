@@ -1,0 +1,210 @@
+                                                         07-200r1
+To: J3
+From: Malcolm Cohen
+Subject: UTI 092 etc.
+Date: 2007 May 09
+
+1. Introduction
+
+There are a number of contradictions in the current standard which
+remain in the current draft regarding the intrinsic functions that
+return model number characteristics or which return model numbers,
+and actual arguments that are IEEE infinities.
+
+Some/most/all of these intrinsic functions are listed in existing
+interp 0042.  However, the model number functions are not really
+connected with the mathematical functions, so should and can be
+resolved separately.
+
+Finally, even if we give up on fixing the current standard, we should get
+it right in F2008.  This paper discusses the problems and possible
+solutions and proposes edits for F2008.  The interp process can run in
+parallel, before or after this; it would be very easy to take the rest of
+this paper, turn it into Discussion, Answer and Edits with the obvious
+questions cherry-picked out of interp 0042 if that is thought to be useful
+(seeing as how interp 0042 is a huge interp covering tons of functions,
+waiting for interp 0042 itself to be answered is not a profitable course to
+take).
+
+These functions do seem to give the right answer for NaN arguments,
+it is INF that is causing all the problems.
+
+2. Contradictions and inconsistencies
+
+FRACTION says its result is
+  X*b**(-e) where b and e are as defined in 13.4 for the representation of
+  X in the model that has the radix of X but no limits on exponent values.
+  For INF, that means INF*2**(-INF).  IEEE defines both INF*0 and INF/INF
+  as NaNs.  But the text of FRACTION later says that the answer for INF is
+  INF.  That doesn't make sense - the fractional part doesn't even exist,
+  it's certainly not INF.
+
+  Also, the Description of FRACTION says it is the
+    "Fractional part of the model representation of the argument value."
+  I don't know what anyone can make of that since there isn't any decent
+  model representation of INF, but it's certainly not INF.  INF doesn't
+  have any defined fractional part - it's any nonzero fractional part
+  with an infinite exponent.
+
+  Looking at what happens with FRACTION(x) as x->INF, we see that
+  FRACTION is a cyclic function ranging from 0.5 to 1.0 approx.  The
+  limit simply does not exist.  Saying that FRACTION(INF)=INF makes as
+  much sense as saying SIN(INF)=INF, and having it return an out-of-range
+  but numerical result is as bad as having SIN return a number much bigger
+  than 1.
+
+RRSPACING says it returne the
+  "Reciprocal of the relative spacing of ***MODEL NUMBERS*** near the
+   argument value" (emphasis mine).
+
+  Here, there is no "extended model" in use.  It is talking about the
+  actual model numbers.
+
+  It would seem obvious that since HUGE(X) is the closest model number to
+  +INF, that RRSPACING(+INF)==RRSPACING(HUGE(X)).
+
+  It then goes on to claim that this is provided by the formula
+    | X times b**-e | times b**p
+  where b, e and p are not the parameters for X, but the parameters
+  for the ***model number nearest to X***.  There is no doubt that
+  e==MAXEXPONENT(X) and p==DIGITS(X), thus for INF we have
+    | INF times 2**-2048 | times 2**53
+  which gives INF.
+
+  It further goes on to claim (a contradiction!) that this is equal to
+    ABS(FRACTION(X)) * RADIX(X)/EPSILON(X)
+  The contradiction here being the less obvious one that ABS(FRACTION(X))
+  is | X times b**-ee | not | X times b**-e |, where ee is the exponent
+  of X in the extended model (no limits on exponent) not the basic model
+  (e is in the range eMin to eMax).  This is going to give different
+  results for subnormal numbers!  In any case,
+    - if we think FRACTION(INF)==INF, this gives INF.
+    - if we think FRACTION(INF)==NaN, this gives NaN.
+
+  It then goes on to claim an even more obvious contradiction, that being
+  that RRSPACING(INF)==0.  This does not fit with ANY of the possible
+  values for RRSPACING according to the Description, the maths formula,
+  or the Fortran formula!
+
+  I surmise that the authors of this text were confused by "reciprocal"
+  in conjunction with "spacing", and since 1/INF==0 thought 0 must be the
+  right answer without working through what this function is meant to be
+  returning.
+
+  Looking at the limits as X->INF to see what we should be returning on
+  basic principles, we see that RRSPACING is another of those bounded
+  cyclic functions - its magnitude does not get bigger or small, it's
+  just cyclic (like SIN).  So RRSPACING(INF)==NaN would seem to be a
+  good answer on those general principles.
+
+SPACING says it returns the
+  "Absolute spacing of model numbers near the argument value."
+
+  From this it is clear that SPACING(INF)==SPACING(HUGE(X)).  It's not
+  talking about spacing of numbers in any *extended model*, it's not
+  talking about spacing of machine numbers, it's not talking about
+  spacing of IEEE numbers.
+
+  It's talking about spacing of model numbers.
+
+  We then go on to say that SPACING(INF)==INF.  There are *NO* model
+  numbers spaced INF apart!  It's just not true.
+
+  Looking at the limits, SPACING(x->INF) does tend to INF, so this one is
+  not quite as egregious as the others.
+
+  If one argued that HUGE wasn't "near" INF, one could argue that
+  SPACING(X) should be NaN (by the definition) since there are no model
+  numbers near INF.  Frankly, NaN is probably as useful or more useful
+  in practice than INF.
+
+  Finally, SPACING is not connected to RRSPACING (despite the name), it
+  stands or falls on its own, so whatever answer we give here does not
+  necessarily affect the answer we give on the others and vice versa.
+
+3. Philosophical Discussion
+
+Basically, IEEE infinities just don't match our models at all well.
+
+We already added the "extended model" for a few intrinsics like FRACTION
+to handle subnormal numbers.  However, even that does not cope terribly
+well with INF.
+
+Unless there are compelling reasons otherwise, our approach should be
+to define the result for INF to be equal to the limit, and NaN if there
+is no such limit.  I see no such compelling reason here.
+
+For RRSPACING there was always a problem where we said it returned model
+numbers but got the formulae wrong.  This was never intended to return
+spacing of machine numbers, nor should it be changed so to do.  We should
+just correct the formula so that it does what it says on the tin, viz
+return the reciprocal relative spacing of model numbers.
+
+Arguing that INF is not "near" any model number might seem like sophistry,
+but I believe it is quite justifiable.  ABS(INF-number) is not small for
+any model number, in fact it is bigger than all the model numbers.  That
+gives us a reasonable "out" on the Descriptions.
+
+A larger editorial change would be to actually define the "extended model"
+(only used by a few functions) in 13.4 and reference that from those
+functions instead of repeating the stuff about "no limits on exponent
+range" all the time.  This paper is not going to propose that, but it is
+worth considering.
+
+4. Proposed fixes
+
+FRACTION has no limit, and INF does not have a model representation,
+so returning NaN (and raising INVALID) is the right thing.
+
+RRSPACING has no limit, and there are no model numbers near INF,
+so return NaN (and raise INVALID).  It should also be fixed to do
+what it says, viz return the reciprocal relative spacing of *model
+numbers*, not *machine numbers*.
+
+SPACING has a limit, but there are no model numbers near INF.
+Return NaN and raise INVALID.
+
+5. Possible alternatives
+
+If one thinks that +INF is "near" to HUGE(x),
+  RRSPACING(INF) should return SPACING(INF)
+and
+  SPACING(INF) should return SPACING(Huge)
+otherwise as above.
+
+Note: there is no question that there are no model numbers near NaN,
+      so the existing situation of NaN results for NaN arguments is fine.
+
+6. Edits to 07-007r1
+
+[378:13.7.71p1]
+  Before "model" insert "extended".
+{FRACTION returns extended model numbers, so be honest about it.}
+
+[378:13.7.71p5+2]
+  Change ", or is an IEEE infinity or NaN," to "or is an IEEE NaN,";
+  Append new sentence to paragraph
+    "If X is an IEEE infinity, the result is an IEEE NaN."
+{Fix FRACTION.}
+
+[414:13.7.148p5+0-1]
+  Change "|X ... FRACTION(X) ... for the"
+  to     "|Y ... FRACTION(Y) ... for Y, the"
+{Return the reciprocal of the relative spacing of *Model Numbers* near
+ the argument value, like what it says on the tin.}
+
+[414:13.7.148p5+3]
+  Change "is zero" to "is an IEEE NaN".
+{Fix RRSPACING infinity result.}
+ALTERNATIVE: change to "has the same value as RRSPACING(HUGE(X))".
+
+[414:UTI 092]
+  Delete if we actually manage to resolve this.
+
+[421:13.7.165p5+4]
+  Change "is positive infinity"
+  to     "is an IEEE NaN".
+{Fix SPACING.}
+ALTERNATIVE: change to "has the same value as SPACING(HUGE(X))".
+
+===END===

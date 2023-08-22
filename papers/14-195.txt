@@ -1,0 +1,163 @@
+                                                            J3/14-195
+To:        J3
+From:      Van Snyder
+Subject:   Interp concerning undefinition
+Date: 2014 June 18
+Reference: 14-106, 14-125r1, Interp F03/0124, Corrigendum 1
+
+----------------------------------------------------------------------
+
+NUMBER: TBD
+TITLE: Undefinition
+KEYWORD: undefinition
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTIONS:
+
+1. Does the following cause D to become undefined?  Ought it?
+
+  integer :: I(2)
+  double precision :: D
+  equivalence ( D, I )
+  d = 42.0
+  i(1) = 666
+
+2. Does the following cause C to become undefined?  Ought it?
+
+  integer, parameter :: RK = kind(0.0d0)
+  real(rk), pointer :: P
+  complex(rk), target :: C = ( 1.0, 2.0 )
+  c = ( 1.0d0, 2.0d0 )
+  p => c%re
+  p = 24.0d0
+
+3. Does the following cause D1 to become undefined?  Does it cause C%IM
+to become undefined?  Ought it?
+
+  integer, parameter :: RK = kind(0.0d0)
+  real(rk), pointer :: D1, D2
+  complex(rk), target :: C
+  c = ( 1.0d0, 2.0d0 )
+  d1 => c%re
+  d2 => c%im
+  call s ( d2 )
+  ...
+  contains
+    subroutine S ( D )
+      real(rk), intent(out) :: D
+  ....
+
+4. Does the following cause Y to become undefined?  Ought it?
+
+  type :: T1
+    sequence
+    integer :: C1 = 42
+  end type T1
+  type :: T2
+    sequence
+    real :: C1 = 42.0e0
+  end type T2
+  type(t1) :: X
+  type(t2) :: Y
+  equivalence ( X, Y )
+  x = t1(21)
+
+ANSWERS:
+
+1. Item (1) in subclause 16.6.6 says
+
+  "When a scalar variable of intrinsic type becomes defined, all totally
+  associated variables of different type become undefined....  When a
+  scalar variable becomes undefined, all partially associated double
+  precision scalar variables become undefined."
+
+D is not totally associated with I.  I does not become undefined.
+Therefore, D does not become undefined.  D ought to become undefined.
+Edits are provided to correct this mistake.
+
+2. Item (1) in subclause 16.6.6 says
+
+  "When a double precision scalar variable becomes defined, all
+  partially associated scalar variables become undefined."
+
+P is partly associated with C, and therefore C becomes undefined by the
+assignment to the scalar variable P.  C ought not to become undefined.
+Edits are provided to correct this mistake.
+
+3. Item (1) in subclause 16.6.6 says
+
+  "When a scalar variable becomes undefined, all partially associated
+  double precision scalar variables become undefined."
+
+  Subclause 16.6.1p5 says
+
+  "A complex... scalar object is defined if and only if all of its
+  subobjects are defined."
+
+The association of the scalar variable D2 with an INTENT(OUT) dummy
+argument causes it become undefined.  16.6.6p1(1) does not specify that
+when a scalar real variable becomes undefined, a totally associated part
+of a complex variable becomes undefined.  Assuming C%IM ought to become
+undefined, then C ought to become undefined, even though C%RE is not
+undefined.  D1 is associated with the C%RE, and therefore becomes
+undefined when C%IM becomes undefined.  C%IM ought to become undefined,
+and D1 ought not to become undefined.  Edits are provided to correct
+this mistake.
+
+4. Item (1) in subclause 16.6.6 says
+
+  "When a scalar variable of intrinsic type becomes defined, all totally
+  associated variables of different type become undefined.
+
+X and Y are totally associated, and of diffent type, but neither one is
+of intrinsic type.  Therefore, Y does not become undefined as a
+consequence of X becoming defined.  Y ought to become undefined.  Edits
+are provided to correct this mistake.
+
+EDITS:
+
+In Subclause 16.6.6p1, item(1), within the first sentence, remove "of
+intrinsic type".  Before "different" insert "the same type with
+different values of kind type parameters, or of"
+
+In Subclause 16.6.6p1, replace item(1) with the following four sentences
+(all in one paragraph)
+
+  "When a scalar variable becomes defined, all totally associated
+  variables of different type become undefined.
+
+{Removing "of intrinsic type" from the existing first sentence of
+16.6.6p1(1) addresses question 4.}
+
+  When a scalar variable becomes defined, all partially associated
+  variables of different type, or of the same type if corresponding kind
+  type parameters have different values, become undefined, unless the
+  scalar variable is totally associated with a subobject of the
+  partially associated variable, that subobject is of the same type as
+  the scalar variable, and corresponding kind type parameters have the
+  same values.
+
+{This addresses questions 1 and 2.  The references to kind type
+parameter values address the possibility of partially associating a
+double precision variable with a default real variable.  Default real
+and double precision are now the same type (since 1990), but with a
+different kind type parameter value.}
+
+  When a scalar variable becomes undefined, all partially associated
+  variables become undefined, unless the partially associated variable
+  is totally associated with a subobject of the scalar variable that
+  does not become undefined.
+
+  When a scalar variable becomes undefined, all totally associated
+  subobjects of other variables become undefined if those subobjects are
+  of different type from the scalar variable, or corresponding kind type
+  parameters have different values."
+
+{The third and fourth sentences address question 3.}
+
+SUBMITTED BY: Van Snyder
+
+HISTORY: m204  14-xxx    Submitted
+
+----------------------------------------------------------------------

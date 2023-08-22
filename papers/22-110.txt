@@ -1,0 +1,89 @@
+To: J3                                                     J3/22-110
+From: John Reid
+Subject: Interp: allocating a coarray component of a dummy argument
+Date: 2022-January-29
+References: 18-007r1
+
+----------------------------------------------------------------------
+NUMBER: F18/0xx
+TITLE: Allocating a dummy argument with a coarray ultimate component
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+On page 134 of 18-007r1, 9.7.1.2, para 3, we have
+"If an allocation specifies a coarray, its dynamic type and the values 
+of corresponding type parameters shall be the same on every active image 
+in the current team. The values of corresponding bounds and 
+corresponding cobounds shall be the same on those images. If the coarray 
+is a dummy argument, its ultimate argument (15.5.2.3) shall be the same 
+coarray on those images."  
+Should there be a similar restriction for a coarray that is an ultimate  
+component of a dummy argument? For example, does the following program
+conform to the standard?
+
+program test
+   type new
+      real, allocatable :: a[:]
+   end type
+   integer :: i
+   type(new) x,y 
+   if(this_image()<=2) then
+      call work(x)
+   else   
+      call work(y)
+   end if
+   sync all
+   if (this_image()==2)then
+      do i = 1, num_images()
+         x%a[i] = i
+      end do   
+   end if
+   sync all
+   if (this_image()==4)then
+      do i = 1, num_images()
+         write(*,*) i, y%a[i]
+      end do   
+   end if      
+contains  
+   subroutine work(z)
+      type(new) :: z 
+      allocate (z%a[*])
+   end subroutine       
+end program 
+
+Here, the calls of subroutine work create a coarray that is accessible 
+on images 1 and 2 as x%a[i] and on other images as y%a[i]. Was this
+intended?
+
+ANSWER:
+
+A similar restriction was intended. It was not intended to allow the 
+creation of a coarray that is accessible in a scope as an ultimate
+component of one object on some images and as an ultimate component of 
+another object on other images. 
+
+An edit is provided. We have taken the opportunity to change "same" in
+the quoted text to "corresponding". Coarrays on different images cannot 
+be the same, but they can correspond, see 5.4.7. We need the concept of
+"same" for objects of a type with coarray ultimate components. It seems
+appropriate to require that they be declared with the same name in the 
+same set of statements. 
+
+EDIT to 18-007r1:
+
+[134:16-17] In 9.7.1.2 Execution of an ALLOCATE statement, para 3, 
+replace the final sentence by the two sentences
+"If the coarray is a dummy argument, the ultimate arguments (15.5.2.3) 
+on those images shall be corresponding coarrays. If the coarray is an 
+ultimate component of a dummy argument, the ultimate arguments on those
+images shall be declared with the same name in the same scoping unit and
+if in a recursive procedure at the same depth of recursion."
+
+SUBMITTED BY: John Reid
+
+HISTORY: 22-xxx   m226 Submitted
+         
+
+

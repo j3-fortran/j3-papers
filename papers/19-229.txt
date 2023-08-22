@@ -1,0 +1,472 @@
+To: J3                                                     J3/19-229
+From: Vipul S. Parekh
+Subject: "Magic" numbers no more: use cases and formal requirements for
+          enumeration types
+Date: 2019-October-08
+References: 19-216r1 18-256r1 18-114r1
+
+
+Introduction
+------------
+This paper, while trying to build upon the benefits and features of
+enumeration types known generally and also stated in the above
+referenced papers, attempts to document the use-cases and example code
+snippets derived from extensive use of enumeration types with other
+programming languages that are currently used indescribably more
+widely than Fortran in chemical processing and manufacturing industry
+even in engineering and scientific technical/numerical domains and
+applications.  "No magic numbers in code" and type-safe programming are
+among the most basic aspects of the good coding practices (GCP) sought
+after by managers and technical leads toward computing in such industry.
+But even in these aspects, Fortran falls short relative to other top
+programming languages today and this gap compounds the reasons why Fortran
+does not get considered for any large and/or new application developments.
+It is therefore critically important the facility toward enumeration types
+in Fortran be developed comprehensively to support a wide spectrum of
+beneficial use cases in scientific and technical programming.  The section
+below strives to list all the cases from industrial experience and to
+extract feature requirements from these examples so that the formal
+specifications toward this facility can be pursued.  
+
+Formal Requirements
+-------------------
+Coders want to be able to define a common type for a group of related
+constant values of any particular intrinsic type as an enumeration.
+The resulting enumeration type can enable the coders to work with the
+constants enunerated in the type in a type-safe approach and in an
+expressive manner.  These enumeration types can help coders develop
+compact constructs and interfaces that help reduce program
+vulnerabilities while enhancing code readability, efficiency, and
+security.  The list of use cases are enumerated below.  Note they
+presuppose a particular syntax for enums but that is primarily for
+illustration purposes.
+
+1) be able to define an enumeration type to group a set of named constants
+   of any intrinsic type and kind:
+
+   a) an enumeration type where the underlying type of the enumerated
+      values is default integer and where the unspecified values of
+      elements in the enumerator list are automatically incremented by
+      unity relative to their predecessors in the enumerated list.  The
+      first element, if unspecified, is implicitly given a value of 1
+      e.g.,
+
+      enum :: EOS
+         enumerator :: IDEAL_GAS     !<-- Value of 1
+         enumerator :: VIRIAL        !       "     2
+         enumerator :: VAN_DER_WAALS !       "     3
+         enumerator :: SAFT          !       "     4
+         ..
+      end enum
+
+   b) default integer with int-literal-constant as an enumerated value
+      e.g.,
+
+      enum :: FLOW_REGIMES
+         enumerator :: ANNULAR = 0   !<-- Value of 0
+         enumerator :: SLUG_ANNULAR  !       "     1
+         enumerator :: SLUG          !       "     2
+         ..                          
+      end enum
+
+   c) integral values specified using BOZ-literal-constants e.g.,
+
+      enum :: CALC_SPEC
+         enumerator :: A = Z"0001"
+         enumerator :: B = Z"0002"
+         enumerator :: C = Z"0004"
+         ..
+      end enum
+
+   d) values specified using a compile-time enumerable constant
+      expression of elements already included in the enumerator list
+      e.g.,
+
+      enum :: CALC_SPEC
+         enumerator :: A = ..
+         enumerator :: B = ..
+         enumerator :: C = ..
+         enumerator :: ALL = A + B + C
+         ..
+      end enum
+
+   d) where the underlying type of enumerators in an integer with a
+      specified kind e.g.,
+
+      enum :: MY_HASH_CODES(integer(kind=INT64))
+         enumerator :: FOO = Z"d76aa478"
+         enumerator :: BAR = Z"e8c7b756"
+         ..
+      end enum
+
+   e) an enumeration type where the underlying type of elements in the
+      enumerated list is that of the LOGICAL intrinsic type.  An example
+      with the defaul logical kind is shown below though it is expected
+      other supported logical kinds can be used also.
+
+      enum :: VALVE_STATE(logical)
+         enumerator :: OPEN = .true.
+         enumerator :: CLOSED = .false.
+      end enum
+
+   f) an enumeration type where the underlying type of elements in the
+      enumerator list is that of the CHARACTER intrinsic type. An
+      example with the defaul characted kind is shown below though
+      it is expected other supported character kinds can be used also.
+
+      enum :: LNG_CONSTITUENT(character(len=*))
+         enumerator :: N2 = "Nitrogen"
+         enumerator :: C1 = "Methane"
+         enumerator :: C2 = "Ethane"
+         enumerator :: C3 = "Propane"
+         ..
+      end enum
+
+   g) an enumeration type where the underlying type of elements in the
+      enumerator list is that of the REAL intrinsic type.  An
+      example with a user-defined kind is shown below and it is
+      expected other supported real kinds can also be used similarly.
+
+      integer, parameter :: R8 = selected_real_kind( p=12 )
+      enum :: PHYS_CHEM_CONSTANTS(real(kind=R8)) ! SI units
+         enumerator :: MU = 1.66053906660E-27_r8 ! Atomic mass constant
+         enumerator :: NA = 6.02214076E23_r8     ! Avogadro number
+         enumerator :: K = 1.380649E-23_r8       ! Boltzmann constant
+         enumerator :: R = 8.314462618_r8        ! Molar gas constant
+         ..
+      end enum
+
+2) that it will be possible to define and consume more than one
+   enumeration types with enumerator members with the same name in a
+   type-safe manner in a given scoping unit e.g.,
+
+      enum :: EOS
+         enumerator :: IDEAL
+         ..
+      end enum
+
+      enum :: COMPRESSOR_EFFICIENCY_SPEC
+         enumerator :: IDEAL
+         ..
+      end enum
+
+3) be able to declare an object with the type of a given enumeration and
+   which can then be defined using any combination of the enumerated
+   values in that enumeration type, for example with reference to 1a
+   above:
+
+      type(EOS) :: EoS_Spec
+
+4) be able to define an object of an enumeration type in assignments and
+   comparison operations, for example with reference to 1a and 1b above:
+
+      type(EOS) :: EoS_Spec
+      ..
+      EoS_Spec = EOS%VIRIAL
+      ..
+      if ( EoS_Spec == EOS%IDEAL_GAS ) then
+         ..
+      else if ( EoS_Spec /= EOS%SAFT ) then
+         ..
+      end if
+      ..
+
+      type(MY_HASH_CODES) :: Code
+      ..
+      if ( Code > MY_HASH_CODES%FOO ) then
+         ..
+
+      if ( Code <= MY_HASH_CODES%FOO ) then
+         ..
+
+5) be able to use an object of an enumeration type in a SELECT CASE
+   construct, for example with reference to 1b above:
+
+      type(CALC_SPEC) :: CalcSpec
+      ..
+      select case ( CalcSpec )
+         case ( CALC_SPEC%A )
+            ..
+         case ( CALC_SPEC%B, CALC_SPEC%C )
+            ..
+         ..
+      end select 
+
+6) be able to work with a variable of an enumeration type or an enumerator 
+   element in an enumeration type in a convenient manner:
+   
+   a) be able to pass a variable of an enumeration type or an enumerator 
+      element in an enumeration type to any intrinsic procedure as
+      applicable based on TKR matching requirements in the standard for
+      argument association that is perfomed relative to the underlying
+      type of the enumeration e.g.,
+
+      i) ACHAR, BTEST, BIT_SIZE, CHAR, IAND, IOR, etc. functions when the
+         underlying type of the argument of enumerator type is integral,
+      ii) ABS through TINY when the underlying type of the argument of
+          enumerator type is real,
+      iii) functions such as LOGICAL when the underlying type of the
+           argument of enumerator type is logical,
+      iv) functions such as TRIM, LEN, LEN_TRIM when the underlying type
+          of the argument of enumerator type is character
+               
+   a) "cast" the enumerator value to an object of an intrinsic type using
+       the intrinsic conversion functions e.g.,
+
+      i) INT intrinsic
+         type(MY_HASH_CODES) :: code
+         integer(INT64) :: foo
+         ..
+         code = MY_HASH_CODES%FOO
+         ..
+         foo = int( code, kind=kind(foo) )
+         ..
+
+      ii) REAL intrinsic
+          real, parameter :: Rgas=real(PHYS_CHEM_CONSTANTS%R, kind(Rgas))
+      
+      iii) elided are the uses with LOGICAL and CHAR intrinsic functions
+    
+   b) directly employ the enumerator values as indices in loop constructs 
+      *provided* the underlying type of the enumeration is integral e.g.,
+
+      i) DO loop
+         ! consider an enum LOOP_IDX of default integer as underlying type
+         enum LOOP_IDX
+            ! MY_RANGE, N are named constants defined previously
+            enumerator :: BEGIN = -MY_RANGE
+            enumerator :: END   = +MY_RANGE
+            enumerator :: INCR  = MY_RANGE/N
+         end enum
+         do I = LOOP_IDX%BEGIN, LOOP_IDX%END [ , LOOP_IDX%INCR ]
+            ..
+         end do
+
+      ii) DO CONCURRENT (and FORALL?)
+         ! consider an enum FOR_ALL of integer(INT64) as underlying type
+         do concurrent( I = FOR_ALL%IDX1 : FOR_ALL%IDXN [ : FOR_ALL%IDXI ]
+            ..
+         end do
+      
+   c) utilize the MAX, MIN intrinsic functions with variables and elements
+      of an enumeration type where the result value is the enumerator
+      corresponding to that determined by the function operating on the
+      values of the arguments: e.g.,
+
+      type(CALC_SPEC) :: CalcSpec
+      ..
+      read(..) .., CalcSpec, ..
+      ..
+      CalcSpec = max( CalcSpec, CALC_SPEC%B )
+
+7) be able to define a variable of an enumeration type with a value that
+   can be generated using a valid expression on one or more enumerator
+   elements of that enumeration type e.g., with reference to 1c above
+
+      type(CALC_SPEC) :: CalcSpec
+      ..
+      CalcSpec = CALC_SPEC%ALL
+      ..
+      CalcSpec = ior( CalcSpec, CALC_SPEC%B )
+      ..
+      CalcSpec = CALC_SPEC%B + CALC_SPEC%C
+   
+8) be able to define a named constant of an enumeration type e.g., with
+   reference to 1b above
+
+      type(FLOW_REGIMES), parameter :: SLUG_FLOW = FLOW_REGIMES%SLUG
+   
+9) that it will be possible for an enumeration type to be the selector in
+   an ASSOCIATE construct e.g., with reference to 1g above,
+
+   type(PHYS_CHEM_CONSTANTS) :: k
+   ..
+   associate ( CONST => PHYS_CHEM_CONSTANTS )
+      ..
+      k = CONST%k
+      ..
+   end associate
+
+10) that it is possible for an enumerator to be the selector in an
+    ASSOCIATE construct e.g., with reference to 1e above,
+    
+    associate ( foo => MY_HASH_CODES%FOO )
+       ..
+    end associate
+    
+    associate ( R => real(PHYS_CHEM_CONSTANTS%R, kind=..) )
+       ..
+       Density = P/R/T
+       ..
+    end associate
+
+11) be able to define a component of a derived type that is of an
+    enumeration type with the option to include default initialization
+    for that component e.g., with respect to 1e above
+
+    type :: valve_t
+       ..
+       type(VALVE_STATE) :: vs [ = VALVE_STATE%CLOSED ]
+       ..
+    end type
+
+12) be able to define a type parameter of a derived type that is of an
+    enumeration type with the option to include default initialization
+    for that type parameter e.g., a kind-type parameter with respect to 1a
+    above
+    
+    type :: Eos_t(EosKind)
+       type(EOS), kind :: EosKind [ = EOS%VAN_DER_WAALS ]
+       ..
+    end type
+
+13) be able to utilize an enumeration type as part of procedure
+    characteristics, for example with reference to 1b above,
+    
+    a) type of an argument in a procedure
+    
+       subroutine CalcPressureDrop( .., ValveState, .. )
+    
+          ! Argument list
+          ..
+          type(VALVE_STATE), intent(in) :: ValveState
+          ..
+          if ( ValveState == VALVE_STATE%OPEN ) then
+          ..
+       end subroutine
+       ..
+       type(VALVE_STATE) :: vs
+       ..
+       vs = VALVE_STATE%CLOSED
+       ..
+       call CalcPressureDrop( .., vs, ..)
+        
+    b) type of a function result
+    
+       function GetKeyConstituent( .. ) result(r)
+    
+          ! Argument list
+          ..
+          ! Function result
+          type(LNG_CONSTITUENT) :: r
+    
+          r = LNG_CONSTITUENT%C1
+          ..
+          if ( .. ) then
+             r = LNG_CONSTITUENT%C2
+          else
+             r = LNG_CONSTITUENT%C3
+          end if
+    
+       end GetKeyConstituent
+
+    c) resolution of generic interfaces
+
+14) be able to access enumeration types via USE association in a given
+    scoping unit which then also provides access to all the enumerator
+    constants in that enumeration type, 
+
+15) be able to access enumeration types via IMPORT statements in a
+    relevant scoping unit which then also provides access to all the
+    enumerator constants in that enumeration type, as applicable.  
+
+16) that there is a mechanism available to determine the number of
+    enumerators in an enumerator type, perhaps in the form of a new
+    intrinsic function,
+    say NumEnums, which has a dummy argument that is of an enumeration
+    type or via the existing SIZE intrinsic. 
+
+17) that there is a mechanism available to fetch the values of all the
+    enumerators in an enumerator type, perhaps in the form of a new
+    intrinsic function, say GetEnumValues, which has a dummy argument that
+    is of an enumeration type and whose result is an array of the
+    enumerator values listed sequentially with the array being of the same
+    type as the underlying type of the enumeration type. 
+
+18) that there is a mechanism available to fetch the names of all the
+    enumerators in an enumerator type, perhaps in the form of a new
+    intrinsic function, say GetEnumNames, which has a dummy argument that
+    is of an enumeration type and whose result is an array of the
+    enumerator names listed sequentially with the array being of default
+    CHARACTER type and a length that of the enumerator name with the
+    maximum length. 
+
+19) that there is a mechanism available to fetch the value of an
+    enumerator in an enumerator type based either on the name of the
+    enumerator or its relative position in the enumerated list.  This can
+    perhaps be in the form of a new intrinsic function, say GetEnumValue,
+    which is a generic interface to 2 functions, the first dummy argument
+    of both being the enumeration type of interest while the second
+    argument of one is the name of the enumerator whereas it is a position
+    index of the enumerator in the case of the second.  The result of
+    these functions is a scalar corresponding to the enumerator value and
+    whose type is that of the underlying type of the enumeration type. 
+
+20) that there is a mechanism available to fetch the name of an enumerator
+    in an enumerator type based either on the value of the enumerator or
+    its relative position in the enumerated list.  This can perhaps be in
+    the form of a new intrinsic function, say GetEnumName, which is a
+    generic interface to 2 functions, the first dummy argument of both
+    being the enumeration type of interest while the second argument of
+    one is the value of the enumerator whereas it is a position index of
+    the enumerator in the case of the second.  The result of these
+    functions is a scalar of character type corresponding to the name of
+    the enumerator.
+    
+21) that there is a mechanism to perform output editing of a variable of
+    an enumeration type using i) list-directed formatting, ii) using
+    character editing as a data edit descriptor for formatted output, and
+    iii) using namelist formatting.  The output shall be the name of the
+    enumerator corresponding to the variable.  
+
+22) that there is a mechanism to perform input editing of a variable of an
+    enumeration type using i) list-directed formatting, ii) using
+    character editing as a data edit descriptor for formatted output, and
+    iii) using namelist formatting.  The input shall be the name of the
+    enumerator corresponding to the variable.  
+
+Formal Specification
+--------------------
+
+Syntax
+------
+Though this paper does not attempt to develop syntax toward an enumeration
+type in Fortran, it presupposes certain aspects of it but which, as
+explained above, is for illustration purposes only in connection with
+example snippets of pseudocode.  The author hopes the eventual syntax
+toward enumeration types will not only be one that integrates well with
+the current Fortran language standard but that any new syntactical
+aspects or keywords or instructions introduced in the language as part of
+this facility will be relatable to good coding practices followed
+currently using other prominent languages in modern codes toward
+scientific, technical, and numerical computing.  An example of this would
+be the consideration to retain the existing keyword ENUM for the new
+enumeration type.  And similarly to the concept of "scoped" and "unscoped"
+enumeration in some other languages, Fortran can perhaps consider
+"unnamed" and "named" enumerations, meaning one that has the BIND(C)
+attribute and thus does not have a name and nor an emueration type:
+
+   enum, bind(C)
+      enumerator :: UP = 1, DOWN, LEFT, RIGHT
+   end enum
+
+and another which defines a new type and a name e.g.,
+
+   enum :: PARTICLE_MOVEMENT
+      enumerator :: UP = 1, DOWN, LEFT, RIGHT
+   end enum
+
+Thus 'UP' and 'PARTICLE_MOVEMENT%UP' refer to 2 different types, the
+former being effectively a named constant of INTEGER(C_INT) type whereas
+the latter is distinct as the PARTICLE_MOVEMENT enumeration type.
+
+Edits
+-----
+
+
+
+
+
+
+
+

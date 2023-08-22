@@ -1,0 +1,155 @@
+                                                            J3/11-150r1
+To: J3
+From: Malcolm Cohen / Van Snyder
+Subject: Definition is poorly worded
+Date: 2011 February 18
+
+----------------------------------------------------------------------
+
+NUMBER: F03/0124
+TITLE: Definition is poorly defined
+KEYWORDS: definition
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the program:
+
+       PROGRAM example1
+         TYPE T1
+           SEQUENCE
+           INTEGER I, J
+         END TYPE
+         TYPE T2
+           SEQUENCE
+           INTEGER I, J
+         END TYPE
+         TYPE(T1) X
+         TYPE(T2) Y
+         EQUIVALENCE (X, Y)
+         X%I = 1
+         X%J = 2
+         PRINT *, X, Y
+       END
+
+Q1. Is this program standard-conforming, and if so, what does it
+    print?
+
+According to items (1) and (12) of 16.6.5, the assignment to X%I
+causes both X%I and Y%I to become defined.
+
+Similarly, the assignment to X%J causes both X%J and Y%J to become
+defined.
+
+Then, according to item (15) of 16.6.5, both X and Y become defined.
+
+However, according to 4.5.2.4, X and Y are types with different names,
+and therefore are of different type, thus according to 16.6.6 item (1)
+when X becomes defined Y becomes undefined, and vice versa.  This
+appears to be a contradiction.
+
+Furthermore, consider
+
+  PROGRAM example2
+    TYPE t
+      INTEGER a,b
+    END TYPE
+    TYPE(t),TARGET :: x
+    INTEGER,POINTER :: p
+    x = t(1,2)
+    p => x%a
+    p = 33
+    PRINT *,x
+  END PROGRAM
+
+According to the quoted text, the assignment to P is defining a
+variable of type INTEGER, and one that is associated (partially, via
+pointer association) with a variable of type T.  That would seem to
+make X undefined according to item (1) of 16.6.6.
+
+Q2. Is example2 intended to be standard-conforming?
+
+Finally, consider
+
+  MODULE ugly1
+    TYPE t1
+      INTEGER a,b
+    END TYPE
+    INTEGER w,z
+    TYPE(t1) x
+    COMMON/c/w,x,z
+  END MODULE
+  MODULE ugly2
+    TYPE t2
+      INTEGER c,d
+    END TYPE
+    TYPE(t2) y1,y2
+    COMMON/c/y1,y2
+  END MODULE
+  BLOCK DATA
+    COMON/c/i(4)
+    DATA i/1,2,3,4/
+  END BLOCK DATA
+  PROGRAM example3
+    USE ugly1
+    USE ugly2
+    ! At this point c is 1,2,3,4.
+    y1 = t2(66,-6)
+    PRINT *,w ! Is this ok?
+    w = 0
+    PRINT *,y1 ! And is this ok?
+  END PROGRAM
+
+This is similar to example1, except that we are defining a whole
+variable of sequence type at once, not by partial definition.
+
+Q3. Is example3 standard-conforming?
+
+
+ANSWER:
+
+A1. The program was intended to be standard-conforming.
+    An edit is supplied to remove the apparent contradiction.
+
+    The program should print something like " 1 2 1 2".
+
+A2. Yes, example2 is intended to be standard-conforming.
+    An edit is supplied to remove the problem.
+
+A3. Yes, example3 is intended to be standard-conforming.
+    An edit is supplied to remove the problem.
+
+DISCUSSION:
+
+The only interesting case of variable definition causing an associated
+variable to become undefined is using the old FORTRAN 77 data types;
+all the other intrinsic types are not permitted to be associated with
+variables of different type.
+
+We only need to get the scalar intrinsic case right, as the array and
+derived type cases then follow automatically from the definitions in
+16.6.1.
+
+EDITS:
+
+[455:4-10] Replace 16.6.6 item (1) entirely:
+  "(1) When a scalar variable of intrinsic type becomes defined, all
+       totally associated variables of different type become
+       undefined.
+   (1a) When a double precision scalar variable becomes defined, all
+        partially associated scalar variables become undefined.
+   (1b) When a scalar variable becomes defined, all partially
+        associated double precision scalar variables become undefined."
+
+[455:36] Change "(1)" to "(1)-(1b)".
+{Fix reference.}
+
+SUBMITTED BY: Robert Corbett (via Van Snyder via Dan Nagle)
+
+HISTORY: 08-269    m185  F03/0124 submitted
+         10-245    m193  Draft answer - Passed by J3 meeting
+         11-129    m194  Failed J3 letter ballot #22 10-254
+         11-nnn    m194  Revised answer
+
+----------------------------------------------------------------------

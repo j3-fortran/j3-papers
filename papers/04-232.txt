@@ -1,0 +1,100 @@
+
+                                                       J3/04-232
+
+Date:      05 February 2004
+To:        J3
+From:      Aleksandar Donev
+Subject:   Dereferencing C Pointers
+
+
+Title: Dereferencing C Pointers
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: J3/03-255, J3/03-277
+
+Basic Functionality:
+
+No mechanism is currently provided to directly de-reference a C
+pointer. Rather, argument association is used throughout, which does
+not work when the pointer is part of a derived type (structure). One
+can also use C_F_POINTER to create a Fortran pointer to the data and
+then de-reference it. This is very cumbersome and likely to be very
+inefficient. A direct mechanism should be provided to dereference a
+TYPE(C_PTR) pointer, both in left and right hand contexts, at least for
+intrinsic types. Additionally, since C pointers are used as arrays in
+C, one should be able to specify an offset to use in the dereferencing.
+
+Because of the syntax that was chosen in Fortran 2003, I see no other
+way but to use intrinsics for this. In particular, I do not see how to
+allow direct assignment (write) to a memory location pointed by a C
+pointer, other then through an intrinsic subroutine. This is
+unfortunate, but the decision to make C pointers nonpointer in Fortran
+has already been made...
+
+Rationale:
+
+C pointers are used as arrays inside C structures, and thus the need to
+dereference C pointers in an array-like manner appears very frequently
+in practice. We need a better mechanism for this than the one currently
+provided. Additionally, J3/03-255 explains the need for a C-like
+pointer in Fortran, and the proposed functionality essentially uses C
+pointers to provide such a functionality (again a workaround...), even
+though in a cumbersome-to-use manner.
+
+Estimated Impact: 
+
+Requires introduction of at least two new intrinsics. Very easy to
+implement.
+
+Detailed Specification: 
+
+Introduce the following new intrinsic function:
+
+C_VALUE(CPTR, MOLD [, INDEX])
+
+CPTR is a C pointer
+MOLD is like the usual mold arguments and specifies the type of the
+return value. We may require it to be of interoperable type.
+INDEX is an integer giving the offset (when the C pointer points to a
+contiguous array), defaulting to 0 (it is C-style, i.e., starts at 0)
+The result is a scalar of type MOLD
+
+Introduce an intrinsic subroutine:
+
+C_STORE(CPTR, VALUE [, INDEX])
+CPTR is INTENT(IN) and is a C pointer
+VALUE is INTENT(IN) and is of any (interoperable?) type.
+INDEX is an INTENT(IN) integer offset
+This routine will store the value of VALUE into the location pointed by
+CPTR.
+
+Example:
+
+struct array // C "array descriptor"
+{
+   int n_elements;
+   float *values;
+}
+
+TYPE, BIND(C) :: Array
+   INTEGER(C_INT) :: n_elements
+   TYPE(C_PTR) :: values
+END TYPE   
+
+TYPE(Array) :: array
+INTEGER(C_INT) :: i
+
+! Write to the array
+DO i=1,array%n_elements
+   CALL C_STORE(CPTR=array%values, VALUE=2.0*i, INDEX=i)
+END DO
+
+! Read from the array
+DO i=1,array%n_elements
+   WRITE(*,*) "array(", i, ")=", C_VALUE(CPTR=array%values, MOLD=1.0_c_float, INDEX=i)
+END DO
+
+History: 

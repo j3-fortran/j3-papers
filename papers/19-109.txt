@@ -1,0 +1,164 @@
+To: J3                                                     J3/19-109
+From:    Van Snyder
+Subject: Synchronizing variables
+Date: 2019-January-16
+References: N2162, 18-115, 18-237, 18-243, 18-246, Parts 6 and 7 of 15-166
+
+Introduction
+============
+
+There are numerous restrictions on the interactions concerning access to
+variables in different iterations of DO CONCURRENT constructs, and
+coarrays in unordered segments.  These restrictions would also apply to
+blocks of a fork-join construct or asynchronous constructs (see
+18-243).  They could be relaxed or eliminated by a different category of
+storage, called I-Structure, invented by Arvind, Rishiyur Nikhil, and
+Keshav Pingali, and described in CACM in 1989.
+
+Paper history
+=============
+
+Meeting 217 minutes state that /HPC announced on Monday 15 October that
+there would be no /HPC action on 18-246; it would instead be considered
+by /Data in conjunction with 18-237.  18-237 was rejected, and there was
+no further consideration of 18-246, either by /Data or plenary.
+
+Use Cases
+=========
+
+1. Reference a variable assigned a value in one iteration of a DO
+   CONCURRENT construct, in a different iteration.  This is presently
+   prohibited by 11.1.7.4.5p3 and p4.
+
+2. Reference a coarray assigned a value by a different image in an
+   unordered segment.  E.g., The work queueing example in 11.6.10 Note 3
+   could be implemented without explicit locks.  Without using explicit
+   locks, this is prohibited by 11.6.2p3.
+
+3. Reference a variable assigned a value in one block of a fork-join
+   construct, from within a different block.
+
+4. Reference a variable assigned a value in one asynchronous construct,
+   from within a different asynchronous construct.
+
+5-8. Same things for allocation status, pointer association status.
+
+9-12. Detect that several iterations or images have attempted to assign
+   a value or meddle with allocation or association status.
+
+Proposal
+========
+
+Define an attribute for a derived type, maybe named SYNC or SIGNAL, that
+indicates objects of that type have two states: "Empty" and "Full."  The
+attribute would apply to all objects of the type.  Allow to specify the
+attribute for objects independently of whether the attribute is
+specified for the type.  Allow to specify the attribute for objects of
+intrinsic type.
+
+For arrays, allow to specify whether the attribute applies to the whole
+array, or to each element separately.
+
+A value can only be assigned to the entirety of an object that has the
+attribute, not to subobjects of it separately.  There is no concept of
+"partly empty" or "partly full."
+
+Alternatively (or additionally), the functionality could be provided by
+an extensible type, defined in ISO_Fortran_Env, that has non-overridable
+"magic" assignment and defined input routines that operate on its
+extensions.  This is a bit clunky if you need a synchronized object of
+intrinsic type because then every reference needs additional syntax to
+dereference a component.  It might be made more palatable if the
+synchronizer type were accompanied (in the intrinsic module) by
+extensions for each of the intrinsic types, with type parameters, and
+type-bound intrinsic operations.
+
+If a [subobject of] a variable of a type with that attribute is
+referenced when it is empty, execution is suspended until it is assigned
+a value.  For coarray or coindexed variable references, this has the
+same effect as waiting for a lock.  There is presently no equivalent for
+DO CONCURRENT.  If it is referenced by several iterations or several
+images, the suspended iterations or images are queued, maybe with a
+queue whose head is referenced by a private pointer in the referenced
+object, or perhaps aliased to the object itself.  This is especially
+difficult to do by waiting for event (or lock) variables if several
+images need to wait for the value to be provided.  Again, there is
+presently no equivalent for DO CONCURRENT.  This method doesn't need to
+declare locks or events explicitly, post to them explicitly (and know to
+which ones to post), wait for them explicitly, or know which one to wait
+for.  At least for interactions between images, this proposal could be
+implemented using events or locks, or perhaps more efficiently "under
+the covers" -- but that won't work for DO CONCURRENT iterations because
+we put too many restrictions on lock and event variables, i.e., they
+have to be coarrays, and an image can't wait for a lock it has locked,
+even if a different iteration of a DO CONCURRENT executing on the same
+image might unlock it.  Hardware might someday make this work very much
+like split-phase memory transactions in Denelcor HEP or MIT Monsoon or
+Tera/Cray MTA.  Having the facility in Fortran might put some pressure
+on hardware developers to provide it, much as array operations urged
+hardware vendors, e.g. Intel, to provide, e.g. SSE extensions.
+
+Reference to an empty non-coarray variable of this type outside a DO
+CONCURRENT construct (or asynchronous block -- see 19-243 -- or
+procedure -- see 18-237), or to a coarray variable on your own image
+(outside a DO CONCURRENT construct), causes deadlock.  As with waiting
+for events or locks, more subtle kinds of abuse can also cause deadlock.
+
+If it is assigned a value when it is "Full" an error condition occurs
+(exceptions proposed in 18-115, or the ASSIGN statement proposed in
+15-166, would be useful here).  For DO CONCURRENT, this is simply
+prohibited in different iterations.  When it happens, it causes a race
+condition that is not easily detectable.  For coarrays, the rules about
+references in unordered segments apply, but the race conditions are just
+as real, and difficult.  All that's necessary to cause an inscrutable
+non-repeatable problem is to omit one SYNC.  This proposal does the SYNC
+automatically.
+
+Such a variable is initially "empty."  There is no concept of "undefined
+full status."
+
+Provide a statement or intrinsic subroutine or type-bound procedure to
+"empty" it, e.g., before starting a DO CONCURRENT construct.  This is
+equivalent to unlocking a lock.
+
+Provide an intrinsic function, or one in an intrinsic module, or a
+type-bound one, to inquire whether it is "empty."  Or maybe not, as
+somebody might be tempted to spin on it instead of having the processor
+queue on it.  There is no intrinsic function to inquire whether a lock
+is locked.
+
+This proposal bears a similar relationship to locks and events that
+coarrays bear to MPI or PVM.  In both cases, the new facility is much
+simpler to use, and more likely to be used correctly.
+
+I-Structure History
+===================
+
+Arvind and his grad students implemented I-Structures in software in
+GITA (Graph Interpreter for Tagged-token dataflow Architecure -- and his
+Arvind's wife's name) to run Id on Unix workstations.  Id is a language
+designed for parallel demand-driven dataflow programming.  I-Structures
+might also have been used in pH, a confluence of Id and Haskell.
+
+Greg Papadopoulos used I-Structures to implement the Monsoon dataflow
+computer nodes, for his Ph.D. project at MIT.  I don't know whether
+their semantics were provided by special purpose hardware, extra gates
+etc., firmware, or software in the special-purpose variations of
+Motorola 88100 processors that Papadopoulos used.  88100 had room for
+about 128,000 more transistors than Motorola used for "stock"
+processors.  Los Alamos was sufficiently impressed to have bought twelve
+Monsoon processors.  When they were retired, at least one was given to
+the Computer History Museum.  USC bought one too.  I don't know how many
+nodes the Los Alamos or USC processors had.
+
+January 15-16 e-mail discussion of Performance Portability
+==========================================================
+
+E-mail discussion 15-16 January discussed the importance of emphasizing
+the superior usability for parallel programming inherent in Fortran
+coarrays and CONCURRENT constructs.  Automatic synchronization
+immediately improves the productivity of parallel program development. 
+The alternatives to Fortran that are frequently put forward offer
+nothing similar to synchronized variables.
+
+

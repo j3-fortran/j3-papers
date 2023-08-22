@@ -1,0 +1,90 @@
+                                                            08-230r2
+To: J3
+From: Van Snyder, originally from Michael Ingrassia
+Subject: Public Comment J32016
+Date: 2008 August 14
+
+----------------------------------------------------------------------
+
+Commenter: Robert Corbett
+Subject: "advice regarding additional intrinsics ignores"
+
+The advice given in paragraph 4 of Section 1.4 of the
+Fortran 2008 ignores a important issue that affects
+portability.  Consider the program
+
+       PROGRAM MAIN
+         INTERFACE SQRT
+           INTEGER FUNCTION NISQRT(I)
+           END FUNCTION
+         END INTERFACE
+         CALL SUBR
+       CONTAINS
+         SUBROUTINE SUBR
+           INTRINSIC SQRT
+           PRINT *, SQRT(4)
+           PRINT *, SQRT(4.0)
+         END SUBROUTINE
+       END
+
+       INTEGER FUNCTION NISQRT(I)
+         NISQRT = -INT(SQRT(REAL(I)))
+       END
+
+A user might expect that program to write something like
+
+  -2
+  2.0
+
+If, however, the implementation provides a specific
+interface for SQRT that takes an argument of type INTEGER,
+that interface will be chosen over the user's external
+function according to the rules presented in
+Section 12.5.5.2 of the Fortran 2008 draft.
+
+I suggest adding a warning against declaring a name to have
+the INTRINSIC attribute in a context where that name is
+accessible as the name of a generic interface.
+
+----------------------------------------------------------------------
+
+J3 response:
+
+This is similar to the question asked in J32008 (08-222).
+
+It is not possible for the standard to warn about all possible
+interactions of programs with processor extensions.  This is explicitly
+addressed by subclause 1.4p4.
+
+[12.5.5.2 NOTE 12.41+]
+Editor: Insert a new note after NOTE 12.41:
+
+"NOTE 12.41+
+  The interaction between host association, the INTRINSIC attribute, and
+  generic resolution is complicated.  Consider the following program:
+
+       PROGRAM MAIN
+         INTERFACE SQRT
+           INTEGER FUNCTION NISQRT(I)
+           END FUNCTION
+         END INTERFACE
+         CALL SUBR
+       CONTAINS
+         SUBROUTINE SUBR
+           INTRINSIC SQRT
+           PRINT *, SQRT(4)
+           PRINT *, SQRT(4.0)
+         END SUBROUTINE
+       END
+
+       INTEGER FUNCTION NISQRT(I)
+         NISQRT = -INT(SQRT(REAL(I)))
+       END
+
+  If the processor provides SQRT for integer arguments as an extension,
+  that intrinsic procedure will be invoked instead of the users NISQRT
+  function.  This occurs because the INTRINSIC statement takes priority
+  over host association.  It is recommended that the INTRINSIC attribute
+  not be specified for a name that is the same as the name of a generic
+  interface accessed by host association."
+

@@ -1,0 +1,129 @@
+To:         J3 Members                                       J3/16-126
+From:       Van Snyder
+Subject:    Interp concerning asynchronous and defined I/O
+Date: 2016 January 25
+
+----------------------------------------------------------------------
+
+NUMBER: F08/nnnn
+TITLE: Asynchronous and defined I/O
+KEYWORDS: Asynchronous, defined I/O
+DEFECT TYPE: TBD
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following program:
+
+  program P1
+    type T1
+      real, pointer :: C1(:)
+    contains
+      procedure :: T1_Unf_Out
+      generic :: write(unformatted) => t1_unf_out
+    end type T1
+    integer :: I
+    type(t1) :: V1
+    allocate ( v1%c1(1000) )
+    open ( 10, file='F1', form='unformatted', status='old', &
+         & action='read' )
+    open ( 20, file='F2', form='unformatted', action='write', &
+         & asynchronous='yes' )
+    write ( 20, asynchronous='yes' ) ( i, i = 1, 10000 )
+    read ( 10 ) v1
+  end program P1
+
+Is the write statement for unit 20 permitted to proceed after the read
+statement for unit 10 begins execution?  It appears to be prohibited
+by subclause 9.6.4.8.3, paragraph 20:
+
+  "When a parent READ statement is active, an input/output statement
+  shall not read from any external unit other than the one specified
+  by the \cf{unit} dummy argument and shall not perform output to any
+  external unit."
+
+In a similar program in which the roles of reading and writing are
+exchanged, an asynchronous read statement appears to be prohibited to
+proceed by 9.6.4.8.3, paragraph 21:
+
+  "When a parent WRITE or PRINT statement is active, an input/output
+  statement shall not perform output to any external unit other than
+  the one specified by the \cf{unit} dummy argument and shall not read
+  from any external unit."
+
+
+ANSWER 1:
+
+It was intended to require that a child data transfer not occur while
+an independent asynchronous transfer is in progress.  Edits are
+provided to correct this oversight.
+
+ANSWER 2:
+
+It was intended that a processor not be required to continue an
+in-process asynchronous transfer while a child data transfer is in
+process.  Edits are provided to correct this oversight.
+
+ANSWER 3:
+
+It was intended that the write statement in the example be allowed to
+proceed while the child data transfer is active.  The paragraphs that
+appear to prohibit it (and the other variety described in the
+question) to proceed were intended so as not to require that the
+runtime library be reentrant.  If the processor supports asynchronous
+input/output, however, it is necessarily reentrant.  Edits are
+provided to correct this oversight.
+
+ANSWER 4:
+
+It was intended that a data transfer statement that referred to a
+different unit not be executed while a parent READ, WRITE or PRINT
+statement is active.  Edits are provided to correct this oversight.
+
+EDITS 1 to 10-007r1:
+
+Before paragraph 20 of subclause 9.6.4.8.3 [227:1-], insert a
+paragraph:
+
+"When a parent READ, WRITE or PRINT statement becomes active, a wait
+operation (9.7.1) is performed for all pending data transfer
+operations".
+
+EDITS 2 to 10-007r1:
+
+Before paragraph 20 of subclause 9.6.4.8.3 [227:1-], insert a
+paragraph:
+
+"When a parent READ, WRITE or PRINT statement becomes active, it is
+processor dependent whether a wait operation (9.7.1) is performed for
+all pending data transfer operations".
+
+Within Annex A [461:22+], insert a list item:
+
+" o whether a wait operation is performed for all pending data
+    transfer operations when a parent READ, WRITE or PRINT statement
+    becomes active (9.6.4.8.3);"
+
+EDITS 3 to 10-007r1:
+
+Delete paragraphs 20-22 of subclause 9.6.4.8.3 [227:1-7].
+
+EDITS 4 to 10-007r1:
+
+Replace paragraphs 20-21 of subclause 9.6.4.8.3 [227:1-4]:
+
+"While a parent READ statement is active, a data transfer input/output
+statement that reads from any external unit other than the one
+specified by the \cf{unit} dummy argument, or one that performs output
+to any external unit, shall not be executed.
+
+"While a parent WRITE or PRINT statement is active, a data transfer
+input/output statement that performs output to any external unit other
+than the one specified by the \cf{unit} dummy argument, or one that
+reads from any external unit, shall not be executed."
+
+SUBMITTED BY: Van Snyder
+
+HISTORY: 16-nnn  m209  F08/nnnn submitted
+
+----------------------------------------------------------------------

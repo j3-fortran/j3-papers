@@ -1,0 +1,400 @@
+
+                                                        J3/97-237
+
+Date:         15 October 1997
+To:           J3
+From:         Larry Rolison
+Subject:      Interpretation Request:  Visibility of a Data Object
+                                       with Statement Scope
+
+
+NUMBER:       1
+TITLE:        Visibility of a data object with statement scope
+KEYWORDS:     visibility, data object, statement scope, scope
+DEFECT TYPE:  Interpretation 
+STATUS:       X3J3 consideration in progress
+
+QUESTION:
+
+Part 1:
+
+Consider the following program:
+
+      MODULE mod
+      INTEGER, PARAMETER :: jmin(1:10) = (/ (i, i = 1, 10) /)
+      END MODULE 
+
+
+      PROGRAM main
+      USE mod
+      INTEGER :: i
+
+      DO i = 1, 10
+        PRINT *, 'jmin(i) = ', jmin(i)
+      END DO
+
+      END PROGRAM
+
+Some Fortran compilers consider the implied-DO variable I used in the module
+to be visible to program units using the module and some Fortran compilers 
+do not consider the I to be visible to using program units.
+
+Is an entity with statement scope in the specification part of a module
+visible to a program unit using the module and accessing the public data of
+the module as exemplified by the above example?
+
+
+Part 2:
+
+Consider the adaptation of the example program from Part 1:
+
+       MODULE mod
+       INTEGER, PARAMETER :: jmin(1:10) = (/ (i, i = 1, 10) /)
+       CONTAINS
+
+       SUBROUTINE one
+         i = 99            ! Is this a local or module variable?
+                           ! Compilers that export I probably say module.
+       END SUBROUTINE
+
+       SUBROUTINE two
+         PRINT *, i
+       END SUBROUTINE
+
+       END MODULE 
+
+The module specification part uses the variable I as an implied-DO variable
+of an array constructor.  Module procedure ONE sets a variable named I to
+a value.
+
+Given:
+
+  * An implicitly declared data object in the module specification part where
+    the variable has statement scope, and
+
+  * An implicitly declared variable in a module procedure where the variable
+    has the same name as the variable described in the first bullet of this
+    list
+
+is the variable in the module procedure a module variable (known to the entire
+module and thus available outside the module) or is the variable local to the
+module procedure?
+
+
+ANSWER:
+
+
+EDITS:
+
+
+SUBMITTED BY:  Larry Rolison
+HISTORY:  J3/97-237 m143 submitted
+
+
+Addendum:
+A collection of email reactions to the question when the question was posted
+to the J3 reflector:
+
+
+Date: Tue, 20 May 1997 10:09:37 -0600 (MDT)
+From: jeanne@niwot.scd.ucar.EDU (Jeanne Adams)
+
+Larry, the scope is the statement in this case, so I don't think it
+is visible to a using program.
+
+-------------------------------------------------------------------------------
+
+Date: Tue, 20 May 1997 09:27:45 -0700
+From: Richard Maine <maine@altair.dfrc.nasa.gov>
+
+I'd assume it was visible.  Its type is certainly visible in the scope
+of the module.  (Try declaring a complex variable I in the module).
+I can't see any rationale for why it wouldn't be visible with the USE.
+
+Or consider, for example, the case like
+
+     MODULE TEST1
+     INTEGER :: I
+     INTEGER, PARAMETER :: JMIN(1:10) = (/ (I,I=1,10) /)
+     END MODULE TEST1
+
+Semantically no different - right?  The INTEGER declaration just
+makes the type of I explicit instead of implicit.  I can't see
+any way that the compiler can tell whether the INTEGER declaration
+is just for the implied DO variable or whether it also implies
+a variable of module scope.  It seems to me that the rule has to be
+that it also implies a variable of module scope.  In other contexts
+(namely not in a module), the compiler could notice that the
+variable is never used and thus could be optimized away.  In a module,
+there is no way to tell that when compilingg the module (as the
+USEs are compiled later).
+
+Of course, if it were my own code, the module would have default
+private accessibility, so only those things that I specifically
+exported would be visible - but I understand that the compiler vendors
+have to deal with all coding styles.
+
+This is one example of why I never have liked implied DO syntax -
+things that should "logically" be completely internal to the implied
+DO "escape" and have effects elsewhere.
+
+It is also an excellent example of the complications of the lack of
+a clear "declare a variable" statement in Fortran.  Instead of a
+single statement that declares something to be a variable, you just
+collect attributes and see in the end whether the set of attributes
+looks like a variable.  In this (and some other) case, its a bit
+vague.  We have the type integer associated with the name "I", but
+we don't know explicitly whether I actually is meant to exist or not.
+The only "safe" assumption is that it does.
+
+-------------------------------------------------------------------------------
+
+From: "Craig Dedo"<cdedo@checkfree.com>
+Date: Tue, 20 May 1997 12:28:51 -0400
+
+My interpretation may not be legally correct, but here is how I see
+it, based purely on my personal intuitive feel for what an ordinary
+programmer would expect.
+
+Implied DO-loop variables in DATA DECLARATION statements are local
+ONLY to the statements they are used in.
+
+Implied DO-loop variables in EXECUTABLE statements take the scope of
+the variable that is used, i.e., module, local, global, COMMON, etc.
+
+This really is a hole in the standard.  We should make this an erratum
+and provide an edit to make rules clear.
+
+------------------------------------------------------------------------------
+
+Date: Tue, 20 May 1997 09:35:42 -0700
+From: Richard Maine <maine@altair.dfrc.nasa.gov>
+
+Craig Dedo writes:
+
+ > Implied DO-loop variables in DATA DECLARATION statements are local
+ > ONLY to the statements they are used in.
+
+Then you'd expect this code to work?
+
+  program oops
+    character*16 :: i = 'hello'
+    integer :: j(10) = (/ (i, i = 1 , 10) /)
+    write (*,*) i, j
+  end
+
+I think not.  Looks to me like the implied DO-loop variable has at
+least some effect outside of its scope.
+
+------------------------------------------------------------------------------
+
+Date: Tue, 20 May 1997 09:39:34 -0700
+From: Bob Runyan <bruny@lahey.com>
+
+Another data point:  Our compiler gives a fatal error on the declaration
+of I in the main program.
+
+------------------------------------------------------------------------------
+
+From: vdecyk@pepper.physics.ucla.edu
+Date: Tue, 20 May 1997 09:51:26 -0700 (PDT)
+
+The IBM xlf90 compiler does not complain and executes the code.
+
+The Fujitsu compiler frt issues the following error:
+
+Fortran 90 diagnostic messages: program name(MAINTEST)
+  jwd1763i-s  "lrr.f", line 7: The attribute of the use associated name
+  cannot be redefined in this specification statement.(name:I)
+
+viktor decyk
+
+------------------------------------------------------------------------------
+
+From: <zongaro@VNET.IBM.COM> (Henry Zongaro)
+Date: Tue, 20 May 1997 15:12:53 -0400 (EDT)
+
+Not surprisingly, I'd say the implied-DO variable should not be visible
+to the using program.  14.1.3 Statement Entities states, in part, that
+
+     The name of a variable that appears as the DO variable of an
+     implied-DO in a DATA statement or an array constructor has a scope
+     of the implied-DO list.  It has the type and type parameter that it
+     would have if it were the name of a variable in the scoping unit
+     that includes the DATA statement or array constructor and this type
+     must be integer.
+
+I think the use of the words "would have if it were" were intended to convey
+the idea that the existence of an array constructor or data implied-DO
+variable doesn't actually cause an associated variable in the scoping unit
+to come into existence.  I believe that if the Cray and EPC implementations
+are correct, the wording would have been more definite.
+
+Also, the following edit to Fortran 90 (same section) appeared as the
+response to Interpretation 31:
+
+     If the name of a global or local entity accessible in the scoping unit of
+     a statement is the same as the name of a statement entity in that
+     statement, the name is interpreted within the scope of the statement
+     entity as that of the statement entity.
+
+Again, I take the word "If" here to imply that there need not be any such
+global or local entity with the same name as that of the statement entity.
+
+Thanks,
+Henry
+
+------------------------------------------------------------------------------
+
+Date: Tue, 20 May 1997 16:06:33 -0500
+From: Richard Bleikamp <bleikamp@rsn.hp.com>
+
+> What do you think?  Is the implied-DO variable visible to the using program
+> or not?
+
+No, its not.  Henry's analysis is (in my opinion) correct.  Shame on you for
+not memorizing the entire F90 standard forwards, backwards, and sideways :).
+
+Fortunately Henry replied before I did, because I couldn't find the
+statement entity paragraph, even though I thought it was there somewhere.
+
+rich
+
+------------------------------------------------------------------------------
+
+Date: Wed, 21 May 1997 09:32:51 BST
+From: Lawrie Schonfelder <J.L.Schonfelder@liverpool.ac.uk>
+
+> What do you think?  Is the implied-DO variable visible to the using program
+> or not?
+
+My reaction is that this program SHOULD be standard conforming and that the I 
+in the implied-DO should have the scope of the implied-DO only and hence be 
+not an exportable entity of the module.  I don't have a copy of the standard 
+handy so if this is not what the standard says then it should be changed so 
+that it does.  To have such a usage result in the accidental creation of an 
+exportable visible module variable is a terrible thing to do to unsuspecting 
+users.
+
+------------------------------------------------------------------------------
+
+Date: Wed, 21 May 1997 09:39:50 BST
+From: Lawrie Schonfelder <J.L.Schonfelder@liverpool.ac.uk>
+
+On Tue, 20 May 1997 09:35:42 -0700 Richard Maine wrote:
+
+> From: Richard Maine <maine@altair.dfrc.nasa.gov>
+> Date: Tue, 20 May 1997 09:35:42 -0700
+> 
+> Craig Dedo writes:
+> 
+>  > Implied DO-loop variables in DATA DECLARATION statements are local
+>  > ONLY to the statements they are used in.
+> 
+> Then you'd expect this code to work?
+> 
+>   program oops
+>     character*16 :: i = 'hello'
+>     integer :: j(10) = (/ (i, i = 1 , 10) /)
+>     write (*,*) i, j
+>   end
+> 
+> I think not.  Looks to me like the implied DO-loop variable has at
+> least some effect outside of its scope.
+
+In virtualy every language other than Fortran there would be no question.  This 
+would be a correct program and would have an obvious meaning.
+
+Inside the implied-DO scope, the I would be an integer and its existance would 
+mask the character I that exists in the outer scope.  The I in the WRITE would 
+output "hello".  Why must Fortran get so hung up about simple scope issues?
+
+------------------------------------------------------------------------------
+
+From: "Dr. S. Morgan" <J.S.Morgan@liverpool.ac.uk>
+Date: Wed, 21 May 1997 10:20:31 +0100 (BST)
+
+Lawrie,
+
+The relevant section is 14.1.3 and it states
+
+"The name of a variable that appears as the DO variable of an implied-DO in
+a DATA statement or an array constructor has a scope of the implied-DO list"
+
+So - I agree with your analysis,
+
+Cheers,
+Steve.
+
+------------------------------------------------------------------------------
+
+From: Jose Oglesby <joseogl@microsoft.com>
+Date: Thu, 22 May 1997 10:29:23 -0700
+
+Here is a related potential problem I found in our compiler.  I expect
+that all the compilers that export "I" will have the same difficulty.
+
+-- jose
+
+	     MODULE TEST1
+	     INTEGER, PARAMETER :: JMIN(1:10) = (/ (I,I=1,10) /)
+	     CONTAINS
+	     SUBROUTINE BAR()
+		I = 99		  ! Is this a local or module variable?
+	                          ! compilers that export I probably
+				  ! say module.
+	     END
+	     SUBROUTINE BAZ()
+	       PRINT *, I
+	     END
+	     END MODULE TEST1
+
+-------------------------------------------------------------------------------
+
+Date: Tue, 16 Sep 1997 14:50:57 -0500
+
+[ From a coworker of mine here at SGI/CRI ]
+
+
+1) There seems to be some confusion about the difference between scope
+of the charcteristics of I and the value of I.  I think most would agree
+that the value of I is restricted to the statement. It would certainly
+be incorrect to assume that I had the value of 11 at run-time because of
+this code.  I believe the characteristic scope is a non-issue, since the
+type must be integer and I can have no other characteristics. (section
+14.1.3).
+
+2) I this case, there seems a clear distinction between run-time and
+compile-time existence of I.  The statement above is non-executable. The
+characteristics of I are determined and used only during compilation.
+There is no run-time code generated which involves I. Under these
+circumstances, it is unreasonable that I would have an existence at
+run-time.  I assume this was the genesis of the rule about statement
+scope in 14.1.3.  I would propose that the text there be modified.
+
+Old text:
+
+"It is a scalar variable that has the type and type parameters that it
+would have if it were the name of a variable in the scoping unit that
+includes the DATA statement or array constructor, and this type shall be
+integer; it has no other attributes."
+
+Proposed replacement text:
+
+"It is a scalar variable of type default integer, and is unrelated to
+any other implicitly or explicitly declared variable of the same name in
+the scoping unit that includes the DATA statement or array constructor."
+
+
+I think that revision would make clear that the answer to the original
+interp question is NO. An entity with statement scope is not visible
+elsewhere in the scope of the program unit.
+
+
+----------------------------------------------------------------------------
+Larry Rolison                      lrr@cray.com
+Cray Research, A Silicon Graphics Company
+655F Lone Oak Drive
+Eagan, MN  55121 
+----------------------------------------------------------------------------
+

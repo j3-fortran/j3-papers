@@ -1,0 +1,107 @@
+                                                            J3/14-263
+To: J3
+From: Malcolm Cohen
+Subject: Interp on SPACING
+Date: 2014 October 15
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0123
+TITLE: SPACING intrinsic
+KEYWORDS:
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following program
+
+  Program test_spacing
+    Real :: x, y, tiny_spacing, z
+    x = Tiny(x)
+    y  = Nearest(x,1.0)
+    tiny_spacing = y - x
+    If (tiny_spacing>0) Then
+      ! Probably IEEE arithmetic with subnormals:
+      ! the spacing y - x is representable.
+    Else
+      ! Probably no subnormals, so y - z is not representable.
+      tiny_spacing = Tiny(x)
+    End If
+    z = Spacing(x)
+    If (z/=tiny_spacing) Then
+      Print *,'FAIL'
+    Else
+      Print *,'ok'
+    End If
+  End Program
+
+Furthermore let us assume that the processor supports IEEE arithmetic
+with subnormals, and that default REAL is IEEE single precision.
+
+According to Fortran 95, the result for SPACING is:
+  "If X is not zero, the result has the value b**(e-p), where b, e,
+   and p are as defined in 13.7.1 for the model representation of X,
+   provided this result is within range."
+therefore the program is expected to print the value "ok".
+
+However, according to Fortran 2008, the result for SPACING is:
+  "If X does not have the value zero ..., the result has the value
+   b**max(e-p,emin-1), where ..."
+Unsurprisingly, e-p is not equal to max(e-p,emin-1) for smallish
+numbers, and therefore the program would be expected to print the
+value "FAIL".  However, there is no such incompatibility with Fortran
+90/95 listed in clause 1, therefore the standard contradicts itself.
+(The value specified in Fortran 2008 also contradicts the Description
+of the function which says "Spacing of model numbers (13.4)", since
+it does not even attempt to return that value.)
+
+Is the new specification a deliberate incompatibility or a mistake?
+
+DISCUSSION:
+
+The description of SPACING was changed in Fortran 2003 by paper
+01-361r2 "Comments on Section 13", which contains no justification for
+this technical change and indeed does not even mention it is a
+technical change - there is just the bare edit (buried in a huge list
+of bare edits) with no indication as to why.  This would seem to
+indicate that the technical change is an inadvertant error (presumably
+the paper simply forgot about subnormal numbers and assumed the new
+formula gave the same result as the old one).
+
+ANSWER:
+
+The new wording of SPACING inadvertantly changed the return values
+when IEEE subnormal values were available.  An edit is provided to
+correct this mistake.
+
+EDITS to 10-007r1:
+
+[389:4-5] 13.7.157 SPACING (X), p5 Result Value,
+          Change "max(e-p,emin-1)" to "e-p",
+          After "that of X" insert
+            ", provided this result is representable; otherwise the
+             result is the same as that of TINY (X).",
+          Change "; if there are two such values" to
+          "If there are two extended model values equally near to X,".
+
+This makes the whole paragraph read:
+
+ If X does not have the value zero and is not an IEEE infinity or NaN,
+ the result has the value b**(e-p), where b, e, and p are as defined
+ in 13.4 for the value nearest to X in the model for real values whose
+ kind type parameter is that of X, provided this result is
+ representable; otherwise the result is the same as that of TINY (X).
+ If there are two extended model values equally near to X, the value
+ of greater absolute value is taken.  If X has the value zero, the
+ result is the same as that of TINY (X).  If X is an IEEE infinity,
+ the result is an IEEE NaN.  If X is an IEEE NaN, the result is that
+ NaN."
+
+where "b**(e-p)" represents the typesetting of $b^{e-p}$.
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 14-nnn    m205  F08/0123 submitted
+
+----------------------------------------------------------------------

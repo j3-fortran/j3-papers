@@ -1,0 +1,392 @@
+To:        J3                                      13-232r2
+From:      Bill Long and John Reid
+Subject:   Coarray events
+Date: 2013 February 14
+Reference: WG5/N1930, 12-201
+
+1. Discussion
+-------------
+
+This paper proposes syntax and semantics for coarray events.
+
+2. Requirements (copied from N1930)
+-----------------------------------
+
+NOTIFY and QUERY statements were proposed in N1858.  That proposal
+matches execution of a NOTIFY statement on one image with execution of
+a QUERY statement on another image based on the number of times the
+statements are executed on each image.  That mechanism is not robust
+in the presence of code reordering.  For example, an image that would
+otherwise be idle might bring other work forward.  Event variables
+provide a more robust mechanism for synchronizing execution of images.
+Event variables allow library routines to use synchronization in a way
+that is hidden from and does not interfere with the calling code.
+
+E1: There should be a mechanism to allow one-sided ordering of
+    execution segments. For example, suppose image I executes
+    successive segments I1 and I2 and image J executes successive
+    segments J1 and J2; there might be a need for I1 to precede J2,
+    but no need for J1 to precede I2.
+
+E2: The mechanism should use a data entity that is accessible by all
+    the images to identify the event. There shall be a type for event
+    variables, probably an opaque derived type defined in the
+    intrinsic module ISO_FORTRAN_ENV.
+
+E3: Mechanisms shall be provided to post an event, to test if an event
+    has been posted, and to wait for an event to be posted. Repeated
+    posts to the same event variable increment a counter internal to
+    the event variable and waits decrement the counter.  The statements
+    implementing event post and wait are image control statements. The
+    test operation may be implemented by an inquiry function and hence
+    would not be an image control statement.
+
+E4: If multiple event wait operations are waiting on the same event
+    variable, which of those operations completes when the
+    corresponding event post occurs is unspecified.
+
+
+3. Modifications to the requirements
+------------------------------------
+
+We have kept to the requirements except as follows:
+
+E2. Rather than a single opaque type, two types are provided to enable
+efficient implementation of simple events where waiting is limited to
+a local event variable.
+
+E3. A subroutine is used to return the event count, with an optional
+argument to indicate whether the call was successful.
+
+
+4. Syntax and Semantics
+-----------------------
+
+An image can use an EVENT POST statement to notify another image that it
+can proceed to work on tasks that use common resources.  Images can
+wait on events posted by other images and can query if images have
+posted events.
+
+EVENT_TYPE and LOCAL_EVENT_TYPE are derived types with private
+components. They are extensible types with no type parameters. All
+components have default initialization.  The types are defined in the
+ISO_FORTRAN_ENV intrinsic module.
+
+A scalar variable of type EVENT_TYPE or LOCAL_EVENT_TYPE is an event
+variable. An event variable includes a count of the difference between
+the number of successful posts and successful waits for the event
+variable. The initial value of the count of an event variable is zero.
+
+An <event-variable> in an EVENT WAIT statement of type
+LOCAL_EVENT_TYPE shall not be coindexed.
+
+A successful post to an event variable increments its count. If the
+count is zero for a wait statement, the executing image shall wait 
+until the count is positive. A successful wait for an event variable 
+decrements its count. Unsuccessful posts and waits shall not 
+change the count.
+
+Two new statements and a new intrinsic subroutine are provided for
+event variables.  The statements are
+
+     EVENT POST(<event-variable> [, <sync-stat-list>] )
+
+and
+
+     EVENT WAIT(<event-variable> [, <sync-stat-list>] )
+
+EVENT POST posts to an <event-variable> that is coindexed. EVENT WAIT
+waits on an <event-variable> of type LOCAL_EVENT_TYPE that is not
+coindexed. EVENT WAIT may wait on an <event-variable> of type
+EVENT_TYPE that is coindexed.
+
+The new statements are image control statements.
+
+An event variable shall not appear in a variable definition context
+except as the <event-variable> in an EVENT POST or EVENT WAIT
+statement, as an <allocate-object> in an ALLOCATE statement without a
+SOURCE= <alloc-opt>, or as an actual argument in a reference to a
+procedure with an explicit interface where the corresponding dummy
+argument has INTENT(INOUT).  A variable with a subobject of type
+EVENT_TYPE or LOCAL_EVENT_TYPE shall not appear in a variable
+definition context except as an <allocate-object> in an ALLOCATE
+statement without a SOURCE= <alloc-opt> or as an actual argument in a
+reference to a procedure with an explicit interface where the
+corresponding dummy argument has INTENT(INOUT).
+
+The new intrinsic subroutine is
+
+     EVENT_QUERY ( EVENT, COUNT [,STATUS] )
+
+On a successful execution of EVENT_QUERY, COUNT is given the value of
+the count of EVENT, and STATUS is given the value 0. On an
+unsuccessful execution, STATUS is given a processor-dependent nonzero
+value. An invocation does not constitute an image control statement.
+
+During the execution of the program, the count of a event variable is
+changed by the execution of EVENT POST and EVENT WAIT statements. If
+the count of a event variable increases through the execution of an
+EVENT POST statement on image M and later decreases through the
+execution of an EVENT WAIT statement on image T, the segments
+preceding the EVENT POST statement on image M precede the segments
+following the EVENT WAIT statement on image T.
+
+
+
+
+5. Edits to J3/12-201
+---------------------
+
+----------------------------------
+[5:7+] Add term
+
+3.2 
+<<event variable>>
+scalar variable of type EVENT_TYPE or LOCAL_EVENT_TYPE (6.2) from the
+intrinsic module ISO_FORTRAN_ENV.
+
+
+----------------------------------
+[11] Replace this page by the following
+
+6. Events
+
+6.1 Introduction
+
+An image can use an EVENT POST statement to notify another image that it
+can proceed to work on tasks that use common resources.  An image can
+wait on events posted by other images and can query if images have
+posted events.
+
+6.2 EVENT_TYPE and LOCAL_EVENT_TYPE
+
+EVENT_TYPE and LOCAL_EVENT_TYPE are derived types with private
+components. They are extensible types with no type parameters.  All
+components have default initialization. EVENT_TYPE ond
+LOCAL_EVENT_TYPE are defined in the ISO_FORTRAN_ENV intrinsic module.
+
+A scalar variable of type EVENT_TYPE or LOCAL_EVENT_TYPE is an event
+variable.  An event variable includes a count of the difference
+between the number of successful posts and successful waits for the
+event variable. The initial value of the event count of an event
+variable is zero. The processor shall support a maximum value of the
+event count of at least HUGE(0).
+
+C601 A named variable of type EVENT_TYPE or LOCAL_EVENT_TYPE shall be
+     a coarray. A named variable with a noncoarray subcomponent of
+     type EVENT_TYPE or LOCAL_EVENT_TYEP shall be a coarray.
+
+C602 An event variable shall not appear in a variable definition
+     context except as the <event-variable> in a EVENT POST or EVENT
+     WAIT statement, as an <allocate-object> in an ALLOCATE statement
+     without a SOURCE= <alloc-opt> , or as an actual argument in a
+     reference to a procedure with an explicit interface where the
+     corresponding dummy argument has INTENT (INOUT).
+
+C603 A variable with a subobject of type EVENT_TYPE or
+     LOCAL_EVENT_TYPE shall not appear in a variable definition
+     context, as an <allocate-object> in an ALLOCATE statement without
+     a SOURCE= <alloc-opt> , or as an actual argument in a reference
+     to a procedure with an explicit interface where the corresponding
+     dummy argument has INTENT (INOUT).
+
+
+Note:
+  Event variables of type LOCAL_EVENT_TYPE are restricted so that
+  EVENT WAIT statements can only wait on a local event variable.  This
+  allows a more efficient implementation for this case. The more
+  general case of waiting on an event variable on a any image requires
+  the event variable to be of type EVENT_TYPE.
+
+
+6.3 EVENT POST
+
+The EVENT POST statement provides a way to post an event.
+
+R601 <event-post-stmt> <<is>>  EVENT POST(<event-variable>  []
+                               [] [, <sync-stat-list>] )
+
+R602 <event-variable> <<is>> <scalar-variable>
+
+C604 (R602) An <event-variable> shall be of the type EVENT_TYPE or
+LOCAL_EVENT_TYPE defined in the ISO_FORTRAN_ENV intrinsic module.
+
+A successful post to an event variable increments its count.  An
+unsuccessful post does not change the count.
+
+
+6.4 EVENT WAIT
+
+The EVENT WAIT statement provides a way to wait until an event is
+posted.
+
+R603 <event-wait-stmt> <<is>>  EVENT WAIT(<event-variable> []
+                               [] [, <sync-stat-list>] )
+
+C605 (R603) The <event-variable> of type LOCAL_EVENT_TYPE shall not be
+coindexed.
+
+If the count of the <event-variable> is zero, the executing image
+shall wait until the count is positive. A successful wait for an event
+variable decrements its count. Unsuccessful waits shall not change the
+count.
+
+During the execution of the program, the count of a event variable is
+changed by the execution of EVENT POST and EVENT WAIT statements. If
+the count of a event variable increases through the execution of an
+EVENT POST statement on image M and later decreases through the
+execution of an EVENT WAIT statement on image T, the segments
+preceding the EVENT POST statement on image M precede the segments
+following the EVENT WAIT statement on image T.
+
+
+ ----------------------------------
+[17:44+] Add a new intrinsic subroutine
+
+7.3.10a  EVENT_QUERY ( EVENT, COUNT [,STATUS] )
+
+Description. Query the count of an event variable.
+
+Class. 	Subroutine.
+
+Arguments.
+
+EVENT shall be scalar and of type EVENT_TYPE or LOCAL_EVENT_TYPE
+      defined in the ISO_FORTRAN_ENV intrinsic module. It is an
+      INTENT(IN) argument.
+
+COUNT shall be scalar and of type default integer. It is an
+      INTENT(OUT) argument. If the invocation is successful, COUNT
+      becomes defined with the difference between the number of
+      successful posts and successful waits for EVENT. Otherwise, it
+      is given the value 0.
+
+STATUS (optional) shall be scalar and of type default integer. It is
+      an INTENT(OUT) argument. It becomes defined with value 0 if the
+      invocation is successful and to a processor-defined nonzero
+      value if the invocation is unsuccessful.
+
+Example. If EVENT is an event variable for which there have been no
+      successful posts or waits, after the invocation
+
+          CALL EVENT_QUERY ( EVENT, COUNT )
+
+      the integer variable COUNT has the value 0. If there have been
+      10 successful posts and 2 successful waits to EVENT[2], after 
+      the invocation
+
+          CALL EVENT_QUERY ( EVENT[2], COUNT )
+
+      COUNT has the value 8.
+
+------------------------------------
+[19:9+] Add two new subclauses
+
+"8.2a Edits to clause 1
+
+{In 1.3 Terms and definitions insert new terms}
+
+[Text for the terms in clause 3 of the TS go here, with new subclause
+numbers and corrected references.]
+
+ 8.2b Edits to clause 8
+
+{In 8.5.1 Image control statements, paragraph 2}
+
+Add extra bullet point:
+
+    " o EVENT POST and EVENT WAIT"
+
+
+{Following 8.5.2 Segments, insert two new subclauses}
+
+Move 6.3 EVENT POST of this Technical Specification to become
+subclause 8.5.2a of F2008.
+
+Move 6.4 EVENT WAIT of this Technical Specification to become
+subclause 8.5.2b of F2008.
+"
+
+------------------------------------
+[19:29+] Add to the existing edit for Table 13.1:
+
+"EVENT_QUERY (EVENT,COUNT[,STATUS])       S  Count of an event."
+
+------------------------------------
+[20:1] In the edit instructions change "7.3.10" to "7.3.10a."
+
+------------------------------------
+[20:2+] Add new edits to clause 13
+
+{In 13.8.2 The ISO_FORTRAN_ENV intrinsic module}
+
+Move the paragraph of subclause 6.2 of this Technical
+Specification to become subclause 13.8.2.8a of F2008.
+
+------------------------------------
+[21:3+] In Annex A, add a new subclause
+
+"A.2 Clause 6 notes"
+
+and renumber A.1 to A.3.
+
+
+Example 1: Use of EVENT_QUERY.
+
+USE,INTRINSIC :: ISO_FORTRAN_ENV
+INTEGER                :: COUNT, STATUS
+TYPE(LOCAL_EVENT_TYPE) :: EVENT[*]
+
+CALL EVENT_QUERY(EVENT, COUNT, STATUS)
+IF (STATUS /= 0) THEN
+   PRINT*,'PROBLEM WITH EVENT QUERYING'
+ELSE
+   IF (COUNT == 0) THEN
+      ! Do some useful work not related
+      ! to the event.
+   ELSE
+      EVENT WAIT(EVENT, STAT=STATUS)
+      IF (STATUS /= 0) THEN
+         PRINT*,'PROBLEM WITH EVENT WAITING'
+      ELSE
+         ! Do the work related
+         ! to the event.
+      ENDIF
+   ENDIF
+ENDIF
+
+
+Example 2: Producer consumer program.
+
+PROGRAM PROD_CONS
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+INTEGER :: I, COUNT, STATUS
+TYPE(EVENT_TYPE) :: EVENT[*]
+DO
+   DO I = 1, NUM_IMAGES()
+      CALL EVENT_QUERY(EVENT[I], COUNT, STATUS)
+      IF (STATUS /= 0) THEN
+         PRINT*,'PROBLEM QUERYING EVENT'
+      ELSE
+         IF (I /= THIS_IMAGE()) THEN
+            IF (COUNT == 0) THEN
+               ! Produce some work
+               EVENT POST(EVENT[I], STATUS)
+               IF (STATUS /= 0) THEN
+                  PRINT*,'PROBLEM POSTING EVENT'
+               ENDIF
+            ENDIF
+         ELSE
+            EVENT WAIT(EVENT, STATUS)
+            IF (STATUS /= 0) THEN
+               PRINT*,'PROBLEM WAITING FOR EVENT'
+            ELSE
+               ! Consume some work
+            ENDIF
+         ENDIF
+      ENDIF
+   ENDDO
+ENDDO
+END PROD_CONS
+
+

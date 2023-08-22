@@ -1,0 +1,106 @@
+                                                             J3/15-152
+To: J3
+From: Malcolm Cohen
+Subject: Result of TRANSFER
+Date: 2015 February 25
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0137
+TITLE: Result of TRANSFER when MOLD is an array with element size zero
+KEYWORDS: TRANSFER, zero-sized scalar
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following examples:
+
+Example 1:
+  CHARACTER(0),PARAMETER :: nothing1(100) = ''
+  PRINT *,SIZE(TRANSFER(111014,nothing1))
+
+Example 2:
+   TYPE empty
+   END TYPE
+   ! When the physical representation of empty() has size zero;
+   ! this is not required but does seem to be permitted.
+   TYPE(empty),PARAMETER :: nothing2(1) = empty()
+   PRINT *,SIZE(TRANSFER(111014,nothing2))
+
+Example 3:
+   TYPE nonempty
+     REAL c
+   END TYPE
+   TYPE(nonempty),PARAMETER :: nothing3(0) = nonempty(0.0)
+   PRINT *,SIZE(TRANSFER(111014,nothing3))
+
+According to Fortran 2008, 13.7.168, the result of TRANSFER in this
+case is an array of rank one whose
+  "size is as small as possible such that its physical representation
+   is not shorter than that of SOURCE".
+However, the size of a zero-length character is zero, no matter how
+many array elements there are, so these examples do not seem to be
+well-defined.
+
+Also consider the following examples, with nothing1 defined as in
+example 1.
+
+Example 4:
+  CHARACTER(0) :: source1 = ''
+  PRINT *,SIZE(TRANSFER(source1,nothing1))
+
+Example 5:
+  CHARACTER(999) :: source2(0) = REPEAT('!',999)
+  PRINT *,SIZE(TRANSFER(source2,nothing1))
+
+In these cases the physical representation of an element of MOLD has
+size zero, but then so does the physical representation of the SOURCE
+argument.  According to the quoted text, that would mean that TRANSFER
+should return a zero-sized array, i.e. the examples will print zero.
+
+Example 6:
+  CHARACTER(*),INTENT(IN) :: maybe_nothing(:) ! A dummy argument.
+  CHARACTER(999) :: source3(0) = REPEAT('!',999)
+  PRINT *,SIZE(TRANSFER(source3,maybe_nothing))
+
+Example 7:
+  CHARACTER(*),INTENT(IN) :: maybe_nothing(:) ! A dummy argument.
+  CHARACTER(999),INTENT(IN) :: source4(:) = REPEAT('!',999) ! Ditto.
+  PRINT *,SIZE(TRANSFER(source4,maybe_nothing))
+
+In these examples, the physical representation of MOLD is not known at
+compile time, but depends on the length of the dummy argument.  Using
+the analysis above, example 6 would seem to be conforming (and print
+zero), while example 7 would seem to be conforming if and only if the
+length of maybe_nothing is nonzero at execution time.
+
+Which of the examples are conforming?  If any of examples 1-3 are
+conforming, what value is printed?
+
+ANSWER:
+
+Examples 1-3 are not conforming, as no interpretation is established
+for them.  An edit is provided to clarify that they are not valid.
+
+Examples 4-6 are conforming, and the value zero is printed.
+
+Example 7 is conforming if and only if the length of MAYBE_NOTHING is
+not zero.  The same edit clarifies that the zero-length case is not
+valid.
+
+EDITS:
+
+[393:18] 13.7.168 TRANSFER, p3 Arguments, MOLD, append
+  "If the storage size of SOURCE is greater than zero and MOLD is an
+   array, a scalar with the type and type parameters of MOLD shall not
+   have a storage size equal to zero.".
+{It is ok for MOLD itself to have storage size zero, in the case where
+ MOLD is a zero-sized array but the storage size of a scalar with its
+ type and type parameters would be greater than zero.}
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 15-nnn   m206 F08/0137  Submitted
+
+----------------------------------------------------------------------

@@ -1,0 +1,243 @@
+
+To: X3J3							X3J3/96-148r1
+From: /io (bleikamp)
+Subject: Preliminary Functional Specification for Derived Type I/O
+Date: Aug. 14, 1996
+
+This document is a PRELIMINAY specification of the high level functionality
+to be provided for supporting I/O on derived types.  The goals are to
+provide a powerful and portable way to encapsulate I/O support in a MODULE
+which defines a derived type.  This I/O support would be accessible via
+the traditional Fortran I/O formatted READ/WRITE statements.
+
+Subgroup has discussed some, but not all issues dealt with herein.  Please
+send comments to Rich Bleikamp (bleikamp@rsn.hp.com) or to the x3j3 mail
+alias.
+
+Management Synopsis:
+  - Add a new edit descriptor, "DT".  When the I/O library encounters this,
+    it must match up with a derived type.  The I/O library will call a
+    user supplied procedure, which will actually do the I/O.  Typically,
+    the provider of a derived type would provide these formatting routines.
+
+    List directed and NAMELIST I/O will also call these same user supplied
+    routines under certain circumstances.
+
+    The F90 way of doing formatted (and unformatted) I/O on derived types
+    still works the same as before.  Only the presence of an interface for
+    the appropriate I/O routine triggers this new functionality.
+
+    The user supplied procedures (one for READs, one for WRITEs), will
+    be called with a unit number, the derived type variable/value, and other
+    misc. information.  The procedure will use normal I/O statements
+    (READ/WRITE) on the supplied unit to read/write the data in the
+    records of the file.  This use of "recursive" I/O will be restricted
+    to this particular feature of the language.
+
+    The user supplied procedure will be able to inquire about, and in the most
+    general case, have to worry about:
+      - Formatted vs. list directed vs. namelist
+      - both sequential and direct access I/O
+      - non-advancing and advancing I/O
+      - updating the SIZE= variable for non-advancing I/O
+      - the DELIM= and PAD= values for this file (accessible via INQUIRE)
+
+Detailed Specification:
+  - A new edit descriptor, "DT", with the usual (optional) "[w[.d[.m]]]" 
+    widths is provided.  It must match up with a variable/value of a
+    derived type.
+
+  - The DT characters may be followed by an arbitrary number of alphabetic
+    characters (interspersed blanks allowed).  The entire string of
+    alphabetic characters, including the initial "DT", will be passed
+    into the formatting routine (as the "ed" argument).  This passed in edit
+    descriptor will have been converted to UPPERCASE and had all blanks removed.
+    The user can develop very sophisticated schemes for requesting different
+    types of formatting for one derived type via this extended edit descriptor.
+    For example, the consecutive characters after the "DT" could be used to
+    request different formatting rules for consecutive components in the
+    derived type, or different formatting rules for nested derived types, etc.
+
+  - For list directed I/O, the "ed" argument will have the value
+    "LISTDIRECTED".  For NAMELIST I/O, the "ed" argument will have the
+    value "NAMELIST".  There is no leading "DT" in these cases.
+
+  - if a derived type is specified in an I/O list and will match up with a
+    "DT" edit descriptor, the user must have also provided the matching
+    read/write procedure for that derived type , with the specified
+    visible interface.  Conversley, if the interface is visible, the derived
+    type item MUST match a "DT" edit descriptor.  (this converse limitation
+    is not due to implementation difficulties, so we don't have to restrict
+    it in this way)
+
+    Said procedures must be defined as follows:
+
+        INTERFACE FORMAT ( DT )
+	  SUBROUTINE READ_xxx (dtv, ed, w, d, m)
+	    TYPE (whateveritis) dtv	! the derived type value/variable
+	    CHARACTER (*) ed		! the edit descriptor string
+	    INTEGER, OPTIONAL :: w,d,m
+	  END
+	  SUBROUTINE WRITE_xxx (dtv, ed, w, d, m)
+	    TYPE (whateveritis) dtv	! the derived type value/variable
+	    CHARACTER (*) ed		! the edit descriptor string
+	    INTEGER, OPTIONAL :: w,d,m
+	  END
+        END INTERFACE
+
+	where "xxx" is the name of the derived type and
+	the DT in parens on the INTERFACE statement must be one of
+	the allowed edit desciptors ("DT", "DTA", ...).
+	We don't actually need the derived type name as part of the
+	routine name.  We could just name the routines READ and WRITE,
+	or FORMATTED_READ, ...
+
+	The "dtv" dummy arg should be assigned a value by the READ_xxx
+	routine, and contains the value to be output by the WRITE_xxx
+	routine.
+
+	The "w", "d", and "m" arguments contain the user specified values
+	from the FORMAT (i.e.  FORMAT ( DT12.5.2 ) )
+	If the user did not specify "w", "d", and/or "m", they will not
+	be present.  They will not be present for list directed and namelist
+	i/o either.
+
+        In the absence of an appropriate visible interface in the scope of
+	the I/O statement, list-directed I/O will behave as it did for
+	Fortran 90.  Same for namelist.
+
+  - When an appropriate interface is visible (really, when the routines will
+    be called instead of using F90 semantics), the restrictions on derived
+    type I/O, such as no private components, all components must be defined,
+    no ultimate components with the pointer attribute, etc. do not apply.
+    The normal rules in F95 still apply, about not referencing undefined
+    entities, not referencing/defining POINTERS which are not associated,
+    etc.
+	
+  - If NO appropriate interface is visible for a particular derived type,
+    the processor will assume that the "F90" style I/O is happening, and
+    a "DT" edit descriptor will cause an error (at runtime possibly).
+    When F90 style I/O happens, all the old restrictions still apply.
+
+  - END=, ERR=, EOR=, SIZE= ...
+    We have not decided yet how to accomodate this specifiers in the original
+    READ/WRITE statement.  Most likely, there will be some extra arguments
+    passed in, which need to be defined with .TRUE. if an error occurs, or
+    the end of the file is reached, etc.  We may not need to deal with
+    SIZE=, since the runtime might be able to do this all by itself.
+
+  - The users routine may chose to interpret the "w" argument as a field width,
+    but this is NOT required.  If it does so, it would be appropriate, but
+    not required, to fill an output field with "***"s if the value does not
+    fit.
+
+  - The formatting routines must use the passed in unit #.
+    An implementation is free to substitute a special unit number (such as -999)
+    if it choses, to help the runtime library identify this special recursive
+    I/O stuff.  This is likely to be needed to support internal files also.
+    
+    No other I/O is permitted in the formatting routines.
+
+  - If the original READ/WRITE statement specified sequential I/O,
+    only sequential I/O may be performed by the formatting routine.
+    Similarily for DIRECT ACCESS I/O.  We'll probably have to pass in
+    the RECord number or something.
+
+  - When the original I/O statement was a READ, the formatting routine
+    may only do READs.  Similarly for WRITE.
+
+  - The formatting routines ARE permitted to use a FORMAT with
+    a DT edit descriptor, for handling components of the derived type
+    which are themselves a derived type.  List directed and NAMELIST
+    I/O are also permitted for the recursive I/O statement.
+
+  - The WRITE routine will in essence insert the characters written
+    by the recursive WRITE into the record started by the original
+    WRITE statement.  Record boundaries may be created by the recursive
+    WRITE.  See examples below.  Non-advancing I/O may be used to avoid
+    creating record boundaries.
+
+  - The READ routine will pick up in the current record, where the
+    last edit descriptor left off.  Multiple records can be read,
+    and the current position can be left within a record by
+    the recursive READ statement, thru the use of non-advancing i/o.
+
+  - A very robust formatting routine may need to use INQUIRE to determine
+    whether sequential or direct access I/O is being performed, what
+    PAD= and DELIM= are for the specified unit, etc.
+
+Example:  ! derived type i/o example: user program 
+    USE mytype_module
+    TYPE (mytype) :: a
+    write(6,*) "hi there, here is my derived type", a
+    ...
+
+! derived type i/o example, user written formatting routine for READ
+! usually comtained in the MODULE which defines the derived type
+MODULE .......
+TYPE mytype
+    REAL :: rval1, rval2
+END TYPE mytype
+INTERFACE FORMAT (READ)
+  MODULE SUBROUTINE read (unit, dtv, ed, w, d, m, eof, err)
+    ...
+  END
+END INTERFACE
+
+SUBROUTINE read (unit, dtv, ed, w, d, m, eof, err)
+  INTEGER  ::  unit 			! unit number
+  TYPE (mytype) ::  dtv			! derived type variable to assign to
+  CHARACTER, LEN(*) :: ed		! the edit descriptor specified
+  INTEGER, OPTIONAL :: w, d, m
+  LOGICAL :: eof, err			! set to true if condition occurs
+
+  INTEGER ww, dd, mm
+  CHARACTER, LEN(255) :: fmtstr	! we'll build a runtime format here
+
+  ! use user specified field widths (if present), else use default VAlues
+  IF ( PRESENT(w) ) THEN
+    ww = w
+  ELSE
+    ww = 12
+  END IF
+  IF ( PRESENT(d) ) THEN
+    dd = d
+  ELSE
+    dd = 6
+  END IF
+  IF ( PRESENT(m) ) THEN
+    mm = m
+  ELSE
+    mm = 2
+  END IF
+  ! make sure field widths are in range
+  ww = MAX (MIN(ww, 99), 5)
+  dd = MAX (MIN(dd, 97), 1)
+  mm = MAX (MIN(mm,  6), 1)
+
+  eof = .false. ;  err = .false.
+  IF ( ed == "NAMELIST") THEN
+    err = .TRUE. ; RETURN	! haven't implemented NAMELIST support yet
+  ELSE IF ( ed == "LISTDIRECTED" ) THEN
+    ! fall thru
+  ELSE				! FORMAT specification
+    IF ( ed <> "DT") THEN
+      ! only "DT" supported for now, no extended DTxxx's allowed
+      ERR = .TRUE. ; RETURN
+    END IF
+  END IF
+
+  IF ( ed == "LISTDIRECTED" ) THEN
+    ! non-advancing list directed I/O has not been added to F2000 yet
+    READ (UNIT, *, ADVANCE="NO", ERR=101, END=102)  dtv%rval1, dtv%rval2
+  ELSE
+    ! Formatted I/O, build a runtime format based on w,d, and m
+    ! fmtstr should look like "( 2(Ew.d.m,1x))"
+        WRITE (UNIT=fmtstr, 1, ERR=101) ww, dd, mm
+1       FORMAT ("( 2(E",I2,".",I2,".",I1,",1x) )")
+    READ (UNIT=unit, FMT=fmtstr, ADVANCE="NO",ERR=101,END=102) dtv%rval1, dtv%rval2
+  END IF
+  RETURN
+101 err = .TRUE. ; RETURN
+102 eof = .TRUE. ; RETURN
+END

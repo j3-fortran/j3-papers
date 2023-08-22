@@ -1,0 +1,158 @@
+
+To: J3                                                 08-297
+From: Bill Long
+Subject: Atomic memory operations
+Date: 2008 November 17
+References: J3/08-007r2 (WG5/N1723), WG5/N1751, 08-291r2
+
+
+Discussion:
+
+The ability to use volatile coarray variables for spin-loops relies on
+their definitions and references being atomic.  Instead of specifying
+semantics for that case, we propose to add two intrinsic procedures
+that have the effect of atomic definition and reference separate from
+the volatile attribute.  This approach has the advantage that the
+variable could be a structure component without declaring the whole
+structure volatile.
+
+An intrinsic subroutine, AMO_DEFINE, assigns the value of the second
+argument atomically to the variable specified by the first argument.
+An intrinsic subroutine AMO_REF assigns the value of its first
+argument to the second argument atomically.  These can be used as
+direct replacements for the definition and reference of a spin-loop
+variable. The allowed variables are of type integer and logical, and
+shall be of a processor-defined kind.
+
+Given the unique nature of these routines, and a long standing feature
+request for other atomic memory operations, a separate category of
+atomic intrinsic subroutines is created.
+
+Edits are provided to add these intrinsic subroutines and to remove
+the special status of the volatile attribute for coarrays.
+
+EDITS:
+
+[100:5.3.19p1] At the end of the first paragraph of "5.3.19 VOLATILE
+attribute" delete ", or by another image without synchronization".
+
+
+[188:p6] Replace the first sentence of paragraph 6 of "8.5.1 Image
+control statements", which reads "A coarray that is default
+... coarray in defined." with "A coarray may be referenced or defined
+by execution of an atomic intrinsic subroutine during the execution of
+a segment that is unordered relative to the execution of a segment in
+which the coarray is referenced or defined by execution of an atomic
+intrinsic subroutine."
+
+[191:Note 8.38] In Note 8.38 of "8.5.4 SYNC MEMORY", in the example
+code segment
+
+Replace the first line with these two lines:
+
+"USE,INTRINSIC :: ISO_FORTRAN_ENV
+ LOGICAL(AMO_LOGICAL_KIND) :: LOCKED[*] = .TRUE., VAL"
+
+
+in line 7 replace "LOCKED[Q] = .FALSE."
+with "CALL AMO_DEFINE (LOCKED[Q], .FALSE.)",
+
+replace line 10 with these four lines:
+
+"VAL = .TRUE.
+ DO WHILE (VAL)                  ! segment <Qj>
+    CALL AMO_REF (LOCKED, VAL)
+ END DO"
+
+
+[313:13.1p1] In "13.1 Classes of intrinsic procedures" paragraph 1,
+replace the whole paragraph with: [Note to Editor: this edit would
+replace the corresponding edit in 08-291r2.]
+
+"Intrinsic procedures are divided into seven classes: inquiry
+functions, elemental functions, transformational functions, elemental
+subroutines, pure subroutines, atomic subroutines, and (impure)
+subroutines."
+
+[313:13.1p2+] After paragraph 2 of "13.1 Classes of intrinsic
+procedures" add a new paragraph:
+
+"An <<atomic subroutine>> is an intrinsic subroutine that performs an
+action on its first argument atomically.  The first argument may be a
+coarray or a coindexed object. The effect of executing an atomic
+subroutine is as if the action on the first argument argument occurs
+instantaneously, and thus does not interfere with other atomic
+definitions or references that might occur asynchronously."
+
+
+[316:13.5p2] In the table of Class identifiers in paragraph 2 of "13.5
+Standard generic intrinsic procedures" add a new line at the
+beginning:
+
+ "  A indicates that the procedure is an atomic subroutine"
+
+
+[317:Table 13.1] In the generic intrinsic procedure summary table add
+
+"AMO_DEFINE     (A, VALUE)      A    Defines A with the value of VALUE"
+"AMO_REF        (A, VALUE)      A    Defines VALUE with the value of A"
+
+
+[327] After "13.7.11 ALLOCATED ..." add two new intrinsic subroutine:
+
+"13.7.11a  AMO_DEFINE (A, VALUE)
+
+Description: Defines A atomically with the value of VALUE.
+
+Class: Atomic subroutine.
+
+Arguments:
+
+A     shall be a scalar of type integer with kind AMO_INT_KIND,
+      or type logical with kind AMO_LOGICAL_KIND. AMO_INT_KIND and
+      AMO_LOGICAL_KIND are named constants in the ISO_FORTRAN_ENV
+      intrinsic module. It is an INTENT(INOUT) argument. A becomes
+      defined with the value of VALUE.
+
+VALUE   shall have type and type parameters compatible with intrinsic
+        assignment to A. It is an INTENT(IN) argument.
+
+Example: CALL AMO_DEFINE (I[3], 4) causes I on image 3 to become
+defined with the value 4.
+
+
+13.7.11b AMO_REF (A, VALUE)
+
+Description: Defines VALUE with the value of A referenced atomically.
+
+Class: Atomic subroutine.
+
+Arguments:
+
+A     shall be a scalar of type integer with kind AMO_INT_KIND,
+      or type logical with kind AMO_LOGICAL_KIND. AMO_INT_KIND and
+      AMO_LOGICAL_KIND are named constants in the ISO_FORTRAN_ENV
+      intrinsic module. It is an INTENT(INOUT) argument.
+
+VALUE shall have type and type parameters compatible with intrinsic
+        assignment of A to VALUE. It is an INTENT(OUT) argument. VALUE
+        becomes defined with the value of A.
+
+Example: CALL AMO_REF (I[3], VAL) causes VAL to become defined with
+the value of I on image 3."
+
+
+[395:13.8.2.1+] Add two new subsubclauses to "13.8.2 The
+ISO_FORTRAN_ENV intrinsic module" following "13.8.2.1 General":
+
+"13.8.2.1a AMO_INT_KIND
+
+The value of the integer scalar constant AMO_INT_KIND is the kind type
+parameter value of type integer variables for which the processor
+supports atomic operations specified by atomic subroutines.
+
+13.8.2.1b AMO_LOGICAL_KIND
+
+The value of the integer scalar constant AMO_LOGICAL_KIND is the kind
+type parameter value of type logical variables for which the processor
+supports atomic operations specified by atomic subroutines."

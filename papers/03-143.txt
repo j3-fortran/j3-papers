@@ -1,0 +1,214 @@
+
+                                                              J3/03-143
+
+Date: 13 March 2003
+To: WG5/J3
+From: Lawrie Schonfelder
+Subject: Comments on draft TR on Module Enhancements J3/03-123
+
+I would like to register serious disapproval of the direction of recent 
+changes in this proposal. Although functionally adequate there are many 
+features of the proposal that are a distinct retrograde step from the 
+general form of the design that existed after August 2002. The current 
+form makes the job of the programmer much more complicated and overly 
+verbose due to much redundant syntax. This is done without as far as I 
+can see making life any easier for the implementer nor in enabling any 
+possibility of better performance.
+The concept of the submodule and its parent is sound as are the 
+definitions of ancestor and descendant module/submodules.  
+The first infelicity is with the way in which the essential qualification 
+of an interface body is now done.  It is necessary to indicate that a 
+specific interface body declares an interface for a module procedure 
+whose implementation is to be found in a descendant of the current 
+module/submodule. That a keyword to indicate this qualification is needed 
+is not in question. The interface body must be distinguished from one 
+that declares the interface for an external procedure where the interface 
+does not inherit its data environment from its host, as distinct from 
+this case where the procedure interface must be host associated. The 
+problem with the current draft is that it applies this qualification not 
+to the interface body but to the whole interface block. This is doubly 
+unfortunate. Such a quality is not logically a property of an interface 
+block. It is a property of a specific procedure, its interface body and 
+its implementation body. By qualifying a whole interface block the 
+construction generic procedure sets is complicated and the language made 
+much more, unnecessarily, verbose and potentially opaque.  The likelihood 
+is that to construct generic interface sets where some of the members are 
+submodule defined and some are not, each specific procedure will have to 
+be declared in two different interface blocks, one to indicate that it is 
+a descendant defined procedure and another to add it to the relevant 
+generic set. 
+Both these problems are removed if the qualifying keyword is added to the 
+FUNCTION/SUBROUTINE statement that introduces the specific interface body 
+declaration. No change is needed to the interface block. It still 
+brackets a set of specific procedures and where necessary links the set 
+to a generic name. The spelling of the qualifying keyword is not critical 
+but it would be desirable if it was indicative of the meaning. The 
+existing related keywords that qualify procedure declarations seem to 
+indicate where, in what context, the procedure is defined, e.g. EXTERNAL, 
+INTRINSIC, MODULE. The following are spellings that spring to mind for 
+this additional use:
+MODULE (note, at present this only occurs associated with the keyword 
+PROCEDURE and this use would be distinguished by being linked with 
+FUNCTION or SUBPROGRAM),
+SUBMODULE
+FORWARD
+SEPARATE
+DESCENDANT
+BLOGGS
+Of these I have a mild preference for MODULE but FORWARD or DESCENDANT 
+would be OK. I am not over fond of SEPARATE or SUBMODULE and BLOGGS would 
+be silly, even though it could be technically adequate. 
+The key issue is that the keyword should be prefixed to the FUNCTION or 
+SUBROUTINE statement of the interface body declaration and not as a 
+qualifier for the whole interface block.
+The proposal that the specific procedure definition be wrapped in an 
+IMPLEMENTATION <name>
+. 
+ENDIMPLEMENTATION <name>
+block is simply gratuitous redundant syntax.
+If the user chooses to redeclare the interface at the point of 
+implementation, which I contend in any large code development with 
+separate interface-design and implementation submodules written by 
+separate programmers is the most likely option, the fact that 
+FUNCTION <name> or SUBROUTINE <name> appear as the header of the 
+procedure implementation body in a descendant is sufficient to connect 
+the interface declaration and the procedure body implementation. The 
+requirement of interface declaration and redeclaration agreement 
+guarantees that the two are properly associated. The IMPLEMENTATION 
+<name> bracketing adds nothing but redundant verbiage and an extra 
+possibility of error. 
+In fact no additional syntax is required. The FUNCTION <name> or 
+SUBROUTINE <name> is all that is needed. These provide the reference back 
+and given the rule that redeclaration is permitted (as long as it 
+confirms the existing characteristics) but not required no further syntax 
+is required or desirable.
+In what follows I have modified the example on pages 3-4 of 03-123. I 
+have chosen to use the spelling FORWARD, in homage to Maureen Hoffert who 
+raised the "F-word" or  "forward reference issue" way back in 1988. 
+Maureen would be pleased that this proposal largely solves the problem 
+that so concerned her.
+
+MODULE POINTS 
+  TYPE :: POINT 
+    REAL :: X, Y 
+  END TYPE POINT
+  INTERFACE 
+    FORWARD FUNCTION POINT_DIST ( A, B ) 
+      TYPE(POINT), INTENT(IN) :: A, B 
+      REAL :: POINT_DIST
+    END FUNCTION POINT_DIST 
+  END INTERFACE 
+END MODULE POINTS 
+
+SUBMODULE ( POINTS ) POINTS_A 
+CONTAINS 
+  FUNCTION POINT_DIST ( A, B )
+    TYPE(POINT), INTENT(IN) :: A, B 
+    REAL :: POINT_DIST
+    POINT_DIST = SQRT( (A%X-B%X)**2 + (A%Y-B%Y)**2 ) 
+  END FUNCTION POINT_DIST 
+END SUBMODULE POINTS_A
+ 
+The name POINTS on the submodule statement links the submodule back to 
+the parent module and so the occurrence of the name POINT_DIST on the 
+FUNCTION statement is sufficient to reference the relevant forward 
+interface declaration in the parent module. The redeclared 
+characteristics and names are confirmed by the redeclaration.
+An alternative implementation of a suitable submodule, this time without 
+redeclaration could be,
+
+SUBMODULE ( POINTS ) POINTS_B 
+CONTAINS 
+  FUNCTION POINT_DIST() 
+    POINT_DIST = SQRT( (A%X-B%X)**2 + (A%Y-B%Y)**2 ) 
+  END FUNCTION POINT_DIST 
+END SUBMODULE POINTS_B
+
+The same names, POINTS and POINT_DIST serve to provide the necessary 
+references but now all the interface characteristics are taken from the 
+interface body declaration in the parent without local confirmation. 
+In a simple example like this the differences are minor. However, in more 
+complex large module codes the effects would be considerable. To 
+illustrate the way in which the inelegance of the existing proposal could 
+grow the following is a different version of the module that is assumed 
+to access a library module, VECTOR_ALG, that contains a specific 
+procedure called VEC_NORM that calculates the distance between two 
+type(VECTOR) arguments and also an external library that contains a 
+procedure called ZSEP that calculates the distance between two COMPLEX 
+numbers. The module POINTS is now required to create a generic procedure 
+set called DISTANCE that could be applied to all three argument types.
+With the 03-123 proposal this would mean at the very least writing,
+
+MODULE POINTS 
+  USE VECTOR_ALG
+  TYPE :: POINT 
+    REAL :: X, Y 
+  END TYPE POINT
+  FORWARD INTERFACE DISTANCE 
+    FUNCTION POINT_DIST ( A, B ) 
+      TYPE(POINT), INTENT(IN) :: A, B 
+      REAL :: POINT_DIST
+    END FUNCTION POINT_DIST 
+  END INTERFACE DISTANCE 
+  INTERFACE DISTANCE
+    MODULE PROCEDURE :: VEC_NORM
+    FUNCTION ZSEP(A,B)
+      COMPLEX,INTENT(IN)::A,B
+      REAL::ZSEP
+    END FUNCTION ZSEP 
+  END INTERFACE DISTANCE 
+END MODULE POINTS 
+
+With the qualification being part of the interface body header rather 
+than the interface block header this is simplified to
+
+MODULE POINTS 
+  USE VECTOR_ALG
+  TYPE :: POINT 
+    REAL :: X, Y 
+  END TYPE POINT
+  INTERFACE DISTANCE
+    FORWARD FUNCTION POINT_DIST ( A, B ) 
+      TYPE(POINT), INTENT(IN) :: A, B 
+      REAL :: POINT_DIST
+    END FUNCTION POINT_DIST 
+    MODULE PROCEDURE :: VEC_NORM
+    FUNCTION ZSEP(A,B)
+      COMPLEX,INTENT(IN)::A,B
+      REAL::ZSEP
+    END FUNCTION ZSEP 
+  END INTERFACE DISTANCE  
+END MODULE POINTS 
+
+There is now only one interface block defining the generic set DISTANCE.  
+I contend this is more compact and a clearer expression of the facility.  
+With a complex package of facilities where there are a large number of 
+procedures that are grouped into many generic sets this difference will 
+become very significant.  In such packages a considerable part of the 
+design effort is related to establishing the interfaces to the required 
+generic sets of procedures. The tricky part is frequently designing the 
+interfaces so that the overloads are correctly unambiguous.
+A final point, defining the relationship between a submodule and its 
+parent is one of "host association" is a mistake.  Host association has 
+well defined redeclaration rules, viz. if an entity is redeclared in an 
+enclosed scope it is a new entity and it renders the host entity 
+invisible.  This is definitely not what is required for a submodule.  For 
+procedure interfaces, redeclaration is required to confirm the 
+characteristics of the host interface and refers to the host entity.  If 
+in a submodule a data entity is redeclared, this must be similarly a 
+confirmation of the attributes of the host entity and must reference the 
+host entity.  If a new entity is created, as is implied by host 
+association rules this could cause an error in the interpretation and 
+implementation of any descendent procedure whose interface/implementation 
+depended on the redeclared entity.  
+It would be much better to define the association between submodule and 
+its parent as an entirely new form and define its rules accordingly. 
+Alternatively, the association could be defined as "use association" but 
+where all declared or accessible entities of the parent are made visible, 
+regardless of accessibility attributes, and where there is a blanket rule 
+that redeclaration, if any, must confirm the attributes and 
+characteristics of the parent entities.
+I believe the form of this proposal suggested above, and which is very 
+close to what had been recommended at the last WG5/J3 meeting is much to 
+be preferred to that in 03-123. It is simpler and equally if not more 
+powerful than that in 03-123.

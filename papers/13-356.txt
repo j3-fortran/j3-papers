@@ -1,0 +1,482 @@
+                                                            J3/13-356
+To: J3
+From: Malcolm Cohen
+Subject: Conformance to IEC 60559:2010
+Date: 2013 October 16
+
+
+1. Introduction
+
+This paper is a report into what is required for the next revision of the
+Fortran standard to conform to IEC 60559:2010.
+
+This paper does not contain any edits.  There are some recommendations,
+but really it is for background and for discussion.
+
+
+2. Changes not required
+
+IEC 60559:2010 uses "subnormal number" for what the original IEEE-754
+called "denormalized number".  However, it also establishes "denormalized
+number" as an alias, so we can continue to use that term if we wish.
+Option 1: continue to use denormal everywhere.
+Option 2: use subnormal in text, but retain DENORMAL in generic and
+          constant names.
+Option 3: Use subnormal everywhere, but retain DENORMAL as aliases for
+          generic and constant names.
+Recommendation: My preferences would be 3>2>1, but 1 is clearly least
+                work for all concerned.
+
+There are an infinite number of floating-point formats defined by IEC
+60559:2010, these are (I think) a superset of the infinite number defined
+by IEC 60559:1989.  No action seems to be necessary for us to get all the
+new types.
+
+
+3. Random Discussion
+
+I think we should require that for an IEEE floating-point interchange
+format, the representation when written to an external file should be as
+required by IEC 60559.  For decimal that gives a choice of two formats for
+the same set of computational numbers, for binary only one format is
+allowed.  It is also arguable that the internal representation should be
+the same as that required by IEC 60559.
+
+IEC 60559:2010 says that we *shall* provide a means to specify an
+attribute, such as rounding mode, with block scope i.e. statically.  Also
+that we *should* provide a dynamic means of specifying attributes.
+Currently we only provide a dynamic means; however one could argue that
+because mode setting by called procedures do not affect the mode in the
+caller, we effectively have the static means as well, by simply putting the
+appropriate CALL IEEE_SET_ROUNDING (or whatever) mode in.  Therefore,
+although it might be nice to have special syntax for static modes, we need
+not do anything here.
+
+The description of IEEE_RINT needs to be replaced or updated so that it
+says that it does the IEEE operation roundIntegralToExact (yes, that is a
+stupid name, but it is what is in IEC 60559:2010).  Various other
+operations and functions would also benefit from explicit linking to the
+IEC 60559:2010 operation they are supposed to be conforming to.
+
+
+4. Rounding mode
+
+There is an extra rounding mode, roundTiesToAway; this is not required for
+binary formats, but is required for decimal formats.  We should add this
+extra rounding mode, as IEEE_AWAY or IEEE_ROUND_AWAY.  The existing
+IEEE_SET_ROUNDING_MODE and IEEE_SUPPORT_ROUNDING procedures need no change.
+There is little effect on implementations, which can simply report false
+for IEEE_SUPPORT_ROUNDING(IEEE_ROUND_AWAY).  This is likely to be about as
+useful as IEEE_OTHER, but is not exactly a burden.
+
+
+5. Required operations
+
+IEC 60559:2010 requires a lot more operations than the 1989 version.
+
+
+5.1 Rounding functions (without change of format)
+
+For the sake of expository conciseness,
+  the set {rounding} = { TiesToEven, TiesToAway, TiesTowardZero,
+                         TiesTowardPositive, TiesTowardNegative }
+  corresponding to what we call IEEE_NEAREST, (the new)IEEE_ROUND_AWAY,
+  IEEE_TO_ZERO, IEEE_UP and IEEE_DOWN.
+
+roundToIntegral{rounding} : 5 functions.
+for roundToIntegerTiesToEven, this can be done with the user function
+  REAL(ieee_kind) FUNCTION ieee_rint_even(x) RESULT(y)
+    REAL(ieee_kind),INTENT(IN) :: x
+    IF (.NOT.IEEE_SUPPORT_ROUNDING(IEEE_NEAREST)) &
+      ERROR STOP 'SBABAW'
+    CALL IEEE_SET_ROUNDING_MODE(IEEE_NEAREST)
+    y = IEEE_RINT(x)
+    ! This is not permitted to raise INEXACT.
+    CALL IEEE_SET_FLAG(IEEE_INEXACT,.FALSE.)
+  END FUNCTION
+and similarly for the others.
+
+Although it could be unconvincingly argued that this satisfies the "shall
+provide" requirement, I recommend adding an optional rounding-mode argument
+to IEEE_RINT that would make it do these.  This has some implementation
+impact but it is not so large.
+
+roundToIntegralExact : this is IEEE_RINT as is, we should change the
+                       description so that it says so.
+The differences between this and the preceding 5 functions are
+(a) IEEE_INEXACT is raised if X is not already integral, whereas no signal
+    is raised with the preceding, and
+(b) there is only one function, and it uses the dynamic rounding mode.
+
+5.2 nextUp and nextDown vs. NEAREST and IEEE_NEXT_AFTER
+
+nextUp : one might think that we could do
+  IEEE_NEXT_AFTER(x,IEEE_VALUE(x,IEEE_POSITIVE_INF))
+but IEEE_NEXT_AFTER raises signals, whereas nextUp is quiet (except when x
+is a signalling NaN).  Another plausible effort is
+  MERGE(x,NEAREST(x,1.0_kind),x>HUGE(x))
+but there is no specification of whether NEAREST is quiet.
+Therefore our options are:
+  (0) change IEEE_NEXT_AFTER (incompatibly, but not in an important way?),
+  (1) change our description of NEAREST so that it is quiet except for
+      signalling NaN, and NEAREST(+INF,+1.0) is +INF instead of nonsense,
+or
+  (2) add IEEE_NEXT_UP(x).
+Recommendation: (2).
+
+nextDown : similarly to nextUp, we should add IEEE_NEXT_DOWN.
+
+
+5.3 Exact remainder
+
+remainder : provided by IEEE_REM.  The description here basically
+            duplicates the specification in IEC 60559.
+Options: (0) do nothing,
+         (1) append to description saying it does the IEC 60559 op,
+         (2) replace the description by referring to IEC 60559.
+Recommendation: (1) or (2).
+
+
+5.4 Minimum and maximum
+
+minNum : Ugh.
+  REAL(kind) ELEMENTAL FUNCTION IEEE_MIN_NUM(x,y) RESULT(r)
+    REAL(kind),INTENT(IN) :: x,y
+    IF (x<y) THEN
+      r = x
+    ELSE IF (x>y) THEN
+      r = y
+    ELSE IF (IEEE_IS_NAN(x)) THEN
+      r = y
+    ELSE
+      r = x
+    END IF
+  END FUNCTION
+or the horrible nested merge
+  MERGE(x,MERGE(y,MERGE(y,x,IEEE_IS_NAN(x)),x>y),x<y)
+maxNum : Similarly.
+MinNumMag : Ugh.
+  REAL(kind) ELEMENTAL FUNCTION IEEE_MIN_NUM_MAG(x,y) RESULT(r)
+    REAL(kind),INTENT(IN) :: x,y
+    IF (ABS(x)<ABS(y)) THEN
+      r = x
+    ELSE IF (ABS(x)>ABS(y)) THEN
+      r = y
+    ELSE IF (IEEE_IS_NAN(x)) THEN
+      r = y
+    ELSE
+      r = x
+    END IF
+  END FUNCTION
+or the terrible nested merge
+  MERGE(x,MERGE(y,MERGE(y,x,IEEE_IS_NAN(x)),ABS(x)>ABS(y)),ABS(x)<ABS(y))
+MaxNumMag : Similarly.
+
+Unlike MAX/MIN, these operations are only pairwise.  One might argue that
+the examples I give are sufficient for us to "provide" the operations, but
+OTOH they are pretty awful.  It would be better to provide these in
+IEEE_ARITHMETIC as IEEE_MIN_NUM et al.
+
+Recommendation: Add IEEE_MAX_NUM et al?
+
+
+5.5 A decimal-only operation
+
+quantize : decimal only.
+
+Perhaps we should add IEEE_QUANTIZE as an optional generic (since we
+cannot have empty generics!).
+
+
+5.6 Scaling and logging
+
+scaleB and logB : we can choose the return type of logB (to be logBFormat),
+                  and then the second argument of scaleB must also be of
+                  type logBFormat.
+
+Note that therefore our existing IEEE_LOGB+IEEE_SCALB (or +SCALE) do not
+  satisfy the requirements as IEEE_LOGB returns a REAL and both SCALE and
+  IEEE_SCALB take an INTEGER.
+Other requirements are that in the case of logBFormat being an integer
+  type, logB(NaN), logB(Inf) and logB(0) are required to return values
+  outside the range -2*(emax+p-1)...2*(emax+p+1) and to raise
+  IEEE_INVALID.  The existing IEEE_SCALB is fine for logBFormat=INTEGER.
+In the case of logBFormat being a floating-point type, there are no
+  requirements on the result of scaleB(x,y) when y is not an integer
+  value.  The existing IEEE_LOGB is fine for logBFormat=REAL.
+
+Option 1: Declare that logBFormat is REAL, and
+          (a) add IEEE_SCALEB that takes a REAL, or
+          (b) declare that scaleB(x,y) is provided by
+              IEEE_SCALB(x,INT(y)).
+Option 2: Declare that logBFormat is INTEGER, and
+          (a) add IEEE_EXPONENT that returns an INTEGER and raises
+              INVALID as required, or
+          (b) there is no option b; EXPONENT(x)-1 does not satisfy the
+              result value for zero, and does not raise INVALID as
+              required.
+Recommendation: option 1b.
+
+
+5.7 Arithmetic
+
+addition : +
+subtraction : -
+multiplication : *
+division : / when IEEE_SUPPORT_DIVIDE is true, or if IEEE_DIVIDE is
+           accessed from IEEE_FEATURES.
+squareRoot : SQRT when IEEE_SUPPORT_SQRT is true, or if IEEE_SQRT is
+             accessed from IEEE_FEATURES.
+
+fusedMultiplyAdd : we do not have this yet, obviously (?) we need an
+                   IEEE_FMA function.  Or an IEEE_SUPPORT_FMA plus a
+                   requirement that a parenthesised or entire expr that is
+                   a*b+c for IEEE types is computed thusly.  Note that IEC
+                   60559:2010 requires this to work for heterogenous kinds
+                   as long as they are all IEEE kinds with the same radix.
+                   I think we could require REAL to be used for conversions
+                   to satisfy that requirement though.
+
+Recommandation: IEEE_FMA with homogenously-typed arguments and a result of
+                that kind.
+
+5.8 Format conversions
+
+convertFromInt : REAL appears to satisfy this.
+
+convertToInteger{rounding} : to every integer kind, from every IEEE kind.
+  Raises IEEE_INVALID on NaN/Inf, or if out of range (after rounding).
+  Does not raise IEEE_INEXACT.
+convertToIntegerExact{rounding} : similarly, but if IEEE_INVALID is not
+  raised and the floating-point value is not integral, IEEE_INEXACT will be
+  raised.
+Note: IEC 60559:2010 recommends ("should") that implicit conversions follow
+      the convertToIntegerExact* scheme.  This most certainly will NOT be
+      proposed!
+Option 1: Change INT to satisfy the rounding and signalling requirements.
+Option 2: Add IEEE_INT and IEEE_INT_EXACT which satisfy the requirements.
+Option 3: Add IEEE_INT which satisfies the rounding and IEEE_INVALID
+  signalling requirements, and which is silent as to whether IEEE_INEXACT
+  is signalled.  The user who cares must use IEEE_GET_FLAG, IEEE_SET_FLAG,
+  and comparison to produce the IEEE results.
+Recommendation: Option 3.
+
+convertFormat : this would be provided by REAL if REAL were required to
+                round according to the current rounding mode (only
+                applicable to down-conversions, not up-conversions).
+Option 1: Say that REAL follows the current rounding mode.  This could have
+          an adverse impact on performance, and that could be mitigated by
+          having it only occur when IEEE_ARITHMETIC is used ... but that
+          sounds more complicated than option 2.
+Option 2: Add IEEE_REAL which follows the current rounding mode.
+Recommendation: Add IEEE_REAL.
+
+
+5.9 Character formatting
+
+convertFromDecimalCharacter : READ
+convertToDecimalCharacter : WRITE
+  These seem to be fine as is - no change.
+
+convertFromHexCharacter : not yet available
+convertToHexCharacter : not yet available
+Option 1: Add EXw.d and EXw.dEe edit descriptors.
+          No need for FX because these always have exponents.
+          Optionally permit reading with list-directed.
+Option 2: Add procedures IEEE_PRINT_HEX and IEEE_READ_HEX.
+Option 3: Abominate the lot of them as a C monstrosity.
+Recommentation: Option 3.
+
+5.10 Miscellaneous junk
+
+copy : not yet available
+negate : not yet available
+abs : not yet available
+copySign : not yet available
+  These are not functions but are all "quiet" subroutines, raising no
+  exception even on SNaN (otherwise we could synthesis them from
+  IEEE_COPY_SIGN + assignment).
+Option 1: provide subroutines IEEE_COPY et al.
+Option 2: provide a single subroutine IEEE_COPY_SIGN_BIT(a,b), making
+          all of the above achievable by short code sequences.
+Option 3: require IEEE_COPY_SIGN not to raise IEEE_INVALID when an argument
+          is a signalling NaN, and assignment of IEEE_COPY_SIGN not to
+          raise IEEE_INVALID when the result is a signalling NaN; then
+          all the above are short code sequences.
+Option 4: claim that the above are satisfied by IEEE_COPY_SIGN when a
+          processor does not raise IEEE_INVALID etc., but permit a
+          processor not to conform.
+Recommendation: 1 or 4 seem best, though 2 has something going for it.
+
+
+5.11 Decimal encodings and another decimal operation
+
+encodeDecimal :
+decodeDecimal :
+encodeBinary :
+decodeBinary :
+  These are all about changing the encoding of a decimal-radix number for
+  the purposes of interchange.  They are only required for each supported
+  decimal format.
+Option 1: Provide types (for the alternative encodings) and functions,
+          only applies to processors with decimal floats.
+Option 2: Say we don't support them, but the user is free to write his own
+          using TRANSFER(decimal_float,[0]) and bit fiddling.
+Recommendation: Option 2.
+
+sameQuantum : decimal only.
+Recommendation: Ignore it.
+
+5.12 Relational operations
+
+compare{Quiet,Signalling}{Equal,Greater, et al} :
+  We are required to provide all of these.  Currently we do not provide any
+  (I think we are silent as to whether the normal comparisons raise INVALID
+  on NaN input.)
+Option 1: Blather on interminably.
+Option 2: Specify that normal comparisons of IEEE floating-points obey the
+          IEEE requirements for the signalling operations.  Provide
+          functions IEEE_QUIET_{EQ,NE,LT,LE,GT,GE} for the quiet versions.
+          NB: arguments may be any kind but must be the same radix.
+Recommendation: Option 2.
+
+
+5.13 Standard conformance
+
+is754version1985 :
+is754version2008 :
+  These could be sensibly provided by IEEE_SUPPORT_STANDARD with an
+  optional argument being the year of standardisation (1989 or 2010).
+Recommendation: Add an optional YEAR argument to IEEE_SUPPORT_STANDARD.
+
+
+5.14 Testing a number
+
+class : IEEE_CLASS
+
+isSignMinus : 754:2008 decided that this should test the sign bit,
+              not whether it is mathematically negative, therefore
+              IEEE_IS_NEGATIVE does not satisfy it.
+Option 1: Make an incompatible change to IEEE_IS_NEGATIVE.
+Option 2: Claim that IEEE_COPY_SIGN(x,1.0)<0 satisfies the requirement.
+Option 3: Add IEEE_IS_MINUS or IEEE_SIGNBIT_IS_MINUS.
+Recommentation: Option 2.
+
+isNormal : IEEE_IS_NORMAL
+
+isFinite : IEEE_IS_FINITE
+
+isZero : IF (IEEE_IS_NAN(x)) THEN (.FALSE.) ELSE (x==0) ENDIF
+... or add IEEE_IS_ZERO.
+
+isSubnormal : IEEE_IS_DENORMAL
+
+isInfinite : .NOT.(IEEE_IS_FINITE(x) .OR. IEEE_IS_NAN(x))
+
+isNaN : IEEE_IS_NAN
+
+isSignaling : IEEE_CLASS(x)==IEEE_SIGNALING_NAN
+... or add IEEE_IS_SIGNALLING
+
+isCanonical : This seems totally pointless.
+Recommendation : pretend we did not notice it.
+
+radix : RADIX
+
+
+5.15 Total ordering
+
+totalOrder(x,y) :
+  Another pointless function but at least this one is well-defined.
+Option 1: Add IEEE_TOTAL_ORDER.
+Option 2: Write a portable version of IEEE_TOTAL_ORDER and put it in
+          as an example at the end of c14.
+Option 3: Just say the user can write it.
+Recommendation: Option 2?
+
+totalOrderMag : === totalOrder(ieee_abs(x),ieee_abs(y))
+
+
+5.16 Exceptions
+
+lowerFlags : CALL IEEE_SET_FLAG(array,.FALSE.)
+raiseFlags : CALL IEEE_SET_FLAG(array,.TRUE.)
+testFlags : CALL IEEE_GET_FLAG(array,logical_array); ANY(logical_array)
+
+testSavedFlags :
+restoreFlags :
+saveAllFlags :
+  This is a bit like IEEE_GET_STATUS, except that is only does the status,
+  and allows both testing (but not setting) as well as restoring.  It is
+  obviously satisfied by the type
+     TYPE flags; LOGICAL values(SIZE(IEEE_ALL)); END TYPE
+  and short code sequences of IEEE_GET_FLAGS etc.  But it could be more
+  efficient to get/set the flags all at once, and the space would typically
+  be smaller.
+Option 1: Just use the logical array.
+Option 2: Add IEEE_SAVE_FLAGS, IEEE_RESTORE_FLAGS, IEEE_GET_SAVED_FLAGS.
+Recommendation: option 1.
+
+
+5.17 Rounding
+
+getBinaryRoundingDirection :
+setBinaryRoundingDirection :
+getDecimalRoundingDirection :
+setDecimalRoundingDirection :
+  The first two are adequately catered for by IEEE_GET/SET_ROUNDING_MODE,
+  but IEC60559:2010 requires decimal to have a separate mode.
+Option 1: Add an optional RADIX argument to IEEE_GET/SET_ROUNDING_MODE.
+Option 2: Add new IEEE_GET/SET_DECIMAL_ROUNDING_MODE.
+Recommendation: option 1.
+
+
+5.18 Modes
+
+saveModes :
+restoreModes :
+defaultModes :
+  Unfortunately our IEEE_GET/SET_STATUS do not quality, as they do the
+  flags as well.
+Option 1: Add IEEE_GET/SET/RESET_MODES (reset = processor default).
+Option 2: Simply declare that
+          save = IEEE_GET_STATUS,
+          restore = CALL IEEE_GET_FLAGS(IEEE_ALL,array)
+                    CALL IEEE_SET_STATUS(status)
+                    CALL IEEE_SET_FLAGS(IEEE_ALL,array)
+          default = CALL IEEE_SET_HALTING_MODE(IEEE_ALL,.TRUE.)
+                    CALL IEEE_SET_ROUNDING_MODE(IEEE_ROUND_AWAY)
+                    CALL IEEE_SET_UNDERFLOW_MODE(.FALSE.)
+Recommendation: ?
+
+6. Recommended operations
+
+IEC 60559:2010 recommends ("should") a number of elementary mathematical
+functions (such as exp), with correct rounding and precisely specified
+exceptions.  We can ignore these.
+
+It also recommends some reductions: sum, dot, sumSquare, sumAbs,
+scaledProd, scaledProdSum, scaledProdDiff.  We could say something about
+the SUM and DOT_PRODUCT intrinsics.
+
+
+7. Expression evaluation
+
+As a language standard we are not required outselves to "conform" to IEC
+60559:2010, however much the authors of it might think we do.  We can just
+continue to use it as is.  (The only sticking-point I saw was that we are
+required to specify some stuff about how many times expressions get rounded
+on their way to the variable they are being assigned to, but there is lots
+of blather about what they think we *should* do.)
+
+
+8. Obsolescent operations
+
+It can be observed that a number of our functions have become obsolete with
+the new operations, in particular:
+  IEEE_NEXT_AFTER
+We could do something about this if we wanted, but probably not worth the
+effort.
+
+
+===END===

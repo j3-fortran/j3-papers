@@ -1,0 +1,134 @@
+
+                                                       J3/04-152
+
+Date:      05 January 2004 
+To:        J3 
+From:      Aleksandar Donev
+Subject:   Adding MOLD to ALLOCATE
+
+
+Title: 
+
+Submitted by: J3
+
+Status: For Consideration
+
+References: J3/02-274, J3/03-254, J3/03-007r2
+
+Basic Functionality: 
+
+A MOLD argument should be added to ALLOCATE similar to the SOURCE
+argument, which would only give the type of the allocated data, but not
+the contents. This would allow one to allocate an array of a given type
+given only a scalar of that type, which is needed to design custom
+allocators for various dynamic data structures.
+
+Rationale: 
+
+Certain dynamic data-structures strain the memory allocator to a
+maximum, requesting allocation and deallocation of lots of nodes (i.e.,
+small allocations), while in actuality not really changing the total
+allocated memory much. To deal with such situations efficiently across
+a variety of compilers and usage patterns, it is best to include as
+part of the dynamic data structure a memory "allocator". Such an
+allocator can be made type-independent by using a scalar mold to give
+the type of the allocation only, but not the contents.
+
+There are other similar situations where it is desired to allocate a
+new object of unknown dynamic type, and rather then clone the contents
+of another object, perform default initialization on the newly
+allocated object. This is very similar to the "new" operator in C++. 
+
+The current SOURCE in ALLOCATE is not appropriate because it does a
+clone operation:
+
+1. "source-variable is then assigned to allocate-object by intrinsic
+assignment for objects whose declared type is the dynamic type of
+source-variable"
+
+and there is also the restriction:
+
+2. "The source-variable shall be a scalar or have the same rank as
+allocate-object"
+
+which means that one cannot allocate a whole array given just a scalar
+as a type template (mold).
+
+Estimated Impact:
+
+I believe this feature has a modest impact on both the standard and
+compilers.
+
+This is very simple to incorporate into the standard (I proposed
+detailed edits earlier).
+
+Implementation wise, the only difference with SOURCE is that default
+initialization needs to be performed on a polymorphic variable, i.e.,
+without knowing the type at compile-time. That is, one must have the run
+time support to default-initialize a variable given its type descriptor
+and address. This already needs to be done for
+polymorphic INTENT(OUT) (see 270:38-41 in draft 03-007r2) variables, so
+the run-time support neccessary for it needs to be in compilers already.
+
+Detailed Specification:
+
+Add a MOLD keyword to the ALLOCATE statement, to determine the type of
+the allocated object, just like SOURCE, but using default initialization
+for the value of the allocated object. Also allow the mold to be a
+scalar even if the allocation is for a higher-rank array.
+
+Therefore:
+
+CLASS(base_type), POINTER :: variable, expression
+ALLOCATE(variable, MOLD=expression)
+
+should be equivalent to:
+
+ALLOCATE(dynamic_type_of_expression::variable)
+
+when the type of the mold is accessible.
+
+These are edits I have prepared earlier in reference to J3-007R3. They
+illustrate the basic ideas:
+
+108: Replace <mold-variable> with <mold-expression>
+everywhere in the document and in the edits below.
+
+108: 15+ Add:
+or MOLD = <mold-variable>
+
+109: 4+ Add:
+<mold-variable> is <expr>
+
+109: 6 Replace:
+", either <type-spec>, MOLD=, or SOURCE= shall appear"
+
+109: 10 do the same as for 109:6
+
+109: 19+ Add constraint:
+(Cxxx) Both SOURCE= and MOLD= shall not appear.
+
+109: 20 Add:
+"IF SOURCE= or MOLD= appears," and
+"with <source-variable> or <mold-variable>"
+
+109: 23 Add:
+"and <source-variable> or <mold-variable>"
+
+109: 28
+Delete ",source variable" if we make the source an expression.
+[it is an expression and cannot be deallocated.]
+
+109: 33 Add:
+"if a <source-variable> or <mold-variable>"
+109: 34 Add:
+"the <source-variable> or <mold-variable>"
+
+110:10+ Add:
+"If MOLD= appears, default initialization is performed for
+<allocate-object> for the dynamic type of <mold-variable>. If the value
+of a nondeferred nonkind type parameter of <allocate-object> is
+different from the value of the corresponding type parameter of
+<mold-variable>, an error condition occurs."
+
+History:

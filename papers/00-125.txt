@@ -1,0 +1,184 @@
+
+
+                                                       J3/00-125
+
+Date:    24th February 2000
+To:      J3
+From:    Malcolm Cohen
+Subject: VOLATILE Questions
+
+1. Editorial notes
+------------------
+
+[78:4] Replace "or" with a comma
+[78:6] Replace final period with ", or"
+[78:7] Replace "Any" with "any".
+[78:8] Uppercase "VOLATILE".
+
+2. Argument confusion
+---------------------
+
+[78:2,5-6] says
+  "An object shall have the VOLATILE attribute if ...
+   (2) the object is an argument to a non-Fortran procedure that violates
+the
+       association rules of 14.6.1.1."
+
+What rules?
+
+I see only two possible candidates in 14.6.1.1, neither of which make any
+sense to me:
+(1) [349:1-2] "Upon termination of execution of a procedure reference, all
+               argument associations established by that reference are
+               terminated."
+    This says nothing about any other form of association (like pointer
+    association for example).  I think you will find that on return from
+(for
+    example) a C routine its dummy arguments ("formal parameters") don't
+even
+    exist any more.
+
+    Perhaps you are thinking of the situation where the C routine (or
+assembler
+    or whatever) stashes away a pointer to the object and in some later
+signal
+    handler or whatever then uses the pointer to modify the object.  This is
+    not argument association but it is pointer association.
+
+    ***BEGIN ASIDE:
+    It seems to me that VOLATILE effectively implies the TARGET attribute -
+    after all, there has to be "pointers" of some sort (even if not quite
+the
+    Fortran sort) around for "something else" (event handler, o.s. routine)
+to
+    have a "handle" on it to modify it behind the back of the Fortran
+    processor.  Perhaps we should make this official, that VOLATILE implies
+    TARGET?
+
+    After all, operating systems have had large parts of them written in
+    Fortran before, so there is no real reason why the o.s. routine called
+    in the example in C.2.3 (page 416) should not have been written in
+    Fortran; and this would mean that it would want its argument to be a
+    TARGET.
+    ***END ASIDE.
+
+    Anyway, any effect of keeping a handle to the object around and updating
+    it asynchronously is already covered by [78:3-4]
+    "there is a reference to or definition of the object not specified by
+the
+     execution sequence of 2.3.4"
+    No?
+
+    If not, please explain.
+
+(2) "A dummy argument of that procedure may be associated with an entirely
+     different actual argument in a subsequent invocation of the procedure."
+
+    I really rather doubt that this is the rule you envisage being broken,
+    but it is conceivable.
+
+3. Storage sequence confusion
+-----------------------------
+
+[78:2,7-8] Says that an object shall have the VOLATILE attribute if
+  "Any storage units in the storage sequence of the object are in the
+   storage sequence of a different object that has the volatile attribute"
+
+Que?
+
+What do you mean by "different object"?  (This is the only time the term is
+used in the standard).
+
+Hmm, this could force an actual argument to be VOLATILE if a dummy
+argument is VOLATILE - is this what was intended?  I would guess not.
+(Otherwise VOLATILE pervades all the way up the call chain).
+
+Just striking the word "different" improves the sentence, but it seems to me
+that what is intended is our concept of storage association, i.e.
+
+[78:7-8] Replace with
+ "(3) the object is storage associated with an object that has the VOLATILE
+      attribute"
+
+(Objects are storage associated precisely when they have overlapping storage
+sequences - at least that is how the term is used elsewhere (in particular,
+5.5.2.3 [92:23-24] "An object with the TARGET attribute may become storage
+associated only with another object that has the TARGET attribute..." makes
+no sense unless it has that meaning - or it would require every object in a
+COMMON that had a single TARGET item also to have the TARGET attribute)).
+
+4. Pointer Association?
+-----------------------
+
+In the previous section I've made the silent assumption that pointer
+association has no interaction with volatility.
+
+i.e. in
+
+   INTEGER,VOLATILE,TARGET :: x
+   INTEGER,POINTER :: p
+   p => x
+   ...
+   p = 0
+   do while (p==0) ! Does not necessarily access the "current" value of X
+
+????
+
+I don't know whether this is what the authors of this facility intended.
+It certainly could lead to some surprised users.  Perhaps a note is in
+order?
+
+5. Interaction with INTENT(IN)
+------------------------------
+
+5.1.2.3 says about an INTENT(IN) object that
+  "it shall neither be defined nor become undefined during execution of
+   the procedure"
+Note that it makes no reference to the "execution sequence", it is a flat
+requirement.
+
+So an INTENT(IN) VOLATILE object would seem to make little sense, since any
+"hidden" definition of the object would be invalid by the above, and since
+the object does not change its value it cannot matter about any "hidden"
+references.  I hope this is correct - maybe it would be a good idea to put
+in a note about it?
+
+OK, just thought of a possible use - referencing an INTENT(IN) VOLATILE
+might
+cause some other (VOLATILE or perhaps external-to-the-program) variable to
+change value.
+
+Or should we make INTENT(IN) and VOLATILE incompatible?
+
+6. Interaction with Interp 125
+------------------------------
+
+It seems to me that users are going to expect VOLATILE dummies, at least
+when
+the actual is VOLATILE, to be passed by reference.  This could cause
+problems
+with dummy arrays that are not assumed-shape (or actual array arguments that
+are vector subscripted).
+
+One could require VOLATILE dummy arrays to be allocatable, pointer or
+assumed-shape, viz:
+
+[65:9+] Insert
+ "Constraint: An array that is a dummy argument and is declared with the
+              VOLATILE attribute shall be specified with an <array-spec>
+that
+              is a <deferred-shape-spec-list> or an
+<assumed-shape-spec-list>."
+
+Words may be needed in chapter 12 about vector subscripts etc.
+
+7. Interaction with dummy arguments in general
+----------------------------------------------
+
+We probably want to put words in somewhere to say that references to
+VOLATILE
+dummy arguments that are associated with VOLATILE actual arguments will
+reference the most recent definition of the actual argument, not just the
+dummy.
+
+===END

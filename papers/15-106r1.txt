@@ -1,0 +1,123 @@
+                                                             J3/15-106r1
+To: J3
+From: Malcolm Cohen, Toon Moene
+Subject: Lifted restrictions from TS 29113
+Date: 2015 February 25
+Reference: 15-007
+
+
+1. Introduction
+
+Fortran 2015, via the interoperability TS, relaxes several prohibitions
+on the usage of noninteroperable arguments to the procedures in
+ISO_C_BINDING.  The relaxing of these restrictions is not noted in the
+Introduction; this applies to C_LOC, C_FUNLOC, C_F_POINTER, and
+C_F_PROCPOINTER.
+
+Secondly, with C_F_POINTER, although 8.1 states that this restriction
+is removed, in fact it remains.  This is clearly an unintended defect.
+
+Edits are supplied to correct these defects.
+
+
+2. Example
+
+It might be thought that since we made assumed-shape et al
+"interoperable", this is a difference without a difference.  Here is a
+trivial example that would still be prohibited by the current wording;
+in particular, the call to C_F_POINTER is invalid.
+
+  PROGRAM test
+    USE Iso_C_Binding
+    TYPE t
+      REAL,POINTER :: p(:)
+    END TYPE
+    TYPE(t),TARGET :: x(100)
+    CALL sub(C_LOC(x),SIZE(x))
+  CONTAINS
+    SUBROUTINE sub(a,n)
+      TYPE(C_PTR) a
+      TYPE(t),POINTER :: b(:)
+      CALL C_F_POINTER(a,b,[n])
+      IF (ASSOCIATED(b,x)) THEN
+        PRINT *,'ok'
+      ELSE
+        STOP 'FAIL'
+      END IF
+    END SUBROUTINE
+  END PROGRAM
+
+
+3. Additional wordsmithing
+
+The "X or its target" phrasing is unwieldy, and more so when it is
+repeated more than once.  By changing to say that X is the effective
+argument, the need for the "or its target" is removed.
+
+The shape specification of FPTR is already repeated; instead of
+repeating it a third time, we will move it outside of the Case
+structure.
+
+
+4. Edits to 15-007
+
+[xvix] Introduction, bullet for TS 29113, append new sentences
+  "The argument to C_LOC can be a noninteroperable array.
+   The FPTR argument to C_F_POINTER can be a noninteroperable array
+   pointer.
+   The argument to C_FUNLOC can be a noninteroperable procedure.
+   The FPTR argument to C_F_PROCPOINTER can be a noninteroperable
+   procedure pointer.".
+{Admit to the existence of these new features.  I have ordered them by
+ semantics rather than alphabetically.}
+
+[445:17] 15.2.3.3 C_F_POINTER, p3 Arguments, FPTR, initial paragraph,
+         After "It is an INTENT (OUT) argument.",
+         Insert (wordsmithed) sentence from [445:21-22]:
+           "If FPTR is an array, its shape is specified by SHAPE and each
+            lower bound is equal to 1.".
+
+[445:20-22] 15.2.3.3 C_F_POINTER, p3 Arguments, FPTR, Case (i),
+             Replace sentences
+              "In this case, FPTR becomes pointer associated with the
+               target of CPTR. If FPTR is an array, its shape is
+               specified by SHAPE and each lower bound is 1.".
+             with the following:
+  "If the target T of CPTR is scalar, FPTR becomes pointer associated
+   with T; if FPTR is an array, SHAPE shall specify a size of 1.  If T
+   is an array, and FPTR is scalar, FPTR becomes associated with the
+   first element of T.  If both T and FPTR are arrays, SHAPE shall
+   specify a size that is less than or equal to the size of T, and
+   FPTR becomes associated with the first PRODUCT(SHAPE) elements of T
+   (this could be the entirety of T)."
+
+[445:24] 15.2.3.3 C_F_POINTER, p3 Arguments, FPTR, Case (ii),
+         After "FPTR shall be a nonpolymorphic"
+         Delete "scalar".
+{Remove inconsistent prohibition.}
+
+[445:24] 15.2.3.3 C_F_POINTER, p3 Arguments, FPTR, Case (ii),
+         After "noninteroperable" (on line 23),
+         change "argument X," to "effective argument X,".
+
+[445:25] Same case, next sentence,
+         Delete "or its target if it is a pointer".
+
+[445:27-28] Same case, Replace final sentence
+              "FPTR becomes pointer associated with X
+               or its target."
+            with the following:
+  "If X is scalar, FPTR becomes pointer associated with X; if FPTR is
+   an array, SHAPE shall specify a size of 1.  If X is an array and
+   FPTR is scalar, FPTR becomes associated with the first element of
+   X.  If both X and FPTR are arrays, SHAPE shall specify a size that
+   is less than or equal to the size of X, and FPTR becomes associated
+   with the first PRODUCT(SHAPE) elements of X (this could be the
+   entirety of X)."
+{Specify precisely what happens in all the possible cases.  Note that
+ X is required not to have been a zero-sized array, so there is always
+ at least one data object there for FPTR to become associated with.
+ Of course we could require arrayness(FPTR)==arrayness(X) or even
+ PRODUCT(SHAPE)==SIZE(X), but that seems excessively strict.}
+
+===END===

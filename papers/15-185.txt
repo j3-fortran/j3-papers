@@ -1,0 +1,266 @@
+To: J3                                                     J3/15-185
+From:       Nick Maclaren
+Subject:    Functions, elemental procedures, image control etc.
+Date: 2015 July 19
+References: 14-227
+
+
+Discussion
+----------
+
+The issues were raised during Fortran 2008, and 7.7p3 was an attempt to
+resolve them.  Even I did not not realise how nasty the problems were
+until I started to work on a proper data consistency model, so I am
+afraid that 7.7p3 helps only a little.
+
+One of the main reasons that Fortran is used is because it allows
+aggressive optimisation, whereas (for example) C++ does not.  This
+includes executing different code paths according to the sizes of arrays
+and other such dynamic, context-dependent factors, as well as large code
+movement, preloading, the merging of writes, the interleaving of
+functions and so on.  The examples given here are trivial, for clarity,
+and would rarely cause trouble, but people are requested to assume that
+the functions are sufficiently complicated to justify the use of such
+optimisations.
+
+7.1.4 "Evaluation of operations" paragraph 2 says (inter alia):
+
+    * the evaluation of a function reference shall neither affect nor be
+    affected by the evaluation of any other entity within the statement
+
+In a parallel context, even the meaning of "within" (and, in other
+contexts, "while" etc.) is unclear, and there are three possibilities:
+
+    1) It refers only to direct actions (i.e. on that image), or
+    2) it also includes directly-caused actions on other images, or
+    3) it also includes all actions in unordered segments.
+
+I believe that the intent is (3) and that it is the only option that is
+consistent with the rest of the standard.  However, it needs saying and
+I am not sure how or where.  If, however, the intent is one of the
+others, extra problems arise.
+
+There is also the problem that it restricts only evaluation which, in
+Fortran, applies only to expressions and their subcomponents.  None of
+image control statements, subroutine calls nor assignment are
+evaluations in themselves, though their arguments, value (RHS), and any
+expressions used on the LHS, are evaluated.
+
+
+
+Proposal
+--------
+
+That we take decision in principle whether all such practices should be
+undefined or, if not, what should be defined and processor-dependent.
+And that we put such a proposal to WG5, because it will necessarily mean
+significant changes to the normative text of Fortran 2008.  Cleaning up
+the mess should be left until after we have decided what the intent is.
+
+
+
+Ordinary Function Calls
+-----------------------
+
+The following are just a few examples of the sort of problem that
+can arise.  I can't see how to eliminate them without some fairly
+draconian restrictions.  There is little point in dealing with these
+specific issues, as there is an arbitrary number of variations.
+
+
+    PROGRAM Function_One
+    ! Are functions required to be called in the same order under all
+    ! circumstances?  If not, this is undefined, but it breaks no rules.
+        PRINT *, Fred()+Joe()
+    CONTAINS
+        INTEGER FUNCTION Fred ()
+            INTEGER :: Fred
+            Fred = THIS_IMAGE()
+            CALL CO_SUM(Fred)
+        END INTEGER FUNCTION
+        INTEGER FUNCTION Joe ()
+            INTEGER :: Joe
+            Joe = THIS_IMAGE()
+            CALL CO_MAX(Joe)
+        END INTEGER FUNCTION
+    END PROGRAM Function_One
+
+
+    PROGRAM Function_Two
+    ! Are functions allowed to be interleaved?  If so, this is
+    ! undefined, despite there being no overlap of anything between
+    ! functions Fred and Joe.  Function interleaving is very common
+    ! in combination with inlining.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(LOCK_TYPE) :: lock1[*], lock2[*]
+        PRINT *, Fred()+Joe()
+    CONTAINS
+        INTEGER FUNCTION Fred ()
+            INTEGER :: Fred
+            LOCK (lock1)
+            Fred = THIS_IMAGE()
+            UNLOCK (lock1)
+        END INTEGER FUNCTION
+        INTEGER FUNCTION Joe ()
+            INTEGER :: Joe
+            LOCK (lock2)
+            Joe = THIS_IMAGE()
+            UNLOCK (lock2)
+        END INTEGER FUNCTION
+    END PROGRAM Function_Two
+
+
+    PROGRAM Function_Three
+    ! This is a sort-of hybrid of Function_One and Function_Two,
+    ! and is undefined if either are.  Note that there is no aliasing
+    ! on any single image, and ample synchronisation.
+        INTEGER :: data[*]
+        IF (NUM_IMAGES() /= 8) STOP
+        PRINT *, Fred()+Joe()
+    CONTAINS
+        INTEGER FUNCTION Fred ()
+            INTEGER :: Fred
+            SYNC ALL
+            data[MOD(THIS_IMAGE()+7,8)+1
+            Fred = data[MOD(THIS_IMAGE()+1,8)+1
+            SYNC ALL
+            CALL CO_SUM(Fred)
+        END INTEGER FUNCTION
+        INTEGER FUNCTION Joe ()
+            INTEGER :: Joe
+            SYNC ALL
+            data[MOD(THIS_IMAGE()+2,8)+1
+            Fred = data[MOD(THIS_IMAGE()+5,8)+1
+            SYNC ALL
+       END INTEGER FUNCTION
+    END PROGRAM Function_Three
+
+
+    PROGRAM Function_Four
+    ! This shows that the above issues can become visible with atomics.
+    ! In this case, there is an evaluation of atom1[1] and atom2[1]
+    ! outside the functions, but there are examples where there are
+    ! only definitions outside the functions.
+        USE, INTRINSIC :: ISO_FORTRAN_ENV
+        TYPE(ATOMIC_INT_TYPE) :: atom1[*] = 0, atom2[*] = 0
+        INTEGER :: temp[10], i
+        IF (NUM_IMAGES() /= 2) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            PRINT *, Fred()+Joe()
+        ELSE
+            DO i = 1,5
+                 CALL ATOMIC_REF(temp(2*i-1),atom1[1])
+                 CALL ATOMIC_REF(temp(2*i),atom2[1])
+            END DO
+            PRINT *, temp
+        END IF
+    CONTAINS
+        INTEGER FUNCTION Fred ()
+            INTEGER :: Fred, n
+            DO n = 1,5
+                CALL ATOMIC_DEFINE(atom1[1],n)
+            END DO
+            Fred = 0
+         END INTEGER FUNCTION
+         INTEGER FUNCTION Joe ()
+            INTEGER :: Joe, n
+            DO n = 1,5
+                CALL ATOMIC_DEFINE(atom2[1],n)
+            END DO
+            Joe = 0
+        END INTEGER FUNCTION
+    END PROGRAM Function_Four
+
+
+
+Impure Elemental Procedures
+---------------------------
+
+7.2.1.5p2, 12.8.2p1 and 12.8.3p1 say that the values of the result and
+INTENT(OUT) or INTENT(INOUT) arguments are the same as if the procedure
+were called in array element order, but stop short of saying that the
+procedure must be executed in that order.  They also are worded so as to
+apply to pure elemental procedures, which conflicts with Notes 2.12,
+7.14 and 7.44, but the difference isn't visible in a conforming program.
+
+There is a further problem in that the restrictions on aliasing etc. in
+12.5.2 are all in terms of the dummy arguments, and entities associated
+with those dummy arguments (12.5.2.13 is a clear example).  For an
+elemental procedure, the dummy arguments are scalar, but some people
+believe that the rules were intended to apply to the array actual
+argument.  That is definitely NOT what the normative words say.
+
+
+    PROGRAM Elemental_One
+    ! Is the following program intended to be conforming?
+        INTEGER :: array(9), total = 0
+        CALL Fred( (/ 1, 2, 3, 4, 5, 6, 7, 8, 9 /) )
+    CONTAINS
+        IMPURE ELEMENTAL SUBROUTINE Fred (arg)
+            INTEGER, INTENT(IN) :: arg
+            INTEGER :: temp
+            temp = THIS_IMAGE()
+            IF (MOD(arg,2) == 0) THEN
+                CALL CO_SUM(temp)
+            ELSE
+                CALL CO_MAX(temp)
+            END IF
+            total = total + temp
+         END SUBROUTINE Fred
+         PRINT *, temp
+    END PROGRAM Elemental_One
+
+
+    PROGRAM Elemental_Two
+    ! This  example is taken from 14-227.
+    ! Is the following program intended to be conforming?  And, if so,
+    ! is it required to set some elements of array to 10 times those of
+    ! coarray and the rest to zero?
+        INTEGER :: coarray(9)[*] = 0,    &
+            array(9) = (/ 1, 2, 3, 4, 5, 6, 7, 8, 9 /)
+        IF (THIS_IMAGE() == 1) THEN
+            array = Fred(coarray)
+        ELSE IF (THIS_IMAGE() == 2) THEN
+            SYNC ALL
+            coarray = 0
+            SYNC ALL
+        END IF
+        SYNC ALL
+        IF (THIS_IMAGE() == 1) PRINT *, array
+    CONTAINS
+        IMPURE ELEMENTAL FUNCTION Fred (arg)
+            INTEGER, INTENT(IN) :: arg
+            Fred = 10*coarray(arg)[2]
+            IF (arg == 4) THEN
+                SYNC ALL
+                SYNC ALL
+            END IF
+         END FUNCTION Fred
+    END PROGRAM Elemental_Two
+
+
+    PROGRAM Elemental_Three
+    ! This shows the association problem; at no time is an element
+    ! both associated with a dummy argument of the elemental subroutine
+    ! and being accessed outside it.  Is it conforming?
+        INTEGER :: coarray(9)[*] = (/ 1, 2, 3, 4, 5, 6, 7, 8, 9 /)
+        IF (NUM_IMAGES() /= 2) STOP
+        IF (THIS_IMAGE() == 1) THEN
+            CALL Fred(coarray)
+        ELSE IF (THIS_IMAGE() == 2) THEN
+            SYNC ALL
+            coarray(1)[1] = 0
+            coarray(9)[1] = 0
+            SYNC ALL
+        END IF
+        SYNC ALL
+        IF (THIS_IMAGE() == 1) PRINT *, coarray
+    CONTAINS
+        IMPURE ELEMENTAL SUBROUTINE Fred (arg)
+            INTEGER, INTENT(IN) :: arg
+            IF (arg == 5) THEN
+                SYNC ALL
+                SYNC ALL
+            END IF
+         END SUBROUTINE Fred
+    END PROGRAM Elemental_Three

@@ -1,0 +1,171 @@
+                                                      J3/13-355r2
+To: J3
+From: Bill Long & Malcolm Cohen
+Subject: Memory model for atomics
+Date: 2013 October 18
+References: N1983, N1989
+
+
+Discussion
+----------
+
+{Reinhold C}: Request to specify a memory model for atomic functions
+(beyond the current model). Possible side effects for EVENT statements.
+Response: Defer to {Nick 22}.
+
+{Malcolm Reason 2}: An explicit memory model for atomics [beyond what is
+currently in F2008] is needed for both users and vendors.
+Response: Defer to {Nick 22}.
+
+{Nick 22}: 7.2 p15:13-15.  This specification will cause massive confusion,
+and it was clear from WG5 in Delft that there was no agreement on even the
+minimal semantics specified by Fortran.  In particular, several people were
+assuming levels of consistency that are not always available in existing
+hardware, and would need extra work in the compiler to provide.  At the
+very least, there needs to be a Note saying clearly and explicitly that
+currently their behavior is deliberately left entirely processor-dependent,
+and WG5 intends to provide a proper semantic specification in due course.
+
+Response. The existing normative text making the results of atomic reading
+processor-dependent when in unordered segments is nearly sufficient.  Some
+additional normative text is added, plus an explanatory note.
+
+
+Edits to N1983
+--------------
+
+[15:17+] Insert new paragraph at the end of 7.2 Atomic subroutines.
+
+  "This Technical Specification does not specify a formal data consistency
+   model for atomic references.  An inconsistent model would be worse than
+   leaving the behavior processor-dependent, and developing a proper
+   consistency model is best left until after the facilities are integrated
+   into the Fortran base language standard."
+
+[29:13] Append sentence to the text to be appended to 13.1p3:
+  "If two or more variables are updated by a sequence or atomic memory
+   operations on an image, and these changes are observed by atomic
+   accesses from an unordered segment on another image, the changes need
+   not be observed on the remote image in the same order as they are made
+   on the local image, even if the updates in the local images are made in
+   ordered segments."
+
+[31:30+] In the new section "8.10 Edits to annex C",
+          add a new edit
+  "Insert subclause A.3.2 as subclause C.10.3."
+
+[35:26+] Append new subclause A.3.2
+
+"Annex A.3.2 Atomic memory consistency
+
+A.3.2.1 Relaxed memory model
+
+Parallel programs sometimes have apparently impossible behavior because
+data transfers and other messages can be delayed, reordered and even
+repeated, by hardware, communication software, and
+caching and other forms of optimization.  Requiring processors to deliver
+globally consistent behavior is incompatible with performance on many
+systems.  Fortran specifies that all ordered actions will be consistent
+([2.3.5] and [8.5]), but all consistency between unordered segments is
+deliberately left processor dependent or undefined.  Depending on the
+hardware, this can be observed even when only two images and one mechanism
+are involved.
+
+A.3.2.2 Examples with atomic operations
+
+When variables are being referenced (atomically) from segments that are
+unordered with respect to the segment that is is atomically defining or
+redefining the variables, the results are processor dependent.  This
+supports use of so-called "relaxed memory model" architectures, which can
+enable more efficient execution on some hardware implementations.
+
+The following examples assume the following declarations:
+
+   MODULE example
+     USE iso_fortran_env
+     INTEGER(atomic_int_kind) :: x[*] = 0, y[*] = 0
+
+Example 1:
+
+With x[j] and y[j] still in their initial state (both zero), image j
+executes the following sequence of statements:
+
+  CALL atomic_define(x,1)
+  CALL atomic_define(y,1)
+
+and image k executes the following sequence of statements:
+
+  DO
+    CALL atomic_ref(tmp,y[j])
+    IF (tmp==1) EXIT
+  END DO
+  CALL atomic_ref(tmp,x[j])
+  PRINT *,tmp
+
+The final value of tmp on image k can be either 0 or 1.  That is, even
+though image j thinks it wrote x[j] before writing y[j], this ordering is
+not guaranteed on image k.
+
+There are many aspects of hardware and software implementation that can
+cause this effect, but conceptually this example can be thought of as the
+change in the value of y propagating faster across the inter-image
+connections than the change in the value of x.
+
+Changing the execution on image j by inserting
+  SYNC MEMORY
+in between the definitions of x and y is not sufficient to prevent
+unexpected results; even though x and y are being updated in ordered
+segments, the references from image k are both from a segment that is
+unordered with respect to image j.
+
+To guarantee the expected value for tmp of 1 at the end of the code
+sequence on image k, it is necessary to ensure that the atomic reference on
+image k is in a segment that is ordered relative to the segment on image j
+that defined x[j]; SYNC MEMORY is certainly necessary, but not sufficient
+unless it is somehow synchronized.
+
+Example 2:
+
+  With the initial state of x and y on image j (i.e. x[j] and y[j]) still
+  being zero, execution of
+
+    CALL atomic_ref(tmp,x[j])
+    CALL atomic_define(y[j],1)
+    PRINT *,tmp
+
+  on image k1, and execution of
+
+    CALL atomic_ref(tmp,y[j])
+    CALL atomic_define(x[j],1)
+    PRINT *,tmp
+
+  on image k2, in unordered segments, might print the value 1 both times.
+
+  This can happen by such mechanisms as "load buffering"; one might imagine
+  that what is happening is that the writes (atomic_define) are overtaking
+  the reads (atomic_ref).
+
+  It is likely that insertion of SYNC MEMORY in between the calls to
+  atomic_ref and atomic_define will be sufficient to prevent this anomalous
+  behavior, but that is only guaranteed by the standard if the SYNC MEMORY
+  executions cause an ordering between the relevant segments on images k1
+  and k2.
+
+Example 3:
+
+  Because there are no segment boundaries implied by collective
+  subroutines, with the initial state as before, execution of
+
+    IF (this_image()==1) THEN
+      CALL atomic_define(x[3],23)
+      y = 42
+    ENDIF
+    CALL co_broadcast(y,1)
+    IF (this_image()==2) THEN
+      CALL atomic_ref(tmp,x[3])
+      PRINT *,y,tmp
+    END IF
+
+  could print the values 42 and 0."
+
+===END===

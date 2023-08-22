@@ -1,0 +1,212 @@
+To:      J3                                       J3/13-334r1
+From:    John Reid
+Subject: Events problem
+Date: 2013 October 13
+Reference: N1983
+
+Discussion
+----------
+
+There seem to be problems with the producer-consumer program on page
+34 of N1983. The essence of the body of the inner do loop is
+   CALL EVENT_QUERY(EVENT[I], COUNT)
+   IF (I/= THIS_IMAGE) THEN
+      IF (COUNT==0) THEN
+         ! Produce some work for image I
+         EVENT_POST(EVENT[I])
+      END IF
+   ELSE
+      EVENT_WAIT(EVENT)
+      ! Consume some work
+   END IF
+If the executing image produces some work for image I, where does it
+put it? Presumably on image I, so that the consumer has ready access
+to it. There is nothing to stop two images producing work for image I
+at the same time - an obvious data race.
+
+A possible solution is to limit count values to 0 and 1 and make it an
+error to post to an event with count 1. This allows the code to be
+changed to
+
+   IF (I/= THIS_IMAGE()) THEN
+      EVENT_POST(PRODUCE[I],STAT=STATUS)
+      IF (STATUS==ALREADY_POSTED) CYCLE
+      ! Produce some work for image I
+      EVENT_POST(CONSUME[I])
+   ELSE
+      EVENT_WAIT(CONSUME)
+      ! Consume some work
+      EVENT_WAIT(PRODUCE)
+   END IF
+
+Now, if the executing image manages to post to PRODUCE[I], it knows
+that it is the only image producing work for image I and it is safe to
+place the work in the agreed coarrays on I. When the work has been
+produced, it posts to CONSUME[I]. Image I waits for this post and then
+consumes the work. The event PRODUCE remains posted while this is done,
+which prevents other images overwriting the data with a new work item.
+
+A further advantage of this is that the work is well balanced - we
+cannot have a large number of work items waiting on one image while
+others have none.
+
+There are two further problems with the existing example. First, there
+is no exit. Second, all images start by trying to post to image I.
+These are fixed in the replacement below.
+
+To keep the code simple, I have made the effect of finding an erroneous
+stat value be a simple exit.
+
+An alternative to limiting the count value to 0 and 1 is to have an
+optional specifier that gives a limit on count value. If the count is
+found to be at the limit, there would be an error return and the count
+would not be changed. Edits are provided for this alternative, too.
+
+Nick Maclaren says that the first approach means that events do
+not introduce any more segment ordering issues than are already present
+with locks, and that it resolves all of the issues he described in
+J3/13-352, except for the first question. However, he says that the
+second approach resolves only some of them.
+
+EVENT_QUERY for a local event variable plays a useful role, as
+illustrated in example 1 of A.2. However, it seems to have little value
+for a remote event. To correct example 2 of A.2, I have had to remove
+it. Even if it returned the value 0, there was no certainty about the
+value still being zero when subsequently executing the EVENT_POST
+statement. Limiting the count to 1 or adding a MAX_COUNT= specifier
+seems to make EVENT_QUERY for a remote event redundant. The edits here
+therefore include its removal.
+
+At the request of Nick Maclaren, I have added a note to say that it is
+expected that an image will continue executing after posting
+an event without waiting for an EVENT_WAIT statement to execute on
+the image of the event variable. Nick thinks that this should be in
+normative text. My opinion is that this is a quality-of-implementation
+issue.
+
+Edits to N1983
+--------------
+
+[13:11-12] Change sentence "The processor ... HUGE(0)" to the
+"The maximum value of the event count is one."
+
+[13:29] At the end of the paragraph add "The count already having the
+value 1 causes an error return. If the STAT= specifier appears, the
+STAT= variable become defined with the value ALREADY_POSTED of the
+intrinsic module ISO_FORTRAN_ENV."
+
+[13:29+] Add
+NOTE 6.0
+It is expected that an image will continue executing after posting
+an event without waiting for an EVENT WAIT statement to execute on
+the image of the event variable.
+
+[21:6] At the end of the description of the EVENT argument, add
+"It shall not be coindexed."
+
+[21:16-19] Delete "if there ... value 8."
+
+[29:41+] At the end of 8.7 Edits to clause 13, add
+"{In 13.8.2 The ISO_FORTRAN_ENV intrinsic module, add}
+13.8.2.1a ALREADY_POSTED
+The value of the default integer scalar constant ALREADY_POSTED is
+given to the STAT= variable in an EVENT POST statement if the count of
+the event variable already has the value 1.
+
+[34:19-48] Replace example by
+
+PROGRAM PROD_CONS
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+INTEGER I, STATUS
+TYPE(EVENT_TYPE) :: PRODUCE[*], CONSUME[*]
+I = THIS_IMAGE()
+DO
+   I = I + 1
+   IF (I>NUM_IMAGES()) I = 1
+   IF (I/= THIS_IMAGE()) THEN
+      EVENT_POST(PRODUCE[I],STAT=STATUS)
+      IF (STATUS==ALREADY_POSTED) CYCLE
+      IF (STATUS/=0) EXIT
+      ! Produce some work for image i
+      EVENT_POST(CONSUME[I],STAT=STATUS)
+      IF (STATUS/=0) EXIT
+   ELSE
+      EVENT_WAIT(CONSUME,STAT=STATUS)
+      IF (STATUS/=0) EXIT
+      ! Consume the work
+      EVENT_WAIT(PRODUCE,STAT=STATUS)
+      IF (STATUS/=0) EXIT
+   END IF
+   ! If all work done, exit
+END DO
+! If work remaining, print message
+END PROGRAM PROD_CONS
+
+
+Alternative edits to N1983
+--------------------------
+
+
+[13:25] Replace R601 by
+
+R601 <event-post-stmt> <<is>> EVENT POST( event-variable []
+                                        [, post-stat-list] )
+R601a <post-stat>      <<is>> <sync-stat>
+                       <<or>> <count-stat>
+R601b <count-stat>     <<is>> MAX_COUNT = <count-variable>
+R601c <count-variable> <<is>> <scalar-int-variable>
+
+[13:29] At the end of the paragraph add
+"If the MAX_COUNT= specifier appears in an EVENT POST statement and
+the count of the event variable already has the value given by the
+MAX_COUNT= variable, there is an error return. If the STAT= specifier
+appears, the STAT= variable become defined with the value
+ALREADY_POSTED of the intrinsic module ISO_FORTRAN_ENV."
+
+[13:29+] Add
+NOTE 6.0
+It is expected that an image will continue executing after posting
+an event without waiting for an EVENT WAIT statement to execute on
+the image of the event variable.
+
+[21:6] At the end of the description of the EVENT argument, add
+"It shall not be coindexed."
+
+[21:16-19] Delete "if there ... value 8."
+
+[29:41+] At the end of 8.7 Edits to clause 13, add
+"{In 13.8.2 The ISO_FORTRAN_ENV intrinsic module, add}
+13.8.2.1a ALREADY_POSTED
+The value of the default integer scalar constant ALREADY_POSTED is
+given to the STAT= variable in an EVENT POST statement if the count of
+the event variable already has the value given by the MAX_COUNT=
+variable.
+
+[34:19-48] Replace example by
+
+PROGRAM PROD_CONS
+USE, INTRINSIC :: ISO_FORTRAN_ENV
+INTEGER I, STATUS
+TYPE(EVENT_TYPE) :: PRODUCE[*], CONSUME[*]
+I = THIS_IMAGE()
+DO
+   I = I + 1
+   IF (I>NUM_IMAGES()) I = 1
+   IF (I/= THIS_IMAGE()) THEN
+      EVENT_POST(PRODUCE[I], MAX_COUNT=1, STAT=STATUS)
+      IF (STATUS==ALREADY_POSTED) CYCLE
+      IF (STATUS/=0) EXIT
+      ! Produce some work for image i
+      EVENT_POST(CONSUME[I],STAT=STATUS)
+      IF (STATUS/=0) EXIT
+   ELSE
+      EVENT_WAIT(CONSUME,STAT=STATUS)
+      IF (STATUS/=0) EXIT
+      ! Consume the work
+      EVENT_WAIT(PRODUCE,STAT=STATUS)
+      IF (STATUS/=0) EXIT
+   END IF
+   ! If all work done, exit
+END DO
+! If work remaining, print message
+END PROGRAM PROD_CONS

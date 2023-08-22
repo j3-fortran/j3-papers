@@ -1,0 +1,331 @@
+
+                                                           J3/04-123
+
+Date:      December 12, 2003
+To:        J3
+From:      Aleksandar Donev
+Subject:   F2+: Allowing Multiple Nonzero-Rank Part References for
+           Structure Components
+Reference: "Multiple Nonzero-rank Part References", A. Donev, Fortran
+           Forum, December 2002, pp 2-10.
+           J3/03-253, J3/03-007R1
+**************************************************
+
+Number:
+
+Title: Multiple Nonzero-Rank Part References
+
+Submitted By: J3 (Aleksandar Donev)
+
+Status: For Consideration
+
+References: J3/03-253
+
+Basic Functionality:
+__________________________
+
+I propose to delete the constraint that prohibits multiple nonzero rank
+part-refs:
+"In a data-ref, there shall be no more then one part-ref with nonzero
+rank." There is no justification for this constraint, and removing it
+would unleash a most useful capability which Fortran is uniquely capable
+of with its ability to deal with non-contiguous arrays.
+
+The constraint that "A part-name to the right of a part-ref with nonzero
+rank shall not have the ALLOCATABLE or POINTER attribute" should remain
+as this prohibits skewed arrays, which cannot be implemented with
+regular array descriptors. However, structure components with multiple
+nonzero rank part-refs *can* be implemented with regular array
+descriptors.
+
+______________________________________
+Extended Example
+______________________________________
+
+Here is an illustration of the expressivity and power of the proposed
+feature:
+
+! A type hierarchy of meterological data:
+TYPE :: Hourly_Record
+   REAL (KIND=r_wp) :: temperature (3) = 0.0
+      ! Three temperature readings (water, air, soil)
+   LOGICAL (KIND=l_byte) :: synny = .TRUE.
+END TYPE
+TYPE :: Daily_Record
+   TYPE (Hourly_Record), DIMENSION (24) :: hourly_records
+   INTEGER (KIND=i_sp) :: sunrise = 7, sunset = 18
+END TYPE
+TYPE :: Weekly_Record
+   TYPE (Daily_Record), DIMENSION (7) :: daily_records
+   REAL (KIND=r_sp) :: forecast_success (5)
+END TYPE
+
+! Weather data over a grid of observation points:
+INTEGER, PARAMETER :: n_x = 100, n_y = 50
+TYPE (Weekly_Record), DIMENSION (n_x, n_y), TARGET :: weekly_records
+
+... ! Assign values to the weather data, do calculations, etc...
+
+! Select the second temperature reading on Mondays and Wednesdays
+! at 9:00 and 15:00 hours at grid point (3,1):
+WRITE (*,*) "The selected temperatures are:", &
+
+weekly_records(3,1)%daily_records(1:3:2)%hourly_records(9:15:6)%temperature(2)
+
+Rationale:
+__________________________
+
+Many will agree with me that arrays are one of the biggest strengths of
+Fortran over other languages. One essential aspect of this strength is
+the ability to deal with strided arrays very naturally, i.e., the
+built-in ability to deal with regular array sections. This strength
+relies on the use of array descriptors to describe regular but
+noncontiguous ways of storing the array data. The full power of this
+ability built into every Fortran compiler and optimizer is not fully
+realized yet---the ability to use derived types with high-rank
+components by simply referencing the data as a multi-dimensional array
+is missing. I believe it is high time this functionality, originally
+discussed during the design of Fortran 90, be finally integrated into
+the language. The proposed functionality gives two gains:
+
+1) It allows for a kind of separation between the implementation of
+operations on data and the way the data is actually stored which is
+unpresedented in other languages. This kind of separation is much more
+flexible and easy to use then inheritance-based methods (but is more
+limited in that only data, not methods, are covered). An example
+includes the ability to code a computational geometry package which
+operates on a collection of points, without specifically indicating how
+the coordinates of the points are stored---in a simple multidimensional
+array, or inside some complicated hierarchy of derived types.
+
+2) It allows the use of all the powerful array syntax and intrinsics for
+data stored inside derived types.
+
+Take the simple example:
+
+TYPE Point3D
+    ! A point in 3D
+    REAL :: coordinates(3), data(2)
+END TYPE Point3D
+
+TYPE(point3D), DIMENSION(10) :: points
+   ! A collection of points
+
+In Fortran,
+    points[1:2]%coordinates[1]
+produces a strided rank-1 array section (I will use this term more
+liberally then the actual standard) which contains the x coordinates of
+the first two points. This can, for example, be used as a target of a
+rank-1 array pointer.
+
+However, the reference
+    points[1:2]%coordinates[:]
+is not allowed. In a user's mind, this would reference the xyz
+coordinates of the first two points, and can be thought of as an "array
+of arrays". But in fact, it can just as well be thought of as a rank-2
+array of shape (/3,2/).
+
+This is more then just a convenient convention. In fact, the memory
+layout of the collection of real numbers (coordinates) referenced by
+this array of array can be described by a regular strided array section,
+so that in fact it is almost trivial for any existing F95 compiler to
+implement the following nonstandard assignment of a rank-2 array pointer
+to this "array of arrays":
+
+REAL, DIMENSION(:,:) :: selected_coordinates
+selected_coordinates=>points[1:2]%coordinates[:]
+
+Yet no compiler known to the author implements such an extension. It
+should be obvious to the reader that this kind of functionality would
+indeed be useful. For example, finding the centroid of the selected
+points would be performed with,
+
+WRITE(*,*) "The centroid is", SUM(points%coordinates, DIM=2)
+
+which requires no loops.
+
+Even more useful would be the ability to pass the coordinates of the
+selected points to a procedure (note that this procedure need not know
+that the coordinates came from an array of derived type point3D) as an
+actual argument associated with an assumed-shape array dummy argument.
+This is a very important kind of separation of the implementation from
+the way the data is stored.
+
+Estimated Impact:
+__________________________
+
+The edits needed to implement this are small and localized to Section
+6.1.2 (examples are given under Specification). References with multiple
+non-zero part-refs are treated in all respects like data-refs with just
+a single non-zero part ref, namely, they are array sections. Therefore I
+estimate that no other part of the standard will need to be changed.
+
+The implementation of this feature does require some nontrivial work.
+However, the steps involved are very similar to the way current
+data-refs are handled. It is only that a higher-rank descriptor for the
+data-ref needs to be constructed, very similar to the one used when
+higher rank array sections appear. Therefore I believe the same
+optimizations as currently used will be applicable immediately, and only
+the construction of the array descriptor is a new addition. Also, the
+debugger interfaces and such will be affected. I believe adding this
+to the language will be more of an integration effort than an addition:
+most of the needed material is in the front end, in optimizers, in
+the RTLs.
+
+I have implemented extensions for the three compilers I use to be able to
+use such structure components in only a hundred lines of Fortran+C code.
+I essentially use low-level C code which manipulates the compiler's
+array descriptors to create an higher rank array pointer to the
+data-refs I need, and then I can use the array pointer when I need to
+access the data as a multi-rank array (see my Fortran Forum article)
+
+Detailed Specification:
+__________________________
+
+The main edits needed are the following:
+
+Delete "In a data-ref, there shall be no more then one part-ref with
+nonzero rank". Then add constraint
+
+_______________________
+The rank of a data-ref is the sum of the ranks of the part-refs with
+nonzero rank, if any; otherwise, the rank is zero.
+...
+Cxxx: The maximum rank of a data-ref shall be 7.
+_______________________
+
+and change the way the rank of data-refs is determined. The following
+proposal is somewhat controversial and I justify it in detail below:
+
+_______________________
+The rank and shape of a nonzero rank part-ref are determined as follows.
+If the part-ref has no section-subscript-list, the rank and shape are
+those of part-name. Otherwise, the rank is the number of subscript
+triplets and vector subscripts in section-subscript-list, and the shape
+is the rank-1 array whose i-th element is the number of integer values
+in the sequence indicated by the i-th subscript triplet or vector
+subscript. If any of these sequences is empty, the corresponding element
+in the shape is zero.
+
+In an array-section, the rank of the array is the sum of the ranks of
+the nonzero rank part-refs. The shape of the array is the rank-1 array
+obtained by concatenating the shapes of the nonzero rank part-refs, in
+backward order, i.e., starting from the last one. If the shape has an
+element with the value of zero, the array section has size zero.
+_______________________
+
+There are some other edits that will be needed, mostly in Section 6.1.2.
+
+______________________________________
+The Shape of the data-ref
+______________________________________
+
+A problem in the proposal as described above is that the Fortran order
+of specifying components, structure%component, as opposed to the
+alternative component%structure, is the opposite of the order of
+concatenation of the shapes of the non-zero rank references. For
+example, the reference:
+level1(1:4,1:5,1:6)%level2(1:2,1:3)%level3(1:1)
+represents an array section of shape (/1,2,3,4,5,6/), and not
+(/4,5,6,2,3,1/) as might be thought at first. This is likely to cause a
+"steep learning curve" and errors by programmers when first using the
+feature.
+
+However, I argue below that this is the best choice, for both the
+compiler and the standard and the user, despite the extra cost of having
+to be careful with indices in certain situations. I believe the wrong
+choice was made when component references were chosen to follow the
+C-style ordering of object%component instead of component%object. This
+cannot be changed now without introducing a whole new syntax and the
+associated cost for users and implementors. Instead, we should choose
+the proposed shape for the data-ref that I describe here and accept the
+loss of simplicity in the syntax as unavoidable due to past mistakes.
+
+1. This is the best choice for compilers/vendors:
+
+Take the previous example:
+
+points[1:2]%coordinates[1:3]
+
+In this reference, the 3 coordinates of the first point are stored
+contigously, and then the ones for the second point:
+
+X1 Y1 Z1   X2 Y2 Z2
+
+The above proposal says that the shape of the above data-ref is (/3,2/),
+not (/2,3/). Had the shape been (/2,3/), we would have an array in which
+rows are contiguous, while there is a stride along the columns. There is
+no such array in Fortran at present, and I believe implementations are
+not ready to deal with them. For example, all Fortran compilers assume
+that it is best to keep column-wise references in innermost loops, so
+that the memory stride between successive references is minimized (for
+cache performance reasons). Now different optimizations would need to be
+used for these new arrays. More importantly, current array descriptors
+may not be equiped to deal with such C-order arrays, and changing the
+descriptors or augmenting them has a high cost for vendors, portability,
+and users.
+
+2. This is the best choice for the standard:
+
+Consider 12.4.1.5 Sequence association.  "... The element sequence
+consists of the storage units beginning with the first storage unit of
+the actual argument and continuing to the end of the array."
+
+Note that if the above reference had shape (/2,3/) then the array
+element order (which we define to be column-wise) would jump in memory,
+rather then be stored in sequence (even if not contiguously). The
+standard would need some major surgery to allow for such a novel array
+element ordering in storage.
+
+3. This is the best for users.
+
+The main argument put forth by critics is that it is much easier for the
+users to concatenate the shapes in the order they appear in the syntax.
+I argue however that there are costs to the users which are much more
+significant, in particular, dummy argument association:
+
+Consider the following example: I am writing a computational geometry
+routine to calculate the convex hull of a collection of points in 3D. So
+the input should be an array with the coordinates of the N points. I
+want to make this routine as independent from the way that the
+coordinates of the points are actually stored in memory as possible--to
+avoid copy in/out costs. It is clear the input should be an
+assumed-shape array (in present Fortran, I claim the optimal choice is
+dummy array argument of shape (3,:), but this is not legal as of yet). I
+have two choices:
+--Assume the input is an array of shape (3,N)
+--Assume the input is an array of shape (N,3)
+I claim that almost all Fortran programmers will choose the first
+option. Since most algorithms reference all coordinates of a point
+together, for optimization purposes it is best to keep them contiguous
+in memory. Note that this is not a high-level choice. Either choice
+seems equally good at a high level. But practically any routine such
+ever written will expect the points to be the columns of the input
+array.
+
+So now, another user writes a code which deals with points. However, the
+coordinates of the points are stored inside a derived type, as in our
+example above. So the user wants to call the convex hull procedure with
+the data-ref
+points[1:N]%coordinates[1:3]
+as an actual. Since the dummy is of shape (3,N), it is clear what the
+shape of the data-ref should be. Making the shape of the data-ref be
+(N,3) will make it necessary to do a manual copy in/out into an array of
+shape (3,N) just to invoke the convex hull procedure. Note that in
+almost all compilers I know:
+CALL Sub(TRANSPOSE(A))
+will actually cause a copy-in/out of A! If the committee wants to change
+this and allow one to transpose array sections and pass them as dummy
+arguments without copy-in/out, I would not object, but this would have a
+high implementation cost.
+
+So we would have actually destroyed much of the usefulness of the
+feature if we had chosen a different shape for the data-ref than what I
+propose here! I believe that in most practical situations the code
+dealing with multi-dimensional arrays will be separate from the code
+using the derived-type hierarchies, and that the mixing will occur using
+argument association. So the above problem is very significant in
+practice.
+
+History:
+Many debates during the design of F8x...

@@ -1,0 +1,238 @@
+To: J3                                                     11-168r1
+From: R. Bader, N. M. Maclaren, Jim Xia
+Subject: Orthogonalizing CFI_establish
+Date: 2011 June 28
+References: N1845, N1848, N1854
+
+INTRODUCTION:
+
+There is a considerable overlap of functionality between CFI_establish
+and CFI_section; as the examples in N1845 show, this leads not only to
+a measure of uncertainty on which of the functions to use, but also has
+a potential for making it easy to write programs which violate the
+existing restrictions on the use of descriptors. Therefore, this paper
+suggests changes to CFI_establish which more clearly separate its
+functionality from that of CFI_section as well as CFI_setpointer:
+
+The use of CFI_establish() is limited to creating descriptors for
+Fortran objects within C which are
+
+(1) unallocated ALLOCATABLE objects of some specified rank and type, or
+(2) contiguous assumed shape arrays or POINTER arrays created from 
+    contiguous pre-existing C storage (of sufficient size), or
+(3) a non-ALLOCATABLE scalar 
+
+This is achieved by
+
+ * replacing the dim argument by one describing the extents. This
+   covers case (2) above (the dim member of dv will be appropriately
+   set up inside the function call). Note that case (1) will of course
+   ignore this arguments, so NULL can then be passed for it.
+ * adding the restriction that base_addr shall be the C address of a
+   contiguous storage area of known type, unless it is NULL.
+
+This mostly prevents directly creating a C descriptor for an object
+passed from Fortran via a descriptor; the other functions deal with
+this situation as far as needed; also nonsensical rank changing is
+not possible any more. Finally, some edits are added which ensure
+that descriptors created inside C must be initialized with CFI_establish
+before other functions are used on them.
+
+Disadvantages:
+
+ * General pointer rank/bounds remapping is not possible any more
+   (but of course a Fortran subroutine can be written to do this).
+ * Pointer association must be done by creating a disassociated pointer
+   and invoking CFI_setpointer i.e., more function calls must be written
+   (but then we're also orthogonal to CFI_setpointer).
+
+These changes make obsolete the need for adding a note as described in
+the reference to [14:43+] of N1845 in N1848.
+
+EDITS to N1854:
+
+[14:27-29]  Delete "CFI_type_other or" and "If the type is
+            CFI_type_other, elem_len shall be greater than zero and
+            equal to the sizeof() of an element of the object."
+
+(In the context of allocation, elem_len is meant to deal with deferred
+length strings only.)
+
+
+[15:29] Replace "const CFI_dim_t dim[]" by
+        "const CFI_index_t extents[]"
+
+[16:1]  After "not NULL it shall be" insert " a pointer to a
+        contiguous storage sequence which is"
+
+[16:3-4]  Delete "If it is ... shall not be NULL"
+      
+<<<NOTE: additional words may be needed to clarify the definition status
+   for an assumed shape entity whose base address is NULL.>>> 
+
+[16:12-13]  Replace the paragraph by
+
+         "/extents/ is ignored if the rank /r/ is zero 
+          or if base_addr is NULL. Otherwise, it shall point to
+          an array with /r/ elements specifying the corresponding
+          extents of the described array."
+
+[16:15-16]  Delete the sentence "If base_addr ... subobject of it".
+
+[16:17]  After "disassociated pointer" add
+         "; otherwise, it is for a non-allocatable entity which
+         is a scalar or a contiguous array."
+
+[16:21+] Add the following text:
+
+    "NOTE 5.6+
+     CFI_establish is used to initialize the descriptor 
+     declared in C with CFI_CDESC_T before passing it to any 
+     other functions as an actual argument, in 
+     order to set the rank, attribute, type and element length."
+
+[16:30-45] Replace text by:
+
+         "Example 2: Given the Fortran type definition
+
+          type, bind(c) :: t
+            real(c_double) :: x
+            complex(c_double_complex) :: y
+          end type
+
+          and a Fortran subprogram which has an assumed shape dummy
+          argument of type t, the following code fragment creates a
+          descriptor /a_fortran/ for an array of size 100 which can
+          be used as the actual argument in an invocation of the
+          subprogram from C:
+
+          typedef struct {double x; double _Complex y;} t;
+          t a_c[100];
+          CFI_CDESC_T(1) a_fortran;
+          int ind;
+          CFI_index_t extent[1];
+
+          extent[0] = 100; 
+          ind = CFI_establish( (CFI_cdesc_t *) &a_fortran, a_c,
+                CFI_attribute_assumed, CFI_type_struct, sizeof(t),
+                1, extent);"
+
+
+[19:12] After "object.", add "Its /rank/ and /type/ members shall have
+        the same values as that of /result/. If its type member is
+        CFI_type_other, its /elem_len/ member shall have the same value
+        as that of /result/."
+
+
+EDITS for example A.2.2:
+
+[38:4]      Replace "two C descriptors" by "the first C descriptor for
+            an allocatable entity"
+
+[38:5]      Replace "copies the base_addr ... second descriptor" by
+            "constructs the second descriptor by invoking CFI_section
+            with the value CFI_attribute_assumed for the attribute
+            parameter,"
+
+[38:11]     Replace the declaration of dims by
+            "CFI_index_t extents[2];"
+[38:21]     Replace "dims" by "NULL"
+
+[38:23+]    Add following lines:
+            "/* Extract extents from descriptor */ 
+             extents[0] = desc_alloc->dim[0].extent;
+             extents[1] = desc_alloc->dim[1].extent;"
+
+[38:25]     delete this line
+
+[38:32]     Replace "desc_alloc->dim" by "extents";
+
+[38:32+]    Add text
+            "After invocation of the second CFI_establish, the 
+             lower bounds stored in the /dim/ member of /desc_assum/ 
+             will have the value 0 even if the corresponding entries 
+             in /desc_alloc/ have different values."
+
+
+
+EDITS for example A.2.3:
+
+
+[39:5]      Replace declaration of dims by
+            "CFI_index_t lower_bound[1], upper_bound[1], stride[1];"
+
+[39:8-19]   Replace these lines by
+            "/* Create a new descriptor which will contain the section */
+            status = CFI_establish(  (CFI_cdesc_t *) &array, 
+                                     NULL, 
+                                     CFI_attribute_assumed,
+				     int_array->type,
+				     int_array->elem_len,
+				     /* rank */ 1, 
+				     /* extents is ignored */ NULL);
+
+            lower_bound[0] = int_array->dim[0].lower_bound;
+	    upper_bound[0] = lower_bound[0] + (int_array->dim[0].extent - 1);
+	    stride[0] = 2;
+
+            status = CFI_section( (CFI_cdesc_t *) &array,    
+	    	     		  (CFI_cdesc_t *) &int_array, 
+	    	     		  lower_bound,
+				  upper_bound,
+				  stride);
+      
+[39:26-31] Both paragraphs can be removed because the new rules
+           force the programmer to use CFI_establish followed by
+           CFI_section in this context, hence the discussion of 
+           descriptor corruption is superfluous.
+           (One could add some words why the result cannot be a
+           formal parameter, but it may be a better idea to put that
+           into a NOTE accompanying the function description, or
+           the - presently still missing - rules in 5.2.6).
+
+
+
+[40:2]     Replace "CFI_dim_t dims[1]" by
+           "CFI_index_t extent[1];"
+
+[40:8-10]  Replace definition of dims by
+           "extent[0] = ARRAY_SIZE;"
+
+[40:11]    Remove comment (leftover from a much earlier version)
+
+[40:16]    Replace "sizeof(int)" by
+           "/* element length is ignored */ 0,".
+
+[40:18]    Replace "dims" by "extent"
+
+
+EDITS for example A.2.4:
+
+
+[40:36+]   Insert the following statements:
+           "CFI_CDESC_T(0) yp;
+            int status;
+            /* make local yp point at y */
+            CFI_establish( (CFI_cdesc_t *) &yp,
+                           &y,
+                           CFI_attribute_pointer,
+                           CFI_type_int,
+                           /* elem_len is ignored */ sizeof(int),
+                           /* rank */ 0,
+                           /* extents are ignored */ NULL);"
+
+
+[40:37-45] Replace condition and invocation of CFI_establish by
+           "/* Pointer association of ip with yp */
+           status = CFI_setpointer(ip, (CFI_cdesc_t *) &yp, NULL);
+           if (status != CFI_SUCCESS) {
+            /* handle run time error */
+	   }"
+
+[40:46+]   Add text:
+           "The restrictions on the use of CFI_establish prohibit
+            direct modification of the incoming pointer entity ip
+            by invoking that function on it."
+
+
+

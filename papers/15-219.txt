@@ -1,0 +1,109 @@
+                                                             J3/15-219
+To: J3
+From: Malcolm Cohen
+Subject: Interp on generic elemental assignment
+Date: 2015 September 09
+
+----------------------------------------------------------------------
+
+NUMBER: F08/0147
+TITLE: Is generic resolution of elemental assignment done at runtime?
+KEYWORDS: Type-bound defined assignment, Allocatable
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+
+  Module da_module
+    Type t
+      Real c
+    End Type
+    Interface Assignment(=)
+      Module Procedure edasgn
+    End Interface
+  Contains
+    Elemental Subroutine edasgn(a,b)
+      Class(t),Intent(Out) :: a
+      Class(t),Intent(In) :: b
+      a%c = -b%c
+    End Subroutine
+  End Module
+  Program edatest
+    Call test(10,10,13)
+  Contains
+    Subroutine test(n,n2,m)
+      Use da_module
+      Type(t) :: x(n),z(m)
+      Type(t),Allocatable :: y(:)
+      x%c = [ (i,i=1,n) ]
+      z%c = [ (i,i=1,m) ]
+      Allocate(y(n2),Source=t(0))
+      y = x                        ! A
+      Print 1,y
+    1 Format(*(1X,F0.1,:))
+      y = z                        ! B
+      Print 1,y
+    End Subroutine
+  End Program
+
+According to 7.2.1.2 Intrinsic assignment statement, an assignment
+statement is an intrinsic assignment statement if (and only if) it
+is not a defined assignment statement.  According to 7.2.1.4 Defined
+assignment statement, a defined assignment statement needs to have a
+subroutine that defines the assignment "x1 = x2".  For elemental
+subroutines (item (5)(b)), that is true only if
+  "x1 and x2 are conformable"
+which when x1 and x2 are both arrays, means "has the same shape".
+For the example above, in the assignment marked (A), x and y will be
+conformable (as both n and n2 are equal to 10), making that a defined
+assignment, thus the PRINT statement after it would print
+ -1.0 -2.0 -3.0 -4.0 -5.0 -6.0 -7.0 -8.0 -9.0 -10.0
+while in the assignment statement marked (B), y and z will not be
+conformable (n2 being 10 and m being 13), making it an intrinsic
+assignment.  In this case, because Y is allocatable it will be
+reallocated, and so the output from the second PRINT statement would
+be
+ 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0 11.0 12.0 13.0
+
+However, this would seem to violate the fundamental principle that
+generic references are resolvable at compile time.  It would also
+seem to be nearly useless since if the variable is not allocatable
+the shapes are required to conform anyway.
+
+Is this feature intended to work like this?
+
+ANSWER:
+
+No, this was a mistake.  Edits are provided to remove the runtime
+generic resolution.
+
+EDITS:
+
+[24:11+] 1.6.2 Fortran 2003 compatibility, insert new incompatibility
+  "Fortran 2003 interpreted assignment to an allocatable variable
+   from a nonconformable array as intrinsic assignment, even when an
+   elemental defined assignment was in scope; this part of ISO/IEC
+   1539 does not permit assignment from a nonconformable array in
+   this context.".
+{The unintended extension is weird and violates our own principles,
+ but is not in itself contradictory or ambiguous so this is an
+ incompatibility.}
+
+[157:14] 7.2.1.4 Defined assignment statement, p2, item (5)(b),
+         Change "$x_1$ and $x_2$ are conformable"
+         to "$x_2$ is scalar or has the same rank as $x_1$".
+{$x_1$ is TeX for italics x subscript 1.}
+
+[157:16] Same subclause, p3, append new sentence
+  "If the subroutine is elemental, $x_2$ shall have the same shape as
+   $x_1$."
+{Retain conformability as a normal requirement instead of as a
+ condition.}
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 15-nnn   m208 F08/0147  Submitted
+
+----------------------------------------------------------------------

@@ -1,0 +1,341 @@
+To: J3                                                     J3/21-122r1
+From: Robert Corbett
+Subject: Integration with ISO/IEC 60559:2020
+Date: 2021-March-01
+References: 21-007
+
+1. Introduction
+
+A new edition of the ISO/IEC floating-point standard,
+ISO/IEC 60559:2020, was published in May of 2020.  The
+Fortran standard includes language support for the
+ISO/IEC floating-point standard.  Therefore, the Fortran
+standard should track changes to the ISO/IEC floating-point
+standard.
+
+The new edition of the ISO/IEC floating-point standard is,
+for the most part, backward compatible with the previous
+edition.  The previous edition of the floating-point
+standard placed restrictions on exception handling in the
+case of comparison operations that could not implemented
+efficiently on existing hardware.  Those restrictions are
+relaxed in the new edition.  The change should not be
+noticeable by users or implementors, because no one paid
+attention to the restrictions.  Members of the IEEE 754 WG
+themselves expressed surprise when the restrictions were
+pointed out to them.
+
+The maximum and minimum operations have changed in the new
+edition.  In the previous standard, the maximum and minimum
+operations applied to operands whose values are zeroes with
+different signs could return either positive or negative zero.
+In the new edition, the maximum and minimum operations
+treat negative zero as if it is less than positive zero.
+The change is unlikely to affect user codes, but it might
+affect implementations.  Some CPUs include instructions for
+the maximum and minimum operations of the previous edition.
+Those instructions could still be used for the MAX and MIN
+functions of the Fortran standard, but they cannot be used to
+implement the maximum and minimum operations of the new edition
+of the floating-point standard.
+
+The names of the functions IEEE_MAX_NUM_MAG and IEEE_MIN_NUM_MAG
+were based on the names of the corresponding operations in the
+previous edition of the floating-point standard.  The names are
+not intuitive.  In the new edition of the floating-point
+standard, the names of the operations were changed to be more
+intuitive.  I would like the names of the functions in the
+Fortran standard to match the new names of the operations, but I
+do not want to introduce a incompatibility.
+
+The floating-point standard includes two versions of the
+maximum and minimum operations.  In the plain versions, NaNs are
+treated as error values.  In the number versions, NaNs are
+treated as null values that are to be ignored.  In the previous
+edition of the floating-point standard, the plain versions of
+the maximum and minimum operations did not propagate NaNs.
+That made the plain versions unsuitable for some of their
+intended uses.  The new edition of the floating-point standard
+requires the plain versions of the maximum and minimum
+operations to propagate NaNs.  The new edition also requires
+the number versions to favor quiet NaNs over signaling NaNs
+when both operands are NaNs.
+
+The Fortran 2018 standard does not include functions
+corresponding to the plain versions of the maximum and minimum
+operations max, maxMag, min, and minMag specified in
+ISO/IEC/IEEE 60559:2011.  It does include functions
+corresponding the number versions maxNum, maxNumMag, minNum,
+and minNumMag.
+
+The descriptions of maximum and minimum functions in the
+Fortran 2018 standard do not go into the details of producing
+NaN results described in section 6.2 of ISO/IEC/IEEE 60559:2011.
+The edits proposed in this paper hono(u)r this tradition by
+not going into the details described in section 6.2 of
+ISO/IEC 60559:2020.
+
+The new edition of the floating-point standard includes a new
+rounding mode roundTiesTowardZero.  The new rounding mode is
+optional and is associated with the new augmented arithmetic
+operations.  The new rounding mode and the new operations
+cannot be efficiently emulated in software.  No hardware yet
+available supports the new rounding mode or the new operations.
+Therefore, they are not addressed in this paper.
+
+The new edition of the floating-point standard includes other
+new features.  While some of the new features might be useful
+for Fortran applications, they are not addressed in this paper.
+
+
+2. Edits
+
+[Global] Replace all occurrences of "ISO/IEC/IEEE 60559:2011"
+         with "ISO/IEC 60559:2020".
+
+[Introduction, p2+, [xiii]] At the end of paragraph 2, insert
+ "Changes to the intrinsic module IEEE_ARITHMETIC for
+  conformance with ISO/IEC 60559:2020:
+    The new functions IEEE_MAX, IEEE_MAX_MAG, IEEE_MIN, and
+    IEEE_MIN_MAG corresponding to the operations maximum,
+    maximumMagnitude, minimum, and miminumMagnitude in
+    ISO/IEC 60559:2020 have been added.  The semantics of the
+    functions IEEE_MAX_NUM, IEEE_MAX_NUM_MAG, IEEE_MIN_NUM,
+    and IEEE_MIN_NUM_MAG have revised to conform to the
+    operations maximumNumber, maximumMagnitudeNumber,
+    minimumNumber and minimumMagnitudeNumber in
+    ISO/IEC 60559:2020; the changes affect the treatment of
+    zeroes and NaNs."
+
+[4.3.3 Fortran 2018 compatibility, p2, [27:24]] Replace
+ "feature might have a different interpretation" with
+ "features might have different interpretations".
+
+[4.3.3 Fortran 2018 compatibility, p2, [27:28+]] Add the item
+ " * The value of a reference of IEEE_MAX_NUM, IEEE_MAX_NUM_MAG,
+     IEEE_MIN_NUM, or IEEE_MIN_NUM_MAG where one argument is a
+     number and the other is a signaling NaN is specified to be
+     a number in this document.  Fortran 2018 specified that the
+     value is a NaN."
+ to the end of the list.
+
+[17.10 Summary of the procedures, Table 17.2, [458]] Before
+ IEEE_MAX_NUM insert
+ "IEEE_MAX(X, Y)        E  Maximum value.
+  IEEE_MAX_MAG(X, Y)    E  Maximum magnitude value."
+
+[17.10 Summary of the procedures, Table 17.2, [458]] Before
+ IEEE_MIN_NUM insert
+ "IEEE_MIN(X, Y)        E Minimum value.
+  IEEE_MIN_MAG(X, Y)    E Minimum magnitude value."
+
+
+[17.11.16+, IEEE_LOGB(X), [465:27+]] After the description
+ of IEEE_LOGB, insert
+ "17.11.16a IEEE_MAX(X, Y)
+
+  Description. Maximum value.
+
+  Class. Elemental function.
+
+  Arguments.
+  X shall be of type real.
+  Y shall be of the same type and kind type parameter as X.
+
+  Restriction. IEEE_MAX shall not be invoked if
+  IEEE_SUPPORT_DATATYPE(X) has the value false.
+
+  Result Characteristics. Same as X.
+
+  Result value. The result has the value specified for the
+  maximum operation in ISO/IEC 60559:2020; that is
+    * if X < Y the result has the value of Y;
+    * if Y < X the result has the value of X;
+    * if either operand is a NaN, the result is a quiet Nan;
+    * if X = Y and the signs are the same, the result is the
+      value of either X or Y.
+  For this function, negative zero compares less than positive
+  zero. If one or both of X and Y are signaling NaNs,
+  IEEE_INVALID signals; otherwise, no exception is signaled.
+
+  Example. The value of
+  IEEE_MAX(1.5, IEEE_VALUE(1.0, QUIET_NAN)) is a quiet NaN.
+
+
+  17.11.16b IEEE_MAX_MAG(X, Y)
+
+  Description. Maximum magnitude value.
+
+  Class. Elemental function.
+
+  Arguments.
+  X shall be of type real.
+  Y shall be of the same type and kind type parameter as X.
+
+  Restriction. IEEE_MAX_MAG shall not be invoked if
+  IEEE_SUPPORT_DATATYPE(X) has the value false.
+
+  Result Characteristics. Same as X.
+
+  Result value. The result has the value specified for the
+  maximumMagnitude operation in ISO/IEC 60559:2020; that is
+    * if |X| < |Y| the result has the value of Y;
+    * if |Y| < |X| the result has the value of X;
+    * otherwise, the result has the value of IEEE_MAX(X, Y).
+  If one or both of X and Y are signaling NaNs, IEEE_INVALID
+  signals; otherwise, no exception is signaled.
+
+  Example. The value of IEEE_MAX_MAG(1.5, -2.5) is -2.5."
+
+[17.11.17 IEEE_MAX_NUM(X, Y), p6, [466:1]] Replace
+ "the maxNum operation in ISO/IEC/IEEE 60559:2011" with
+ "the maximumNumber operation in ISO/IEC 60559:2020"
+
+[17.11.17 IEEE_MAX_NUM(X, Y), p6 [466:5]] Replace
+ "is a quiet NaN" with "is a NaN"
+
+[17.11.17 IEEE_MAX_NUM(X, Y), p6 [466:6]] Replace
+ "if one or both ... is a NaN;" with
+ "if both X and Y are NaNs the result is a quiet NaN;"
+
+[17.11.17 IEEE_MAX_NUM(X, Y), p6 [466:7]] replace
+ "otherwise, ... dependent)." with
+ "if X = Y and the signs are the same, the result is either
+  X or Y."
+
+[17.11.17 IEEE_MAX_NUM(X, Y), p6 [466:7+]] After the list,
+ insert
+ "For this function, negative zero compares less than
+  positive zero."
+
+[17.11.17 IEEE_MAX_NUM(X, Y), p7 [466:8]] Replace
+ "Except when ... is signaled." with
+ "If one or both of X and Y are signaling NaNs, IEEE_INVALID
+  signals, but unless X and Y are both signaling NaNs, the
+  signaling NaN is otherwise ignored and not converted to a
+  quiet NaN.  No other exceptions are signaled."
+  Make paragraph 7 a part of paragraph 6.
+
+[17.11.18 IEEE_MAX_NUM_MAG(X, Y), p6, [466:19]] Replace
+ "the maxNumMag operation in ISO/IEC/IEEE 60559:2011" with
+ "the maximumMagnitudeNumber operation in ISO/IEC 60559:2020"
+
+[17.11.18 IEEE_MAX_NUM_MAG(X, Y), p6, [466:21]] Replace
+ "ABS(X) < ABS(Y)" with "|X| < |Y|".
+
+[17.11.18 IEEE_MAX_NUM_MAG(X, Y), p6, [466:22]] Replace
+ "ABS(Y) < ABS(X)" with "|Y| < |X|".
+
+[17.11.18 IEEE_MAX_NUM_MAG(X, Y), p7, [466:24]] Replace
+ the sentence "Except when ... signaled." with
+ "If one or both of X and Y are signaling NaNs, IEEE_INVALID
+  signals, but unless X and Y are both signaling NaNs, the
+  signaling NaN is otherwise ignored and not converted to a
+  quiet NaN.  No other exceptions are signaled."
+  Make paragraph 7 a part of paragraph 6.
+
+
+[17.11.18+, IEEE_MAX_NUM_MAG(X, Y), p8+, [466:25+]] After the
+ description of IEEE_MAX_NUM_MAG, insert
+ "17.11.18a IEEE_MIN(X, Y)
+
+  Description. Minimum value.
+
+  Class. Elemental function.
+
+  Arguments.
+  X shall be of type real.
+  Y shall be of the same type and kind type parameter as X.
+
+  Restriction. IEEE_MIN shall not be invoked if
+  IEEE_SUPPORT_DATATYPE(X) has the value false.
+
+  Result Characteristics. Same as X.
+
+  Result value. The result has the value specified for the
+  minimum operation in ISO/IEC 60559:2020; that is
+    * if X < Y the result has the value of X;
+    * if Y < X the result has the value of Y;
+    * if either operand is a NaN, the result is a quiet Nan;
+    * if X = Y and the signs are the same, the result is the
+      value of either X or Y.
+  For this function, negative zero compares less than positive
+  zero. If one or both of X and Y are signaling NaNs,
+  IEEE_INVALID signals; otherwise, no exception is signaled.
+
+  Example. The value of
+  IEEE_MIN(1.5, IEEE_VALUE(1.0, QUIET_NAN)) is a quiet NaN.
+
+
+  17.11.18b IEEE_MIN_MAG(X, Y)
+
+  Description. Minimum magnitude value.
+
+  Class. Elemental function.
+
+  Arguments.
+  X shall be of type real.
+  Y shall be of the same type and kind type parameter as X.
+
+  Restriction. IEEE_MIN_MAG shall not be invoked if
+  IEEE_SUPPORT_DATATYPE(X) has the value false.
+
+  Result Characteristics. Same as X.
+
+  Result value. The result has the value specified for the
+  minimumMagnitude operation in ISO/IEC 60559:2020; that is
+    * if |X| < |Y| the result has the value of X;
+    * if |Y| < |X| the result has the value of Y;
+    * otherwise, the result has the value of IEEE_MIN(X, Y).
+  If one or both of X and Y are signaling NaNs, IEEE_INVALID
+  signals; otherwise, no exception is signaled.
+
+  Example. The value of IEEE_MIN_MAG(1.5, -2.5) is 1.5."
+
+
+[17.11.19 IEEE_MIN_NUM(X, Y), p6, [466:32]] Replace
+ "the minNum operation in ISO/IEC/IEEE 60559:2011" with
+ "the minimumNumber operation in ISO/IEC 60559:2020"
+
+[17.11.19 IEEE_MIN_NUM(X, Y), p6 [467:1]] Replace
+ "is a quiet NaN" with "is a NaN"
+
+[17.11.19 IEEE_MIN_NUM(X, Y), p6 [467:2]] Replace
+ "if one or both ... is a NaN;" with
+ "if both X and Y are NaNs the result is a quiet NaN;"
+
+[17.11.19 IEEE_MIN_NUM(X, Y), p6 [467:3]] replace
+ "otherwise, ... dependent)." with
+ "if X = Y and the signs are the same, the result is either
+  X or Y."
+
+[17.11.19 IEEE_MIN_NUM(X, Y), p6 [467:3+]] After the list,
+ insert
+ "For this function, negative zero compares less than
+  positive zero."
+
+[17.11.19 IEEE_MIN_NUM(X, Y), p7 [467:7]] Replace
+ "Except when ... is signaled." with
+ "If one or both of X and Y are signaling NaNs, IEEE_INVALID
+  signals, but unless X and Y are both signaling NaNs, the
+  signaling NaN is otherwise ignored and not converted to a
+  quiet NaN.  No other exceptions are signaled."
+  Make paragraph 7 a part of paragraph 6.
+
+[17.11.20 IEEE_MIN_NUM_MAG(X, Y), p6, [467:15]] Replace
+ "the minNumMag operation in ISO/IEC/IEEE 60559:2011" with
+ "the minimumMagnitudeNumber operation in ISO/IEC 60559:2020"
+
+[17.11.20 IEEE_MIN_NUM_MAG(X, Y), p6, [467:17]] Replace
+ "ABS(X) < ABS(Y)" with "|X| < |Y|".
+
+[17.11.20 IEEE_MIN_NUM_MAG(X, Y), p6, [467:18]] Replace
+ "ABS(Y) < ABS(X)" with "|Y| < |X|".
+
+[17.11.20 IEEE_MIN_NUM_MAG(X, Y), p7, [467:20]] Replace
+ the sentence "Except when ... signaled." with
+ "If one or both of X and Y are signaling NaNs, IEEE_INVALID
+  signals, but unless X and Y are both signaling NaNs, the
+  signaling NaN is otherwise ignored and not converted to a
+  quiet NaN.  No other exceptions are signaled."
+  Make paragraph 7 a part of paragraph 6.

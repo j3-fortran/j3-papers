@@ -1,0 +1,151 @@
+                                                             J3/15-150r1
+To:        J3
+Subject:   Allow users to specify variable locality in DO CONCURRENT
+From:      Daniel Chen & Malcolm Cohen
+Date: 2015 February 25
+Reference: 15-007
+
+1. Introduction
+===============
+
+The intent of the restrictions listed in (8.1.6.5) is to allow a
+processor to parallize the code inside a DO CONCURRENT construct
+without causing any race condition. However, there are issues as
+illustrated in the following cases:
+
+Case 1:
+
+  REAL X
+  X = 1.0
+  DO CONCURRENT(...)
+    IF (condition) THEN
+      X = something
+      ...                ! code using X
+    END IF
+    ...                  ! code that doesn't use X
+  END DO
+
+In case 1, a processor cannot localise X, because if "condition"
+is true exactly once, the assignment affects the "outer" X. OTOH,
+if condition is true more than once, a processor cannot execute in
+parallel without localising X.
+
+
+Case 2:
+
+  REAL X
+  X = 1.0
+  DO CONCURRENT(...)
+    CALL sub(X)
+    ...                  ! code referencing X
+  END DO
+
+In case 2, a processor is not able to detect
+1. if X is defined (or becomes undefined) in sub, and
+2. how many iterations that defines or undefines X as the condition
+could be in sub.
+
+Both Case 1 and 2 are standard conforming.
+
+It is understood that users can use a BLOCK construct to localize
+variables, but a processor still need to be able to handle all the
+standard conforming code when the BLOCK construct is not used.
+
+In order to still be able to parallize code such as in Case 1 and
+2, a processor needs to always localize x and copy-in the initial
+value and also copy-out the value at every possible point X could
+be defined or become undefined.
+
+The performance impact described at the above is not the intent
+of the standard, a proposal is made to eliminate the indetermination.
+
+
+2. Proposal
+===========
+
+Since a processor is not able to determine if a variable can be
+referenced by all iterations without causing race condition, it
+would be critical to provide a mechanism to allow users to
+explicitly speicify their intent of how a variable is expected
+to be used.
+
+A new syntax as follows is introduced to achieve that
+
+  R819 concurrent-header is ( [ integer-type-spec :: ]
+         concurrent-control -list
+           [, scalar-mask-expr ]
+           [, locality-spec-list ])
+
+Rxxx locality-spec is LOCAL = object-name-list
+                   or LOCAL_INIT = object-name-list
+                   or SHARED = object-name-list
+                   or DEFAULT = scalar-default-char-expr
+
+
+New rules:
+1. Variables appear in the object-name-list of the LOCAL=,
+   LOCAL_INIT= or SHARED= specifier must be previously defined.
+2. When parallization is enabled, a local copy of a variable that
+   appears in the object-name-list of the LOCAL= specifier is
+   created for each iteration. Such a local copy is initialized
+   to a processor-dependent value.
+3. When parallization is enabled, a local copy of a variable that
+   appears in the object-name-list of the LOCAL_INIT= specifier is
+   created for each iteration. Such a local copy is initialized to
+   the value of the corresponding variable specified by the
+   LCOAL_INIT= specifier.
+4. Variables that appear in the object-name-list of the SHARED=
+   specifier are common to all iterations; a shared variable shall
+   not be defined or become undefined in more than one iteration.
+   A shared variable that is defined or becomes undefined in one
+   iteration shall not be referenced in any other iterations. In the
+   case of arrays, these requirements apply to each element
+   individually. In the case of derived types, these requirements
+   apply to the ultimate components.
+5. The scalar-default-char-expr of the DEFAULT= specifier shall
+   evaluate to LOCAL, LOCAL_INIT, SHARED or NONE. The DEFAULT=
+   specifier specifies the locality of the variables that are not
+   in the object-name-list of LOCAL=, LOCAL_INIT= or SHARED=
+   specifier. Such variables have the locality as if they are
+   specified by the LOCAL=, LOCAL_INIT= or SHARED= specifier
+   if DEFAULT=LOCAL, DEFAULT=LOCAL_INIT or DEFAULT=SHARED
+   respectively. If DEFAULT=NONE, each variable that is
+   referenced in and previously defined prior to the
+   DO CONCURRENT construct is required to appear in the
+   object-name-list of LOCAL=, LOCAL_INIT= or SHARED= specifier.
+6. A variable can only appear in at most one of the LOCAL=,
+   LOCAL_INIT= or SHARED= specifiers.
+7. The name of an array whose subscripts involve index-names of
+   an DO CONCURRENT construct shall not appear in the
+   object-name-list of the LOCAL= or LOCAL_INIT= specifier.
+8. A scalar variable or an array whose subscripts do not involve
+   index-names of an DO CONCURRENT construct that does not appear
+   in any locality-spec should not be defined or become
+   undefined in any iteration.
+
+
+3. Examples
+===========
+
+IMPLICIT NONE
+INTEGER :: N = 10
+REAL :: X, Y, Z, R
+X = 1.0
+Y = 2.0
+Z = 3.0
+R = 4.0
+DO CONCURRENT (INTEGER :: I = 1 : N, LOCAL=X, R, LOCAL_INIT=Y, SHARED=Z)
+  X = I + 1.0       !! X HAS VALUE OF I + 1.0
+  R = Y             !! R HAS VALUE OF 2.0
+  IF (I == 1) THEN
+    Z = 4.0
+  END IF
+END DO
+PRINT*, X           !! 1.0
+PRINT*, Y           !! 2.0
+PRINT*, Z           !! 4.0
+PRINT*, R           !! 4.0
+END
+
+4. Edits
+========

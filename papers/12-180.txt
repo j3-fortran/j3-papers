@@ -1,0 +1,79 @@
+To:       J3                                        12-180
+From:     Casimir Katz, SOFiSTiK AG (casimir.katz@sofistik.de)
+Subject:  Options to allow the extension of types with memory blocks.
+Date:     2012 Sep 06
+
+In a FORTRAN program we have SEQUENCE types which are passed to a C 
+programm using either void pointers or an equivalent struct.
+
+    typedef struct tagCDB_QUAD {     /* 200/00  QuadElements */
+    int     m_nr;                    /*        elementnumber */
+    int     m_node[4];               /*        nodenumbers */
+    int     m_mat;                   /*        materialnumber */
+    int     m_mrf;                   /*        material Reinf. */
+    int     m_nra;                   /*        type of element */
+    float   m_det[3];                /*        Jacobi Determinant */
+    float   m_thick[5];              /* [1010] element thickness */
+    float   m_cb;                    /*        bedding factor */
+    float   m_cq;                    /*        tangential bedding factor */
+    float   m_t[3][3];               /*        transformation matrix */
+    } typeCDB_QUAD;
+
+in FORTRAN we have:  
+
+      TYPE CQUAD
+        SEQUENCE                   ! 200/00  QuadElements
+        INTEGER   NR               !        elementnumber
+        INTEGER   NODE(4)          !        nodenumbers
+        INTEGER   MAT              !        materialnumber
+        INTEGER   MRF              !        material Reinf.
+        INTEGER   NRA              !        type of element
+        REAL*4      DET(0:2)       !        Jacobi Determinant
+        REAL*4      THICK(0:4)     ! [1010] element thickness
+        REAL*4      CB             !        bedding factor
+        REAL*4      CQ             !        tangential bedding factor
+        REAL*4      T(3,3)         !        transformation matrix
+      END TYPE CQUAD
+
+But according to the standard it is not allowed (and not possible)
+to extend this type:
+
+      TYPE, EXTENDS(CQUAD) :: C_QUAD     ! EXTENDED QUAD STRUCTURE
+          REAL             :: BOX(0:3)   ! SURROUNDING OCTREE BOX
+          INTEGER, POINTER :: SGRP(:)    ! OPTIONAL LIST OF SECONDARY GROUPS
+      END TYPE C_QUAD
+
+Which would allow to use the CQUAD struct directly for passing these arguments 
+to the C function. So my suggestion would be to allow above construct, but 
+the sequence is only applied to the CQUAD-type of course.
+
+Currently we solved this problem with a UNION:
+ 
+      TYPE CQUAD
+      UNION
+      MAP                          ! 200/00  QuadElements
+        INTEGER   NR               !        elementnumber
+        INTEGER   NODE(4)          !        nodenumbers
+        INTEGER   MAT              !        materialnumber
+        INTEGER   MRF              !        material Reinf.
+        INTEGER   NRA              !        type of element
+        REAL*4      DET(0:2)       !        Parameter of Jacobi Determinant
+        REAL*4      THICK(0:4)     ! [1010] element thickness
+        REAL*4      CB             !        bedding factor
+        REAL*4      CQ             !        tangential bedding factor
+        REAL*4      T(3,3)         !        transformation matrix
+      END MAP
+      MAP ; INTEGER :: BUF(0:26); END MAP
+      END UNION
+      END TYPE CQUAD
+
+which works fine, but UNION is not according to the standard either.
+
+As the UNION is also a good replacemnt for the EQUIVALENCE I would prefer to
+have the UNION (which is available in nearly all compilers) to become part
+of the standard.
+
+Yours sincerely
+
+Casimir Katz
+

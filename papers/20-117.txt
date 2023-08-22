@@ -1,0 +1,169 @@
+To: J3                                                     J3/20-117
+From: Malcolm Cohen
+Subject: Allocatable component finalising
+Date: 2020-February-26
+
+----------------------------------------------------------------------
+
+NUMBER: F18/0017
+TITLE: Final subroutine invocation order
+KEYWORDS: FINAL ALLOCATABLE
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+
+  Module m
+    Type base
+    Contains
+      Final basef
+    End Type
+    Type other
+    Contains
+      Final otherf
+    End Type
+    Type,Extends(base) :: t
+      Type(other),Allocatable :: comp
+    Contains
+      Final tf
+    End Type
+  Contains
+    Subroutine basef(a)
+      Type(base),Intent(InOut) :: a
+      Print *,'basef'
+    End Subroutine
+    Subroutine otherf(b)
+      Type(other),Intent(InOut) :: b
+      Print *,'otherf'
+    End Subroutine
+    Subroutine tf(c)
+      Type(t),Intent(InOut) :: c
+      Print *,'tf'
+    End Subroutine
+  End Module
+  Program test
+    Use m
+    Call sub
+  Contains
+    Subroutine sub
+      Type(t) x
+      Allocate(x%comp)
+    End Subroutine
+  End Program
+
+When the subroutine is executed, it will finalize X on exit,
+so what is the expected output?
+
+Finalization of X occurs before auto-deallocation of X%COMP;
+this follows from 9.7.3.2 paragraph 9.
+
+According to 7.5.6.2, in sequence
+  (1) the object's final procedure is invoked, i.e. TF is called,
+  (2) finalizable components are finalized, i.e. OTHERF is called,
+  (3) the parent is finalized, i.e. BASEF is called.
+And according to 7.5.6.3, deallocating X%COMP finalizes it,
+and so
+  (4) OTHERF is called.
+I.e. the output is
+  TF
+  OTHERF
+  BASEF
+  OTHERF
+
+However, this violates the principle that you only finalize something
+once.
+
+Q1. Is X%COMP actually finalized twice?
+
+It could be argued that "finalizing X before deallocating X%COMP"
+only puts an order on invocation of TF, and in particular, finalizing
+the parent pseudo-component need not precede the deallocation. But
+this would still invoke OTHERF twice.
+
+Q3. Is the auto-deallocation of an allocatable component required to
+    follow the finalization of other components and the parent
+    pseudo-component?
+
+Now consider the case where X%COMP is not allocated (i.e. delete the
+ALLOCATE statement). According to 7.5.6.2, it should invoke
+  (1) TF on X
+  (2) OTHERF on X%COMP
+  (3) BASEF on X%BASE
+however, as X%COMP is unallocated, the invocation in step (2) does
+not conform to the procedure reference requirements, i.e. the program
+is not conforming.
+
+Q2. Is X%COMP required to be allocated when X is finalized?
+
+DISCUSSION:
+
+An object is only finalized in situations listed in 7.5.6.3.
+Every such situation would also unconditionally deallocate any
+allocatable component, and if that component were finalizable,
+such deallocation would also unconditionally finalize the
+component (* except for intrinsic assignment, where a previous
+interpretation added an exclusion).
+
+Therefore it seems to be broken to finalize any allocatable component
+during finalization of the object it is contained in, as either it
+will be non-conforming, or will be finalized twice (* except for the
+previously-added exception).
+
+The design where allocatable entities are finalized at the time of
+deallocation would seem to be simpler, easier to understand, and less
+buggy.
+
+Perhaps the finalization of allocatable components in 7.5.6.2 step
+(2) should be removed, and the exclusion for intrinsic assignment for
+deallocation-finalization should also be removed?
+
+ANSWER:
+
+A1. No object should be finalized twice.
+A2. No, a finalizable allocatable component should not be required to
+    be allocated when its containing object is finalized.
+
+The inclusion of allocatable components in 7.5.6.2 step (2) is an
+error in the standard, and the intrinsic assignment exception for
+finalization on deallocation is likewise an error.
+
+Edits are provided to correct these errors.
+
+A3. An allocatable component should be able to be finalized as soon
+    as the object's final subroutine returns, i.e. there should be no
+    requirement on the processor to produce a particular invocation
+    order here.
+
+The ambiguity in whether component deallocation and component
+finalization should be ordered is inadvertent. An edit is provided
+to remove any implication that these need to have a specific order.
+
+EDITS to 18-007r1:
+
+[80:9] 7.5.6.2 The finalization process, p1, item (2),
+       "All finalizable" -> "All nonallocatable finalizable".
+{Remove redundant finalization.}
+
+[80:22] 7.5.6.3 When finalization occurs, p2,
+    After
+      "unless it is the variable in an intrinsic assignment statement"
+    Delete "or a subobject thereof".
+{Remove allocatable component exclusion in intrinsic assignment.}
+
+[137:28] 9.7.3.2 Deallocation of allocatable variables, p9,
+  Change "that object is finalized"
+  To     "any final subroutine for that object is executed",
+  Making the whole paragraph read
+    "If an allocatable component is a subobject of a finalizable
+     object, any final subroutine for that object is executed before
+     the component is automatically deallocated."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 20-nnn   m221  F18/017 Submitted
+
+----------------------------------------------------------------------
+
+

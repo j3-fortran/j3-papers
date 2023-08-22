@@ -1,0 +1,350 @@
+
+                                                       X3J3/96-172
+
+To: X3J3
+From: John Cuthbertson
+Subject: A Proposal for OO Features in Fortran 
+References: 96/114, 96/142, 96/149
+
+Introduction
+   This paper aims to summarize the discussions within the /data subgroup about adding support 
+for Object Oriented programming in to the Fortran programming language.
+
+Specification of an Object-types and Objects
+   There seems to be a consensus within the Fortran community that if Fortran is to be made an 
+object oriented language it should be a "class-based language"; a class is some structural entity 
+which is used as a template for defining objects. Example:
+
+      <object-type> name
+         0 or more component specifications
+      END <object type>
+
+where the actual syntax for <object-type> is yet to be decided.
+
+   In 96/149 the TYPE keyword is used to define an instance of a CLASS.  In the opinion of /data, 
+in order to keep the language regular, the keyword that is used in the specification of the the 
+structural template should also be used in the specification of the object.  Hence an object can be 
+defined in the obvious way:
+
+      <object-type>(name)::fred
+
+   This is analogous to the derived-type construct, but /data discussed two extra pieces of 
+semantics that are associated with <object-type>s but not derived-types and so a different syntax 
+may be desirable.
+
+Type Extension (Inheritance)
+   The first of these new semantics is object type extension, where a new <object-type> is created 
+by extending an existing <object-type>.  Example:
+
+      <object-type> name
+         0 or more component specifications
+      END <object-type>
+
+      <object-type> newname, EXTENDS name
+         0 or more additional component specifications
+      END <object-type>
+
+   The components that have been specified for name are implicitly specified in newname (i.e. they 
+are inherited by newname).
+
+   Note: this model describes "single-inheritance" (an <object-type> entends only one 
+   <object-type>), but can easily be amended to cope with "multiple-inheritance".
+
+   In an extended <object-type>, the layout of the components of the base <object-type> is 
+unchanged; the name of the base <object-type> is also visible as a component of the extended 
+<object-type>, where it represents a subobject of the base <object-type>.  The following example 
+from 96/149 should serve as an illustration:
+
+      <object-type> POINT
+         REAL::X,Y,Z
+      END <object-type>
+
+      <object-type> SPACETIME_POINT, EXTENDS POINT
+         REAL::TIME
+      END <object-type>
+      
+      <object_type>(POINT)::W
+      ! W conntains only the POINT components which are accessed using
+      ! W%X, W%Y, W%Z
+
+      <object-type>(SPACETIME_POINT)::V
+      ! V contains the components: V%X, V%Y, V%Z, and V%TIME
+      ! V also contains V%POINT
+
+Methods
+   The other additional semantics that is applicable to <object-type>s, but not derived-types, are 
+methods: procedures that are associated with objects.
+
+   /data expects that methods can be specified and implemented using pointers to procedures, 
+outlined in 96/142, as constant initialized components of <object-type> specifications.  Example:
+
+      INTERFACE
+         SUBROUTINE SUB(a,b)
+            REAL A,B
+         END SUBROUTINE
+      END INTERFACE
+
+      <object-type> POINT
+         REAL::X,Y,Z
+         PROCEDURE,POINTER,PARAMETER::FRED => SUB
+      END <object-type>
+
+   (The actual syntax for procedure pointers is to be specified at Meeting 139, so the above is for 
+illustration only.)
+
+   Such constant component procedure pointers could be initialized using the NULL() intrinsic.  In 
+this case, the method is said to be deferred.
+
+   /data does not forsee any unsurmountable problems of extending constant component 
+procedure pointers to point to generic or operator interfaces.
+
+   A reference to a constant component procedure pointer is given as
+
+      CALL X%FRED(<actual-argument-list>)
+
+   Note: There may be issues with component procedure pointers that point to functions that return   
+   arrays, derived-types, or <object-types>.  But any such issues are resolvable and are mainly 
+   syntax based. 
+         
+   A suggested implementaton would be to actually store the value of the procedure pointer in the 
+object.  Thus any reference of a method would at most involve a dereference.  Because the 
+methods are constants a processor, if it can resolve the reference at compile-time, would be free 
+to substitute the component with the name of the actual procedure.  Also the reference could be 
+substitued for inline code.
+
+   The trade off of this implementation strategy is that objects with a small number of data 
+components, but a large number of associated methods, would be artificially large.
+
+Methods and Type Extension
+   When an <object-type> is extended to produce another <object-type> any, all, or none of the 
+methods can be overridden (i.e. the procedure component names do not change, but the 
+procedures to which they point can).  Also additional methods can be included in the extended 
+type.  Example:
+
+    <object-type> POINT
+        REAL X, Y, Z
+        POINTER, PARAMETER::METHOD1=>FRED
+    END <object-type>
+
+    <object-type> SPACETIME_POINT, EXTENDS POINT
+        REAL TIME
+        POINTER, PARAMETER::METHOD1=>SUE   ! Method1 overriden
+        POINTER, PARAMETER::METHOD2=>JACK  ! New method
+    END <object-type>
+
+   A method need not be overridden, in which case the extended type has exactly the same 
+methods and behavior as the base type.  In object oriented programming it is very common to 
+extend an <object-type> just to override the methods.
+
+   When a method is being overriden, the component name and attributes in both the base type 
+and the extended type must match; otherwise a new component is being defined.
+ 
+Objects as Dummy Arguments
+   An object can be a dummy argument. Example:
+
+      SUBROUTINE SUB(A)
+         <object-type>(POINT)::A
+         ...
+      END SUBROUTINE
+
+   The dummy argument A can be passed objects of <object-type>(POINT) or any <object-type> 
+extended from this type.  The actual type of the dummy argument is assumed from the actual 
+argument.  Note that in the body of SUB only components defined for objects of <object-
+type>(POINT) can be referenced.  However if a component procedure (that has been over-ridden 
+by objects of an extended type of <object-type>(POINT)) is referenced, then performing a 
+dereference will still result in the correct procedure being called.
+
+Objects as Actual Arguments
+   An object can be passed as as an actual argument to a procedure.  The type of the dummy 
+argument must be a base type from which the type of the actual argument is extended from.  
+However if the actual argument is undefined (see Polymorphic Local Variables) then the type of 
+the dummy argument may also be an <object-type> that is extended from the type of the actual 
+argument.
+Example:
+
+    SUBROUTINE SUB1(P)
+        <object-type>(POINT)::P
+        ...
+    END
+
+    SUBROUTINE SUB2(Q)
+        <object-type>(SPACETIME_POINT)::Q
+        ...
+    END
+
+    <object-type>(POINT)::A
+    <object-type>(POINT)::B=POINT(...)
+    <object-type>(SPACETIME_POINT)::C=SPACETIME_POINT(...)
+
+then:
+    CALL SUB1(B)
+    CALL SUB1(C)
+    CALL SUB2(A)
+    CALL SUB2(C)
+
+are all valid, but CALL SUB2(B) is not because it has been created and initialized.
+
+Deferred Methods
+   Semantically a deferred method is a procedure component that has been initialized with the 
+NULL() instrinsic.  A deferred method signifies that the behavior of that method is undefined for 
+objects of a particular type.   Example:
+
+      <object-type> POINT
+         REAL::X,Y,Z
+         POINTER,PARAMETER::METHOD1=>NULL()
+      END <object-type>
+
+   The "undefined behavior" can be over-ridden by initializing the METHOD1 component of an 
+<object-type> specification that extends <object-type>(POINT).  Example:
+
+      <object-type> SPACETIME_POINT, EXTENDS POINT
+         REAL::TIME
+         POINTER,PARAMTER::METHOD1=>FRED
+      END <object-type>
+
+   It is an error to reference a deferred method that has not been overridden as this could result in 
+a NULL pointer being dereferenced.  Usually this situation indicates an error in the programmer's 
+model.  However this could easily be prevented by performing an ASSOCIATED test before the 
+actual reference:
+
+       SUBROUTINE SUB(A)
+          <object-type>(POINT) :: A
+
+          IF (ASSOCAIATED(A%METHOD1)) THEN
+              CALL A%METHOD1()
+          ENDIF
+       END SUBROUTINE
+
+   Alternatively the deferred method could be initialized with some programmer supplied default 
+(that if called prints a message and halts) which in turn can be overridden.
+
+Self Reference
+   In object oriented programming it is fairly common for an object to reference its other 
+components (both data and procedural).  This is known as self-reference.  This is readily 
+achievable with the mechanism that we are describing by passing the object as an actual 
+argument to the method (some other OO languages do this implicitly but as methods in Fortran 
+are just pointers to ordinary procedures, this must be done explicitly).  Example:
+
+       MODULE P
+          <object-type> POINT
+             REAL::X,Y,Z
+             POINTER, PARAMETER::MOVE=>MOVE_POINT
+          END <object-type>
+       CONTAINS
+          SUBROUTINE MOVE_POINT(A,B)
+             <object-type>(POINT)::A,B
+             A%X=B%X
+             A%Y=B%Y
+             IF (B%Z .NE. 0.0) A%Z=A%Z/B%Z
+          END SUBROUTINE
+       END MODULE
+
+   The method MOVE and procedure MOVE_POINT can be referenced in the following way:
+
+      <object-type>(POINT)::A
+      ...
+      CALL A%MOVE(A,A)
+   or
+      CALL MOVE_POINT(A,A)
+
+Initialization and Assignment
+   The members of /data are of the opinion that an <object-type> specification contains an 
+associated derived-type definition (with all of the data components, but none of the procedure 
+pointers).  Compare:
+
+       <object-type> POINT                       			TYPE POINT
+          REAL::X,Y,Z                                    		    REAL::X,Y,Z
+          POINTER,PARAMETER::FRED=>NULL()        	END TYPE
+       END <object-type>
+
+   The components of the derived-type are a subset of the components of the <object-type>.  
+Since methods are initialized constants, we can define an intrinsic assignment operation which 
+assigns a value of TYPE(POINT) to an object of <object-type>(POINT) and vice versa.  Thus 
+given:
+
+       <object-point> POINT
+           REAL::X,Y,Z
+           POINTER,PARAMETER::FRED=>...
+       END <object-type>
+
+       <object-type>(POINT)::A,B
+       TYPE(POINT)::C,D
+
+   then
+
+      A = C
+
+assigns the values of the components of C to the data components of A (the components that are 
+procedure pointers are already initialized).  Further:
+
+      C = A, B = C, and D = D
+
+are all well defined.
+
+   Note: this intrinsic assignment operation would not be allowed to be over-ridden by the    
+   programmer.
+
+   From the above is logical to allow initialization of an object from a derived-type value created 
+with a constructor.  Example:
+
+       <object-type>(POINT)::A = POINT(-1.0, 0.0, 1.0)
+
+Intrinsic Procedures
+   Paper 96-149 gives a description of an intrinsic function which, given two objects, determines 
+whether their types match.  While such a function would be extermely useful, it would appear that 
+the only simple (and efficient) way to implement the function would be to have the additional 
+overhead of storing the type information (or a processor generated identifier which uniquely 
+identifies the <object-type>) in the actual object.
+
+    The /data subgroup believes that the ASSOCIATED intrinsic should be extended to handle 
+object methods.
+
+Polymorphic Pointers
+   A polymorhic pointer is declared in the same way as a normal object, but is given th POINTER 
+attribute:
+
+    <object-type>(POINT)::P
+
+   A polymorphic pointer can point to objects of its own type, or objects of any type extended from 
+this type.  The ALLOCATE statement gives you an object of the base type, but DEALLOCATE will 
+operate objects of any acceptable type.
+
+   Polymorphic pointers allow general purpose list/tree/graph/etc code to be written, abstracting 
+away from the type of the element.  Example:
+
+    MODULE P
+        <object-type> LIST
+            <object-type>(LIST), POINTER :: NEXT
+            INTEGER, EXTERNAL, POINTER, PARAMETER::CARDINALITY=>CARDIINALITY
+        END <object-type>
+
+        <object-type> INT_LIST, EXTENDS LIST
+            INTEGER VALUE
+        END <object-type>
+
+        <object-type> REAL_LIST, EXTENDS LIST
+            REAL VALUE
+        END <object-type>
+
+    CONTAINS
+
+    INTEGER FUNCTION CARDINALITY(L)
+        <object-type>(LIST)::L
+        <object-type>, POINTER::P
+        P=L%NEXT
+        DO WHILE (ASSOCIATED(P))
+            CARDINALITY=CARDINALITY+1
+            P=P%NEXT
+        END DO
+    END FUNCTION
+END MODULE
+
+Polymorphic Local Variables
+   Polymorphic local variables begin life as undefined, unless they have been initialized using a 
+constructor.  A polymorphic variable can either be an object of its own decalred type, or an object 
+of any type extended from that declared type; the type of a polymorphic local variable is assumed 
+on assignment.  A polymorphic local variable can be passed as an actual argument to a 
+procedure.  If the actual argument is undefined then the type of the dummy argument must be a 
+type that is extended from that in the declaration of the actual argument; the actual argument 
+assumes the type of the dummy argument (but with undefined data components).  
+

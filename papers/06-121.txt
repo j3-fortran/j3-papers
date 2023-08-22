@@ -1,0 +1,171 @@
+
+                                                   J3/06-121
+
+To: J3
+From: Aleksandar Donev & Craig Rasmussen
+Date: January 27, 2006
+Subject: Collective assignments in CAF
+
+Note: This proposal assumes that the CoArray Fortran proposal is
+accepted and Fortran 2008 is an explicitly parallel language.
+
+1. Background.
+
+We discuss here the possibilities for future extensions of the base
+CoArray Fortran (CAF) proposal to enable efficient implementation of
+data transfers involving multiple images. As an example, consider a
+near-neighbor pattern of communication among n images where each image
+calculates the average of the values from its left and right neighbor
+(without worrying about boundaries for now):
+
+   real :: a[*] ! A co-scalar
+   a[2:n-1]=(a[1:n-2]+a[3:n])/2
+
+The CAF proposal that is proposed for integration into Fortran 2008
+does not allow co-sections, and it also does not allow defining a
+variable while it is being referenced by other images. Therefore,
+this example would be written as:
+
+   me=this_image()
+   tmp=(a[me-1]+a[me+1])/2
+   sync_all()
+   a=tmp
+
+There are two aspects of CAF that make it attractive for efficient
+programming:
+1) Explicit control over data distribution (not in OpenMP and implicit
+or coarse in HPF)
+2) Explicit control over computation distribution (left in compiler
+hands in OpenMP and HPF)
+These are strengths of CAF. However, in many cases the appropriate
+distribution of computation is directly obvious from the data
+distribution, and thus a compiler could easily do it automatically. For
+example, a[1]=1 obviously should be executed by image 1 if there
+is a choice. In other cases, a compiler could do a better-informed
+(platform-specific) computation distribution or communication
+optimization than the programmer when collective operations are
+involved. The goal of this paper is to investigate the type of
+extensions to CAF needed to allow the programmer to more directly
+express collective statements, letting the compiler actually decide
+how exactly to execute the computation partitioning and data transfer.
+
+1. Co-Sections of Co-Arrays
+
+The first step is the incorporation of designators involving section
+triplets in the co-dimension into the standard. Consider the co-array
+
+   real :: b(10)[*]
+
+and the <data-ref> (data reference) b(2:10:2)[2:5]. There are two
+main options:
+
+1) This variable is the usual kind of Fortran array section, i.e., it
+acts like a local array, not a co-array. Essentially, the semantics are
+as if there is a temporary local array holding a copy of the data from
+images 2-5. It is of rank two, and its shape is (5,3), i.e., the rank
+is the sum of the rank and co-rank and the shape is the concatenation
+of the two shapes. This variable can be used in expressions, as an
+actual argument, etc., possibly with some restrictions.
+
+2) This variable is a new kind of array section, a co-section, which
+contains information about its distribution, i.e., the set of images
+it resides on (in this case 2-5).
+
+We adopt the first option, because it is simpler and seems to fit
+well into the standard.
+
+2. Serial Assignment Statements.
+
+Assignment statements in CAF are serial, in the sense that they
+are executed by an image, not a collection of images, and the
+programmer has control over which images executes it. In fact, the
+programmer must limit concurrent executions so that multiple images
+do not define/reference a variable without suitable synchronization
+(ordering). For example:
+
+   if(iam==1) b(:)[2:]=b(:)[2:]+b(:)
+
+Image 1 first collects from all the processors the rank-2 array
+a(:)[2:] into a local copy, it adds its own local values, and then
+writes the resulting values to a(:)[2:]. If the programmer knew
+that all images would execute this portion of the code, than they
+could write:
+
+   if(iam>1) b=b+b(:)[1]
+
+which says that all images get the value of b(:)[1] from image 1,
+and then they increment their local array accordingly.
+
+We want to give the programmer the ability to have such complete
+control over the execution sequence. However, this can also be a
+hassle for the programmer, who instead of focusing on what happens
+to the value of an array (data-flow) must focus on who evaluates or
+changes the value (control-flow). Additionally, it does not allow
+for platform-specific compiler optimizations and instead forces the
+programmer to do the assignment of tasks to images.
+
+3. Collective Block.
+
+We introduce the concept of a collective statement to CAF: a statement
+that is executed cooperatively by a set of images. For this purpose,
+we introduce a new block construct, the COLLECTIVE construct:
+
+COLLECTIVE(<image-team>)
+   <block>
+END COLLECTIVE
+
+Here the image team is an array listing a set of images, or * for
+all images. The block of statements should be limited to assignment
+statements and control-flow constructs, for now.
+
+The semantics of the collective block is such that all the images
+that are members of the team must execute this block. Other images
+that reach this block simply skip over it---only the images listed
+actually execute the block. The block is executed by the team of
+images collectively, however, the semantics is identical to only
+one of the images in the team actually executing the statements. In
+fact, that would be a valid, though not efficient, implementation of
+the COLLECTIVE block. The idea is to allow the compiler to actually
+implement this semantics more efficiently using the knowledge that
+all images in the team will execute this block.
+
+Shared-memory parallelism models like OpenMP follow the fork-join
+model, where most of the time the execution is joined (single image)
+and in special sections it is forked (multiple images). With the
+collective block proposed above we have a reverse model for CAF: Most
+of the time the executions on different images procede independently,
+but in the critical blocks they are merged into a (semantically)
+single execution sequence.
+
+4. Collective assignments.
+
+We now have all the ingredients for collective assignment
+statements. No new syntax or change of the semantics of the assignment
+statement is introduced, instead, one merely puts the assignment
+inside a collective block. For example:
+
+real :: a[*]
+collective(*)
+   a[2:n-1]=(a[1:n-2]+a[3:n])/2
+   a[1]=(a[n]+a[2])/2
+   a[n]=(a[n-1]+a[1])/2
+end collective
+
+or
+
+collective(*)
+   b(:)[2:]=b(:)[2:]+b(:)[1]
+end collective
+
+or other types of collective data transfer. The compiler can translate
+these the best it can.
+
+5. Future Extensions.
+
+It is also important to allow the user to write collective procedures,
+meaning procedures that must be executed by a team of images (similar
+to the collective intrinsics or the synchronization routines such as
+SYNC_ALL). While the body of the procedure could easily be placed
+inside a COLLECTIVE block, it might also be useful to allow the
+COLLECTIVE specification to appear in the interface of the procedure
+in some way.
