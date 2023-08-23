@@ -17,37 +17,37 @@ References: J3/03-266
 
 Basic Functionality:
 
-Allow a dummy array argument to have an indeterminate rank, declared 
-with DIMENSION() (or simply array() if DIMENSION is not used). 
-The actual can be an array of any rank (but not a scalar). 
-The dummy is considered an assumed-shape array, but of 
-arbitrary rank. Therefore only operations that would be legal regardless 
-of the actual rank of the dummy are permitted in the procedure. 
-Additionally, operations over the elements of the array can be 
+Allow a dummy array argument to have an indeterminate rank, declared
+with DIMENSION() (or simply array() if DIMENSION is not used).
+The actual can be an array of any rank (but not a scalar).
+The dummy is considered an assumed-shape array, but of
+arbitrary rank. Therefore only operations that would be legal regardless
+of the actual rank of the dummy are permitted in the procedure.
+Additionally, operations over the elements of the array can be
 serialized using a new form of the DO loop.
 
 Rationale:
 
 The basic motivation is two-fold.
-The first has to do with extending the facilities in Fortran for generic 
-programming. Consider the MAXVAL intrinsic. This intrinsic will find the 
-maximal value of an array of REALs of any rank. This proposal allows the 
-user to write similar procedures himself without having to duplicate the 
+The first has to do with extending the facilities in Fortran for generic
+programming. Consider the MAXVAL intrinsic. This intrinsic will find the
+maximal value of an array of REALs of any rank. This proposal allows the
+user to write similar procedures himself without having to duplicate the
 same exact code for each rank?
-The second has to do with the deficiencies of  ELEMENTAL procedures 
-outlined in J3/03-266, such as the fact that many compiles put loops 
-outside the call to an elemental procedure rather than generating code 
-for each rank with the loops inside the procedure, and the requirement 
-for purity. At J3 meeting 166 it was agreed that the solutions proposed 
-in that paper were inferior to a utility to have rank-generic array 
+The second has to do with the deficiencies of  ELEMENTAL procedures
+outlined in J3/03-266, such as the fact that many compiles put loops
+outside the call to an elemental procedure rather than generating code
+for each rank with the loops inside the procedure, and the requirement
+for purity. At J3 meeting 166 it was agreed that the solutions proposed
+in that paper were inferior to a utility to have rank-generic array
 dummy argument, which is what this proposal is about.
 
-Let me consider the following problem: Extend the intrinsic MAXVAL to a 
-parallel PMAXVAL procedure for REAL numbers (how to do the same for an 
-arbitrary paper is a subject of another proposal, concerning type 
-genericity), which uses MPI to reduce the local maximal values to a 
-single maximal value, for an array of arbitrary rank. For now I will 
-ignore the DIM argument. Here is how I envision this to be done using 
+Let me consider the following problem: Extend the intrinsic MAXVAL to a
+parallel PMAXVAL procedure for REAL numbers (how to do the same for an
+arbitrary paper is a subject of another proposal, concerning type
+genericity), which uses MPI to reduce the local maximal values to a
+single maximal value, for an array of arbitrary rank. For now I will
+ignore the DIM argument. Here is how I envision this to be done using
 DIMENSION():
 
 
@@ -56,24 +56,24 @@ GENERIC FUNCTION PMAXVAL(array) RESULT(global_max)
    USE MPI
    REAL, DIMENSION(), INTENT(IN) :: array
    REAL :: global_max
-  
+
    REAL :: local_max
-  
+
    local_maxval=MAXVAL(array) ! Use the serial intrinsic
    ! Assume that there is generic MPI_Allreduce:
    CALL MPI_Allreduce(sendbuf=local_max, recvbuf=global_max, &
-      count=1, op=MPI_MAX, comm=MPI_COMM_WORLD) 
+      count=1, op=MPI_MAX, comm=MPI_COMM_WORLD)
 
-END FUNCTION  
+END FUNCTION
 
-As this example illustrates, we simply called the MAXVAL intrinsic with 
-our arbitrary-rank dummy as an actual. This is allowed because MAXVAL 
+As this example illustrates, we simply called the MAXVAL intrinsic with
+our arbitrary-rank dummy as an actual. This is allowed because MAXVAL
 works for any rank.
 
-Now assume that we want to code the serial reduction ourselves also 
-(maybe it is not available as an intrinsic). In this case, we need the 
-ability to write some kind of a loop over all the elements of array, 
-without any regard to the actual order in which the loop iterations are 
+Now assume that we want to code the serial reduction ourselves also
+(maybe it is not available as an intrinsic). In this case, we need the
+ability to write some kind of a loop over all the elements of array,
+without any regard to the actual order in which the loop iterations are
 performed. I propose the following kind of syntax to achieve this:
 
 local_maxval=-HUGE(1.0)
@@ -81,45 +81,45 @@ DO ASSOCIATE (element=>array())
    local_maxval=MAX(local_maxval,element)
 END DO
 
-This combines the DO and ASSOCIATE constructs to provide a loop that can 
-serialize an operation over all the elements of the arbitrary-rank 
-array. This kind of serialization is very useful. My favorite example is 
-trying to write something like the RANDOM_NUMBER intrinsic. Here we want 
-to call a serial random number generator over all the elements of an 
+This combines the DO and ASSOCIATE constructs to provide a loop that can
+serialize an operation over all the elements of the arbitrary-rank
+array. This kind of serialization is very useful. My favorite example is
+trying to write something like the RANDOM_NUMBER intrinsic. Here we want
+to call a serial random number generator over all the elements of an
 array. ELEMENTALs cannot be used because of requirement of purity.
 
-An important point here, which is different from my proposal for type 
-genericity in Fortran, is that the above PMAXVAL procedure is compiled 
-once for all ranks (since ranks can be enumerated from a small finite 
-set, typically 1-7, which is not always possible for types). This is why 
-this proposal is separate from the proposal for genericity, which 
+An important point here, which is different from my proposal for type
+genericity in Fortran, is that the above PMAXVAL procedure is compiled
+once for all ranks (since ranks can be enumerated from a small finite
+set, typically 1-7, which is not always possible for types). This is why
+this proposal is separate from the proposal for genericity, which
 provides more of a macro-like functionality.
 
 Estimated Impact:
 
-This may require some work to get right in the standard. I claim however 
-that the implementation is not difficult (not trivial either). The main 
-idea is that an array descriptor is passed in place of the rankless 
-array dummy, and this descriptor contains information about the actual 
-rank of the array. The compiler may actually compile (at least) seven 
-different versions of the body of the procedure, one for each rank. 
-Sometimes this is not even necessary, however. For example, in the above 
-PMAXVAL example, the compiler would simply pass the array descriptor 
-down to MAXVAL and never even consider the actual rank. Also, generating 
-code for the DO ASSOCIATE construct should be very similar to what 
+This may require some work to get right in the standard. I claim however
+that the implementation is not difficult (not trivial either). The main
+idea is that an array descriptor is passed in place of the rankless
+array dummy, and this descriptor contains information about the actual
+rank of the array. The compiler may actually compile (at least) seven
+different versions of the body of the procedure, one for each rank.
+Sometimes this is not even necessary, however. For example, in the above
+PMAXVAL example, the compiler would simply pass the array descriptor
+down to MAXVAL and never even consider the actual rank. Also, generating
+code for the DO ASSOCIATE construct should be very similar to what
 already needs to be done, for example, for array operations such as:
 array=array+1.0
-which already requires generating a loop nest over all elements of the 
+which already requires generating a loop nest over all elements of the
 array. This may require generating separate code for each rank.
 
 Detailed Specification:
 
-An assumed-shape dummy array argument can have an indeterminate rank and 
-be declared with an empty shape specification, as in DIMENSION(). This 
+An assumed-shape dummy array argument can have an indeterminate rank and
+be declared with an empty shape specification, as in DIMENSION(). This
 means that the actual can be an array of any rank.
-We should consider also the case when two dummy arguments both need to 
-be arrays and conforming, i.e., of the same rank and shape, as in the 
-intrinsic MERGE for example. I will not propose specific syntax for this 
+We should consider also the case when two dummy arguments both need to
+be arrays and conforming, i.e., of the same rank and shape, as in the
+intrinsic MERGE for example. I will not propose specific syntax for this
 here since it has been the subject of other proposals. As an example:
 
 FUNCTION ADD(x,y) RESULT(x_plus_y)
@@ -128,21 +128,21 @@ FUNCTION ADD(x,y) RESULT(x_plus_y)
    x_plus_y=x+y
 END SUBROUTINE
 
-Additionally, we may consider providing a RANK intrinsic, which will 
-return the rank of such a dummy argument, and which can also be used in 
+Additionally, we may consider providing a RANK intrinsic, which will
+return the rank of such a dummy argument, and which can also be used in
 specification expressions.
 
-A new construct, a combination of the DO and the ASSOCIATE construct is 
+A new construct, a combination of the DO and the ASSOCIATE construct is
 provided:
 
 DO ASSOCIATE(associate_name=>rankless_array())
    ....
 END DO
 
-The meaning is that it is as if an ASSOCIATE construct is nested within 
-a DO loop nest that loops over all elements of the array. So inside the 
-DO ASSOCIATE block the associate_name is a scalar and associated with an 
-element of the array, once for each iteration. No specific ordering of 
+The meaning is that it is as if an ASSOCIATE construct is nested within
+a DO loop nest that loops over all elements of the array. So inside the
+DO ASSOCIATE block the associate_name is a scalar and associated with an
+element of the array, once for each iteration. No specific ordering of
 the iterations is imposed.
- 
+
 History:

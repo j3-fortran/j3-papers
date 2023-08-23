@@ -6,43 +6,43 @@ Reference: 18-007r1, 20-130.txt, 20-132.txt
 
 INTRODUCTION
 
-Nathan Weeks has pointed out to me that there are three problems with 
-the new code for C.6.8 in 20-130.txt, as (slightly) amended in 
+Nathan Weeks has pointed out to me that there are three problems with
+the new code for C.6.8 in 20-130.txt, as (slightly) amended in
 20-132.txt, viz
 
-1. The variable images_used is incremented only on image 1 but is 
-referenced by other images near the beginning and end of DO outer. 
+1. The variable images_used is incremented only on image 1 but is
+referenced by other images near the beginning and end of DO outer.
 
-2. The intention is that on each cycle of the DO iter loop, a 
-calculation is performed on the worker images and if any of them fail 
+2. The intention is that on each cycle of the DO iter loop, a
+calculation is performed on the worker images and if any of them fail
 during this, the calculation is resumed from a checkpoint with the
-failed images replaced by spares. On resumption, the variable 
+failed images replaced by spares. On resumption, the variable
 read_checkpoint should have the value true on all the worker images
 so that they access the checkpoint data. On a replacement image,
-this variable will still have its initial value of false. 
+this variable will still have its initial value of false.
 
-3. The code for choosing the number of spares does not correspond to 
-the comment for it. 
+3. The code for choosing the number of spares does not correspond to
+the comment for it.
 
 SUGGESTED CHANGES
-  
-1.  The statement 
-    IF (THIS_IMAGE () > images_used) done = done[1]  
+
+1.  The statement
+    IF (THIS_IMAGE () > images_used) done = done[1]
 near the end of DO outer may be replaced by
-    IF (team_number == 2) done = done[1] 
-which avoids problem 1 here and I think it is an improvement anyway. 
+    IF (team_number == 2) done = done[1]
+which avoids problem 1 here and I think it is an improvement anyway.
 A simple solution for the use of images_used near the beginning
 of DO outer is to make it a coarray and use images_used[1]. This
-will need the addition of a SYNC ALL statement just before the 
-statement 
+will need the addition of a SYNC ALL statement just before the
+statement
     outer : DO
 to ensure that the correct value is used on all images on the
-first iteration of the loop. 
+first iteration of the loop.
 
-2. The variables start and read_checkpoint are not needed. The initial 
-entry is just the special case of the checkpoint data being null so 
-that the calculation needs to be started. Removing these variables 
-will also make the code easier to understand. I suggest the following 
+2. The variables start and read_checkpoint are not needed. The initial
+entry is just the special case of the checkpoint data being null so
+that the calculation needs to be started. Removing these variables
+will also make the code easier to understand. I suggest the following
 changes:
    Change the statement
            CALL simulation_procedure (read_checkpoint, status, done)
@@ -55,25 +55,25 @@ changes:
            !  - resets to the last checkpoint if requested;
    to
            !  - resumes from checkpoint data if available;
-           !  - stores checkpoint data for all images from time to 
+           !  - stores checkpoint data for all images from time to
            !  - time and always before successful return;
 
 3. In the line
   images_spare = MAX(NUM_IMAGES()/100,0,MIN(NUM_IMAGES()-10,1))
-change "10" to "9".   
+change "10" to "9".
 
 
 REVISED CODE
 
 Here is the code with these changes made. Each changed line is flagged
-with "!!" at the line end. Omitted lines are not flagged. 
+with "!!" at the line end. Omitted lines are not flagged.
 
 PROGRAM possibly_recoverable_simulation
   USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY:TEAM_TYPE, STAT_FAILED_IMAGE
   IMPLICIT NONE
   INTEGER, ALLOCATABLE :: failures (:) ! Indices of the failed images.
   INTEGER, ALLOCATABLE :: old_failures(:) ! Previous failures.
-  INTEGER, ALLOCATABLE :: map(:) ! For each spare image k in use, 
+  INTEGER, ALLOCATABLE :: map(:) ! For each spare image k in use,
              ! map(k) holds the index of the failed image it replaces.
   INTEGER :: images_spare ! No. spare images.
                           ! Not altered in main loop.
@@ -81,7 +81,7 @@ PROGRAM possibly_recoverable_simulation
   INTEGER :: failed ! Index of a failed image.
   INTEGER :: i, j, k ! Temporaries
   INTEGER :: status ! stat= value
-  INTEGER :: team_number [*] ! 1 if in working team; 2 otherwise.  
+  INTEGER :: team_number [*] ! 1 if in working team; 2 otherwise.
   INTEGER :: local_index [*] ! Index of the image in the team.
   TYPE (TEAM_TYPE) :: simulation_team
   LOGICAL :: done [*] ! True if computation finished on the image.
@@ -130,12 +130,12 @@ PROGRAM possibly_recoverable_simulation
           map(k) = failed
        END DO
        old_failures = failures
-       images_used = k 
+       images_used = k
        ! Find the local indices of team 2
        j = 0
        DO k = k+1, NUM_IMAGES ()
             IF (IMAGE_STATUS (k) == 0) THEN
-            j = j+1 
+            j = j+1
             local_index[k] = j
           END IF
        END DO
@@ -168,7 +168,7 @@ PROGRAM possibly_recoverable_simulation
            END IF
          END DO iter
       END IF
-    END TEAM (STAT=status) simulation 
+    END TEAM (STAT=status) simulation
 
     SYNC ALL (STAT=status)
     IF (team_number == 2) done = done[1]                             !!

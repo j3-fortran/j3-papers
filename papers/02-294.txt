@@ -48,14 +48,14 @@ MODULE Endogenous_Stacks
    ! Memory allocation failure is also *not* checked!
 
    TYPE, EXTENSIBLE, PUBLIC :: Endogenous_Stack
-      CLASS(*), POINTER :: stack_mold=>NULL() 
+      CLASS(*), POINTER :: stack_mold=>NULL()
          ! What is this a stack of?
       INTEGER :: actual_size=0
       INTEGER :: expected_size=1000
    CONTAINS
       PROCEDURE, DEFERRED, PASS(stack) :: PushOnStack, PopOffStack
-   END TYPE Endogenous_Stack  
-      
+   END TYPE Endogenous_Stack
+
    ABSTRACT INTERFACE
       FUNCTION PushOnStack(stack,element) RESULT(success)
          CLASS(Endogenous_Stack), INTENT(INOUT) :: stack
@@ -66,26 +66,26 @@ MODULE Endogenous_Stacks
          CLASS(Endogenous_Stack), INTENT(INOUT) :: stack
          CLASS(*), INTENT(OUT) :: element
          LOGICAL, INTENT(OUT) :: success
-      END FUNCTION PopOffStack      
+      END FUNCTION PopOffStack
    END INTERFACE
-   
+
 END MODULE Endogenous_Stacks
 
 MODULE Endogenous_Array_Stacks
    USE Endogenous_Stacks
 
    TYPE, EXTENDS(Endogenous_Stack), PUBLIC :: Endogenous_Array_Stack
-      CLASS(*), DIMENSION(:), ALLOCATABLE :: storage 
+      CLASS(*), DIMENSION(:), ALLOCATABLE :: storage
          ! Array-based implementation
    CONTAINS
       PROCEDURE, PASS(stack) :: PushOnStack=>PushOnArrayStack, &
                                 PopOffStack=>PopOffArrayStack
-   END TYPE Endogenous_Array_Stack  
+   END TYPE Endogenous_Array_Stack
 
 CONTAINS
-      
+
    FUNCTION PushOnArrayStack(stack,element) RESULT(success)
-      CLASS(Endogenous_Stack), INTENT(INOUT) :: stack      
+      CLASS(Endogenous_Stack), INTENT(INOUT) :: stack
       CLASS(*), INTENT(IN) :: element
       LOGICAL, INTENT(OUT) :: success
 
@@ -95,12 +95,12 @@ CONTAINS
       IF(.NOT.ASSOCIATED(stack_mold)) THEN
          WRITE(*,*) "No mold for stack!"
          success=.FALSE.
-         RETURN   
-      ELSE                    
+         RETURN
+      ELSE
          IF(.NOT.SAME_TYPE_AS(stack_mold,element)) THEN
             WRITE(*,*) "Wrong argument type for stack push"
             success=.FALSE.
-            RETURN   
+            RETURN
          END IF
       END IF
 
@@ -123,13 +123,13 @@ CONTAINS
             ! Double the stack size
          stack%storage(1:SIZE(temp_storage))=temp_storage
             ! Copy the contents back
-            
+
          DEALLOCATE(temp_storage)
-      END IF    
+      END IF
 
       stack%storage(stack%actual_size)=element
          ! The actual push, also a COPY
-         
+
       success=.TRUE.
       RETURN
    END FUNCTION PushOnArrayStack
@@ -137,31 +137,31 @@ CONTAINS
    FUNCTION PopOffArrayStack(stack,element) RESULT(success)
       CLASS(Endogenous_Stack), INTENT(INOUT) :: stack
       CLASS(*), INTENT(OUT) :: element
-      LOGICAL, INTENT(OUT) :: success     
+      LOGICAL, INTENT(OUT) :: success
 
-      IF(stack%actual_size<1) THEN 
+      IF(stack%actual_size<1) THEN
          ! Empty stack
          success=.FALSE.
          RETURN
       END IF
-         
+
       ALLOCATE(element, SOURCE=stack%storage(stack%actual_size))
          ! Now use CLONE via SOURCE
       stack%actual_size=stack%actual_size-1
 
       success=.TRUE.
-      RETURN   
-   END FUNCTION PopOffArrayStack 
-      
+      RETURN
+   END FUNCTION PopOffArrayStack
+
 END MODULE Endogenous_Array_Stacks
-      
+
 ______________________________________
 Solution
 ______________________________________
 
 To fix the above defficiency, I propose to add a MOLD argument to ALLOCATE, with the same semantics as SOURCE, but without the contents in the lines 110:8-10. The mold variable will thus simply serve as a type template for the creation (allocation) of the new object, and can be a scalar even if the allocate-object is an array.
 
-Intrinsic assignment should also be modified to work with the dynamic, and not the declared type of polymorphic variables. This is a trickier issue which should be discussed separately from the general need of a COPY operation, no matter how this operation is actually provided. 
+Intrinsic assignment should also be modified to work with the dynamic, and not the declared type of polymorphic variables. This is a trickier issue which should be discussed separately from the general need of a COPY operation, no matter how this operation is actually provided.
 
 ______________________________________
 Problems and Alternatives
@@ -203,7 +203,7 @@ Another issue, which is to be decided by a majority, is what to do when the dyna
 
 1. Copy the part in common, i.e. choose the type in the type hierarchy where the two types diverge and copy it:
 
-object_1=object_2 
+object_1=object_2
 
 is really
 
@@ -221,7 +221,7 @@ IF(EXTENDS_TYPE_OF(A=object_1,MOLD=object_2) THEN
    object_1%type_of_object_2=object_2
 ELSE
    object_1%base_type=object_2%base_type
-END IF   
+END IF
 
 3. Almost the same as choice (2):
 

@@ -104,14 +104,14 @@ MODULE Endogenous_Stacks
    ! Memory allocation failure is also *not* checked!
 
    TYPE, EXTENSIBLE, PUBLIC :: Endogenous_Stack
-      CLASS(*), POINTER :: stack_mold=>NULL() 
+      CLASS(*), POINTER :: stack_mold=>NULL()
          ! What is this a stack of?
       INTEGER :: actual_size=0
       INTEGER :: expected_size=1000
    CONTAINS
       PROCEDURE, DEFERRED, PASS(stack) :: PushOnStack, PopOffStack
-   END TYPE Endogenous_Stack  
-      
+   END TYPE Endogenous_Stack
+
    ABSTRACT INTERFACE
       FUNCTION PushOnStack(stack,element) RESULT(success)
          CLASS(Endogenous_Stack), INTENT(INOUT) :: stack
@@ -122,26 +122,26 @@ MODULE Endogenous_Stacks
          CLASS(Endogenous_Stack), INTENT(INOUT) :: stack
          CLASS(*), INTENT(OUT) :: element
          LOGICAL, INTENT(OUT) :: success
-      END FUNCTION PopOffStack      
+      END FUNCTION PopOffStack
    END INTERFACE
-   
+
 END MODULE Endogenous_Stacks
 
 MODULE Endogenous_Array_Stacks
    USE Endogenous_Stacks
 
    TYPE, EXTENDS(Endogenous_Stack), PUBLIC :: Endogenous_Array_Stack
-      CLASS(*), DIMENSION(:), ALLOCATABLE :: storage 
+      CLASS(*), DIMENSION(:), ALLOCATABLE :: storage
          ! Array-based implementation
    CONTAINS
       PROCEDURE, PASS(stack) :: PushOnStack=>PushOnArrayStack, &
                                 PopOffStack=>PopOffArrayStack
-   END TYPE Endogenous_Array_Stack  
+   END TYPE Endogenous_Array_Stack
 
 CONTAINS
-      
+
    FUNCTION PushOnArrayStack(stack,element) RESULT(success)
-      CLASS(Endogenous_Stack), INTENT(INOUT) :: stack      
+      CLASS(Endogenous_Stack), INTENT(INOUT) :: stack
       CLASS(*), INTENT(IN) :: element
       LOGICAL, INTENT(OUT) :: success
 
@@ -151,12 +151,12 @@ CONTAINS
       IF(.NOT.ASSOCIATED(stack_mold)) THEN
          WRITE(*,*) "No mold for stack!"
          success=.FALSE.
-         RETURN   
-      ELSE                    
+         RETURN
+      ELSE
          IF(.NOT.SAME_TYPE_AS(stack_mold,element)) THEN
             WRITE(*,*) "Wrong argument type for stack push"
             success=.FALSE.
-            RETURN   
+            RETURN
          END IF
       END IF
 
@@ -179,13 +179,13 @@ CONTAINS
             ! Double the stack size
          stack%storage(1:SIZE(temp_storage))=temp_storage
             ! Copy the contents back
-            
+
          DEALLOCATE(temp_storage)
-      END IF    
+      END IF
 
       stack%storage(stack%actual_size)=element
          ! The actual push, also a COPY
-         
+
       success=.TRUE.
       RETURN
    END FUNCTION PushOnArrayStack
@@ -193,24 +193,24 @@ CONTAINS
    FUNCTION PopOffArrayStack(stack,element) RESULT(success)
       CLASS(Endogenous_Stack), INTENT(INOUT) :: stack
       CLASS(*), INTENT(OUT) :: element
-      LOGICAL, INTENT(OUT) :: success     
+      LOGICAL, INTENT(OUT) :: success
 
-      IF(stack%actual_size<1) THEN 
+      IF(stack%actual_size<1) THEN
          ! Empty stack
          success=.FALSE.
          RETURN
       END IF
-         
+
       ALLOCATE(element, SOURCE=stack%storage(stack%actual_size))
          ! Now use CLONE via SOURCE
       stack%actual_size=stack%actual_size-1
 
       success=.TRUE.
-      RETURN   
-   END FUNCTION PopOffArrayStack 
-      
+      RETURN
+   END FUNCTION PopOffArrayStack
+
 END MODULE Endogenous_Array_Stacks
-      
+
 ______________________________________
 Solution
 ______________________________________
@@ -228,7 +228,7 @@ type template for the creation (allocation) of the new object, and can
 be a scalar even if the allocate-object is an array. Initialization
 will occur for the newly allocated variable.
 
-In summary, 
+In summary,
 
 ALLOCATE(variable, MOLD=expression)
 
@@ -266,7 +266,7 @@ SUBROUTINE DefaultAssignment(rhs,lhs)
       CLASS DEFAULT
          lhs%base_type=rhs ! In the sense of 007R3
    END SELECT
-            
+
 END SUBROUTINE
 
 ______________________________________
@@ -331,7 +331,7 @@ After meeting 162, the situation with polymorphic assignment is as
 follows:
 The declared types of the rhs and lhs must match, and it is allowed for
 the rhs to be polymorphic and for its dynamic type to be an extension
-of the lhs, in which case only the declared (base) part is copied. 
+of the lhs, in which case only the declared (base) part is copied.
 
 The change I propose is to modify this so as to also allow the lhs to be
 polymorphic. What the assignment does depends on the dynamic types. One
@@ -348,7 +348,7 @@ I see two possibilities:
 1. Copy the part in common, i.e. choose the type in the type hierarchy
 where the two types diverge and copy it:
 
-variable=expression 
+variable=expression
 
 is really
 
@@ -371,7 +371,7 @@ SELECT TYPE(expression)
       variable=expression%dynamic_type_of_variable
    CLASS DEFAULT
       variable%base_type=expression%base_type
-END IF   
+END IF
 
 3. Almost the same as choice (2), but also allow for the possibility
 that the lhs type extends the rhs type:

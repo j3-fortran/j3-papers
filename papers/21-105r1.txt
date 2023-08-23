@@ -9,8 +9,8 @@ INTRODUCTION
 
 This is the revised version of Interpretation F18/015 with the changes
 detailed in J3/21-105 incorporated. Questions Q4, Q5, and Q6 and their
-answers have been added and the replacement Fortran code has been 
-revised. 
+answers have been added and the replacement Fortran code has been
+revised.
 
 ------------------------------------------------------------------
 NUMBER: F18/015
@@ -64,25 +64,25 @@ Q3.
       replacements. Was this intended?
 
 Q4.
-   
-    The variable images_used is incremented only on image 1 but is 
-    referenced by other images near the beginning and end of DO setup. 
+
+    The variable images_used is incremented only on image 1 but is
+    referenced by other images near the beginning and end of DO setup.
     Was this intended?
 
 Q5.
 
-    The intention is that on each cycle of the DO iter loop, a 
-    calculation is performed on the worker images and if any of them 
-    fail during this, the calculation is resumed from a checkpoint with 
-    the failed images replaced by spares. On resumption, the variable 
+    The intention is that on each cycle of the DO iter loop, a
+    calculation is performed on the worker images and if any of them
+    fail during this, the calculation is resumed from a checkpoint with
+    the failed images replaced by spares. On resumption, the variable
     read_checkpoint has the value true on all the old worker images
-    to indicate that they should access the checkpoint data. On a 
-    replacement image, this variable will still have its initial value 
+    to indicate that they should access the checkpoint data. On a
+    replacement image, this variable will still have its initial value
     of false. Was this intended?
 
 Q6.
 
-    The code for choosing the number of spares does not correspond to 
+    The code for choosing the number of spares does not correspond to
     the comment for it. Was this intended?
 
 
@@ -97,7 +97,7 @@ ANSWER:
    condition seems appropriate.
 
 3-A: No.
- 
+
 3_B: No. It was intended to allocate replacements only for the newly
      failed images.
 
@@ -106,26 +106,26 @@ Therefore an edit is provided that replaces the entire example with
 a complete rewrite, involving correction of additional errors, a
 better choice of names, and more comments.
 
-4: No. The problem near the end of DO setup may be avoided by replacing 
+4: No. The problem near the end of DO setup may be avoided by replacing
 the statement
-    IF (THIS_IMAGE () > images_used) done = done[1]  
+    IF (THIS_IMAGE () > images_used) done = done[1]
 by
-    IF (team_number == 2) done = done[1] 
-The problem near the beginning of DO setup may be avoided by making the 
+    IF (team_number == 2) done = done[1]
+The problem near the beginning of DO setup may be avoided by making the
 variable images_used a coarray and referencing images_used[1]. This
-will need the addition of a SYNC ALL statement just before the 
-statement 
+will need the addition of a SYNC ALL statement just before the
+statement
     outer : DO
 to ensure that the correct value is used on all images on the
-first iteration of the loop. 
+first iteration of the loop.
 
-5. No. The variable read_checkpoint is not needed and should be 
-removed. The initial entry is just the special case of the checkpoint 
-data being null so that the calculation needs to be started. 
+5. No. The variable read_checkpoint is not needed and should be
+removed. The initial entry is just the special case of the checkpoint
+data being null so that the calculation needs to be started.
 
 6. No. In the line
   images_spare = MAX(NUM_IMAGES()/100,0,MIN(NUM_IMAGES()-10,1))
-"10" should be "9".   
+"10" should be "9".
 
 Some of the noteworthy additional changes are:
  - declarations separated out and many comments added or changed;
@@ -133,7 +133,7 @@ Some of the noteworthy additional changes are:
    the outer do loop when READ_CHECKPOINT should be false;
  - rename ME to LOCAL_INDEX and ID to TEAM_NUMBER;
  - code added to calculate the local indices of team 2;
- - THEN keyword added to ELSE IF (done) statement. 
+ - THEN keyword added to ELSE IF (done) statement.
 
 EDITS to 18-007r1:
 
@@ -149,7 +149,7 @@ PROGRAM possibly_recoverable_simulation
   IMPLICIT NONE
   INTEGER, ALLOCATABLE :: failures (:) ! Indices of the failed images.
   INTEGER, ALLOCATABLE :: old_failures(:) ! Previous failures.
-  INTEGER, ALLOCATABLE :: map(:) ! For each spare image k in use, 
+  INTEGER, ALLOCATABLE :: map(:) ! For each spare image k in use,
              ! map(k) holds the index of the failed image it replaces.
   INTEGER :: images_spare ! No. spare images.
                           ! Not altered in main loop.
@@ -157,7 +157,7 @@ PROGRAM possibly_recoverable_simulation
   INTEGER :: failed ! Index of a failed image.
   INTEGER :: i, j, k ! Temporaries
   INTEGER :: status ! stat= value
-  INTEGER :: team_number [*] ! 1 if in working team; 2 otherwise.  
+  INTEGER :: team_number [*] ! 1 if in working team; 2 otherwise.
   INTEGER :: local_index [*] ! Index of the image in the team.
   TYPE (TEAM_TYPE) :: simulation_team
   LOGICAL :: done [*] ! True if computation finished on the image.
@@ -167,11 +167,11 @@ PROGRAM possibly_recoverable_simulation
   images_spare = MAX(NUM_IMAGES()/100,0,MIN(NUM_IMAGES()-9,1))
   images_used = NUM_IMAGES () - images_spare
   ALLOCATE ( old_failures(0), map(images_used+1:NUM_IMAGES()) )
-  SYNC ALL (STAT=status)                                          
+  SYNC ALL (STAT=status)
 
   outer : DO
     local_index = THIS_IMAGE ()
-    team_number = MERGE (1, 2, local_index<=images_used[1])        
+    team_number = MERGE (1, 2, local_index<=images_used[1])
     SYNC ALL (STAT = status)
     IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
     IF (IMAGE_STATUS (1) == STAT_FAILED_IMAGE) &
@@ -206,12 +206,12 @@ PROGRAM possibly_recoverable_simulation
           map(k) = failed
        END DO
        old_failures = failures
-       images_used = k 
+       images_used = k
        ! Find the local indices of team 2
        j = 0
        DO k = k+1, NUM_IMAGES ()
             IF (IMAGE_STATUS (k) == 0) THEN
-            j = j+1 
+            j = j+1
             local_index[k] = j
           END IF
        END DO
@@ -229,12 +229,12 @@ PROGRAM possibly_recoverable_simulation
       IF (status == STAT_FAILED_IMAGE) EXIT simulation
       IF (team_number == 1) THEN
          iter : DO
-           CALL simulation_procedure (status, done)                  
+           CALL simulation_procedure (status, done)
            ! The simulation_procedure:
            !  - sets up and performs some part of the simulation;
-           !  - starts from checkpoint data if these are available;  
-           !  - stores checkpoint data for all images from time to   
-           !  - time and always before return;                       
+           !  - starts from checkpoint data if these are available;
+           !  - stores checkpoint data for all images from time to
+           !  - time and always before return;
            !  - sets status from its internal synchronizations;
            !  - sets done to .TRUE. when the simulation has completed.
            IF (status == STAT_FAILED_IMAGE) THEN
@@ -244,10 +244,10 @@ PROGRAM possibly_recoverable_simulation
            END IF
          END DO iter
       END IF
-    END TEAM (STAT=status) simulation 
+    END TEAM (STAT=status) simulation
 
     SYNC ALL (STAT=status)
-    IF (team_number == 2) done = done[1]                             
+    IF (team_number == 2) done = done[1]
     IF (done) EXIT outer
   END DO outer
   IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) &

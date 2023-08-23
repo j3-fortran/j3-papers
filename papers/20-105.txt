@@ -7,10 +7,10 @@ References: 18-007r1, 19-228
 ----------------------------------------------------------------------
 
 1. Introduction
-Interpretation F18/015 failed its ballot. Here is a summary of the 
+Interpretation F18/015 failed its ballot. Here is a summary of the
 reasons:
 
-Steve Lionel: 
+Steve Lionel:
 History is missing - paper was 19-182 (passed as 19-182r3).
 
 John Reid:
@@ -62,15 +62,15 @@ Malcolm Cohen:
   Dan Nagle:
     I agree with the comments Bill Long made on F18/015.
 
-In working on it, I noticed a new error: add "THEN" to the ELSE IF 
-statement at line 6 of page 545.  
+In working on it, I noticed a new error: add "THEN" to the ELSE IF
+statement at line 6 of page 545.
 
-Addressing all these points seems to require a rewrite of the whole 
-example with correction of errors, better choice of names, and more 
-comments. The changes are too extensive to make it worthwhile to 
-provide a list of edits. I suggest that the edit consist of the 
-replacement of the whole example. Here is a suggestion for that 
-replacement. 
+Addressing all these points seems to require a rewrite of the whole
+example with correction of errors, better choice of names, and more
+comments. The changes are too extensive to make it worthwhile to
+provide a list of edits. I suggest that the edit consist of the
+replacement of the whole example. Here is a suggestion for that
+replacement.
 
 The changes in the code from that in 19-228 are as follows:
 
@@ -83,35 +83,35 @@ the outer do loop when read_checkpoint should be false.
 
 4. Code added to calculate the local indices of team 2.
 
-5. THEN add to ELSE IF (done) statement. 
+5. THEN add to ELSE IF (done) statement.
 
 PROGRAM possibly_recoverable_simulation
   USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY:TEAM_TYPE, STAT_FAILED_IMAGE
   IMPLICIT NONE
-  INTEGER, ALLOCATABLE :: failures (:) ! Indices of the failed images. 
+  INTEGER, ALLOCATABLE :: failures (:) ! Indices of the failed images.
   INTEGER, ALLOCATABLE :: old_failures(:) ! Previous failures.
-  INTEGER, ALLOCATABLE :: map(:) ! For each spare image k in use, 
+  INTEGER, ALLOCATABLE :: map(:) ! For each spare image k in use,
              ! map(k) holds the index of the failed image it replaces.
-  INTEGER :: images_spare ! No. spare images. Not altered in main loop. 
+  INTEGER :: images_spare ! No. spare images. Not altered in main loop.
   INTEGER :: images_used ! Max index of image in use
   INTEGER :: failed ! Index of a failed image
   INTEGER :: i, j, k ! Temporaries
   INTEGER :: status ! stat= value
-  INTEGER :: team_number [*] ! 1 if in working team; 2 otherwise.  
+  INTEGER :: team_number [*] ! 1 if in working team; 2 otherwise.
   INTEGER :: local_index [*] ! Index of the image in the team
   TYPE (TEAM_TYPE) :: simulation_team
-  LOGICAL :: read_checkpoint ! If read_checkpoint true on 
-     ! entering simulation_procedure, go back to previous check point. 
+  LOGICAL :: read_checkpoint ! If read_checkpoint true on
+     ! entering simulation_procedure, go back to previous check point.
   LOGICAL :: done [*] ! True if computation finished on the image
   LOGICAL :: start ! True initially.
 
-  ! Keep 1% spare images if we have a lot, just 1 if 10-199 images, 
+  ! Keep 1% spare images if we have a lot, just 1 if 10-199 images,
   !                                                      0 if <10.
   images_spare = MAX(INT(0.01*NUM_IMAGES()),0,MIN(NUM_IMAGES()-10,1))
   images_used = NUM_IMAGES () - images_spare
   ALLOCATE ( old_failures(0), map(images_used+1:NUM_IMAGES()) )
   start = .true.
-  
+
   outer : DO
     local_index = THIS_IMAGE ()
     team_number = MERGE (1, 2, local_index<=images_used)
@@ -120,21 +120,21 @@ PROGRAM possibly_recoverable_simulation
     IF (IMAGE_STATUS (1) == STAT_FAILED_IMAGE) &
         ERROR STOP "cannot recover"
     IF (THIS_IMAGE () == 1) THEN
-    ! For each newly failed image in team 1, move into team 1 a 
+    ! For each newly failed image in team 1, move into team 1 a
     ! non-failed image of team 2.
-       failures = FAILED_IMAGES () ! Note that the values 
+       failures = FAILED_IMAGES () ! Note that the values
                    ! returned by FAILED_IMAGES increase monotonically.
        k = images_used
        j = 1
        DO i = 1, SIZE (failures)
-          IF (failures(i) > images_used) EXIT ! This failed image and 
-          ! all further failed images are in team 2 and do not matter. 
+          IF (failures(i) > images_used) EXIT ! This failed image and
+          ! all further failed images are in team 2 and do not matter.
           failed = failures(i)
           ! Check whether this is an old failed image.
           IF (j <= SIZE (old_failures)) THEN
              IF (failed == old_failures(j) ) THEN
                 j = j+1
-                CYCLE ! No action needed for old failed image. 
+                CYCLE ! No action needed for old failed image.
              END IF
           END IF
           ! Allow for the failed image being a replacement image
@@ -149,12 +149,12 @@ PROGRAM possibly_recoverable_simulation
           map(k) = failed
        END DO
        old_failures = failures
-       images_used = k 
+       images_used = k
        ! Find the local indices of team 2
        j = 0
        DO k = k+1, NUM_IMAGES ()
             IF (IMAGE_STATUS (k) == 0) THEN
-            j = j+1 
+            j = j+1
             local_index[k] = j
           END IF
        END DO
@@ -167,7 +167,7 @@ PROGRAM possibly_recoverable_simulation
     FORM TEAM (team_number, simulation_team, NEW_INDEX=local_index, &
                STAT=status)
     IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
-    
+
     simulation : CHANGE TEAM (simulation_team, STAT=status)
       IF (status == STAT_FAILED_IMAGE) EXIT simulation
       IF (start) read_checkpoint = .FALSE.
@@ -189,7 +189,7 @@ PROGRAM possibly_recoverable_simulation
            read_checkpoint = .FALSE.
          END DO iter
       END IF
-    END TEAM (STAT=status) simulation 
+    END TEAM (STAT=status) simulation
 
     SYNC ALL (STAT=status)
     IF (THIS_IMAGE () > images_used) done = done[1]
@@ -200,4 +200,4 @@ PROGRAM possibly_recoverable_simulation
 END PROGRAM possibly_recoverable_simulation
 
 
- 
+

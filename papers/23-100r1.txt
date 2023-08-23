@@ -6,20 +6,20 @@ Date: 2023-February-23
 Introduction
 ^^^^^^^^^^^^
 
-The code in C.7.8, written to allow for recovery from image failures, 
-is hard to follow. It ensures that each active image keeps the same 
-image index in the team of active images. The code can be simplified if 
-this is not required. The allocatable arrays 
-   failures, old_failures, and map 
-are not needed and the scalar coarrays 
-   local_index and team_number 
-can be found during execution of a simple do loop over the image indexes, 
-testing for failed images. 
+The code in C.7.8, written to allow for recovery from image failures,
+is hard to follow. It ensures that each active image keeps the same
+image index in the team of active images. The code can be simplified if
+this is not required. The allocatable arrays
+   failures, old_failures, and map
+are not needed and the scalar coarrays
+   local_index and team_number
+can be found during execution of a simple do loop over the image indexes,
+testing for failed images.
 
-As well as being simpler, the new code is shorter: 76 lines instead 
-of 109 lines. 
+As well as being simpler, the new code is shorter: 76 lines instead
+of 109 lines.
 
-Our edit proposes new code to replace the existing code.  
+Our edit proposes new code to replace the existing code.
 
 
 Edit to the DIS
@@ -44,7 +44,7 @@ PROGRAM possibly_recoverable_simulation
   images_spare = MAX(NUM_IMAGES()/100,0,MIN(NUM_IMAGES()-9,1))
   images_used = NUM_IMAGES () - images_spare
   SYNC ALL (STAT=status)
-  
+
   outer : DO
     IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
     IF (IMAGE_STATUS (1) == STAT_FAILED_IMAGE) &
@@ -53,14 +53,14 @@ PROGRAM possibly_recoverable_simulation
        j = 0
        DO k = 1, NUM_IMAGES ()
           IF (IMAGE_STATUS (k) == 0) THEN
-            j = j+1 
+            j = j+1
             IF (j<=images_used) THEN
                local_index[k] = j
                team_number [k] = 1
             ELSE
                local_index[k] = j - images_used
                team_number [k] = 2
-            END IF   
+            END IF
           END IF
        END DO
        IF (j<images_used) ERROR STOP "cannot recover"
@@ -72,7 +72,7 @@ PROGRAM possibly_recoverable_simulation
     FORM TEAM (team_number, simulation_team, NEW_INDEX=local_index, &
                STAT=status)
     IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
-    
+
     simulation : CHANGE TEAM (simulation_team, STAT=status)
       IF (status == STAT_FAILED_IMAGE) EXIT simulation
       IF (team_number == 1) THEN
@@ -84,7 +84,7 @@ PROGRAM possibly_recoverable_simulation
            !  - stores checkpoint data for all images from time to time;
            !    sets status from its internal synchronizations so it has
            !    the value STAT_FAILED_IMAGE on all active images of the
-           !    team if any image of the team has failed; 
+           !    team if any image of the team has failed;
            !  - sets done to .TRUE. when the simulation has completed.
           IF (status == STAT_FAILED_IMAGE) THEN
             EXIT simulation
@@ -95,7 +95,7 @@ PROGRAM possibly_recoverable_simulation
       END IF
     END TEAM (STAT=status) simulation
     IF (status/=0 .AND. status/=STAT_FAILED_IMAGE) EXIT outer
-    
+
     SYNC ALL (STAT=status)
     IF (team_number == 2) done = done[1]
     IF (done) EXIT outer
