@@ -1,4 +1,7 @@
-all:	file-types
+all:	INDEX file-types
+
+INDEX:
+	bin/make-index "$@" papers meetings years
 
 file-types:	papers
 	file papers/* >"$@"
