@@ -14,9 +14,9 @@ file-types:	papers
 # 	bin/non-ascii-by-char bin/non-ascii-by-char.awk
 # 	LC_ALL=C bin/non-ascii-by-char <"non-ascii-by-paper.txt" >"$@"
 
-# Steve Lionel wal curious about why so many files
-# Were changed since he became convenor. He wonders
-# if he could improve the upload process".
+# Steve Lionel was curious about why so many files
+# were changed since he became convenor. He wonders
+# if he could improve the upload process.
 updated-lionel-files:
 	echo "$$(echo papers/{17,18,19,20,21,22,23}-*.txt | wc -w) files"
 	CHANGES=0; TL=0; TW=0; CRLF=0; \
