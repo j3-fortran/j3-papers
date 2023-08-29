@@ -57,12 +57,19 @@ for F in "$@"; do
     # that perform the transformation.
     TRANSFORMS=$(LC_ALL=C gawk '
                       BEGIN {
-                          ALL_TRANSFORMS = "";
+                          TRANS_EARLY = "";
+                          TRANS_LATE = "";
                           LAST_LINE_WAS_BLANK = 0;
                       }
-                      function add_transform(trans) {
-                          if (ALL_TRANSFORMS !~ " " trans) {
-                              ALL_TRANSFORMS = ALL_TRANSFORMS " " trans
+                      function add_trans_early(trans) {
+                          if (TRANS_EARLY !~ " " trans) {
+                              TRANS_EARLY = TRANS_EARLY " " trans
+                              vecho 1 "Add early " trans
+                          }
+                      }
+                      function add_trans_late(trans) {
+                          if (TRANS_LATE !~ " " trans) {
+                              TRANS_LATE = TRANS_LATE " " trans
                               vecho 1 "Add " trans
                           }
                       }
@@ -78,59 +85,74 @@ for F in "$@"; do
                       # (This might be better handled in the conversion
                       # routines, but that did not work at first try.
 
-                      /\x1A/ { add_transform("delete-control-Z") }
-                      /\x81/ { add_transform("delete-x81") }
-                      /\xAB/ { add_transform("delete-8859-xAB") }
-                      NR == 1 && /^\xFE\xFF|^\xEF\xBB\xFF/ {
-                          add_transform("delete-byte-order-marks");
+                      /\x1A/ { add_trans_early("delete-CTRL-Z") }
+                      /M\x84h\x94nen|H\x94gskolan|TROLLH\x8eTTAN|Z\x81rn/ {
+                          add_trans_early("convert-CP437-diacriticals-to-Unicode")
                       }
 
-                      /\r./ { add_transform("convert-CR-to-LF") }
-                      /\r$/ { add_transform("convert-CRLF-to-LF") }
-                      /[ \t]\r*$/ { add_transform("delete-whitespace-at-eol") }
-                      /\xFF[2]D/ { add_transform("convert-FF2D-to-plus") }
+                      /^\x07/ { add_trans_late("convert-CTRL-G-to-dash") }
+                      /\x12/ { add_trans_late("convert-CTRL-R-to-apostrophe") }
+                      /\x13|\x14/ { add_trans_late("convert-CTRL-S-T-to-quotes") }
+                      /\x15/ { add_trans_late("convert-CTRL-U-to-section-mark") }
+
+                      /\x81/ { add_trans_early("delete-x81") }
+                      /\xAB/ { add_trans_early("delete-8859-xAB") }
+                      NR == 1 && /^\xFE\xFF|^\xEF\xBB\xFF/ {
+                          add_trans_early("delete-byte-order-marks");
+                      }
+
+                      /\r./ { add_trans_early("convert-CR-to-LF") }
+                      /\r$/ { add_trans_early("convert-CRLF-to-LF") }
+                      /[ \t]\r*$/ { add_trans_early("delete-whitespace-at-eol") }
+                      /\xFF[2]D/ { add_trans_early("convert-FF2D-to-plus") }
                       /\xB3|\xB4|\xC0|\xC1\|\xC2|\xC3\|\xC4|\xC5|\xD9|\xDA/ {
                           # Omit \xBF in pattern, as overlaps below.
-                          add_transform("convert-xb3-xb4-xbf-etc-to-box-drowing")
+                          add_trans_early("convert-xb3-xb4-xbf-etc-to-box-drawing")
                       }
-
                       /\xA1/ {
-                          add_transform("convert-8859-xA1-to-inverted-exclamation-mark");
+                          add_trans_late("convert-8859-xA1-to-inverted-exclamation-mark");
                       }
-                      /\xA7/ { add_transform("convert-8859-xA7-to-section-mark") }
-                      /\xA9/ { add_transform("convert-8859-xA9-to-copyright-mark") }
-                      /\xAD/ { add_transform("convert-8859-xAD-to-en-dash") }
-                      /\xB1/ { add_transform("convert-8859-xB1-to-plus-minus") }
+                      /\xA7/ { add_trans_late("convert-8859-xA7-to-section-mark") }
+                      /\xA9/ { add_trans_late("convert-8859-xA9-to-copyright-mark") }
+                      /\xAD/ { add_trans_late("convert-8859-xAD-to-en-dash") }
+                      /\xB1/ { add_trans_late("convert-8859-xB1-to-plus-minus") }
 
-                      /\xB7/ { add_transform("convert-8859-xB7-to-bullet") }
+                      /\xB7/ { add_trans_late("convert-8859-xB7-to-bullet") }
                       /\xBF/ {
-                          if (ALL_TRANSFORMS !~ "convert-xb3-xb4-xbf-etc-to-box-drowing") {
-                              # There is overlap with box-drowing in 96-115r3.txt
-                              add_transform("convert-8859-xBF-to-inverted-question-mark")
-                          }
+                         add_trans_late("convert-8859-xBF-to-inverted-question-mark")
                       }
-                      /\xC9/ { add_transform("convert-8859-xC9-to-ellipsis") }
-                      /\xD3/ { add_transform("convert-8859-xD2-xD3-to-curly-quotes") }
-                      /\xD5/ { add_transform("convert-8859-xD5-to-apostrophe") }
-                      /\xE7/ { add_transform("convert-8859-xE7-to-c-cedilla") }
-                      /\xF1/ { add_transform("convert-8859-xF1-to-less-than-or-equal") }
-                      /\x85/ { add_transform("convert-NEL-to-ellipses") }
-                      /\x94/ { add_transform("convert-x91-x94-to-curly-quotes") }
-                      /\x96/ { add_transform("convert-x96-to-en-dash") }
-                      /\x97/ { add_transform("convert-x97-to-em-dash") }
-                      /\xA0/ { add_transform("convert-xA0-to-non-breaking-space") }
-                      /\xA3/ { add_transform("convert-xA3-to-less-than-or-equal") }
-                      /\xB6/ { add_transform("convert-xB6-to-paragraph-mark") }
+                      /\xC9/ { add_trans_late("convert-8859-xC9-to-ellipsis") }
+                      /\xD2|\xD3/ { add_trans_late("convert-8859-xD2-xD3-to-curly-quotes") }
+                      /\xD5/ { add_trans_late("convert-8859-xD5-to-apostrophe") }
+                      /\xE7/ { add_trans_late("convert-8859-xE7-to-c-cedilla") }
+                      /\xF1/ { add_trans_late("convert-8859-xF1-to-less-than-or-equal") }
+                      /\x85/ { add_trans_late("convert-NEL-to-ellipses") }
+                      /\x91|\x92/ { add_trans_late("convert-x91-x92-to-curly-single-quotes") }
+                      /\x93|\x94/ { add_trans_late("convert-x93-x94-to-curly-double-quotes") }
+                      /\x96/ { add_trans_late("convert-x96-to-en-dash") }
+                      /\x97/ { add_trans_late("convert-x97-to-em-dash") }
+                      /\xA0/ { add_trans_late("convert-xA0-to-non-breaking-space") }
+                      /\xA3/ { add_trans_late("convert-xA3-to-less-than-or-equal") }
+                      /\xB6/ { add_trans_late("convert-xB6-to-paragraph-mark") }
                       /\xE9|\xEB|\xF9|\xFB/ {
-                          add_transform("convert-xE9_xEB-xF9-xFB-to-matrix-corners");
+                          add_trans_late("convert-xE9_xEB-xF9-xFB-to-matrix-corners");
                       }
                       /^[ \t]*\r*$/ { LAST_LINE_WAS_BLANK = 1 }
                       /[^ \t\r]/  { LAST_LINE_WAS_BLANK = 0 }
                       END {
                           if (LAST_LINE_WAS_BLANK)
-                              add_transform("delete-trailing-blank-lines");
-                           if (ALL_TRANSFORMS != "")
-                               print substr(ALL_TRANSFORMS, 2);
+                              add_trans_early("delete-trailing-blank-lines");
+                          if (TRANS_EARLY ~ "convert-CP437-diacriticals-to-Unicode") {
+                              # There is overlap with box-drawing in 96-115r3.txt
+                              TRANS_EARLY = gensub(/ delete-x81/, "", "g", TRANS_EARLY)
+                          }
+                          if (TRANS_EARLY ~ "convert-xb3-xb4-xbf-etc-to-box-drawing") {
+                              # There is overlap with box-drawing in 96-115r3.txt
+                              TRANS_LATE = gensub(/ convert-8859-xBF-to-inverted-question-mark/, "", "g", TRANS_LATE)
+                          }
+                          ALL_TRANSFORMS = TRANS_EARLY TRANS_LATE
+                          if (ALL_TRANSFORMS != "")
+                              print substr(ALL_TRANSFORMS, 2);
                       }' \
                  "$F")
 
@@ -149,7 +171,7 @@ for F in "$@"; do
     if [[ -z "$DRY_RUN" ]]; then
         vecho 1 "chmod +w \"$F\"; cat \"$F\" | eval \"$PIPELINE\" | cpif \"$F\"; chmod -w \"$F\""
         chmod +w "$F"
-        (export LC_ALL=C; cat "$F" | eval "$PIPELINE" | cpif "$F")
+        (export LC_ALL=C; cat "$F" | LC_ALL=C eval "$PIPELINE" | cpif "$F")
         chmod -w "$F"
         vecho 1 "$(file "$F")"
     fi
