@@ -19,7 +19,8 @@ esac
 trap "rm -f $DOCS_HTML; exit 1" HUP INT QUIT TERM
 
 function usage {
-    echo "Usage: $CMD [-dhNnv] meeting-number..." 1>&2
+    echo "Usage: $CMD [-chNnv] meeting-number..." 1>&2
+    echo "-c        Clen up the text in the files as they are downloaded." 1>&2
     echo "-h        Print this help message." 1>&2
     echo "-N        Don't rebuild the INDEX file." 1>&2
     echo "-n        Dry run. Don't execute commands." 1>&2
@@ -36,13 +37,15 @@ function vecho {
     fi
 }
 
+CLEAN=
 DRY_RUN=
 ECHO=
 INDEX=1
 VFLAG=0
 VOPT=
-while getopts hNnruv\? OPTCHAR; do
+while getopts chNnv OPTCHAR; do
     case $OPTCHAR in
+        c)  CLEAN=1;;
         h)  usage; exit 0;;
         N)  INDEX=;;
         n)  DRY_RUN=1 ECHO=echo;;
@@ -122,8 +125,15 @@ for M in "$@"; do
         YTARGET="years/$Y4/$PAPER_NAME"
         MTARGET="$MEETING_DIR/$PAPER_NAME"
         PTARGET="papers/$PAPER_NAME"
-        if ! $BIN/fetch-paper-from-web $VOPT \
-                  $"$URL" "$YTARGET" "$MTARGET" "$PTARGET"; then
+        if $BIN/fetch-paper-from-web $VOPT \
+                                     $"$URL" "$YTARGET" "$MTARGET" "$PTARGET"; then
+            if [[ -n "$CLEAN" ]]; then
+                vecho 1 "Clean up $CMD/cleanup-text $PTARGET"
+                if [[ "$PAPER_NAME" =~ ".txt" ]] && [[ -z "$DRY_RUN" ]]; then
+                    $BIN/cleanup-text "$PTARGET"
+                fi
+            fi
+        else
             ERR=1
         fi 2>&1 | sed -e 's/^/  /'
     done
