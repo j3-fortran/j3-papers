@@ -1,6 +1,10 @@
-all:	INDEX file-types
+all:	meeting-docs INDEX file-types
 
-INDEX:
+MEETING=231
+meeting-docs:
+	bin/get-docs-for-meeting -c -v ${MEETING}
+
+INDEX: papers
 	bin/make-index "$@" papers meetings years
 
 file-types:	papers
