@@ -1,0 +1,98 @@
+To: J3                                                     J3/23-219
+From: John Reid & Reinhold Bader
+Subject: Interp on correspondence of unallocated coarrays
+Date: 2023-October-02
+
+----------------------------------------------------------------------
+
+NUMBER: Fxx/xxx
+TITLE: Correspondence of unallocated coarrays
+KEYWORDS: coarray, allocatable
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+REFERENCES: 23-007r1
+
+QUESTION:
+
+One of the restrictions on the allocation of a coarray
+(see [147:32-33] 9.7.1.2, para 4, sentence 3) is
+"If the coarray is a dummy argument, the ultimate arguments
+(15.5.2.4) on those images shall be corresponding coarrays."
+and another (see [148:29-30-33] 9.7.1.3, bullet 1, sentence 2)
+is that the coarray be unallocated . However, there appears to be no
+definition of correspondence for unallocated coarrays.
+
+For example, does this program conform to the standard?
+
+program tsplit
+  type :: inner
+     real, allocatable :: c[:]
+  end type inner
+  type :: outer
+     type(inner) :: left, right
+  end type outer
+  type(outer) :: split
+  if (this_image() <= num_images()/2) then
+     call create(split%left%c)
+  else
+     call create(split%right%c)
+  end if
+  write(*,*) this_image(), allocated(split%left%c), &
+                           allocated(split%right%c)
+contains
+  subroutine create(this)
+    real, allocatable :: this[:]
+    allocate(this[*])
+  end subroutine create
+end program tsplit
+
+ANSWER:
+
+A definition is needed. The above program is not intended to conform to
+the standard because it causes the coarray split%left%c to be allocated
+only on images 1 to num_images()/2 and the coarrary split%right%c to be
+allocated only on the other images.
+
+5.4.7 is intended to define correspondence only for nonallocatable or
+allocated allocatable coarrays. An edit makes this clear. Since the
+concept of correspondence of unallocated coarrays is needed only for
+the allocate statement, we provide a defintion in 9.7.1.2.
+
+Defining correspondence for unallocated coarray subobjects requires a
+definition of correspondence for their parent objects. We provide text
+that defines correspondence for any object, coarray or not. Once this
+is in place, we need the requirement that that the allocate statement
+specifies corresponding coarrays on every active image in the current
+team. This makes all but the first two sentences of 9.7.1.2 para 4
+redundant.
+
+
+EDITS:
+
+[48:26-27] In 5.4.7 para 3, sentence 1, change both occurences of
+"coarray" to "nonallocatable or allocated allocatable coarray" so that
+the sentence reads
+"For each nonallocatable or allocated allocatable coarray on an image,
+there is a corresponding nonallocatable or allocated allocatable coarray
+with the same type, type parameters, and bounds on every other image of
+a team in which it is established (5.4.8)."
+
+[147:30-38] In 9.7.1.2 Execution of an ALLOCATE statement, replace
+para 4 by
+
+"For each named object that is not a dummy argument there is a
+corresponding object with the same name on every other image of the
+current team; if the object is an unsaved local variable of a recursive
+procedure, its corresponding objects are the ones at the same depth of
+recursion of that procedure on each image. Each element of an array
+corresponds to the element of each corresponding array that is in the
+same position in array element order. Each component of a scalar named
+object corresponds to the same component of a corresponding object.
+Each dummy argument corresponds to the objects that correspond to its
+actual argument.
+
+If an allocation specifies a coarray, it shall specify corresponding
+coarrays on every active image in the current team; the dynamic type
+and the values of corresponding type parameters shall be the same for
+all these coarrays. The values of corresponding bounds and
+corresponding cobounds shall be the same for all these coarrays."

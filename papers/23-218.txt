@@ -1,0 +1,64 @@
+To: J3                                                     J3/23-218
+From: John Reid & Reinhold Bader
+Subject: Interp on deallocating coarrays that do not correspond
+Date: 2023-October-02
+
+----------------------------------------------------------------------
+
+NUMBER: Fxx/xxx
+TITLE: Dellocating coarrays that do not correspond
+KEYWORDS: Deallocate, coarray
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+REFERENCES: 23-007r1
+
+QUESTION:
+Was it intended to allow the deallocation of coarrays that are allocated
+on all images but do not correspond?
+
+For example, in the following program the subroutine is executed on all
+images and the coarray s%c is allocated on all images. Does this allow
+the deallocate statement to execute successfully and deallocate
+subobjects of the actual argument a on some images and subobjects of the
+actual argument b on the other images?
+
+program trouble
+  type outer
+     real, allocatable :: c[:]
+  end type outer
+  type(outer) :: a, b
+  integer :: me,ne
+  me = this_image()
+  ne = num_images()
+  allocate(a%c[*],b%c[*])
+  if (me>ne/2) then
+     call sub (b)
+  else
+     call sub (a)
+  end if
+contains
+  subroutine sub(s)
+     type(outer),intent(inout) :: s
+     write(*,*) "allocated(s%c)=", allocated(s%c)
+     deallocate(s%c)
+  end subroutine
+end program
+
+ANSWER:
+Not. It was intended that deallocation should always apply to corresponding
+coarrays.
+
+An edit is supplied.
+
+EDIT to 23-007r1:
+
+[148:3] In 9.7.3.2 Deallocation of allocatable variables, last sentence
+of para 10 change "it is" to "the corresponding coarrays are" so that the
+sentence reads
+"A coarray shall not become deallocated on an image unless the
+corresponding coarrays are successfully deallocated on all active images
+in this team."
+
+SUBMITTED BY: John Reid & Reinhold Bader
+
+HISTORY: 23-169   m230  Submitted

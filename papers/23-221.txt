@@ -1,0 +1,62 @@
+To: J3                                                     J3/23-221
+From: John Reid & Reinhold Bader
+Subject: Interp for MOVE_ALLOC with TO a coarray
+Date: 2023-October-02
+
+----------------------------------------------------------------------
+
+NUMBER: F23/xxx
+TITLE: MOVE_ALLOC with TO a coarray
+KEYWORDS: MOVE_ALLOC, coarray
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+REFERENCES: 23-007r1
+
+QUESTION:
+Was it intended that if TO is a coarray, all images of the team be
+required to have corresponding coarrays?
+
+For example, in the following program the subroutine is executed on all
+images, the coarrays are allocated on all images, and coarray s is
+moved to coarray t on all images. However, the coarrays t on images
+1 to ne/2 do not correspond to the coarrays on images ne/2+1 to ne and
+therefore cannot be accessed from each other. Was this intended?
+
+program trouble
+  real, allocatable :: a[:], b[:]
+  integer :: me, ne
+  allocate(a[*],b[*])
+  a = 1
+  b = 2
+  me = this_image()
+  ne = num_images()
+  if (me>ne/2) then
+     call sub (b)
+  else
+     call sub (a)
+  end if
+contains
+  subroutine sub(t)
+     real, allocatable :: s[:], t[:]
+     integer :: i
+     allocate(s[*], source=3.0)
+     if (me==1 .or. me==ne) write(*,*) "On image",me," s=",s
+     call move_alloc (s,t)
+     if (me==1 .or. me==ne) write(*,*) "On image",me," t=",t
+  end subroutine
+end program
+
+ANSWER:
+No, these effects were not intended. An edit is supplied to require
+that if TO is a coarray all images of the current team have
+corresponding coarrays.
+
+EDIT to 23-007r1:
+
+[422:27] In 16.9.147 MOVE_ALLOC, at the end of the para labelled TO, add
+"If it is a coarray, all images of the current team shall
+have corresponding coarrays."
+
+SUBMITTED BY: John Reid & Reinhold Bader
+
+HISTORY: 23-170   m230  Submitted
