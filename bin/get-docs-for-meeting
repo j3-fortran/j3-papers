@@ -19,14 +19,15 @@ esac
 trap "rm -f $DOCS_HTML; exit 1" HUP INT QUIT TERM
 
 function usage {
-    echo "Usage: $CMD [-chNnv] meeting-number..." 1>&2
-    echo "-c        Clen up the text in the files as they are downloaded." 1>&2
-    echo "-h        Print this help message." 1>&2
-    echo "-N        Don't rebuild the INDEX file." 1>&2
-    echo "-n        Dry run. Don't execute commands." 1>&2
-    echo "-v        Verbose. Print extra information if appropriate." 1>&2
-    echo "Get documents for 'meeting-number'..." 1>&2
-    echo "'meeting-number' should be the name of a directory with meeting files." 1>&2
+    (echo "Usage: $CMD [-chNnv] meeting-number..."
+     echo "-c        Clean up text in the files as they are downloaded (default)."
+     echo "-h        Print this help message."
+     echo "-N        Don't rebuild the INDEX file."
+     echo "-n        Dry run. Don't execute commands."
+     echo "-r        Raw; do not clean up text in the files as they are downloaded."
+     echo "-v        Verbose. Print extra information if appropriate."
+     echo "Get documents for 'meeting-number'..."
+     echo "'meeting-number' is the name of a directory with meeting files.") 1>&2
 }
 
 function vecho {
@@ -37,7 +38,8 @@ function vecho {
     fi
 }
 
-CLEAN=
+# Clean by default now.
+CLEAN=1
 DRY_RUN=
 ECHO=
 INDEX=1
@@ -49,6 +51,7 @@ while getopts chNnv OPTCHAR; do
         h)  usage; exit 0;;
         N)  INDEX=;;
         n)  DRY_RUN=1 ECHO=echo;;
+        r)  CLEAN=;;
         v)  VFLAG=$((VFLAG+1))
             if [[ -z "$VOPT" ]]; then
                 VOPT=-v
@@ -66,20 +69,20 @@ case $# in
 esac
 
 if [[ ! -d "meetings/" ]]; then
-    echo "$CMD: 'meetings/' is not a directory with meeting files" 1>&2
+    echo "$CMD: 'meetings/' is not a directory with meeting J3 papers" 1>&2
     exit 1
 fi
 
 if [[ ! -d "years/" ]]; then
-    echo "$CMD: 'years/' is not a directory with yearly files" 1>&2
+    echo "$CMD: 'years/' is not a directory with yearly J3 papers" 1>&2
     exit 1
 fi
 
 ERR=0
 for M in "$@"; do
     case "$M" in
-        [0-9][0-9]) M="0$M";;
-        [0-9][0-9][0-9]) ;;
+        [0-9][0-9])    M="0$M";;
+        [0-9][0-9][0-9])      ;;
         [0-9][0-9][0-9][a-d]) ;;
         *)  echo "Invalid meeting number $M" 2>&1
             ERR=1
@@ -125,17 +128,72 @@ for M in "$@"; do
         YTARGET="years/$Y4/$PAPER_NAME"
         MTARGET="$MEETING_DIR/$PAPER_NAME"
         PTARGET="papers/$PAPER_NAME"
-        if $BIN/fetch-paper-from-web $VOPT \
-                                     $"$URL" "$YTARGET" "$MTARGET" "$PTARGET"; then
-            if [[ -n "$CLEAN" ]]; then
-                vecho 1 "Clean up $CMD/cleanup-text $PTARGET"
-                if [[ "$PAPER_NAME" =~ ".txt" ]] && [[ -z "$DRY_RUN" ]]; then
-                    $BIN/cleanup-text "$PTARGET"
+
+        if $BIN/fetch-paper-from-web $VOPT "$URL" "$PTARGET.fetch"; then
+            if [[ -n "$CLEAN" ]] && [[ "$PAPER_NAME" =~ ".txt" ]]; then
+                vecho 1 "Clean up $CMD/cleanup-text $PTARGET.fetch"
+                if [[ -z "$DRY_RUN" ]]; then
+                    $BIN/cleanup-text -v "$PTARGET.fetch"
                 fi
             fi
         else
             ERR=1
         fi 2>&1 | sed -e 's/^/  /'
+
+        if [[ ! -e "$PTARGET" ]]; then
+            echo "$PAPER_NAME new"
+            mv "$PTARGET.fetch" "$PTARGET"
+        elif ! cmp -s "$PTARGET" "$PTARGET.fetch"; then
+            echo "$PAPER_NAME changed"
+            mv "$PTARGET.fetch" "$PTARGET"
+        else
+            rm "$PTARGET.fetch"
+        fi
+
+        # Does it properly exist in the meetings/ directory?
+        # If not, symlink it to the file in the papers/ directory.
+        if [[ -L "$MTARGET" ]]; then
+            LINK="$(readlink "$MTARGET")"
+            vecho 2 "  LINK read = '$LINK'"
+
+            if [[ "$LINK" = "../../$PTARGET" ]]; then
+                vecho 2 "  $MTARGET is linked correctly."
+            else
+                vecho 2 "  $MTARGET relinked."
+                rm "$MTARGET"
+                ln -s "../../$PTARGET" "$MTARGET"
+            fi
+        elif [[ -e "$MTARGET" ]]; then
+            vecho 2 "  $MTARGET replaced and linked."
+            rm "$MTARGET"
+            ln -s "../../$PTARGET" "$MTARGET"
+        else
+            vecho 2 "  $MTARGET new."
+            ln -s "../../$PTARGET" "$MTARGET"
+        fi
+
+        # Does it properly exist in the years/ directory?
+        # If not, symlink it to the file in the papers/ directory.
+        if [[ -L "$YTARGET" ]]; then
+            LINK="$(readlink "$YTARGET")"
+            vecho 2 "  LINK read = '$LINK'"
+
+            if [[ "$LINK" = "../../$PTARGET" ]]; then
+                vecho 2 "  $YTARGET is linked correctly."
+            else
+                vecho 2 "  $YTARGET relinked."
+                rm "$YTARGET"
+                ln -s "../../$PTARGET" "$YTARGET"
+            fi
+        elif [[ -e "$YTARGET" ]]; then
+            vecho 2 "  $YTARGET replaced and linked."
+            rm "$YTARGET"
+            ln -s "../../$PTARGET" "$YTARGET"
+        else
+            vecho 2 "  $YTARGET new."
+            ln -s "../../$PTARGET" "$YTARGET"
+        fi
+
     done
 done
 

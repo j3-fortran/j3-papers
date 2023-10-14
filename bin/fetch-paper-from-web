@@ -8,13 +8,11 @@ CMD="$(basename $0)"
 BIN="$(dirname "$0")"
 
 function usage {
-    echo "Usage: $CMD [-dhnv] url years-paper meetings-paper papers-paper" 1>&2
-    echo "-h        Print this help message." 1>&2
-    echo "-n        Dry run. Don't execute commands." 1>&2
-    echo "-v        Verbose. Print extra information if appropriate." 1>&2
-    echo "Update paper 'years-paper', (e.g., years/1996/96-024.txt) from url." 1>&2
-    echo "'meeting-paper' should be the 'meetings/nnn/paper.txt' file." 1>&2
-    echo "'papers-paper' should be the 'papers/paper.txt' file." 1>&2
+    (echo "Usage: $CMD [-dhnv] url target-file"
+     echo "-h        Print this help message."
+     echo "-n        Dry run. Don't execute commands."
+     echo "-v        Verbose. Print extra information if appropriate."
+     echo "Fetch J3 paper from 'url' and place in 'target-file'.") 1>&2
 }
 
 . $(dirname "$0")/vecho
@@ -39,7 +37,7 @@ done
 shift $(($OPTIND - 1))
 
 case $# in
-    4)  URL="$1" YTARGET="$2" MTARGET="$3" PTARGET="$4";;
+    2)  URL="$1" TARGET_FILE="$2";;
     *)  usage; exit 1;;
 esac
 
@@ -47,64 +45,18 @@ esac
 # Place in the correct papers/ document file.
 # Link the meetings/ file to that file.
 # Link the years/ file to the papers file.
-PAPER_NAME="$(basename "$PTARGET")"
-vecho 2 "  URL='$URL' PAPER_NAME='$PAPER_NAME'"
-vecho 2 "  YTARGET='$YTARGET' MTARGET='$MTARGET' PTARGET='$PTARGET'"
+vecho 2 "  URL='$URL' TARGET_FILE='$TARGET_FILE'"
 
-if [[ -e "$PTARGET" ]] && [[ ! -w "$PTARGET" ]]; then
+if [[ -e "$TARGET_FILE" ]] && [[ ! -w "$TARGET_FILE" ]]; then
     # Make files writable for updates
-    chmod +w "$PTARGET"
+    chmod +w "$TARGET_FILE"
 fi
 
-if ! curl --fail -Ss "$URL" 2>&1 >"$PTARGET"; then
-    echo "$CMD: Fail to fetch '$PTARGET' from '$URL'" 1>&2
+if ! curl --fail -Ss "$URL" 2>&1 >"$TARGET_FILE"; then
+    echo "$CMD: Fail to fetch '$TARGET_FILE' from '$URL'" 1>&2
 fi
 
-if [[ -w "$PTARGET" ]]; then
+if [[ -w "$TARGET_FILE" ]]; then
     # Make files readonly to prevent accidental editing
-    chmod -w "$PTARGET"
-fi
-
-# Does it properly exist in the meetings/ directory?
-# If not, symlink it to the file in the papers/ directory.
-if [[ -L "$MTARGET" ]]; then
-    LINK="$(readlink "$MTARGET")"
-    vecho 2 "  LINK read = '$LINK'"
-
-    if [[ "$LINK" = "../../$PTARGET" ]]; then
-        vecho 2 "  $MTARGET is linked correctly."
-    else
-        vecho 2 "  $MTARGET relinked."
-        rm "$MTARGET"
-        ln -s "../../$PTARGET" "$MTARGET"
-    fi
-elif [[ -e "$MTARGET" ]]; then
-    vecho 2 "  $MTARGET replaced and linked."
-    rm "$MTARGET"
-    ln -s "../../$PTARGET" "$MTARGET"
-else
-    vecho 2 "  $MTARGET new."
-    ln -s "../../$PTARGET" "$MTARGET"
-fi
-
-# Does it properly exist in the years/ directory?
-# If not, symlink it to the file in the papers/ directory.
-if [[ -L "$YTARGET" ]]; then
-    LINK="$(readlink "$YTARGET")"
-    vecho 2 "  LINK read = '$LINK'"
-
-    if [[ "$LINK" = "../../$PTARGET" ]]; then
-        vecho 2 "  $YTARGET is linked correctly."
-    else
-        vecho 2 "  $YTARGET relinked."
-        rm "$YTARGET"
-        ln -s "../../$PTARGET" "$YTARGET"
-    fi
-elif [[ -e "$YTARGET" ]]; then
-    vecho 2 "  $YTARGET replaced and linked."
-    rm "$YTARGET"
-    ln -s "../../$PTARGET" "$YTARGET"
-else
-    vecho 2 "  $YTARGET new."
-    ln -s "../../$PTARGET" "$YTARGET"
+    chmod -w "$TARGET_FILE"
 fi
