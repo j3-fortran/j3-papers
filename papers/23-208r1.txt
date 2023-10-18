@@ -1,0 +1,134 @@
+To: J3                                                     J3/23-208r1
+From:      John Reid & Brad Richardson
+Subject:   F2023 interp: Interp on finalization
+Date: 2023-October-18
+
+----------------------------------------------------------------------
+
+NUMBER: F23/		! /interp assigns number after submission
+TITLE: Finalizations and deallocations of coarrays
+KEYWORDS: finalization, deallocation, coarray
+DEFECT TYPE: 		! /interp assigns
+STATUS: J3 consideration in progress
+
+BACKGROUND
+
+An example is provided below to illustrate the potential problem.
+
+module mod
+  type :: t1
+  contains
+    final :: t1_final
+  end type
+
+  type :: t2
+  contains
+    final :: t2_final
+  end type
+
+  type :: combo1
+    type(t1) :: a
+    type(t2) :: b
+  end type
+
+  type :: combo2
+    type(t2) :: c
+    type(t1) :: d
+  end type
+contains
+  impure elemental subroutine t1_final(self)
+    type(t1), intent(inout) :: self
+
+    integer :: the_answer
+
+    if (this_image() == 1) the_answer = 42
+    call co_broadcast(the_answer, 1)
+    if (the_answer /= 42) error stop
+  end subroutine
+
+  impure elemental subroutine t2_final(self)
+    type(t2), intent(inout) :: self
+
+    integer :: total, i
+
+    total = this_image()
+    call co_sum(total)
+    if (total /= sum([(i, i = 1, num_images())])) error stop
+  end subroutine
+end module
+  use mod
+  call cross_fingers
+contains
+  subroutine cross_fingers
+    type(combo1), allocatable :: obj1(:)[:]
+    type(combo2), allocatable :: obj2(:)[:]
+    allocate(obj1(num_images)[*])
+    allocate(obj2(num_images)[*])
+  end subroutine
+end
+
+If not all of the images deallocate the coarrays and finalize their
+components in the same order, then a deadlock will occur where some
+of the images are waiting at the co_broadcast and some of the images
+are waiting at the co_sum. The only consideration given to this
+possibility is a note in 7.5.6.2 which states "An implementation
+might need to ensure that when an event causes more than one coarray
+to be deallocated, they are deallocated in the same order on all
+images in the current team."
+
+QUESTION 1:
+
+If an event causes more than one entity to be finalized, are these
+finalizations made in the same order on all the images of the current
+team?
+
+QUESTION 2:
+
+If an event causes more than one coarray to be deallocated, are these
+deallocations made in the same order on all the images of the current
+team?
+
+ANSWER 1:
+
+It was intended that if an event causes more than one entity to be
+finalized, these finalizations are made in the same order on all the
+images of the current team. An edit is supplied to make this clear.
+
+ANSWER 2:
+
+It was intended that if an event causes more than one coarray to be
+deallocated, these deallocatations are made in the same order on all
+the images of the current team. An edit is supplied to make this
+clear.
+
+EDITS to N2218:
+
+Question 1
+
+In 7.5.6.2 The finalization process, at the end of the penultimate
+sentence add ", but each image in the current team shall perform
+the finalizations of those entities in the same order" so that the
+sentence reads
+"If several entities are to be finalized as a consequence of an
+event specified in 7.5.6.3, the order in which they are finalized is
+processor dependent, but each image in the current team shall perform
+the finalizations of those entities in the same order."
+
+Question 2
+
+In 9.7.3.1 Form of the DEALLOCATE statement, final paragraph
+after "statement" add "or as a consequence of an event specified in
+9.7.3.2" and at the end of the sentence add ", but each image in the
+current team shall perform the deallocations of those objects in the
+same order" so that the paragraph reads
+"When more than one allocated object is deallocated by execution of a
+DEALLOCATE statement or as a consequence of an event specified in
+9.7.3.2, the order of deallocation is processor dependent, but each
+image in the current team shall perform the deallocations of those
+objects in the same order."
+
+SUBMITTED BY: John Reid & Brad Richardson
+
+HISTORY: 23-xxx   m231  Submitted
+
+----------------------------------------------------------------------
