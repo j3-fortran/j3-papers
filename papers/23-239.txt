@@ -1,0 +1,141 @@
+To: J3                                                     J3/23-239
+From: Malcolm Cohen
+Subject: Finalizing coarrays
+Date: 2023-October-21
+References: 23-208, 23-208r1
+
+
+1. Introduction
+
+Paper 23-208r1 suggests that there is a defect in the standard.
+However, the example program with the defect seems to be non-conforming.
+Also, the discussion seems to be misguided as to what happens in principle
+in deallocation of coarrays, confusing implementation considerations with
+language design.
+
+Therefore, at this time, /Interp declines to accept the interpretation
+request. Further study of the issues being raised may result in action at
+a later date.
+
+
+2. An event that deallocates multiple coarrays
+
+The paper states
+    "If not all of the images deallocate the coarrays... in the same order,
+     then a deadlock will occur... The only consideration given to this
+     possibility is a note in 7.5.6.2 which states "An implementation
+     might need to ensure that when an event causes more than one coarray
+     to be deallocated, they are deallocated in the same order on all
+     images in the current team."
+
+For simplicity, let us consider the statement
+    DEALLOCATE (coarray1, coarray2)
+
+This note is referring to an implementation technique. According to the
+Fortran language however, there is a single thing which is a "deallocate
+of one or more coarrays". That is, that statement is not macro-expanded to
+    DEALLOCATE (coarray1); DEALLOCATE(coarray2)
+
+That is, the statement in question is a single image control statement that
+divides execution into two segments - the "before the deallocate" segment
+and the "after the deallocate" segment. In the "before" segment, both
+COARRAY1 and COARRAY2 are allocated and may be referenced by any image.
+In the "after" segment, both COARRAY1 and COARRAY2 are deallocated and the
+ALLOCATED intrinsic may be executed on any image and it will return false.
+This can be thought of as a kind-of "two-step" synchronisation: sync-in on
+the way in, when all are in do the deallocate, then sync-out so that all
+images know the deallocation is complete.
+
+The NOTE in 7.5.6.2 refers to one implementation technique, where each
+coarray is deallocated separately with synchronisation before and after
+each one. That method is not, however, required by the standard: it would
+be perfectly reasonable to bundle all the deallocations into a single
+package, with just one sync-in before them, and just one sync-out after.
+
+The same applies to any single event that causes coarray deallocation.
+The statement that completes execution of a block or procedure is a single
+image control statement, and no matter how many coarrays are thereby
+deallocation, it is only one image control statement execution, which
+divides execution into two segments, not many. There is no "order of
+deallocation" here.
+
+
+3. Is the example program non-conforming?
+
+The original paper 23-208 exposes the author's thinking:
+    "We note that a final subroutine is permitted to contain image control
+     statements other than deallocate."
+
+This has completely overlooked the requirement
+    "During an execution of a statement that invokes more than one
+     procedure, at most one invocation shall cause execution of an image
+     control statement other than CRITICAL or END CRITICAL."
+
+This is a requirement on the program: it is the responsibility of the
+programmer not to write ambiguous synchronisations. As this applies to
+the statement that completes execution of a block or procedure, and to
+array assignment, it would be the height of irresponsibility for a final
+subroutine to contain an image control statement.
+
+Unfortunately, that requirement was not updated after we added collective
+subroutines, but we do have the rule
+    "A collective subroutine shall not be referenced when an image control
+     statement is not permitted to be executed (for example, in a procedure
+     invoked from a CRITICAL construct)."
+
+Accordingly, as it is not permitted to execute more than one image control
+statement as the consequence of a DEALLOCATE (or any other statement that
+invokes multiple procedures), it is not permitted to execute more than one
+call to a collective subroutine in that situation.
+
+Actually, as the DEALLOCATE statement, or the statement that completes
+execution of a block or procedure and which results in the deallocation of
+a coarray, is itself an image control statement, thus no procedure it
+invokes should be allowed to execute an image control statement.
+This should be clarified.
+
+
+4. Another consideration
+
+An image control statement divides execution into two segments, typically
+involving synchronisation with other images. Execution of any image control
+statement during the execution of another would divide execution into more
+than two segments, contradicting the segment rules.
+
+Execution of any statement that requires synchronisation, in the middle of
+the execution of an image control statement that is doing synchronisation,
+is not well-defined. Nor should it be.
+
+The Fortran standard has no concept of "nested" synchronisations; on the
+contrary, it goes out of its way to say that these are not allowed, in
+every situation we could think of at the time. Adding such a concept would
+be a substantial new feature, and so cannot be done by Defect Processing.
+If there is a situation we overlooked where this could happen, we can and
+probably should add any necessary rule to prohibit it.
+
+
+5. Future action
+
+(a) Consider whether the wording in 11.7.1 paragraph 3 should be clarified
+    to make it clearer that it applies to collective subroutines. If the
+    current vagueness is thought to be a defect, this could be done as an
+    interpretation, otherwise an editorial change in the next revision
+    would be sufficient.
+
+(b) Consider whether 11.7.1 paragraph 3 should make it clear that if the
+    statement in question is itself an image control statement, no
+    procedure invoked by the statement may execute an image control
+    statement (instead of maybe one invocation being allowed, which seems
+    to be the case now). If there really is a defect here, this wording
+    change should be done by an interpretation.
+
+(c) /Interp requests that before any future action is taken the technical
+    issues should be discussed thoroughly by /HPC and /Interp itself, so
+    that the correct form of action (viz editorial change, new feature,
+    interpretation request, etc.) can be done. Please do not just "think of
+    a problem" and leap into interpretation submission - consult first.
+    (That consultation can be done via meeting papers, but we can easily
+    turn a technical discussion paper into an interp should that be the
+    correct course of action.)
+
+===END===
