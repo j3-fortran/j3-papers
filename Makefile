@@ -8,7 +8,7 @@ INDEX: papers
 	bin/update-index "$@" papers meetings years
 
 file-types:	papers
-	file papers/* >"$@"
+	bin/update-file-types "$@" papers
 
 # non-ascii-by-paper.txt: papers/*.txt \
 # 	bin/non-ascii-by-paper bin/non-ascii-by-paper.awk
