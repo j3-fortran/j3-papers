@@ -1,0 +1,96 @@
+To: J3                                                     J3/23-243
+From: Malcolm Cohen
+Subject: Interp: Coarray correspondence in DEALLOCATE
+Date: 2023-October-24
+References: 23-169, 23-218
+
+----------------------------------------------------------------------
+
+NUMBER: F23/012
+TITLE: Coarray correspondence in DEALLOCATE
+KEYWORDS: DEALLOCATE, coarray
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+In 9.7.3.2 Deallocation of allocatable variables, paragraph 11
+requires that coarray dummy arguments on the active images have
+ultimate arguments that are corresponding coarrays.
+
+However, there appears to be no such requirement for coarray
+components of dummy arguments.
+
+Thus this program appears to be valid (apart from having no
+interpretation due to coarray allocation status inconsistency):
+
+    Program trouble
+        Type t
+            Real,Allocatable :: c(:)[:]
+        End Type
+        Type(t) x,y
+        Allocate(x(1)[*],y(1)[*])
+        If (This_Image()==1) Then
+            Call oops(x)
+        Else
+            Call oops(y)
+        End If
+        Print *,Allocated(x),Allocated(y)
+        Sync All
+    Contains
+        Subroutine oops(z)
+            Type(t) :: z[:]
+            Deallocate(z%c)
+        End Subroutine
+    End Program
+
+Should there be a requirement on coarray components of dummy arguments
+in DEALLOCATE?
+
+There is also an editorial glitch in paragraph 10 where it says that a
+coarray does not "become deallocated on an image unless it is
+successfully deallocated on all active images", since "it" exists on
+only one image (the others being the corresponding coarrays), and "all
+active images" includes the image in question, so is circular. Should
+this not be corrected?
+
+ANSWER:
+
+Yes, this requirement should be explicit.
+
+Yes, the wording in the last sentence of paragraph 10 is poor, and
+should be improved.
+
+Edits are supplied to address these defects.
+
+As the question noted, the example is not conforming as it violates
+the semantics that corresponding coarrays have the same allocation
+status, bounds, etc. on all images on which they are established.
+
+EDIT to N2218:
+
+[152] 9.7.3.2 Deallocation of allocatable variables, paragraph 10,
+      last sentence,
+      change "it is" to "the corresponding coarrays are",
+      and insert "other" between "all" and "active",
+      making that whole sentence read:
+    "A coarray shall not become deallocated on an image unless the
+     corresponding coarrays are successfully deallocated on all other
+     active images in this team."
+{Clarify "it" and "all".}
+
+[152] Same subclause, paragraph 11 beginning "If an allocate-object is
+      a coarray dummy argument", append new sentence
+    "If an allocate-object is a coarray subcomponent of a dummy
+     argument, those components of the ultimate arguments on those
+     images shall be corresponding coarrays."
+{Requirement needed to maintain coarray correspondence semantics.
+ A "subcomponent" is a component that is an immediate component,
+ of a component of a subobject.}
+
+SUBMITTED BY: John Reid & Reinhold Bader
+
+HISTORY: 23-218   m231  Submitted
+         23-nnn   m231  Revised
+
+----------------------------------------------------------------------

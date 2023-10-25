@@ -1,0 +1,61 @@
+To: J3                                                     J3/23-245
+From: Jeff Hammond
+Subject: Asynchronous collective operations
+Date: 2023-October-25
+
+1. Introduction
+===============
+
+The current set of collective operations do not return until complete,
+which does not permit optimizations that are possible with MPI,
+OpenSHMEM or other lower-level software that can be used to implement
+them.
+
+Providing a way to make these operations asynchronous enables better
+performance in some use cases, such as a sequence of collectives,
+where the Fortran program only needs to observe the results at the
+end of the sequence.  Another use case is overlapping collective
+operations with computations, which is common in many scientific
+simulation workloads.
+
+2. Proposal
+============
+
+Add an optional argument to CO_{BROADCAST,MAX,MIN,REDUCE,SUM}
+that indicates that an asynchronous collective is desired,
+which is used to synchronize the operation.
+The optional argument should be a scalar variable of event_type.
+Completion of a collective operation increments the effective
+value of the notify_type.  The program uses EVENT_QUERY to
+determine that operations have completed.
+Multiple collective operations may use the same event variable.
+The event argument may not be coindexed.
+
+3. Discussion
+==============
+
+Using event variables for synchronization allows the user to
+test for completion without blocking, which is similar to what
+MPI supports.  Using a notify type would not permit this usage.
+
+4. Example
+===========
+
+program main
+    use iso_fortran_env
+    implicit none
+    integer :: i, count
+    type(event_type) :: broadcast_sync[*]
+    integer :: x(100)
+    x = this_image()
+    do i = 1,size(x)
+        call co_broadcast( x(i), source_image=1, event=broadcast_sync )
+    end do
+    event wait ( broadcast_sync, until_count = size(x) )
+    print*,this_image(),' is finished'
+end program main
+
+5. References
+==============
+
+===END===

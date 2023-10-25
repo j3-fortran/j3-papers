@@ -1,0 +1,103 @@
+To: J3                                                     J3/23-246
+From: Jeff Hammond
+Subject: Concurrent tasks
+Date: 2023-October-25
+
+1. Introduction
+===============
+
+Previously, we have motivated the addition of an asynchronous
+task construct to allow programmers to express the independent,
+potentially concurrent property of arbitrary sections of code,
+as an extension of the BLOCK construct.
+
+This paper describes a specific implementation of this concept.
+
+2. Proposal
+============
+
+TASK :: [ID = identifier]
+  import-stmt
+
+END TASK
+
+The task construct is a generalization of existing asynchronous
+I/O, which allows arbitrary user-defined code, as opposed to
+merely what can be expressed in READ or WRITE statements.
+
+The task construct allows the user to create multiple, non-
+sequentially executing segments within a single image.
+Once started, task segments are unordered relative to other
+segments until synchronized.  They are ordered after
+non-task segments and task segments that have already
+completed.
+
+The TASK WAIT and TASK INQUIRE statements are used to query
+the identifier of a task segment, in the same manner as
+WAIT and INQUIRE are used on I/O operations, but where the
+required argument is the ID and the only other argument is
+the optional status (STAT) argument.
+
+The TASK WAIT construct allows multiple IDs for convenience.
+When multiple IDs are used, the status argument indicates
+the overall status of all tasks.
+
+Restrictions:
+- All variables modified by a task construct must have the
+  ASYNCHRONOUS attribute.
+- Multiple updates to a variable within a given epoch is
+  implementation defined.
+- The IMPORT statement allows the program to indicate what
+  variables will be accessed by a task construct, in the
+  same manner as its use in the BLOCK construct.
+- Procedures invoked by a task statement must be PURE or
+  ASYNC_SAFE.  The ASYNC_SAFE procedure attribute means
+  that a procedure does not modify any variables visible
+  to the program other than its arguments, variables whose
+  lifetime is limited to the execution of the procedure
+  (i.e. not SAVE), or files.
+
+Using IMPORT for TASK requires modifications to C8100.
+
+The ASYNC_SAFE attribute may be applied to procedures
+that modify variables not visible to the Fortran program
+that can be safely accessed used mechanisms not defined
+by Fortran.  For example, C-interoperable procedures
+that use synchronization constructs defined in the C
+language may allow access to the same data from multiple
+tasks, as if Fortran tasks are executed in a manner
+equivalent to C11 threads.
+
+3. Discussion
+==============
+
+This is an initial sketch of the asynchronous task
+syntax proposal, based upon discussion with the
+HPC subgroup.
+
+4. Example
+===========
+
+program main
+  implicit none
+  integer :: i
+  integer :: sync(10)
+  real :: x(1000000)
+  do i=1,size(sync)
+    task :: sync(i)
+      import, only :: x
+      x(1 + (i-1) * 100000 : i * 100000) = sin(i)
+    end task
+  end do
+  do i=1,size(sync)
+    task wait( sync )
+  end do
+end program main
+
+5. References
+==============
+
+- https://j3-fortran.org/doc/year/22/22-169.pdf
+- https://j3-fortran.org/doc/year/23/23-174.pdf
+
+===END===
