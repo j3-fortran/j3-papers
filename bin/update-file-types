@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+
+set -u -o pipefail
+
+CMD="$(basename "$0")"
+CMD_DIR="$(dirname "$0")"
+function usage {
+    (echo "Usage: $CMD [-hnv] types-file directory..."
+     echo "-f        Force a full recreation of the types-file."
+     echo "-h        Print this help message."
+     echo "-n        Dry run. Don't execute commands."
+     echo "-v        Verbose. Print extra information if appropriate."
+     echo "Create list of file types of papers under the specified directories.") 1>&2
+}
+
+. "$CMD_DIR/vecho"
+
+FFLAG=
+DRY_RUN=
+VFLAG=0
+while getopts fhnv\? OPTCHAR; do
+    case $OPTCHAR in
+        f)  FFLAG=1;;
+        h)  usage; exit 0;;
+        n)  DRY_RUN=1;;
+        v)  VFLAG=$((VFLAG+1));;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+case $# in
+    0|1) usage; exit 1;;
+    *)  ;;
+esac
+
+FILE_TYPES="$1"
+shift
+TMP="$(mktemp "$FILE_TYPES.tmp.XXXXXX")"
+trap 'rm -f "$TMP"; exit 1' HUP INT QUIT TERM
+
+if [[ -n "$FFLAG" ]]; then
+    # Rebuild from scratch.
+    find -L "$@" \( -type f -o -type l \) -print0 \
+    | xargs -0 -n 1 "$CMD_DIR"/print-index-line \
+    | sort -t $'\t' -k 1 -k 4 >"$TMP"
+else
+    # Not rebuilding from scratch.
+
+    # Approach:
+    #   1. Identify new or updated files (shouldn't they all be new?)
+    #   2. Concatenate
+    #      a. Old index with updated entries removed.
+    #      b. Index lines for new or updated files.
+    #   3. Sort by 1st and last fields and place result in temp index.
+    #   4. If -v, show the diff.
+    #   5. Replace $FILE_TYPES with the updated temp index.
+
+    NEW_OR_UPDATED="$(find -L "$@" \( -type f -o -type l \) \
+                                          -a -newer "$FILE_TYPES" -print)"
+    if [[ "$NEW_OR_UPDATED" = "" ]]; then
+        vecho 1 "$FILE_TYPES is up to date."
+
+        rm "$TMP"
+        exit 0
+    fi
+
+    DELETES="$(echo "$NEW_OR_UPDATED" \
+                       | sed -e 's;.*/;;' -e 's;.*;-e /^&/d;g')"
+
+    (sed $DELETES <"$FILE_TYPES"; apply "file" $NEW_OR_UPDATED) \
+        | sort -t $'\t' -k 1 -k 4 >"$TMP"
+fi
+
+if [[ "$VFLAG" -ge 2 ]]; then
+    echo "Diff: $FILE_TYPES $TMP"
+    diff "$FILE_TYPES" "$TMP"
+fi
+
+if [[ -n "$DRY_RUN" ]]; then
+    rm "$TMP"
+else
+    mv "$TMP" "$FILE_TYPES"
+fi
+
+vecho 1 "$FILE_TYPES updated."
+
+exit 0
