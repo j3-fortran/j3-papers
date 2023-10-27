@@ -15,6 +15,15 @@ function usage {
 
 . "$CMD_DIR/vecho"
 
+# The output of the 'file' command is inconsistent, with a differing
+# number of spaces between the file name and the file type depending
+# on the lengths of the names of the files passed as arguments.
+# Force a specific format independent of the length of the first field.
+function reformat_file_output {
+    awk -F "\t *" '{ printf "%-32s %s\n", $1 ":", $2}'
+}
+
+
 FFLAG=
 DRY_RUN=
 VFLAG=0
@@ -34,16 +43,20 @@ case $# in
     *)  ;;
 esac
 
+FILE_FLAGS="--separator '	'"
+
 FILE_TYPES="$1"
 shift
 TMP="$(mktemp "$FILE_TYPES.tmp.XXXXXX")"
 trap 'rm -f "$TMP"; exit 1' HUP INT QUIT TERM
 
-if [[ -n "$FFLAG" ]]; then
+if [[ -n "$FFLAG" ]] || [[ ! -e "$FILE_TYPES" ]]; then
     # Rebuild from scratch.
+    vecho 1 "Rebuild '$FILE_TYPES' from scratch..."
     find -L "$@" \( -type f -o -type l \) -print0 \
-    | xargs -0 -n 1 "$CMD_DIR"/print-index-line \
-    | sort -t $'\t' -k 1 -k 4 >"$TMP"
+        | xargs -0 file --separator $'\t' \
+        | reformat_file_output \
+        | sort -t $'\t' -k 1 -k 4 >"$TMP"
 else
     # Not rebuilding from scratch.
 
@@ -68,7 +81,9 @@ else
     DELETES="$(echo "$NEW_OR_UPDATED" \
                        | sed -e 's;.*/;;' -e 's;.*;-e /^&/d;g')"
 
-    (sed $DELETES <"$FILE_TYPES"; apply "file" $NEW_OR_UPDATED) \
+    # papers/96-source_processing.pdf is to get the spacing right. Lazy.
+    (sed $DELETES <"$FILE_TYPES"; apply file --separator $'\t' $NEW_OR_UPDATED) \
+        | reformat_file_output \
         | sort -t $'\t' -k 1 -k 4 >"$TMP"
 fi
 
