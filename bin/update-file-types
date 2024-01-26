@@ -20,7 +20,7 @@ function usage {
 # on the lengths of the names of the files passed as arguments.
 # Force a specific format independent of the length of the first field.
 function reformat_file_output {
-    awk -F "\t *" '{ printf "%-32s %s\n", $1 ":", $2}'
+    awk -F $'[\t][ ]*' '{ printf "%-32s %s\n", $1 ":", $2}'
 }
 
 
@@ -54,9 +54,9 @@ if [[ -n "$FFLAG" ]] || [[ ! -e "$FILE_TYPES" ]]; then
     # Rebuild from scratch.
     vecho 1 "Rebuild '$FILE_TYPES' from scratch..."
     find -L "$@" \( -type f -o -type l \) -print0 \
-        | xargs -0 file --separator $'\t' \
+        | xargs -0 file $FILE_FLAGS \
         | reformat_file_output \
-        | sort -t $'\t' -k 1 -k 4 >"$TMP"
+        | sort >"$TMP"
 else
     # Not rebuilding from scratch.
 
@@ -70,7 +70,7 @@ else
     #   5. Replace $FILE_TYPES with the updated temp index.
 
     NEW_OR_UPDATED="$(find -L "$@" \( -type f -o -type l \) \
-                                          -a -newer "$FILE_TYPES" -print)"
+                                   -a -newer "$FILE_TYPES" -print)"
     if [[ "$NEW_OR_UPDATED" = "" ]]; then
         vecho 1 "$FILE_TYPES is up to date."
 
@@ -82,9 +82,10 @@ else
                        | sed -e 's;.*/;;' -e 's;.*;-e /^&/d;g')"
 
     # papers/96-source_processing.pdf is to get the spacing right. Lazy.
-    (sed $DELETES <"$FILE_TYPES"; apply file --separator $'\t' $NEW_OR_UPDATED) \
-        | reformat_file_output \
-        | sort -t $'\t' -k 1 -k 4 >"$TMP"
+    (sed $DELETES <"$FILE_TYPES"; \
+         (apply "file $FILE_FLAGS" $NEW_OR_UPDATED \
+             | reformat_file_output)) \
+         | sort >"$TMP"
 fi
 
 if [[ "$VFLAG" -ge 2 ]]; then
