@@ -1,0 +1,67 @@
+To: J3                                                     J3/24-103
+From: Brad Richardson
+Subject: Constant Expressions for Generic Resolution
+Date: 2024-January-22
+
+1. Introduction
+===============
+
+There is a feature of many intrinsic functions that allows specifying
+the kind of their result via an optional argument. It would be desirable
+for user defined procedures to be able to mimic this feature.
+
+2. A Possible Solution
+======================
+
+One could imagine this feature as behaving in a way analogous to generic
+resolution based on the value of a constant expression argument. Such
+a feature could be introduced to allow for user defined procedures to
+mimic such behavior. Consider the following example using illustrative
+syntax mimicking the SIZE intrinsic for a user defined "container".
+
+type :: container
+  private
+  integer, allocatable :: vals(:)
+end type
+
+generic :: size => default_size, size_int32, size_int64
+
+function default_size(c) result(size)
+  type(container), intent(in) :: c
+  integer :: size
+
+  size = size(c, kind(size))
+end function
+
+function size_int32(c, k) result(size)
+  type(container), intent(in) :: c
+  integer, parameter :: k = int32
+  integer(k) :: size
+
+  size = size(c%vals, kind=k)
+end function
+
+function size_int64(c, k) result(size)
+  type(container), intent(in) :: c
+  integer, parameter :: k = int64
+  integer(k) :: size
+
+  size = size(c%vals, kind=k)
+end function
+
+Which one could then use as
+
+type(container) :: c
+...
+print *, size(c)
+print *, size(c, int32)
+print *, size(c, int64)
+
+An added benefit would be the ability to perform generic resolution
+based on constant expressions for other use cases. For example the
+following could be supported through use of a generic interface rather
+than run-time branches. This has the added benefit of resulting in
+compile time errors for unsupported options rather than run-time errors.
+
+call report_info("weather")
+call report_info("time-of-day")
