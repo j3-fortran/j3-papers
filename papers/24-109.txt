@@ -1,0 +1,218 @@
+To: J3                                                     J3/24-109
+From: Gary Klimowicz and JoR
+Subject: On Fortran awareness in a Fortran preprocessor
+Date: 2024-February-22
+
+Reference: 23-192r1
+
+
+Priorities
+==========
+
+  JoR has been operating with the following priorities in mind for the
+  preprocessor:
+  - Define the minimum viable product. Full compatibility with the C
+    preprocessor is not required.
+  - Try not to break existing use of C preprocessor usage in existing
+    Fortran codes.
+  - Define preprocessor behavior that is more compatible with the
+    Fortran language than the C preprocessor can be.
+
+  To that end, we will elaborate on some of the choices JoR made in its
+  recommendations.
+
+
+Fundamental features
+====================
+
+`__LINE__' and `__FILE__'
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  These are useful for producing error messages in Fortran programs,
+  even in the absence of preprocessor directives.
+
+
+`#line'
+~~~~~~~
+
+  Fortran program files are sometimes created with external tools (such
+  as `fypp' or even `cpp') that need to pass information about the true
+  origins of the source lines (as opposed to some temporary file created
+  in the process). The Fortran processor and preprocessor should be able
+  to know the true provenance of the lines in the Fortran program.
+
+
+`#ifdef', `#ifndef'
+~~~~~~~~~~~~~~~~~~~
+
+  These are two of the most frequently-used directives in existing
+  programs (especially `#ifdef').
+
+
+`#define' and `#undef'
+~~~~~~~~~~~~~~~~~~~~~~
+
+  Nothing to say except that they are used extensively in existing
+  programs. It does not appear necessary to support varargs-style macro
+  definitions '`#define FOO(a, b, ...)', as they haven't appeared in the
+  existing body of code that JoR has assembled.
+
+
+`#if', `#elif', `#else'
+~~~~~~~~~~~~~~~~~~~~~~~
+
+  Also frequently used, especially with in '`#if defined(FOO)''.
+
+
+`#include'
+~~~~~~~~~~
+
+  The most frequently used directive in existing codes. Sometimes used
+  in files that also use `INCLUDE' lines.
+
+
+`#error', and maybe `#warning'
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  `#error' appears in some existing codes. It is used to pass
+  compile-time error information to the programmer.
+
+
+`##' and `#' operators
+~~~~~~~~~~~~~~~~~~~~~~
+
+  These or used in some existing Fortran codes, and are useful for
+  constructing names and strings on the fly in the preprocessor.
+
+
+Case-sensitivity
+================
+
+  The C preprocessor (and so, presumably, its use in Fortran programs)
+  is sensitive to the case of identifiers. '`#define FOO 1'' and
+  '`#define foo 1'' define two different macros.
+
+  JoR recommending adopting case-sensitivity in the preprocessor is to
+  avoid potential name clashes in existing programs. (We do not yet know
+  the real impact of this, and would like to investigate it further: How
+  often does in matter?)
+
+  Adopting case sensitivity in the Fortran preprocessor could be
+  problematic if identifiers are used in a case-insensitive way:
+  ,----
+  | #define FOO bar
+  | program test
+  | implicit none
+  | integer, parameter :: FOO = 1
+  |
+  | print *, foo     ! Error; `foo` is not defined. FOO is.
+  | end
+  `----
+
+
+Token replacement in character literals
+=======================================
+
+  The C preprocessors, in general, do not look inside strings for token
+  replacement.
+
+  Although Hollerith data for `DATA' values and in `FORMAT' edit
+  descriptors was deleted from Fortran, it still appears in existing
+  programs.
+
+  If a processor supports Hollerith data, its preprocessor should not
+  make token replacements in that data.
+
+
+`//' is it a comment indicator or a concatenation operator
+==========================================================
+
+  Only a small number of the examined programs use `//' to introduce
+  comments on directive lines. We should probably only support `/* ...
+  */' comments in the Fortran preprocessor.
+
+  That would leave `//' as the Fortran concatenation operator.
+
+
+Do `INCLUDE' files get preprocessed (as if invoked with `#include')
+===================================================================
+
+  Why JoR says yes:
+  - To simplify the semantic description of the file inclusion
+    mechanisms.
+  - If we don't what happens to preprocessor directives placed in the
+    files brought in with `INCLUDE'? When would they get processed? The
+    only correct answer seems to be "at preprocessing time."
+
+
+What about directives in comments?
+==================================
+
+  Some programs appear to expect that preprocessor tokens will be
+  expanded in comment-style directives.
+
+  There are a couple issues that come up:
+  - How do you know a comment is a directive? We probably can't.
+  - What if we expand tokens in all comments? That might be OK. If it's
+    a directive, that would be fine. If it's not a directive, then we're
+    changing text that the rest of the Fortran processor is going to
+    ignore anyway.
+
+
+Is `!' an operator for `#if', `#elif'? Or an indicator for a comment?
+=====================================================================
+
+  There are many instances of `!' being used as an operator in existing
+  Fortran programs. The most obvious are in expressions like '`#if
+  !defined(FOO)''.
+
+  Perhaps there are places where we could treat '`!'' as a comment
+  character (such '`#endif''), but it's probably safest just to not
+  allow it in preprocessor directives.
+
+
+Fortran awareness
+=================
+
+Expansion in fixed-form Fortran
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  Fixed-form provides a few challenges.
+  - The preprocessor should not expand tokens that start with '`C'' in
+    column one. (You don't want to turn a comment into something else).
+  - The preprocessor should not expand a token that looks like it starts
+    in column six.
+  - The preprocessor should not expand treat a '`#'' in column six as a
+    directive. Existing codes have '`#'' in column six for
+    continuations.
+  - The preprocessor should not expand letters in a 'letter-spec-list'
+    in IMPLICIT statements.
+  - The preprocessor should expand the identifiers following a constant
+    and '`_'' for KIND names (e.g., '`1_MYREAL'').
+  - The length of a fixed-form line can change depending on the lengths
+    of expanded tokens.
+  - Identifiers in Fortran are allowed to be nearly the same length (63
+    characters) as the text on a fixed-form line (columns 7-72).
+    Identifiers need to be recognized across continuations.
+
+
+  The simplest approach is probably to conjoin the text of the
+  fixed-form lines and continuations before expanding tokens in the
+  preprocessor. That is, concatenate the following before macro
+  replacement:
+  - the line number (columns 1-5), the initial line columns 7-72
+  - columns 7-72 of all subsequent continuations
+
+  Should the preprocessor need to output the preprocessed text (as if
+  using the common '`-E'' option to `cpp'), the expanded text would be
+  output according to fixed-format rules (an initial line, and proper
+  continuation lines as needed).
+
+
+Spaces in fixed-form source
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  Normally, spaces in an identifier are ignored in fixed-form source.
+
+  To simplify the preprocessor, JoR recommends treating blanks as
+  significant between identifiers in fixed-form.
