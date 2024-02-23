@@ -1,6 +1,6 @@
 all:	meeting-docs index file-types
 
-MEETINGS=231 232 233
+MEETINGS=232
 meeting-docs:
 	bin/get-docs-for-meeting ${MEETINGS}
 
