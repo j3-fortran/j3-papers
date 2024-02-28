@@ -1,0 +1,111 @@
+To: J3                                                     J3/24-117
+From: Steve Lionel
+Subject: DIN02 Unions in interoperable derived types
+Date: 2024-February-28
+
+Reference: N2230 (WG5), 93-164 (not online)
+
+Introduction
+------------
+
+In C, it is possible to define a union where sections of a structure
+have two or more interpretations; many other languages have similar
+concepts. This feature is often used in data structures passed in APIs,
+for example the Windows API.
+
+Fortran users have been asking for unions in Fortran for decades;
+there are references to such a request in a paper 93-164, which sadly
+is not available online, but there is some discussion of it in the
+minutes of meeting 125.
+
+In 1985, DEC released VAX FORTRAN V4 that included unions as part of
+its record structure feature (STRUCTURE/RECORD/UNION/MAP), due to high
+demand from users and the schedule of what was then FORTRAN 88 receding
+into the distance. The feature proved so popular that most other Fortran
+compilers added support for it.
+
+The topic of unions has come up several times since that 1993 paper,
+but never made it to the feature list for development. A
+proposal for unions appeared in
+https://github.com/j3-fortran/fortran_proposals/issues/188 and it
+received positive support.
+
+Unions were requested for inclusion in F202Y by DIN - see item DIN02 in
+N2230.
+
+Proposal
+--------
+
+A union is a special kind of derived type, the difference being that
+in a union, all components share the same zero offset from the start
+of the union. The size of a union is the size of its largest component.
+In effect, unions create Equivalence association (8.10.1.2) among their
+components.
+
+The following restrictions would apply:
+
+- All components of a union type shall be interoperable.
+- The declaration of the union type shall have the BIND(C)
+  <type-attr-spec>
+- Types that have an ultimate component with a union are not
+  allowed in formatted I/O (includes list-directed and namelist)
+  unless a user-defined derived-type I/O procedure applies
+- Components of union types shall not have default initialization
+- Union types and types containing union components shall not have
+  structure constructors
+
+Note that the requirement of the type being interoperable prevents
+inclusion of pointers, allocatables, coarrays or type-bound
+procedures.
+
+There is no restriction against entities declared with union type
+being components of a non-interoperable derived type. A union type
+is not extensible, but a non-interoperable type with a union
+component can be extensible.
+
+Intrinsic assignment of a union type is done as if by the TRANSFER
+intrinsic subroutine. Defined assignment of a union is allowed.
+
+Suggested syntax
+----------------
+
+Declaring a union:
+
+TYPE, UNION, BIND(C) :: <union-name>
+[ <private-components-stmt> ]
+[ <component-part>...]
+END TYPE [<union-name>]
+
+Constraint: For a <component-part> in a union, <component-initialization>
+shall not appear
+
+
+Union specifier:
+
+Entities are declared to have union type by specifying the name of the
+union in a <declaration-type-spec> (7.3.2.1)
+
+Illustrative examples
+---------------------
+
+TYPE, UNION, BIND(C) :: my_union
+  INTEGER(C_INT) :: I
+  REAL (C_FLOAT) :: R
+END TYPE my_union
+
+TYPE my_type
+  INTEGER(C_DOUBLE) :: D
+  TYPE(my_union) :: U
+END TYPE <my_type>
+
+TYPE(my_type) :: Foo
+
+Foo contains components Foo%D, Foo%U%I, Foo%U%R and Foo%U. Foo%I and
+Foo%R, and Foo%U are Equivalence associated.
+
+Variables may also be declared to be of a union type, for example:
+
+TYPE(my_union) :: Bar
+
+
+--END--
