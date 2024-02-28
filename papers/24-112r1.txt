@@ -1,0 +1,183 @@
+To: J3                                                     J3/24-112r1
+From: Mark LeAir
+Subject: Flang Liaison Report
+Date: 2024-February-27
+
+#Reference: 23-224r1
+
+Flang Open Source Fortran Report
+================================
+
+Flang is an open-source compiler for Fortran. It is an official
+subproject of the LLVM Project (llvm.org). NVIDIA's portion of the work
+was partially sponsored by the US Department of Energy
+Exascale Computing Project (particularly, LLNL, Sandia and LANL).
+
+The current goals of the project are to
+    - Create  an open source Fortran compiler with
+      LLVM  licensing,
+    - that can be used for language and parallelization
+      experimentation,
+    - that exists as a peer in the LLVM community of languages,
+      like Clang,
+    - that can rely on LLVM code generation and parallelism
+      support for CPUs and GPUs.
+
+There is a Slack workspace for Flang and a number of conference calls
+related to Flang development.
+    - Flang biweekly sync call ("umbrella call")
+    - Flang biweekly technical call
+    - "Classic Flang" biweekly call
+    - OpenMP in Flang Technical Call
+
+Details can be found on the Getting Involved page
+http://flang.llvm.org/docs/GettingInvolved.html.
+
+The New LLVM Flang Compiler
+---------------------------
+
+The LLVM Fortran compiler is available at
+https://github.com/llvm/llvm-project (the LLVM monorepo) in the flang/
+directory.
+
+LLVM Flang is being developed under the Apache 2.0 license with LLVM
+exceptions (the same as LLVM, Clang, OpenMP, etc.).
+
+New features added between 10-October-2023 and 31-January-2024:
+
+- Lowering of procedure pointers.
+- Partial support for assumed ranks. It is possible to call procedure
+  with assumed ranks (the implementation of such procedures must be
+  done in C for now)
+- Lowering of ASYNCHRONOUS variables and IO (the IO runtime
+  implementation is currently not asynchronous, but this is valid from
+  a correctness point view)
+- Implemented legacy %VAL and %REF actual arguments
+- Added implementation for 31 IEEE intrinsics. IEEE_GET_FLAG,
+  IEEE_GET_HALTING_MODE, IEEE_GET_MODES, IEEE_GET_STATUS, IEEE_LOGB,
+  [f23] IEEE_MAX, IEEE_MAX_MAG, IEEE_MAX_NUM, IEEE_MAX_NUM_MAG, [f23]
+  IEEE_MIN, IEEE_MIN_MAG, IEEE_MIN_NUM, IEEE_MIN_NUM_MAG,
+  IEEE_QUIET_EQ, IEEE_QUIET_GE, IEEE_QUIET_GT, IEEE_QUIET_LE,
+  IEEE_QUIET_LT, IEEE_QUIET_NE, IEEE_SET_FLAG, IEEE_SET_HALTING_MODE,
+  IEEE_SET_MODES, IEEE_SET_STATUS, IEEE_SIGNALING_EQ,
+  IEEE_SIGNALING_GE, IEEE_SIGNALING_GT,, IEEE_SIGNALING_LE,
+  IEEE_SIGNALING_LT, IEEE_SIGNALING_NE, IEEE_SUPPORT_FLAG,
+  IEEE_SUPPORT_HALTING
+- MLIR OpenACC dialect and lowering from parse-tree to this dialect are
+  now mostly complete for OpenACC 3.3. Remaining work for reduction
+  with derived types and some cases of DO CONCURENT in OpenACC regions.
+- A pass and other improvements to Flang were added to provide more
+  alias information to LLVM. This resulted in significant speedups in
+  benchmarks like spec-2017.
+- Added support for  specifying the usage of a vector library with the
+  fveclib=  option. This allows the vectorisation of loops containing
+  arithmetic functions by calling their vector variants in the vector
+  libraries supported by LLVM.
+- Added support for new driver flags to support vscale-range (for
+  scalable vectors) and frame-pointer (for enabling and disabling).
+  This work also added related attributes in the MLIR LLVM dialect.
+- The Fortran 2008 execute_command_line intrinsic.
+- Added fdate, system, getlog, and getpid intrinsic extensions.
+
+
+Improvements to existing features added between 10-October-2023 and
+31-January-2024:
+
+- MOD and MODULO runtimes were improved, both in terms of accuracy and
+  of speed for the case where arguments are perfect integer values
+- Support for KNINT and KIDNINT intrinsic extensions.
+- Improved BIND(C) support. BIND(C) module variables are now supported,
+  and support was added to pass BIND(C) derived type by VALUE following
+  the C struct ABI on X86-64, and to return COMPLEX(10).
+- Preprocessor and parser were improved to deal with legacy features.
+  Preprocessor was extended to support legacy usage with line
+  continuations, and to allow some replacement in #include directives,
+  improved detection of misparsed statement functions in BLOCK and
+  ASSOCIATE. Improved function-like macros expansion. Improved support
+  for directives in expanded macros and some other expansion edge
+  cases. Multiple space in compiler directives is now accepted.
+- Non dummy assumed-size and BIND(C) derived types can be used as Cray
+  pointees
+- Semantics errors related to generics have been turned into warning to
+  accommodate nonstandard usages in pFUnit
+- New runtime checks have been added to enforce POINTER deallocation is
+  used to deallocate whole POINTERs only
+- New compile time errors and warnings have been added based on NAG and
+  gfortran test suite error tests.  Warnings for questionable
+  C_F_POINTER usages and warning regarding F2008 portability. New
+  errors regarding bad initialization, global name conflicts, and index
+  variables usages. Improved procedure interface compatibility checking.
+  More checks for REDUCE, ICHAR and ICHAR. Catch more declaration order
+  errors. Added definability checks in RANK. Reject NULL without MOLD
+  as assumed-rank argument. Compile-time checking of substring bounds.
+  More assumed-rank checks. Catch READ(... SIZE=) with NML= or FMT=*.
+- New OpenACC compile time errors. OpenACC trip count invariance is
+  now enforced. Mutually exclusive clauses restrictions are applied on
+  routine directive. Static and num are not accepted on gang clause on
+  routine directive.
+- Folding for more intrinsics. Fold MATMUL, IS_IOSTAT_END, and
+  IS_IOSTAT_ERR. Fold IS_CONTIGUOUS of component references with
+  non-contiguous base. BESSEL intrinsics with REAL(16) can be folded if
+  the host has libquadmath
+- New Ew.0 edit descriptor runtime error diagnostic
+- New IO runtime extensions or features. Unicode escape '\u' support.
+  Omit '/' in NAMELIST input from terminal. Allow a comma to terminate
+  a fixed input. Allow missing `w` on edit descriptor. Implement EX
+  editing for input & output. Handle incomplete NAMELIST input derived
+  type component list.
+- Improved support for allocatable components. Structure constructors
+  with allocatable components can now be lowered.
+- Support legacy branching to ENDIF from outside of the IF.
+- Documentation was added to describe OpenACC dialect design philosophy.
+- Added design doc for assumed-rank lowering and runtime.
+- Switched to a new lowering approach by default (HLFIR) that fixed
+  bugs around array expressions.
+- Enabled more APIs in the runtime offload builds
+- Speeding up compilation time. Improved parsing time in a corner case
+  and improved compilation type in programs with derived types with
+  many components. Sped-up large DATA statement processing.
+- Various NFCs (typo fixes, and refactoring, build fixes, reverts,
+  updates to move to llvm opaque pointers, ...).
+- Added a new compiler flag, fms-runtime-lib=, to select which Windows
+  CRT to use.
+- Improvements to OpenMP target offload. Experimental support exists
+  for AMD and Nvidia GPUs.
+
+
+Summary
+
+The current state of the LLVM Flang compiler:
+    - written in modern C++ following LLVM conventions
+    - over 200,000 lines of code, tests and scripts
+    - parses all of Fortran 2018 to abstract syntax trees (AST)
+    - parses  OpenMP 4.5 and some OpenMP 5.0
+    - parses OpenACC 3.0
+    - defines a "Fortran Intermediate Representation" (FIR) based on
+      LLVM's MLIR
+    - can analyze most OpenMP and OpenACC constructs
+    - can compile and correctly run Fortran 77 programs (passes FCVS
+      test suite), nearly all Fortran 95 programs, and many programs that
+      use Fortran 2003+ modern features.
+    - supports end-to-end compilation of all OpenMP 1.1 except for
+      reduction, privatization, and one atomic construct.
+    - for later versions of OpenMP, Flang has support for simd, task,
+      taskgroup etc.
+
+
+Current ("Classic") Flang Compiler
+----------------------------------
+
+The previous version of Flang, now known as Classic Flang, is derived from
+the PGI Fortran compiler, with some proprietary features removed (e.g.,
+OpenACC support, inter-procedure analysis). It is the basis for commercial
+Fortran compilers from Arm, AMD, and Huawei.
+
+Classic Flang is available for Linux on x86-64, OpenPOWER, and Arm
+processors. OpenPower support is not currently being maintained but it is
+still available.
+
+Classic Flang developers report that an alignment directive was added
+(!dir$ align 128) since our last report.
+
+Detailed status can be found in the biweekly call Google doc at:
+docs.google.com/document/d/1-OuiKx4d7O6eLEJDBDKSRnSiUO2rgRR-c2Ga4AkrzOI
