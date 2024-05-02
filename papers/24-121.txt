@@ -1,0 +1,154 @@
+To: J3                                                     J3/24-121
+From: Reinhold Bader
+Subject: interp request for iomsg in DTIO procedure
+Date: 2024-April-11
+References: 20-122, 24-007
+
+Introduction
+~~~~~~~~~~~~
+
+With Fortran 2023, restrictions on iomsg variables were removed, so a
+deferred-length string passed into a I/O statement by the user would
+be allocated to the needed length.
+This paper poses the question what happens if the I/O statement
+has been overloaded by a DTIO procedure.
+
+Example
+~~~~~~~
+
+Consider the following program:
+
+MODULE mod
+   TYPE :: t
+      INTEGER :: i
+   END TYPE
+
+   INTERFACE WRITE(FORMATTED)
+      MODULE PROCEDURE wf
+   END INTERFACE
+CONTAINS
+   SUBROUTINE wf(dtv, unit, iotype, v_list, iostat, iomsg)
+      CLASS(t), INTENT(in) :: dtv
+      INTEGER, INTENT(in) :: unit, v_list(:)
+      CHARACTER(len=*), INTENT(in) :: iotype
+      INTEGER, INTENT(out) :: iostat
+      CHARACTER(len=*), INTENT(inout) :: iomsg
+
+      iostat = 129
+      iomsg = 'Sorry, wf only pretends to be a DTIO procedure'
+
+   END SUBROUTINE
+END MODULE
+PROGRAM p
+   USE mod
+   TYPE(t) :: o = t(4)
+   INTEGER :: ierr
+   CHARACTER(len=:), ALLOCATABLE :: msg
+
+   WRITE(*,*, iostat=ierr, iomsg=msg) o ! (Y)
+   IF (ierr /= 0) THEN
+       WRITE(*,*) ierr, len(msg), msg ! (X)
+   END IF
+END PROGRAM
+
+Questions
+~~~~~~~~~
+
+(Q1) does the program conform to the standard?
+(Q2) if it conforms, what is the value of len(iomsg) inside the
+    procedure wf?
+(Q3) if it conforms, what will the statement marked (X) print?
+
+Discussion
+~~~~~~~~~~
+
+On the face of it, it would seem that the answer to (1)
+must be "yes", since the clearly stated intention of
+20-122 is that the appearance of an allocatable msg in
+statement (Y) should imply its allocation as needed.
+On the other hand, there seems to be no way how the
+implementor of a DTIO procedure can account for this
+situation, since the dummy argument iomsg simply does not
+have the ALLOCATABLE attribute.
+Note, though, that if iomsg= does not appear at all on the parent
+I/O statement, the situation is similar; different from other
+argument's characterizations (e.g., v_list) in 12.6.4.8.3, there
+are no words on what the processor provides for iomsg=. There
+does exist a processor dependency, but that seems to apply only
+in the case that error termination is initiated, which would not
+be the case in the scenario outlined above.
+
+
+Suggested resolution
+~~~~~~~~~~~~~~~~~~~~
+
+(A1) Yes, the intention was that this program should conform.
+     Edits are supplied to cover missing semantics of iomsg=
+     in DTIO procedures.
+
+(A2) The length of the iomsg string will have a processor-dependent
+     value.
+
+(A3) Assuming that the processor-dependent value for the length of the
+     iomsg dummy argument is at least 46, the output would be something
+     like
+
+     129  46  Sorry, wf only pretends to be a DTIO procedure
+
+
+Suggested edits to 24-007:
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Two alternatives are presented below. The first one regards
+the unallocated case as being non-present and therefore requiring
+processor-dependent handling inside the DTIO procedure; the second
+one considers the appearance of an allocatable iomsg= to generally
+require processor-dependent handling inside the DTIO procedure.
+
+Alternative 1
+=============
+
+In 12.6.4.8.3 Executing defined input/output data transfers,
+insert new para at the top of page 258 (before para 10):
+
+"If the parent I/O statement specifies an iomsg= of defined length,
+ the processor shall supply an iomsg= dummy argument of that length;
+ otherwise, its length has a processor-dependent positive value."
+
+In the current para 10 on that page, after
+
+"return an explanatory message in the iomsg argument", add
+
+"; an unallocated allocatable iomsg= appearing in the parent I/O
+ statement will be subsequently allocated to hold the number of leading
+ non-blank characters in the dummy argument, and with the value
+ represented by this sequence of characters"
+
+In 12.11.6 IOMSG= specifier, para 1, after "is assigned an explanatory
+message", replace "as if by intrinsic assignment" by
+
+"; this is done as if by intrinsic assignment, unless a defined
+ input/output procedure was executed (12.6.4.8.3)."
+
+
+Alternative 2
+=============
+
+In 12.6.4.8.3 Executing defined input/output data transfers,
+insert new para at the top of page 258 (before para 10):
+
+"If the parent I/O statement specifies a nonallocatable iomsg=,
+ the processor shall supply an iomsg= dummy argument of the length
+ of that variable; otherwise, the dummy argument's length has a
+ processor-dependent positive value."
+
+In the current para 10 on that page, after
+
+"return an explanatory message in the iomsg argument", add
+
+"; an allocatable iomsg= appearing in the parent I/O statement will be
+ subsequently allocated or reallocated to hold the number of leading
+ non-blank characters in the dummy argument, and with the value
+ represented by this sequence of characters"
+
+{no edit needed for 12.11.6 in this alternative}
