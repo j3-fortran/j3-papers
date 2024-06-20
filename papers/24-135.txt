@@ -1,0 +1,193 @@
+To: J3                                                     J3/24-135
+From: Mark LeAir
+Subject: Flang Liaison Report
+Date: 2024-June-20
+
+#Reference: 24-112r1
+
+Flang Open Source Fortran Report
+================================
+
+Flang is an open-source compiler for Fortran. It is an official
+subproject of the LLVM Project (llvm.org). NVIDIA's portion of the work
+was partially sponsored by the US Department of Energy
+Exascale Computing Project (particularly, LLNL, Sandia and LANL).
+
+The current goals of the project are to
+    - Create  an open source Fortran compiler with
+      LLVM  licensing,
+    - that can be used for language and parallelization
+      experimentation,
+    - that exists as a peer in the LLVM community of languages,
+      like Clang,
+    - that can rely on LLVM code generation and parallelism
+      support for CPUs and GPUs.
+
+There is a Slack workspace for Flang and a number of conference calls
+related to Flang development.
+    - Flang biweekly sync call ("umbrella call")
+    - Flang biweekly technical call
+    - "Classic Flang" biweekly call
+    - OpenMP in Flang Technical Call
+
+Details can be found on the Getting Involved page
+http://flang.llvm.org/docs/GettingInvolved.html.
+
+The New LLVM Flang Compiler
+---------------------------
+
+The LLVM Fortran compiler is available at
+https://github.com/llvm/llvm-project (the LLVM monorepo) in the flang/
+directory.
+
+LLVM Flang is being developed under the Apache 2.0 license with LLVM
+exceptions (the same as LLVM, Clang, OpenMP, etc.).
+
+New features added between 1-February-2024 and 15-June-2024:
+
+- Support for 128 bits float intrinsics in the runtime was added
+  optionally using libquadmath.
+- A susbset of IO runtime can now be built on the device (enough for
+  list directed IO of intrinsic types to work on device).
+- Added implementation for more intrinsics: REDUCE, OUT_OF_RANGE,
+  C_PTR_EQ, C_PTR_NE, SELECTED_CHAR_KIND, and SELECTED_LOGICAL_KIND
+- Lowered SELECT RANK and intrinsics accepting assumed-rank (currently
+  under experimental option) and added more semantics checks for
+  assumed-ranks.
+- New semantic checks and warnings were added:
+  Catch illegal type bound procedure overrides. Enforce F2023 C1520,
+  C15121,   and C1167. Catch more bad pointer initialization targets.
+  Catch NULL with NULL mold where mold is required. Catch attempt to
+  type a   subroutine. Catch inappropriate attributes for PARAMETERs.
+  Catch non-constant targets for procedure pointer initialization,
+  more   checks for INTRINSIC statement. Disallow branches into SELECT
+  TYPE/RANK case. Complete RESULT() name constraint checking. Catch
+  error on REPEAT(x,NCOPIES=array). Added warning when passing
+  Hollerith to CLASS(*). Added warnings about undefinable actuals for
+  ASYNCHRONOUS/VOLATILE dummy arguments.
+- A new MLIR dialect was created for CUDA Fortran extensions and work
+  started to lower the parse tree to this representation.
+- Added parsing, semantic checking and lowering up to FIR of Fortran
+  2023 DO CONCURRENT REDUCE clause.
+- Support for Access intrinsic extension.
+- Added support for vector always directive.
+- Support for parsing assume aligned directive.
+- Support for directives in types and between OpenMP directives and
+  Fortran constructs.
+- Added support for the -fopenmp= flag to support different openmp
+  runtimes.
+- Support for OpenMP array and pointer reductions.
+- Support for complex reductions.
+- Support for OpenMP workshare directive.
+- Added a general framework for lowering OpenMP combined and composite
+  constructs.
+- Support for OpenMP distribute construct.
+- Semantics and lowering support for default first privatisation of
+  variables in task regions.
+- Support for copyprivate.
+- Support for mapping derived types.
+- Support for lowering is_device_ptr and has_device_addr clauses in
+  target construct.
+
+Improvements to existing features added between 1-February-2024 and
+15-June-2024:
+
+- Downgraded some errors to warnings to support existing applications:
+  Relax some checks about ambiguous generics. Accept more unrecognized
+  !DIR$ compiler directives and accept directives in more locations.
+  Relax constraints on PURE/ELEMENTAL dummy arguments. Adjust %REF/%VAL
+  semantic checking. Allow derived types that could be BIND(C) in
+  BIND(C) interface even if they are not BIND(C).  Allow associating
+  polymorphic pointer or allocatable actual to monomorphic dummy as an
+  extension.
+- Enabled lowering of polymorphic entity by default (was under
+  experimental flag so far) after last set of features and bug fixes:
+  Implemented SIZEOF for polymorphic object. Added support of OPTIONAL
+  polymorphic captured in internal procedures. Lower vector subscripted
+  polymorphic designators. Fixed use after free of function results
+  that require finalization, fixed parent component representation in
+  the runtime, missing deallocation of nested allocatable components,
+  missing deep copy of nested allocatable components in
+  transformational intrinsic runtime.
+- Better representation of combined construct in OpenACC dialect, as
+  well as various small improvements in OpenACC dialect and lowering.
+- PROCEDURE statement improvements (5 commits): Allow INDEX as
+  interface, better handling of intrinsics and shadowed procedures used
+  as interfaces, align handling of BIND(C, NAME) with other compilers.
+- Implemented various TODOs around calls: Passing of assumed-type
+  arguments. Sequence association of arguments passed by descriptor.
+  Procedure pointers used in internal procedures. Support elemental
+  call to character function with result length that is not a compile
+  time constant. Handle OPTIONAL as ASSOCIATED TARGET argument.
+- Improvement around ASYNCHRONOUS: Handle implied ASYNCHRONOUS
+  attribute in semantics. Allow up to 1023 active asynchronous IDs in
+  the runtime.
+- Improved preprocessor to deal with line continuations in more
+  contexts and to support \ as line continuation.
+- Improved module files: embed a hash to disambiguate module with the
+  same names, better handling of renaming.
+- Compilation time improvement for big Fortran source files (less IR
+  generated for information about derived type, improved MLIR symbol
+  look-up times, sped-up some MLIR passes)
+- Better alias analysis to better distinguish between data and
+  non-data.
+- Added the possibility to register MLIR inlining interfaces
+- ISO_Fortran_binding.h can now be used in C++ files
+- Added way to disable some POINTER deallocation runtime checks.
+- Improved MLIR to support arrays with constant extents that do not fit
+  on 32 integers
+- Retain more language information in FIR in order to generate debug
+  info (e.g. procedure attributes) and improve line locations in some
+  contexts.
+- Various NFCs (update error messages, typo fixes in comments,
+  refactoring, documentation update, build fixes, use of MLIR
+  interfaces, reverts).
+- Modified the code generation for main programs. Flang now generate
+  code for main only if a main program is present. Previously a
+  FortranMain library was always linked.
+- Refactoring of all Flang passes so that they work with OpenMP
+  regions.
+- New MLIR representation for OpenMP worksharing loop that separates
+  the directive from the construct.
+- New MLIR representation for OpenMP clauses.
+- New MLIR representation for OpenMP privatization.
+
+
+Summary
+
+The current state of the LLVM Flang compiler:
+    - written in modern C++ following LLVM conventions
+    - over 200,000 lines of code, tests and scripts
+    - parses all of Fortran 2018 to abstract syntax trees (AST)
+    - parses  OpenMP 4.5 and some OpenMP 5.0
+    - parses OpenACC 3.0
+    - defines a "Fortran Intermediate Representation" (FIR) based on
+      LLVM's MLIR
+    - can analyze most OpenMP and OpenACC constructs
+    - can compile and correctly run Fortran 77 programs (passes FCVS
+      test suite), nearly all Fortran 95 programs, and many programs that
+      use Fortran 2003+ modern features.
+    - supports end-to-end compilation of all OpenMP 1.1 except for
+      reduction, privatization, and one atomic construct.
+    - for later versions of OpenMP, Flang has support for simd, task,
+      taskgroup etc.
+
+
+Current ("Classic") Flang Compiler
+----------------------------------
+
+The previous version of Flang, now known as Classic Flang, is derived from
+the PGI Fortran compiler, with some proprietary features removed (e.g.,
+OpenACC support, inter-procedure analysis). It is the basis for commercial
+Fortran compilers from Arm, AMD, and Huawei.
+
+Classic Flang is available for Linux on x86-64, OpenPOWER, and Arm
+processors. OpenPower support is not currently being maintained but it is
+still available.
+
+Since our last report, Classic Flang developers have made several
+improvements for Fortran standards conformance and stability.
+Classic Flang now supports LLVM 18.
+
+Detailed status can be found in the biweekly call Google doc at:
+docs.google.com/document/d/1-OuiKx4d7O6eLEJDBDKSRnSiUO2rgRR-c2Ga4AkrzOI
