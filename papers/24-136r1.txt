@@ -1,0 +1,216 @@
+To: J3                                                     J3/24-136r1
+From: Malcolm Cohen
+Subject: DIN-4: Generic processing of assumed-rank objects
+Date: 2024-June-24
+
+
+1. Introduction
+
+DIN-4 suggests
+    "Allow generic processing of assumed-rank arguments,
+     possibly under suitable restrictions."
+
+That is a very vague requirement.
+This paper suggests some concrete possibilities.
+
+Note that this is very much a first draft. Without doubt, it is not a
+complete set of proposals. It may, however, be the start of something
+small enough that we might be able to do it and get it right in one
+revision.
+
+
+2. Assumed size
+
+The fly in the ointment for most proposals is the possibility that
+the assumed-rank object might be associated with an assumed-size array.
+There are four obvious solutions. Whatever is done (which might not be
+one of these four) should be chosen consistently, for consistency.
+
+    (1) Don't allow anything that does not work for an assumed-size array.
+        This is approximately the current state of affairs, and is hardly
+        adequate.
+    (2) Use the bounds reported by LBOUND and UBOUND for assumed-size.
+        That produces a zero extent in the final dimension, so nothing will
+        happen in the case of assumed-size. Hello silent wrong answers.
+    (3) Raise a runtime error if the "generic processing" is applied to an
+        assumed-size array. This has the advantage of avoiding silent wrong
+        answers, but the disadvantage of not (in general) being capable of
+        being caught and handled by the user program.
+    (4) Only permit the generic processing in the RANK DEFAULT block of a
+        SELECT RANK that has a RANK(*) block. This forces the user program
+        to handle assumed-size specifically. It might be too much of a
+        straightjacket though.
+
+Of those obvious solutions, both (3) and (4) seem reasonable.
+
+
+3. Contexts for additional usage of assumed rank
+
+3.1 Whole-array reductions
+
+It would seem to unproblematic to permit assumed rank in array reduction
+intrinsics when there is no DIM argument. The result in this case is
+reduced all the way to scalar, so there is no nightmare "variable rank"
+expression.
+
+ALL, ANY, REDUCE, SUM, PRODUCT, MAXVAL, MINVAL, IALL, IANY,
+IPARITY, PARITY.
+
+Currently all those functions require the argument being reduced to be an
+array. It would be highly undesirable for the scalar association case of
+assumed rank to make an error, and the result is obvious (it's just the
+value of the scalar).
+
+Consistency might suggest permitting scalar all the time, but of course
+that would inhibit detection of typos in the usage of such functions; the
+consistency argument is weaker than the error-detection argument, so unless
+there is another reason for permitting scalar, they should continue to
+require arrays.
+
+The location reductions MAXLOC, MINLOC, FINDLOC could also be permitted for
+assumed rank. The sizes of their results would be non-constant, but the
+rank would be constant.
+
+3.2 Array constructors
+
+An array is permitted in an array constructor, and simply expands to its
+elements in array element order. That seems perfectly reasonable for
+assumed rank (as usual, except in the assumed-size situation).
+On the other hand, it might not be very useful.
+
+3.3 Array transformation intrinsics
+
+The only one here that is clearly non-problematic is RESHAPE.
+It does not seem very useful by itself.
+
+3.4 Actual argument for sequence association
+
+This would seem to be unproblematic in all cases. If contiguous, the
+processor can just pass the address of the first element, and if non-
+contiguous, the processor can do copy-in/copy-out (at the usual cost).
+
+On the other hand, many people prefer to use assumed-shape, as sequence
+association requires passing any necessary size/shape info separately.
+It doesn't seem like a great idea to have special support for an old-
+fashioned (and error-prone) feature and not the more modern ones.
+
+We could, of course, allow passing by assumed-shape simply by adding
+size-one extents for missing extents, and collapsing extra extents into
+the final extent (with copy-in/copy-out if not contiguous in the
+collapsed extents). This does not seem like it is too complicated for
+normal use (the user can possibly make this happen himself if he wants).
+
+3.5 Contiguous assumed rank
+
+There are additional contexts where a contiguous assumed rank object could
+be used, for example, as the target in a rank-remapped pointer assignment.
+Because rank-remapping pointer assignment has all the bounds specified, it
+would be unproblematic for assumed-size too.
+
+There has also been a suggestion to allow rank-remapping in ASSOCIATE to
+enable this to be done. That seems to be unnecessary given we already have
+rank remapping for pointers, and there has been no clamour for it in
+ASSOCIATE for things that are not assumed-rank.
+
+3.6 C_LOC
+
+C_LOC of an array returns the address of its first element. There would
+thus seem to be no problem permitting it for an assumed rank array, though
+it would not be of much use unless the array is contiguous.
+
+3.7 Array elements
+
+A slight extension of the existing rank-independent subscripting syntax
+would make it possible to reference elements of an assumed-rank array, even
+one that is associated with an assumed-size actual argument. The question
+that arises is what happens when the number of subscripts is incorrect?
+For insufficient subscripts, some obvious possibilities are
+    - error termination
+    - the missing subscripts are treated as equal to the lower bound
+    - processor-dependent random garbage results or crash,
+    - have a pseudo-subscript STAT=, like we do for image indexing.
+For too many subscripts, some obvious possibilities are
+    - error termination
+    - the extra subscripts are ignored
+    - segmentation fault crash.
+
+The slight extension is that we need to clearly permit the subscripting
+vector to have non-constant size when the object is assumed rank.
+
+3.8 Array sections with triplets
+
+A similar extension is possible here, and similar questions arise when the
+user gets it wrong. It would, however, be important not to permit triplet
+vectors to be variable size, otherwise we don't know the rank of the
+subobject that would be produced.
+
+3.9 Other array sections
+
+These don't seem reasonably possible without falling foul of the "unknown
+rank" issue.
+
+
+4. Assumed rank array traversal
+
+Due to the problem of variable-rank expressions, there is no obvious way to
+use elemental procedures on assumed-rank objects, even though the compiler
+would know how to traverse them.
+
+Possibilities here would be
+    - a DO loop which has an index vector (of unknown size)
+      instead of an index variable;
+    - a DO association loop which has an associate-name that is associated
+      with consecutive array elements on each iteration.
+
+Actually, it would probably be better not to reuse the DO keyword here, as
+this is rather a special case, and operates quite differently to the normal
+DO.
+
+For example, in casual BNF:
+(a)
+    TRAVERSE (assumed-rank-object-name) WITH (index-vector-name)
+        block
+    END TRAVERSE
+
+In the block, index-vector-name would take on successive values such that
+it traverses the object in array element order. For example
+    TRAVERSE (A) WITH (IDX)
+        ... here, A(@IDX) is the array element for this iteration.
+
+I think we'd want IDX to be a construct entity of rank 1, size equal to
+RANK(A), and of type INTEGER with a processor-dependent kind not less than
+default integer kind. Or we could allow an integer-type-spec in front of
+IDX, e.g.
+    TRAVERSE (A) WITH ( [ integer-type-spec :: ] IDX )
+but it may be cleaner just to require the processor to automatically make
+the kind big enough to hold any subscript value.
+
+(b)
+    TRAVERSE (assumed-rank-object-name) ASSOCIATE (element-name)
+        block
+    END TRAVERSE
+
+In the block, element-name would be associated with each successive element
+in the iteration, e.g.
+    TRAVERSE (A) ASSOCIATE (ELT)
+        ... here, ELT is the array element for this iteration
+
+This avoids messing around with index values, needing to know what integer
+kind they should be, etc. If one wants to mess around with index values,
+e.g. to do a neighbourhood computation, perhaps one should be constructing
+and updating the index values manually anyway.
+
+
+5. Conclusions
+
+Rank-remapping pointer assignment would seem to be easy and lacking in
+problems (even assumed-size).
+
+After that, array reduction intrinsics without DIM= have no problems
+other than the assumed-size one, and so would seem to be worth considering.
+
+Although there are even more potential problems, the more general array
+element subscripting and array traversal operations are also worth further
+consideration.
+
+===END===

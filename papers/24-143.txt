@@ -1,0 +1,184 @@
+To: J3                                                     J3/24-143
+From: Malcolm Cohen
+Subject: Rank-independent looping
+Date: 2024-June-24
+
+
+1. Introduction
+
+It has been suggested that it should be easier to write loops to traverse
+an array in array element order, in a syntax that does not depend on the
+rank of the array.
+
+This paper describes some practical suggestions and compares them to the
+existing ways that we have to do the same thing.
+
+
+2. Outline
+
+The suggestion is that something like
+
+    DO @idx = from, to
+        ... expect to operate on array(@idx)
+    END DO
+
+would be useful. The "idx" variable would be a vector of size rank(array),
+and the "from" and "to" expressions would be conformable with it.
+
+This would have exactly the same effect as
+
+    IF (all(from<=to)) THEN
+      idx = from
+      DO
+        ... something with array(@idx)
+        DO j=1,rank(idx)
+          idx(j) = idx(j) + 1
+          IF (idx(j)<=to(j)) EXIT
+          idx(j) = from(j)
+        END DO
+        IF (j>rank(idx)) EXIT
+      END DO
+    END IF
+
+    Note that wrapping it in a quick test for non-zero-trip allows it to
+    be a simple end-tested loop without convoluting the incrementation
+    code or needing another index vector temp.
+
+
+3. Discussion
+
+(a) It is noted that the @-sign in the syntax is completely
+    unnecessary; that idx is a vector is sufficient.
+    It could be argued that the @-sign would signal to the reader that
+    this is a multiple loop, not a single loop. A new keyword rather than
+    special character soup could be a better signal, e.g.
+        DO,MULTI: idx=from,to
+
+(b) Although the suggested new syntax is certainly shorter than the simple
+    code we have to do it already, the existing method does not exactly
+    need rocket science to write - it is completely straightforward.
+
+(c) It might be suggested that the increment loop be extracted into a new
+    user function, and reused, for example:
+
+    The simple case, for from==1, could be simplified to
+
+    IF (all(from<=to)) THEN
+      idx = from
+      DO
+        ... something with array(@idx)
+        IF (.NOT.next(idx,from,to)) EXIT
+      END DO
+    where
+      LOGICAL FUNCTION next(idx,from,to)
+        INTEGER,INTENT(inout) :: idx(:)
+        INTEGER,INTENT(in) :: from(:),to(:)
+        INTEGER j
+        DO j=1,size(idx)
+          idx(j) = idx(j) + 1
+          IF (idx(j)<=to(j)) EXIT
+          idx(j) = from(j)
+        END DO
+        next = j<=size(idx)
+      END FUNCTION
+
+    That certainly simplifies the original loop a little, but the
+    extra boilerplate needed for the function makes the idea less
+    attractive. Also, one would need a different version for e.g. a
+    scalar FROM argument.
+
+(d) It might also be suggested to have an intrinsic increment/test
+    procedure, e.g. (generalised):
+      SUBROUTINE NEXT_ITER(idx, nextidx, from, to, step, done)
+        INTEGER(*),INTENT(IN) :: idx(:)
+        INTEGER(KIND(idx)),INTENT(OUT) :: nextidx(SIZE(idx))
+        INTEGER(*),INTENT(IN),RANK(0 or 1) :: from, to, step
+        LOGICAL(*),INTENT(OUT) :: done
+    Making it intrinsic means the processor handles any boilerplate
+    overheads of scalar/conformable-array and different kinds.
+    It is a rather specialised intrinsic though. Maybe too special?
+
+
+4. Generalisation
+
+The obvious generalisation includes step values, e.g.
+
+    DO,MULTI: idx = from, to, step
+        ... do we expect to operate on array(@idx)?
+        ... or are we just writing a convoluted loop cryptically?
+    END DO
+
+There are several obvious ways to write this at present.
+
+(1) Precalculate the iteration counts.
+    This needs niter and iter rvector temps with the same size as idx.
+
+    IF (any(step==0)) ERROR STOP 'DO step of zero is a bad idea'
+    niter = (to-from+step)/step
+    IF (all(niter>0)) THEN
+      idx = from
+      iter = 1
+      DO
+        ... something with array(@idx)? Or...
+        DO j=1,rank(idx)
+          idx(j) = idx(j) + step(j)
+          iter(j) = iter(j) + 1
+          IF (iter(j)<=niter(j)) EXIT
+          idx(j) = from(j)
+          iter(j) = 1
+        END DO
+        IF (j>rank(idx)) EXIT
+      END DO
+    END IF
+
+(2) Use the sign of the step in the wraparound/termination test.
+    Here it is easier to have a top-tested loop with a "nextidx" temp.
+
+    IF (any(step==0)) ERROR STOP 'DO step of zero is a bad idea'
+    idx = from
+    DO
+      DO j=1,rank(idx)
+        nextidx(j) = idx(j) + step(j)
+        IF ((step(j)>0 ? nextidx(j)<=to(j) : nextidx(j)>=to(j))) EXIT
+        idx(j) = from(j)
+      END DO
+      ... something with array(@idx)? Or...
+      IF (j<=rank(idx)) EXIT
+      idx = nextidx
+    END DO
+
+
+5. Specialisation
+
+It might also be worth considering whether we want to instead (or as well)
+provide explicit constructs for array traversal.
+
+For example,
+    TRAVERSE (array) WITH (idx)
+        ... here, array(@idx) is the array element for this iteration.
+    END TRAVERSE
+where idx is locally-scoped with a kind sufficient for any array size.
+
+Or,
+    TRAVERSE (array) ASSOCIATE(elt)
+        ... here, elt is the array element for this iteration
+    END TRAVERSE
+
+The second suggestion only works for traversing a single array, whereas the
+first (like all the previous ones) works for traversing multiple arrays in
+lockstep as long as they have the same bounds. The only functionality that
+is missing is the "step/=1" capability. That is probably rare enough that
+even people who dislike the verbosity of the existing F2023 feature might
+not mind too much.
+
+
+6. Recommendations
+
+The author of this paper thinks that the fears of verbosity are somewhat
+overblown, i.e. that we do not actually need this feature. Other reasonable
+people may disagree.
+
+If we want to have the easiest array traversal, the TRAVERSE construct
+may be worth considering.
+
+===END===
