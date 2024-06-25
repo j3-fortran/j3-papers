@@ -1,0 +1,126 @@
+To: J3                                                     J3/24-134r1
+From: Malcolm Cohen; Bill Long
+Subject: The unbearable vagueness of being CFI_setpointer
+Date: 2024-June-24
+References: 24-007
+
+
+1. Introduction
+
+The description of CFI_setpointer is a bit vague.
+Perhaps that explains why some compilers implement it wrongly.
+We should improve the description.
+
+
+2. The issues
+
+a. Is "result" permitted to be the same as "source"?
+   ... obviously it is, from the example, but perhaps it should be
+   stated in normative text. It is probably not permissible for e.g.
+   CFI_section.
+
+b. How is "base_addr" modified? I believe that result->base_addr should be
+   assigned the un-modified value of source->base_addr, except when source
+   itself is a null pointer, but this is not clearly stated. In fact little
+   is clearly stated, it is all done by analogy, viz "a null pointer" or
+   "a pointer to the same object".
+
+   There is a compiler that produced a different base_addr (adding the
+   lower_bound*sm to the base_addr). I think I know what should happen, viz
+   the effect should be the same as "lower bounds" pointer assignment in
+   Fortran, but the reader should not have to guess so hard.
+
+c. How is "dim" modified?
+   (i) It does not state anything about how dim is modified when the result
+       becomes a disassociated pointer, but it does state that dim is
+       (unconditionally) updated. That is not very helpful. Does it become
+       processor dependent, or should it be unmodified in this case, or
+       does it become undefined? Maybe one is not allowed to look at them,
+       but that is a different question.
+   (ii) For the associated pointer result, presumably dim.sm and dim.extent
+        are copied from source without change, but that is not explicit.
+   (iii) See "g" below.
+
+d. result "shall be the address of a C descriptor for a Fortran pointer".
+   What does this even mean? Does it mean it is required to be a dummy
+   argument associated with an actual argument that is a pointer in a
+   Fortran procedure? Surely not! CFI_establish just says it establishes a
+   C descriptor, not "for a Fortran pointer", so that would imply that a
+   C descriptor established by CFI_establish is not a Fortran pointer.
+
+   I think what it should mean, simply, is a C descriptor whose attribute
+   member has the value of CFI_attribute_pointer.
+
+e. There are no requirements on the lower_bounds argument when source is a
+   null pointer or source->rank==0. It also does not have "; otherwise,
+   lower_bounds is ignored" (cf. elem_len in CFI_establish).
+   For consistency, perhaps it should.
+
+f. If a Fortran processor has more members in CFI_cdesc_t than is required
+   by the standard, may those members be updated? Apparently not, as it is
+   stated that "base_addr, dim, and possibly elem_len" are updated!?
+   Surely a processor must be allowed to update its private members with
+   information too.
+
+g. For the associated pointer result, how is dim.lower_bound updated when
+   lower_bounds is a null pointer? The wording here is very woolly, one
+   might imagine that they are copied from source, but rebasing to zero
+   would also be almost semi-plausible. As lower bounds are per-descriptor
+   not per object, the existing wording is silent on what happens.
+
+
+3. Examples
+
+(d) extern void fortran_subroutine(CFI_cdesc_t *arg);
+    void example_d(void) {
+        float x[100];
+        CFI_CDESC_T(2) cd;
+        static CFI_index_t ones[2] = { 1, 1 };
+        static CFI_index_t tens[2] = { 10, 10 };
+        int ind;
+        ind = CFI_establish((CFI_cdesc_t *)&cd,&x,CFI_attribute_pointer,
+                            CFI_type_float,sizeof(float),2,tens);
+        if (ind!=CFI_SUCCESS) abort();
+        // This next call is only allowed if "cd" is considered to be a
+        // Fortran pointer. On the face of it, that appears to be false.
+        ind = CFI_setpointer((CFI_cdesc_t *)&cd,(CFI_cdesc_t *)&cd,ones);
+        if (ind!=CFI_SUCCESS) abort();
+        // The fortran_subroutine should receive a rank-two array pointer
+        // with lower bounds 1,1 and extents 10,10.
+        fortran_subroutine((CFI_cdesc_t *)&cd);
+    }
+
+
+4. Suggested edits to 24-007.
+
+[528:16] 18.5.5.9 The CFI_setpointer function, p2 Formal Parameters,
+         result parameter,
+         Change "for a Fortran pointer"
+         to "whose attribute member has the value CFI_attribute_pointer".
+
+[528:24] Same subclause, same paragraph, source parameter,
+         Append sentence
+    "It is permitted for \cf{source} to be equal to \cf{result}."
+
+[528:26] Same subclause, same paragraph, lower_bounds parameter,
+         After "elements"
+         insert "; otherwise, \cf{lower_bounds} is ignored".
+
+[528:34] Same subclause, p3 Description,
+         After "\cf{lower-bounds} array." insert new sentence
+    "If \cf{source->rank} is nonzero and \cf{lower_bounds} is a null
+     pointer, the lower bounds in \cf{result} are assigned the values of
+     the lower bounds in \cf{source}."
+
+[528:27-28] Same subclause, p3 Description
+            Delete "the base_addr, dim, and possibly elem_len members",
+            so that the whole introductory part of the sentence is simply
+    "Successful execution of CFI_setpointer updates the C descriptor with
+     the address result as follows:".
+
+[528:36] Append a sentence after the current sentence ending with "is
+     not modified." as follows: "If \cf{source} is not a null pointer
+     and no error is detected, \cf{result->base_addr} is assigned the
+     value of \cf{source->base_addr}."
+
+===END===

@@ -1,0 +1,152 @@
+To: J3                                                     J3/24-146
+From: John Reid & Reinhold Bader
+Subject: Interp. on correspondence of unallocated coarrays
+Date: 2024-June-24
+References: 24-007, 23-219, 23-219r1
+
+Introduction
+~~~~~~~~~~~~
+
+This is a fresh attempt to address the problems we raised in 23-219,
+taking into account the comments in 23-219r1. It is self-contained:
+the reader does not need to consult these earlier papers.
+
+--------------------------------------------------------------------
+
+NUMBER: F23/xxx
+TITLE: Correspondence of unallocated coarrays
+KEYWORDS: corresponding, unallocated, coarray
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION 1:
+
+The definition of "corresponding coarrays" (5.4.7, paras 3 and 4) does
+not apply to an unallocated allocatable coarray. This means that the
+program
+
+program allocation_1
+   implicit none
+   real, allocatable :: a[:,:]
+   call work(a)
+ contains
+   subroutine work(a)
+   real, allocatable, intent(inout) :: a[:,:]
+   integer n
+      n = 3 ! Replace with a computation for n
+      allocate(a[n,*])
+      ! Insert a computation for coarray a of size n
+   end subroutine
+end program
+
+will fail during execution because of the requirement
+(see [148:32-33] 9.7.1.2, para 4, sentence 3)
+"If the coarray is a dummy argument, the ultimate arguments
+(15.5.2.4) on those images shall be corresponding coarrays."
+
+Was this intended?
+
+QUESTION 2:
+
+Consider the following program:
+
+program allocation_2
+   implicit none
+   integer, allocatable :: a[:], b[:]
+   if (this_image() == 1) then
+      call alloc(a)
+   else
+      call alloc(b)
+   end if
+   if (this_image() == 1) then
+      a = 1
+   else
+      b = 2
+   end if
+   sync all
+   if (this_image() == 1) then
+      if (allocated(a)) print *, "On image 1, a is allocated, a[1]= ",&
+                                 a[1], ", a[2]= ", a[2]
+   end if
+contains
+   subroutine alloc(a)
+      integer, allocatable, intent(inout) :: a[:]
+      allocate(a[*])
+   end subroutine
+end program
+
+This program usually compiles and executes, and typically produces the
+following output:
+
+  On image 1, a is allocated, a[1]=  1 , a[2]=  2
+
+which indicates that on image 1 the coarray a is treated as allocated
+with a[2] having the value 2. This must have been the result of the
+execution of the statement
+       b = 2
+on another image.
+
+Was this intended?
+
+
+ANSWER 1:
+
+9.7.2.1 para 4 requires that
+   "If the coarray is a dummy argument, the ultimate arguments
+   (15.5.2.4) on those images shall be corresponding coarrays.",
+but an unallocated allocatable coarray is not established (5.4.8,
+para 2) and has no corresponding coarrays because the definition of
+"corresponding coarrays" (5.4.7, para 3) is
+   "For each coarray on an image, there is a corresponding coarray with
+   the same type, type parameters, and bounds on every other image of a
+   team in which it is established (5.4.8).".
+
+It follows that no allocation of an allocatable coarray that is a
+dummy argument can conform to the standard. This was not intended.
+
+Edits correct this.
+
+
+ANSWER 2:
+
+This program does not conform to the standard for the reasons given
+in ANSWER 1. Furthermore, it was intended that it should not be possible
+for a conforming program to allocate a coarray to have different names
+on different images. The edits will not allow this.
+
+
+EDIT to 24-007
+
+[148:32-33] In "9.7.1.2 Execution of an ALLOCATE statement", replace
+para 4 by two paragraphs:
+
+"For each unallocated coarray or coarray potential subobject component
+ (7.5.1), there exists a corresponding unallocated object or subobject
+ with the same declared type, rank, corank and non-deferred type
+ parameters on each active image of the current team.  For such objects
+ that are not dummy arguments or subobjects thereof, the corresponding
+ object is
+ * the coarray with the same name on those images, and, if the object
+   is a local unsaved variable of a recursive procedure, at the same
+   depth of recursion of that procedure, or
+ * the potential subobject component of the same named object on those
+   images, with the same component name, at the same level of component
+   selection, if a subobject of an array, the same position in
+   array element order, and if the named object is a local unsaved
+   variable of a recursive procedure, at the same depth of recursion
+   of that procedure.
+ For such objects that are dummy arguments or subobjects thereof, the
+ corresponding object or subobject is that of its ultimate argument on
+ those images, which shall be declared with the same name in the same
+ scoping unit.
+
+ If an allocation specifies an unallocated coarray or an unallocated
+ coarray potential subobject component, the same ALLOCATE statement
+ shall be executed for its corresponding unallocated object or
+ unallocated subobject on each active image of the current team,
+ with the same dynamic type and the same values of corresponding
+ type parameters. The values of corresponding bounds and corresponding
+ cobounds shall be the same on those images."
+
+{The additional complexity is needed to also cover all kinds of
+ subobject selection, as well as coarrays in recursive procedures.)

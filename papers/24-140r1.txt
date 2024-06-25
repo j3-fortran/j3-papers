@@ -1,0 +1,183 @@
+To: J3                                                     J3/24-140r1
+From: John Reid & Malcolm Cohen
+Subject: Requirements and specifications for generic subprograms
+Date: 2024-June-24
+References: N2217, 23-223r2, 23-244r1, 24-139
+
+1. Introduction
+===============
+
+At its meeting Jun 12-16, 2023, WG5 decided to approve generic
+subprograms as described in N2217 for Fortran 202Y. Use cases for
+this are set out in N2217. Formal requirements were approved by J3
+in 23-233r2.  Formal specifications were approved by J3 in 23-244r1.
+
+I have been working with Hidetoshi Iwashita on a follow-up paper on
+syntax (finally 24-139), and have discussed it with Malcolm Cohen,
+Brad Richardson, and Tom Clune. These discussions have led to
+modifications to the paper and have exposed wishes to make some changes
+to the requirements and specifications. This paper discusses those
+changes.
+
+
+2. Allow a generic procedure to have no generic dummy arguments
+===============================================================
+
+Specification s07 in 23-244r1 states
+
+s07. A generic procedure shall have at least one generic dummy argument.
+
+Note that s04 states
+
+s04. Every generic subprogram shall have a generic name.
+
+s04a. That generic name may be the same as an existing generic name that
+      is accessible in the containing scoping unit.
+
+Thus two generic subprograms with the same name define a single generic
+subprogram. It may be convenient to specify one of the instances
+separately, avoiding a long SELECT clause. The requirement for at least
+one generic dummy argument seems to be unnecessary.
+
+Note that we have no requirement for a generic type declaration
+statement to resolve to more than one type-kind-rank combination so
+the requirement for at least one generic dummy argument is toothless.
+
+On the other hand, note that the GENERIC statement allows an ordinary
+procedure to be included in a generic set, so there is no loss of
+functionality in keeping s07.
+
+For example,
+
+        ...
+    CONTAINS
+        GENERIC SUBROUTINE sub()
+            ...
+
+vs.
+
+        GENERIC :: sub=>sub0
+        PRIVATE sub0
+        ...
+    CONTAINS
+        SUBROUTINE sub0()
+            ...
+
+
+3. Allow more general dependencies than those of RANKOF clause
+==============================================================
+
+Requirement f in 23-223r2 states
+
+f. A local variable of a generic procedure can have the same type, type
+   parameters, and rank, as a generic dummy argument. Function result
+   variables similarly.
+
+It has been suggested that the rank of a local variable be allowed to
+depend more generally on the ranks of dummy arguments. Here is a
+simple example,
+
+    GENERIC SUBROUTINE SUB(x)
+        REAL, RANK(1:3) :: x
+        TYPEOF(x), RANK(RANK(x) + 1) :: y
+
+I am opposed to this change. It is "mission creep". N2217 proposes a
+RANKOF clause, equivalent to RANK(RANK(x)).
+
+
+4. Allow any variable to be the selector in a SELECT GENERIC statement
+======================================================================
+
+Requirements g and h in 23-223r2 state
+
+g. There shall be a construct for ad-hoc specialization of executable code
+   for the type and/or kind type parameter values of a dummy argument that
+   is generic in type and/or kind.
+
+NOTE: We already have such a construct for runtime polymorphism, but this
+      requirement means compile-time polymorphism.
+
+h. There shall be a construct for ad-hoc specialization of executable code
+   for the rank of a dummy argument that is generic in rank.
+
+It has been suggested that any variable be allowed to control this. Here
+is a simple example,
+
+            GENERIC FUNCTION s(a,b) RESULT(c)
+                TYPE(REAL,COMPLEX), INTENT(IN), RANK(:) :: a, b
+                TYPEOF(b), RANK(RANK(b)) :: c, temp
+                ...
+                SELECT GENERIC TYPE (temp)
+                TYPE IS (REAL)
+                    temp = temp * (1-b)
+                TYPE IS (COMPLEX)
+                    ! Just this once, we want the conjugate.
+                    temp = temp * (1-CONJG(b))
+                END SELECT
+                ...
+                c = temp
+            END FUNCTION
+
+I am opposed to this change. It is the types, kinds, and ranks of the
+dummy arguments that determine which instance is referenced and it is
+clearer to use the rank or type and kind of a dummy argument to
+control the selection in a SELECT GENERIC statement. In the above
+example, b can be used in the SELECT GENERIC TYPE statement.
+
+
+5. Allow external procedures to be generic
+==========================================
+
+Specification s02 in 23-244r1 states
+
+s02. A generic subprogram shall be a module subprogram, and shall not have
+     multiple entry points (i.e. no ENTRY statement).
+
+It was proposed in N2217 to allow generic subprogram to be external, and I
+see no problems with this as long as the interface is required to be
+explicit. 23-244r1 notes
+
+NOTE: Although N2217 envisaged generic external subprograms, external
+      subprograms need to have global names to be referenced. That would be
+      undesirable - putting them in a module is easier to understand and
+      safer to use.
+
+NOTE: In principle, this includes the possibility of being a separate
+      module subprogram defined in a submodule, in which case there would
+      be a generic module procedure interface in the ancestor module.
+
+NOTE: This specification may be revisited if sufficiently compelling
+      reasons for needing generic external subprograms are found, and that
+      are not satisfied by other means such as submodules.
+
+One main argument for permitting this would be that some people would be
+happy to put generic external subprograms into a library for use by others,
+but not so happy to put into a module and then into a library.
+
+The argument against would be that generic subprograms are new, and it is
+not a problem to make a module to contain them. Using modules is safer and
+avoids external name mangling issues.
+
+
+6. Allow external procedures to be internal
+===========================================
+
+Specification s02 in 23-244r1 states
+
+s02. A generic subprogram shall be a module subprogram, and shall not have
+     multiple entry points (i.e. no ENTRY statement).
+
+For example,
+
+    PROGRAM example
+        CALL sub(123)
+        ...
+    CONTAINS
+        GENERIC SUBROUTINE sub(x)
+            TYPE(REAL,INTEGER,LOGICAL) :: x
+            ...
+        END SUBROUTINE
+    END IF
+
+I see no problem with this but it was not suggested in N2217. Note that the
+scope of the generic internal subprogram is limited to the host procedure.
