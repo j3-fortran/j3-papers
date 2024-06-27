@@ -1,0 +1,120 @@
+To: J3                                                     J3/24-122r1
+From: Reinhold Bader & John Reid & Malcolm Cohen
+Subject: Interp on parent component naming
+Date: 2024-June-25
+References: 24-007
+
+----------------------------------------------------------------------
+
+NUMBER: F23/014
+TITLE: Parent component naming
+KEYWORDS: Type extension, Parent component
+DEFECT TYPE: Clarification
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider the following modules:
+
+    MODULE m1
+      TYPE t
+        INTEGER c
+      END TYPE
+      TYPE,EXTENDS(t) :: e1
+        INTEGER d
+      END TYPE
+    END MODULE
+    MODULE m2
+      USE m1,t2 => t, t3=>t
+      TYPE,EXTENDS(t2) :: e2
+        LOGICAL f
+      END TYPE
+      TYPE,EXTENDS(t3) :: e3
+        CHARACTER(5) w
+      END TYPE
+    END MODULE
+
+These modules define a type T, and three extensions E1, E2, and E3.
+
+Q. What is the name of the base component in the three extensions?
+
+The standard says
+    "The name of this component is the parent type name."
+
+Now, this cannot mean "the name the parent type has in the local
+scoping unit", as that is not necessarily unique (in M2, there are two
+names for the parent type, T2 and T3).
+
+However, it could mean "the name in the parent type definition", or it
+could mean "the name in the EXTENDS clause". Different compilers have
+different interpretations.
+
+For example, given
+    TYPE(t) x
+    TYPE(t2) y
+    TYPE(t3) z
+the name of the base component could be
+    x%t, y%t, and z%t
+or
+    x%t, y%t2, z%t3
+
+This is perhaps even more obvious when SELECT TYPE is involved, e.g.
+
+    CLASS(t) w
+    ...
+    SELECT TYPE(w)
+    CLASS IS (e1)
+        ! base component is w%t
+    CLASS IS (e2)
+        ! base component is w%t or w%t2 ?
+    CLASS IS (e3)
+        ! base component is w%t or w%t3 ?
+    ...
+
+Some considerations.
+    1. Type equivalence for SEQUENCE and BIND(C) types use the name
+       from the type definition, so it would not be very surprising
+       for this to work the same way.
+    2. USE-renaming is intended to be used for avoiding class (1) name
+       clashes. The parent component name is not a class (1) name, so
+       USE-renaming should probably not affect this.
+    3. When designing the feature, DATA subgroup considered a proposal
+       to have the parent component name vary, using syntax like
+         TYPE,EXTENDS(parent-comp-name:parent-type-name) :: type-name
+       The proposal was decided against, for reasons including
+       (a) it looks confusing to have the ancestor component names for
+           the same ancestor component be different, depending on how
+           the type was extended;
+       (b) it was considered to be an unnecessary frippery, adding
+           complication without significant functionality.
+    4. Although NOTE 1 on page 90 in 7.5.7.1 says that the parent type
+       name "might be a local name", this has no bearing on what the
+       parent component name (that is discussed in 7.5.7.2) and is
+       merely an anodyne note of the scoping rules.
+
+ANSWER:
+
+It was intended that the name of the parent component be the name of
+the parent type in its type definition. A clarifying edit is provided.
+
+EDIT:
+
+[90:16] In 7.5.7.2 Inheritance, para 2, at the end of the second
+sentence, change "parent type name"
+          to "name of the parent type in its type definition"
+to make the sentence read
+    "The name of this component is the name of the parent type in its
+     type definition."
+
+SUGGESTED ADDITIONAL EDIT FOR FUTURE REVISION:
+
+The contents of NOTE 1 in 7.5.7.1 "Extensible, extended, and abstract
+types" at [90:6+1-2] is not and has never been interesting.
+The editor should delete that note, and de-number NOTE 2.
+
+SUBMITTED BY: Reinhold Bader and John Reid
+
+HISTORY: 24-122   m233  Submitted
+         23-122r1 m233  Passed as amended 9-2
+
+----------------------------------------------------------------------

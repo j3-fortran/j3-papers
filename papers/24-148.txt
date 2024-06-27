@@ -1,0 +1,154 @@
+To: J3                                                     J3/24-148
+From: Malcolm Cohen
+Subject: Revised formal specifications for generic subprograms
+Date: 2024-June-25
+References: 23-244r1, 23-223r2, N2217
+
+
+1. Introduction
+===============
+
+At its meeting Jun 12-16, 2023, WG5 decided to approve generic
+procedures as described in N2217 for Fortran 202Y. Use cases for
+this are set out in N2217. Formal requirements are in 23-223r2.
+The previous formal specifications were in 23-244r1.
+
+This is the formal specifications document, revised according to the
+discussion arising from 24-140. The illustrative syntax section of 23-223r2
+has been omitted, as a syntax paper is expected imminently.
+
+Terminology: For the purpose of these specifications, the generic
+procedures produced by this facility are termed "auto-generic", as it is
+the compiler/processor that generates all of the anonymous specific
+procedures.
+
+
+2. Formal specifications
+========================
+
+Auto-Generic procedure definition and identification:
+
+s01. An "auto-generic procedure" is defined by a "generic subprogram".
+
+s02. A generic subprogram shall be a module subprogram or internal
+     subprogram. It shall not have multiple entry points, that is, no
+     ENTRY statement is allowed.
+
+NOTE: Although N2217 envisaged generic external subprograms, external
+      subprograms need to have global names to be referenced. That would be
+      undesirable - putting them in a module is easier to understand and
+      safer to use.
+
+NOTE: In principle, this includes the possibility of being a separate
+      module subprogram defined in a submodule, in which case there would
+      be a generic module procedure interface in the ancestor module.
+
+NOTE: This specification may be revisited if sufficiently compelling
+      reasons for needing generic external subprograms are found, and that
+      are not satisfied by other means such as submodules.
+
+s03. A generic subprogram that is a module subprogram can have internal
+     subprograms; those internal subprograms shall not themselves be
+     independently generic.
+
+s04. Every generic subprogram shall have a generic name.
+
+s04a. That generic name may be the same as an existing generic name that is
+      accessible in the containing scoping unit.
+
+s05. The name of a generic/subprogram shall be able to be added to the
+     generic set of a generic identifier that is not a name,
+     i.e. operator, assignment, input/output.
+
+s06. There is no specification regarding the ability or inability (as now),
+     for adding a generic name that is a traditional generic set to the
+     generic set of another generic identifier.
+     Consistency may suggest doing this.
+
+Within a generic subprogram:
+
+s07. The subprogram may have zero, one, or more generic dummy arguments.
+     Even with no generic dummy argument, it is still a generic subprogram
+     providing a generic procedure name and no specific procedure name.
+
+s08. There shall be a syntax that specifies all valid kinds of an intrinsic
+     type for a generic dummy argument. The dummy argument is a generic
+     dummy argument even if a compiler supports only one kind for the type.
+
+s09. There shall be a syntax that specifies all valid ranks for a generic
+     dummy argument.
+
+s10. There shall be a syntax that specifies a set of kind type parameter
+     values (as constant expressions) for a generic dummy argument. This
+     syntax shall be usable for parameterized derived types as well as for
+     intrinsic types. The dummy argument is still generic even if it only
+     evaluates to one kind (assuming the syntax is different from normal
+     non-generic kind specification, which seems likely).
+
+s11. There should be a hopefully-similar syntax for a list of ranks for a
+     dummy argument to be generic over. Even if the list of ranks evaluates
+     to a single valid rank, the dummy argument is still considered to be
+     generic.
+
+s12. Assuming that generic-by-type is feasible and we do it, syntax is
+     needed to supply a list of type-specs similarly, which may be
+     intrinsic types or user-defined types.
+
+s13. A rank-generic dummy argument shall be a pointer, allocatable, or
+     assumed-shape. It may have the CONTIGUOUS attribute, even if rank zero
+     is included in the set of ranks.
+
+s14. A generic dummy argument may be polymorphic, if and only if every
+     type over which it is generic is an extensible type. None of these
+     types may be an extension of another.
+
+s15. The declarations within a generic subprogram shall be consistent with
+     every generic combination.
+
+s16. The executable code within a generic subprogram, other than that
+     within an ad-hoc specialization construct, shall be consistent with
+     every generic combination.
+
+s17. Not only local variables (and the function result) of a generic
+     subprogram may be declared to have the same attributes as a generic
+     dummy argument, but also local variables (and function results) of
+     nested scoping units viz. BLOCK constructs and internal subprograms.
+
+s18. The executable code within a block of an ad-hoc specialization need
+     only be consistent with the specified generic combination.
+
+NOTE: This is exactly how our existing runtime ad-hoc polymorphism
+      constructs work.
+
+s19. Ad-hoc specialization shall be performed at compile time, that is,
+     there will be no trace of the non-chosen specializations in the
+     generated anonymous specific.
+
+NOTE: This is aspirational, as there is no way at present to express it
+      normatively.
+
+
+3. Example
+==========
+
+        Module example1
+            Interface Operator(.myop.)
+                Procedure s ! All of the specific procedures of s.
+            End Interface
+        Contains
+            Generic Subroutine s(a,b)
+                Type(Real,Complex), Intent(InOut), Rank(*) :: a, b
+                Type(Typeof(b)), Rank(Rank(b)) :: temp
+                ...
+                Select Type (b)
+                Type Is (Real)
+                    temp = temp * (1-b)
+                Type Is (Complex)
+                    ! Just this once, we want the conjugate.
+                    temp = temp * (1-Conjg(b))
+                End Select
+                ...
+            End Subroutine
+        End Module
+
+===END===

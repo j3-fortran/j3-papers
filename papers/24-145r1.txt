@@ -1,0 +1,83 @@
+To: J3                                                     J3/24-145r1
+From: John Reid & Reinhold Bader & Malcolm Cohen
+Subject: Interp. on allocation segments
+Date: 2024-June-26
+References: 24-007
+
+--------------------------------------------------------------------
+
+NUMBER: F23/016
+TITLE: Segments associated with allocation
+KEYWORDS: segment, allocate, coarray
+DEFECT TYPE: Clarification
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Is it possible for a coarray to be allocated on an image in the
+current team without there being a corresponding allocated coarray on
+another active image in the current team?
+
+For example, consider the program
+
+PROGRAM ALLOCATION
+   IMPLICIT NONE
+   INTEGER :: I
+   REAL, ALLOCATABLE :: A[:]
+   ALLOCATE (A[*])
+   A = THIS_IMAGE()
+   SYNC ALL
+   DO I = 2,THIS_IMAGE()
+      IF (A[I]/=I) WRITE(*,*) "Value incorrect on image", I
+   END DO
+   DEALLOCATE (A)
+END
+
+Is it possible that an execution of the IF statement fails because the
+coarray A has already been deallocated on image I?
+
+ANSWER:
+
+No, it is not possible.
+
+For the ALLOCATE statement, the standard says
+    "execution on the active images of the segment (11.7.2) following
+     the statement is delayed until all other active images in the
+     current team have executed the same statement the same number of
+     times in this team."
+
+That means that after execution of the ALLOCATE statement on an image,
+the coarray is allocated on all the images (in the team).
+
+For the DEALLOCATE statement, the standard says
+    "When a statement that deallocates a coarray or an object with a
+     coarray potential subobject component is executed, there is an
+     implicit synchronization of all active images in the current
+     team."
+It then goes on to say
+    "A coarray shall not become deallocated on an image unless it is
+     successfully deallocated on all active images in this team."
+
+That means that the DEALLOCATE statement cannot actually deallocate a
+coarray on the executing image until all other active images have
+reached that DEALLOCATE and confirmed that they can deallocate their
+corresponding coarray.
+
+Furthermore,
+    "execution on the active images of the segment (11.7.2) following
+     the statement is delayed until all other active images in the
+     current team have executed the same statement the same number of
+     times in this team"
+means that after the DEALLOCATE statement execution is complete on one
+image, the coarray is unallocated on all active images.
+
+EDIT to 24-007.
+
+None.
+
+SUBMITTED BY: Reinhold Bader
+
+HISTORY: 24-145   m233  Submitted
+         24-145r1 m233  Revised
+
+----------------------------------------------------------------------

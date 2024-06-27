@@ -1,0 +1,91 @@
+To: J3                                                     J3/24-123r1
+From: Malcolm Cohen & Bill Long
+Subject: Missing restriction on structure constructors?
+Date: 2024-June-25
+References: 24-007
+
+
+1. Introduction
+
+There is an inconsistency in the restrictions on structure constructors
+aimed at preventing cross-image pointer copying. If this is inadvertent,
+we could fix it. Or if it was deliberate, but on examination seems to be
+a mistake, we could fix it now or in the next revision. Or we could do
+nothing.
+
+2. The issue
+
+Consider
+
+  TYPE realptrwrap
+    REAL,POINTER :: p
+  END TYPE
+  TYPE t
+    TYPE(realptrwrap) c
+  END TYPE
+  TYPE(realptrwrap) x[*]
+  TYPE(t) y
+  REAL,TARGET :: z[*]
+
+  x = realptrwrap(z[2])     ! (A) harmful
+  y%c = realptrwrap(z[2])   ! (B) harmful
+  x = realptrwrap(z)        ! This assignment is valid and harmless.
+  y = t(x[2])               ! (C) harmful
+
+(Aside: "harmful" means "copies a pointer from one image to another".)
+
+The structure constructors in the statements (A) and (B) are invalid,
+by combination of
+    R758 component-data-source  is  expr
+                                or  data-target
+                                or  proc-target
+    C7109 (R758) A data-target shall correspond to a data pointer
+          component; ...
+    R1038 data-target  is  expr
+    C1029 (R1038) A data-target shall not be a coindexed object.
+
+This is a good thing, as copying pointers from one image to another causes
+them to become undefined; if dereferenced, the program is likely to produce
+random garbage output or crash.
+
+However, the statement (C) has the same undesirable effect as (B), but
+does not violate those constraints, and thus appears on the face of it
+to be a valid statement.
+
+This raises the question of why there is no constraint like:
+    C7109a (R758) If expr is a coindexed object, it shall not have a
+           pointer component at any level of component selection.
+
+I note that for pure procedures, statement (C) would be invalid by
+  C15104 In a pure subprogram any designator with a base object that
+         ... is a coindexed object, ... shall not be used
+         ...
+         (4) as the expr corresponding to a component in a structure-
+             constructor if the component has the POINTER attribute or
+             has a pointer component at any level of component
+             selection,
+
+The first part of (4) viz "has the POINTER attribute" is confusingly
+duplicative of C7109+C1029, but the second part is not.
+
+I further note that most of C15104 is about preventing side-effects,
+but the coindexed prohibitions do not prevent side-effects but plain
+old undefined behaviour (the pointers would go undefined). It is not
+clear why this particular instance of undefined behaviour needs to be
+guarded against in a pure procedure, but is perfectly okay outside of
+a pure procedure. Lots of other undefined behaviour situations are not
+constrained against in pure procedures.
+
+If we did add a restriction like the hypothetical C7109a above, we could
+more easily simplify the pure constraint C15104 by removing redundancy.
+
+Finally, I note that at least one compiler already applies this suggested
+restriction, i.e. does not compile statement (C). That would make fixing
+the issue suitable for interpretation processing.
+
+
+3. Course of action
+
+    Fix inconsistency by adding a constraint like C7109a via interp.
+
+===END===
