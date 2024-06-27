@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+
+trap "exit 1" HUP INT QUIT TERM
+
+set -u -o pipefail
+
+CMD="$(basename $0)"
+function usage {
+    (echo "Usage: $CMD [-hnv] j3-paper-number"
+     echo "-h        Print this help message."
+     echo "-n        Dry run. Don't execute commands."
+     echo "-o        Open the new file when created."
+     echo "-t        Print org-mode style TODO for the entry."
+     echo "-v        Verbose. Print extra information if appropriate."
+     echo "Revise a J3 paper note with a new revision in the Zettelkasten.") 1>&2
+}
+
+ZK="/Users/gak/Documents/ZK"
+
+. $(dirname "$0")/vecho
+
+DRY_RUN=
+ECHO=
+OFLAG=
+TFLAG=1
+VFLAG=
+while getopts hnotv\? OPTCHAR; do
+    case $OPTCHAR in
+        h)  usage; exit 0;;
+        n)  DRY_RUN=1 ECHO=echo;;
+        o)  OFLAG=1;;
+        t)  TFLAG=1;;
+        v)  VFLAG=1;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+case $# in
+    0)  usage; exit 1;;
+    *)  ;;
+esac
+
+if [[ ! -d "papers" ]]; then
+    echo "$CMD: Expected to be run in a directory with J3 'papers'" 1>&2
+    exit 1
+fi
+
+for PAPER in "$@"; do
+    PAPER_ID="$(echo "$PAPER" | sed -e 's/\.[^.]*$//')"
+    vecho 1 "  PAPER_ID='$PAPER_ID'"
+
+    PAPER_FILE="$(builtin cd papers; /bin/ls "$PAPER_ID".* 2>/dev/null)"
+    vecho 1 "  PAPER_FILE='$PAPER_FILE'"
+
+    PAPER_ID_NO_REV="$(echo "$PAPER_ID" | sed -e 's/r[0-9]*$//')"
+    vecho 1 "  PAPER_ID_NO_REV='$PAPER_ID_NO_REV'"
+
+    ZK_FILE=`/bin/ls $ZK/3*\ J3\ #[0-9][0-9][0-9]\ Paper\ $PAPER_ID_NO_REV*.org`
+    vecho 1 "ZK_FILE = '$ZK_FILE'"
+
+    if [[ -e "$ZK_FILE" ]]; then
+        echo "$ZK_FILE exists"
+        REVISION="$(echo "$PAPER_ID" | sed -e 's/.*r\([0-9]*\).*/\1/')"
+        vecho 1 "  REVISION='$REVISION'"
+        case "$REVISION" in
+        1)
+            REVISION_M1="";;
+        *)
+            REVISION_M1="$((REVISION-1))";;
+        esac
+        vecho 1 "  REVISION_M1='$REVISION_M1'"
+
+        case $PAPER_FILE in
+            *.txt|*.md|*.org)
+                SUBJECT="$(sed -n -e 's/^Subject:  *//p' papers/$PAPER_FILE)";;
+            *)
+                SUBJECT=;;
+        esac
+        vecho 1 "  SUBJECT='$SUBJECT'"
+
+        NEW_PAPER_LINE="$(echo "- [[j3-paper:$PAPER_FILE][$PAPER_FILE $SUBJECT]]")"
+        vecho 1 "  NEW_PAPER_LINE = '$NEW_PAPER_LINE'"
+
+        $ECHO sed -i "" "/- [[][[]j3-paper:${PAPER_ID_NO_REV}r$REVISION_M1/a\\
+$NEW_PAPER_LINE\\
+" "$ZK_FILE"
+        echo "$(basename "$ZK_FILE")"
+    else
+        echo "$CMD: Can't locate ZK file for paper '$PAPER_ID' (base name '$PAPER_ID_NO_REV')" 1>&2
+    fi
+
+    if [[ -n "$OFLAG" ]]; then
+        $ECHO open "$ZK_FILE"
+    fi
+
+    : $ECHO emacsclient -e "(when (fboundp 'org-roam-db-sync) (org-roam-db-sync))"
+done
