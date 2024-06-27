@@ -28,16 +28,15 @@ function usage {
 # Clean by default now.
 CLEAN=1
 DRY_RUN=
+DRY_RUN_FLAG=
 ECHO=
-NFLAG=
 VFLAG=0
 VOPT=
-while getopts chNnv OPTCHAR; do
+while getopts chnv OPTCHAR; do
     case $OPTCHAR in
         c)  CLEAN=1;;
         h)  usage; exit 0;;
-        n)  DRY_RUN=1 ECHO=echo;;
-        N)  NFLAG=1;;
+        n)  DRY_RUN=1 DRY_RUN_FLAG=-n ECHO=echo ;;
         r)  CLEAN=;;
         v)  VFLAG=$((VFLAG+1))
             if [[ -z "$VOPT" ]]; then
@@ -66,8 +65,6 @@ if [[ ! -d "years/" ]]; then
 fi
 
 ERR=0
-NEW_PAPERS=
-REVISED_PAPERS=
 for M in "$@"; do
     case "$M" in
         [0-9])    M="00$M";;
@@ -82,7 +79,9 @@ for M in "$@"; do
     MEETING_DIR="meetings/$M"
     MEETING_NO=#${M/#0/}
     MEETING_NO=${M/#0/}
-    mkdir -p "$MEETING_DIR"
+    if [[ ! -d "$MEETING_DIR" ]]; then
+        mkdir -p "$MEETING_DIR"
+    fi
 
     vecho 1 $MEETING_DIR:
     vecho 2 "    MEETING_DIR=$MEETING_DIR MEETING_NO=$MEETING_NO"
@@ -114,7 +113,9 @@ for M in "$@"; do
                 continue;;
         esac
 
-        $ECHO mkdir -p "years/$Y4"
+        if [[ ! -d "years/$Y4" ]]; then
+            $ECHO mkdir -p "years/$Y4"
+        fi
 
         # Fetch the file into the papers directory
         URL="https://j3-fortran.org/doc/year/$FILENAME"
@@ -125,9 +126,7 @@ for M in "$@"; do
         if $BIN/fetch-paper-from-web $VOPT "$URL" "$PTARGET.fetch"; then
             if [[ -n "$CLEAN" ]] && [[ "$PAPER_NAME" =~ ".txt" ]]; then
                 vecho 1 "Clean up $CMD/cleanup-text $PTARGET.fetch"
-                if [[ -z "$DRY_RUN" ]]; then
-                    $BIN/cleanup-text $VOPT "$PTARGET.fetch"
-                fi
+                $BIN/cleanup-text $VOPT "$PTARGET.fetch"
             fi
         else
             ERR=1
@@ -142,11 +141,11 @@ for M in "$@"; do
 
             case "$PAPER_NAME" in
                 *r[1-9]*.*)
-                    echo "$PAPER_NAME revised $(grep '^Subject:' "$PTARGET")"
-                    REVISED_PAPERS="$REVISED_PAPERS $PAPER_NAME";;
+                    echo "$PAPER_NAME revised $(grep '^Subject:' "$PTARGET" 2>/dev/null)"
+                    $ECHO bin/add-revision-to-paper-note $DRY_RUN_FLAG $VFLAG;;
                 *)
-                    echo "$PAPER_NAME new $(grep '^Subject:' "$PTARGET")"
-                    NEW_PAPERS="$NEW_PAPERS $PAPER_NAME";;
+                    echo "$PAPER_NAME new $(grep '^Subject:' "$PTARGET" 2>/dev/null)"
+                    : $ECHO bin/create-paper-note $DRY_RUN_FLAG $VFLAG $PAPER_NAME;;
             esac
         elif ! cmp -s "$PTARGET" "$PTARGET.fetch"; then
             if [[ -n "$DRY_RUN" ]]; then
@@ -154,7 +153,7 @@ for M in "$@"; do
             else
                 mv "$PTARGET.fetch" "$PTARGET"
             fi
-            echo "$PAPER_NAME changed $(grep '^Subject:' "$PTARGET")"
+            echo "$PAPER_NAME changed $(grep '^Subject:' "$PTARGET" 2>/dev/null)"
         else
             rm "$PTARGET.fetch"
         fi
@@ -169,16 +168,16 @@ for M in "$@"; do
                 vecho 2 "  $MTARGET is linked correctly."
             else
                 vecho 2 "  $MTARGET relinked."
-                rm "$MTARGET"
-                ln -s "../../$PTARGET" "$MTARGET"
+                $ECHO rm "$MTARGET"
+                $ECHO ln -s "../../$PTARGET" "$MTARGET"
             fi
         elif [[ -e "$MTARGET" ]]; then
             vecho 2 "  $MTARGET replaced and linked."
-            rm "$MTARGET"
-            ln -s "../../$PTARGET" "$MTARGET"
+            $ECHO rm "$MTARGET"
+            $ECHO ln -s "../../$PTARGET" "$MTARGET"
         else
             vecho 2 "  $MTARGET new."
-            ln -s "../../$PTARGET" "$MTARGET"
+            $ECHO ln -s "../../$PTARGET" "$MTARGET"
         fi
 
         # Does it properly exist in the years/ directory?
@@ -191,33 +190,21 @@ for M in "$@"; do
                 vecho 2 "  $YTARGET is linked correctly."
             else
                 vecho 2 "  $YTARGET relinked."
-                rm "$YTARGET"
-                ln -s "../../$PTARGET" "$YTARGET"
+                $ECHO rm "$YTARGET"
+                $ECHO ln -s "../../$PTARGET" "$YTARGET"
             fi
         elif [[ -e "$YTARGET" ]]; then
             vecho 2 "  $YTARGET replaced and linked."
-            rm "$YTARGET"
-            ln -s "../../$PTARGET" "$YTARGET"
+            $ECHO rm "$YTARGET"
+            $ECHO ln -s "../../$PTARGET" "$YTARGET"
         else
             vecho 2 "  $YTARGET new."
-            ln -s "../../$PTARGET" "$YTARGET"
+            $ECHO ln -s "../../$PTARGET" "$YTARGET"
         fi
-
     done
 done
 
 rm -f $DOCS_HTML
-
-if [[ -n "$NFLAG" ]]; then
-    case "$PAPER_NAME" in
-        *r[1-9]*.*)
-            echo ""; echo "Revised papers $REVISED_PAPERS"
-            $ECHO bin/add-revision-to-paper-note $REVISED_PAPERS;;
-        *)
-            echo ""; echo "New papers $NEW_PAPERS"
-            $ECHO bin/create-paper-note $NEW_PAPERS;;
-    esac
-fi
 
 # Index update is fast enough now to do all the time.
 if  [[ "papers" -nt "index" ]]; then
