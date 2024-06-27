@@ -1,0 +1,92 @@
+To: J3                                                     J3/24-149r1
+From: Malcolm Cohen
+Subject: Interp F23/015 on coindexed objects in structure constructors
+Date: 2024-June-26
+References: 24-007, 24-123
+
+----------------------------------------------------------------------
+
+NUMBER: F23/015
+TITLE: Coindexed objects in structure constructors
+KEYWORDS: Pointer component, coindexed object, structure constructor
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+
+  TYPE realptrwrap
+    REAL,POINTER :: p
+  END TYPE
+  TYPE t
+    TYPE(realptrwrap) c
+  END TYPE
+  TYPE(realptrwrap) x[*]
+  TYPE(t) y
+  REAL,TARGET :: z[*]
+
+  x = realptrwrap(z[2])     ! (A) harmful
+  y%c = realptrwrap(z[2])   ! (B) harmful
+  x = realptrwrap(z)        ! This assignment is valid and harmless.
+  y = t(x[2])               ! (C) harmful
+
+(Aside: "harmful" means "copies a pointer from one image to another".)
+
+The structure constructors in the statements (A) and (B) are invalid,
+by combination of
+    R758 component-data-source  is  expr
+                                or  data-target
+                                or  proc-target
+    C7109 (R758) A data-target shall correspond to a data pointer
+          component; ...
+    R1038 data-target  is  expr
+    C1029 (R1038) A data-target shall not be a coindexed object.
+
+However, the statement (C) has the same undesirable effect as (B), but
+does not violate those constraints, and thus appears on the face of it
+to be a valid statement.
+
+Statement (C) would, however, be prohibited in a pure procedure, even
+though it cannot cause side effects, merely undefined pointers.
+
+This appears to be inconsistent. Is this deliberate?
+
+ANSWER:
+
+This apparent inconsistency was inadvertent.
+Edits are provided to correct the issue.
+
+EDITS to 24-007:
+
+[93:21+] 7.5.10 Construction of derived-type values,
+         after the penultimate constraint C7109, insert new
+         constraint
+    "C7109a (R758) If <expr> is a coindexed object, it shall not have
+            a pointer component at any level of component selection."
+
+[93:23-] Same subclause, after NOTE 1, insert new NOTE
+    "NOTE 1a
+     Although a coindexed object with a pointer subcomponent is not
+     the only way for the structure constructor to produce a value
+     with an undefined pointer subcomponent, copying a pointer from
+     another image is particularly likely to cause undiagnosed
+     incorrect results, and thus precluded in this context."
+
+[34:1+] 4.3.3 Fortran 2018 compatibility, after paragraph 4,
+        insert new paragraph
+    "Fortran 2018 permitted a <component-data-source> in a structure
+     constructor to be a coindexed object with a pointer subcomponent.
+     This document does not permit such usage."
+
+[35:8+] 4.3.4 Fortran 2008 compatibility, after paragraph 14,
+        insert new paragraph
+    "Fortran 2008 permitted a <component-data-source> in a structure
+     constructor to be a coindexed object with a pointer subcomponent.
+     This document does not permit such usage."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 24-nnn   m233  Submitted
+
+----------------------------------------------------------------------
