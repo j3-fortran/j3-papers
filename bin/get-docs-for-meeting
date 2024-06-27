@@ -15,8 +15,8 @@ function usage {
     (echo "Usage: $CMD [-chNnv] meeting-number..."
      echo "-c        Clean up text in the files as they are downloaded (default)."
      echo "-h        Print this help message."
-     echo "-N        Don't rebuild the index file."
      echo "-n        Dry run. Don't execute commands."
+     echo "-N        Create or update Zettelkasten paper notes."
      echo "-r        Raw; do not clean up text in the files as they are downloaded."
      echo "-v        Verbose. Print extra information if appropriate."
      echo "Get documents for 'meeting-number'..."
@@ -29,15 +29,15 @@ function usage {
 CLEAN=1
 DRY_RUN=
 ECHO=
-INDEX=1
+NFLAG=
 VFLAG=0
 VOPT=
 while getopts chNnv OPTCHAR; do
     case $OPTCHAR in
         c)  CLEAN=1;;
         h)  usage; exit 0;;
-        N)  INDEX=;;
         n)  DRY_RUN=1 ECHO=echo;;
+        N)  NFLAG=1;;
         r)  CLEAN=;;
         v)  VFLAG=$((VFLAG+1))
             if [[ -z "$VOPT" ]]; then
@@ -66,6 +66,8 @@ if [[ ! -d "years/" ]]; then
 fi
 
 ERR=0
+NEW_PAPERS=
+REVISED_PAPERS=
 for M in "$@"; do
     case "$M" in
         [0-9])    M="00$M";;
@@ -112,7 +114,7 @@ for M in "$@"; do
                 continue;;
         esac
 
-        mkdir -p "years/$Y4"
+        $ECHO mkdir -p "years/$Y4"
 
         # Fetch the file into the papers directory
         URL="https://j3-fortran.org/doc/year/$FILENAME"
@@ -132,10 +134,26 @@ for M in "$@"; do
         fi 2>&1 | sed -e 's/^/  /'
 
         if [[ ! -e "$PTARGET" ]]; then
-            mv "$PTARGET.fetch" "$PTARGET"
-            echo "$PAPER_NAME new $(grep '^Subject:' "$PTARGET")"
+            if [[ -n "$DRY_RUN" ]]; then
+                rm "$PTARGET.fetch"
+            else
+                mv "$PTARGET.fetch" "$PTARGET"
+            fi
+
+            case "$PAPER_NAME" in
+                *r[1-9]*.*)
+                    echo "$PAPER_NAME revised $(grep '^Subject:' "$PTARGET")"
+                    REVISED_PAPERS="$REVISED_PAPERS $PAPER_NAME";;
+                *)
+                    echo "$PAPER_NAME new $(grep '^Subject:' "$PTARGET")"
+                    NEW_PAPERS="$NEW_PAPERS $PAPER_NAME";;
+            esac
         elif ! cmp -s "$PTARGET" "$PTARGET.fetch"; then
-            mv "$PTARGET.fetch" "$PTARGET"
+            if [[ -n "$DRY_RUN" ]]; then
+                rm "$PTARGET.fetch"
+            else
+                mv "$PTARGET.fetch" "$PTARGET"
+            fi
             echo "$PAPER_NAME changed $(grep '^Subject:' "$PTARGET")"
         else
             rm "$PTARGET.fetch"
@@ -190,10 +208,20 @@ done
 
 rm -f $DOCS_HTML
 
-if [[ -n "$INDEX" ]]; then
-    if  [[ "papers" -nt "index" ]]; then
-        $BIN/update-index index papers meetings years
-    fi
+if [[ -n "$NFLAG" ]]; then
+    case "$PAPER_NAME" in
+        *r[1-9]*.*)
+            echo ""; echo "Revised papers $REVISED_PAPERS"
+            $ECHO bin/add-revision-to-paper-note $REVISED_PAPERS;;
+        *)
+            echo ""; echo "New papers $NEW_PAPERS"
+            $ECHO bin/create-paper-note $NEW_PAPERS;;
+    esac
+fi
+
+# Index update is fast enough now to do all the time.
+if  [[ "papers" -nt "index" ]]; then
+    $ECHO $BIN/update-index index papers meetings years
 fi
 
 exit $ERR
