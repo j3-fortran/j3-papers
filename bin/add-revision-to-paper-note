@@ -56,18 +56,18 @@ for PAPER in "$@"; do
     PAPER_ID_NO_REV="$(echo "$PAPER_ID" | sed -e 's/r[0-9]*$//')"
     vecho 1 "  PAPER_ID_NO_REV='$PAPER_ID_NO_REV'"
 
-    ZK_FILE=`/bin/ls $ZK/3*\ J3\ #[0-9][0-9][0-9]\ Paper\ $PAPER_ID_NO_REV*.org`
+    ZK_FILE="$(builtin cd "$ZK" && /bin/ls | sed -n -e "/3.*J3.*Paper.*$PAPER_ID_NO_REV.*.org/p")"
     vecho 1 "ZK_FILE = '$ZK_FILE'"
 
-    if [[ -e "$ZK_FILE" ]]; then
-        echo "$ZK_FILE exists"
+    if [[ -e "$ZK/$ZK_FILE" ]]; then
+        vecho 1 "$ZK_FILE exists"
         REVISION="$(echo "$PAPER_ID" | sed -e 's/.*r\([0-9]*\).*/\1/')"
         vecho 1 "  REVISION='$REVISION'"
         case "$REVISION" in
         1)
             REVISION_M1="";;
         *)
-            REVISION_M1="$((REVISION-1))";;
+            REVISION_M1="r$((REVISION-1))";;
         esac
         vecho 1 "  REVISION_M1='$REVISION_M1'"
 
@@ -80,14 +80,19 @@ for PAPER in "$@"; do
         vecho 1 "  SUBJECT='$SUBJECT'"
 
         NEW_PAPER_LINE="$(echo "- [[j3-paper:$PAPER_FILE][$PAPER_FILE $SUBJECT]]")"
-        vecho 1 "  NEW_PAPER_LINE = '$NEW_PAPER_LINE'"
+        vecho 1 "  NEW_PAPER_LINE='$NEW_PAPER_LINE'"
 
-        $ECHO sed -i "" "/- [[][[]j3-paper:${PAPER_ID_NO_REV}r$REVISION_M1/a\\
-$NEW_PAPER_LINE\\
-" "$ZK_FILE"
+        if [[ -z "$DRY_RUN" ]]; then
+            sed -e "/^- [[][[]j3-paper:${PAPER_ID_NO_REV}$REVISION_M1/a\\
+$NEW_PAPER_LINE" "$ZK/$ZK_FILE" | cpif "$ZK/$ZK_FILE"
+        else
+            echo "sed -e \"/^- [[][[]j3-paper:${PAPER_ID_NO_REV}$REVISION_M1/a\\
+$NEW_PAPER_LINE\" \"$ZK/$ZK_FILE\" | cpif \"$ZK/$ZK_FILE\""
+        fi
         vecho 1 "$(basename "$ZK_FILE")"
     else
         echo "$CMD: Can't locate ZK file for paper '$PAPER_ID' (base name '$PAPER_ID_NO_REV')" 1>&2
+        continue
     fi
 
     if [[ -n "$OFLAG" ]]; then
