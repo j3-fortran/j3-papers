@@ -1,0 +1,336 @@
+To: J3                                                     J3/24-157
+From: Brad Richardson & Brandon Cook
+Subject: In Defense of Intrinsic Scan Operations
+Date: 2024-August-12
+
+References: 23-235r2, N2234
+
+1. Introduction
+===============
+
+In response to the "mixed support" received for the SCAN and CO_SCAN
+proposal [23-235r2] at the 2024 WG5 meeting [N2234], this paper
+presents use cases and motivation for their inclusion in the F202Y
+work item list.
+
+2. Use Cases and Motivation for SCAN
+===================================
+
+The Wikipedia page on the topic provides multiple use case for
+scan operations.
+
+https://en.wikipedia.org/wiki/Prefix_sum
+
+As further motivation, some additional use cases are provided below.
+
+2.1 Sparse Matrix Algorithm
+---------------------------
+
+Taken from the NERSC user community and an application run in multiple
+DOE centers and beyond, MFDn:
+
+Consider a sparse matrix, composed of non-zero and zero blocks.
+Non-zero blocks are also sparse. Which elements are non-zero is
+determined by a complex set of rules (many-body quantum state
+selection rules for interacting states, complicated due to a special
+load balanced ordering) to determine which elements are non-zero.
+
+At a high level:
+
+  1. count_non_zero_blocks()
+  2. count_non_zero_elements_per_block()
+  3. allocate_large_array() # per image, holds many blocks,
+     single allocation important for alloc() performance and GPU
+     kernel offload with non-zero matrix blocks distributed to SMs.
+  4. compute_offsets_into_array_for_each_block() # this is a scan
+     over nonzero elements per block
+  5. compute_matrix_elements()
+  6. eigen_decomposition_of_matrix()
+
+All steps apart from 4 are amenable to parallel processing without
+significant cognitive burden when targeting multiple architectures
+(CPU and GPU). 4 is highly non-trivial to implement on any
+architecture and those implementations are typically not portable
+(e.g.
+https://www.intel.com/content/www/us/en/developer/articles/technical
+  /optimize-scan-operations-explicit-vectorization.html
+is very different from
+https://nvidia.github.io/cccl/cub/api/structcub_1_1DeviceScan.html).
+
+Some examples and details from this specific application are
+documented in
+https://arxiv.org/pdf/2110.10765
+
+The following parallel scan algorithm is relatively naive and only
+just achieves a speedup compared to a cpu/serial version for some
+input sizes thanks to avoiding a host/device transfer. In practice
+a serial kernel is often used on a GPU leading to significant idle
+resources during a simulation campaign.
+
+!$acc data present(x,y)
+!$acc parallel loop async
+doj=1,n
+  y(j) = x(j)
+end do
+!$acc end parallel
+offset = 1
+! sweep up, reduction in place
+do while (offset < n)
+  !$acc parallel loop firstprivate(offset) present(y) async
+  do concurrent (j=0:n-1:2*offset)
+    y(j + 2*offset) = y(j + offset) + y(j + 2*offset)
+  end do
+  !$acc end parallel
+  offset = 2*offset
+end do
+! sweep down, complete the scan
+!$acc serial async
+y(n)=0
+!$acc end serial
+offset = rshift(offset, 1)
+do while(offset > 0)
+  !$acc parallel loop firstprivate(offset, tmp) present(y) async
+  do concurrent(j=0:n-1:2*offset) local(tmp)
+    tmp = y(j + offset)
+    y(j + offset) = y(j + 2*offset)
+    y(j + 2*offset) = tmp + y(j + 2*offset)
+  end do
+  !$acc end parallel
+  offset = rshift(offset, 1)
+end do
+!$acc wait
+!$acc end data
+
+2.2 Sparse Matrix Segmented Scan (spmv)
+---------------------------------------
+
+The algorithm for efficiently computing sparse-matrix vector products,
+one extremely common operation in scientific computing, described in the
+following paper is effectively impossible to implement in Fortran.
+These algorithms are used in the high-performance Ginkgo
+(https://ginkgo-project.github.io/) linear algebra library.
+
+Hartwig Anzt, Terry Cojean, Chen Yen-Chen, Jack Dongarra, Goran Flegar,
+Pratik Nayak, Stanimire Tomov, Yuhsiang M. Tsai, and Weichung Wang.
+2020. Load-balancing Sparse Matrix Vector Product Kernels on GPUs.
+ACM Trans. Parallel Comput. 7, 1, Article 2 (March 2020), 26 pages.
+https://doi.org/10.1145/3380930
+
+The details are too complex to reproduce fully, but in the referenced
+paper and source code segmented scan operations are central. e.g.
+"The segmented scan approach radically reduces the number of atomic
+collisions" and "Our experiments on a large number of matrices revealed
+that replacing the segmented scan algorithm with multiple reductions
+results in lower performance,.."
+
+source code references:
+* segmented scan https://github.com/ginkgo-project/ginkgo/blob
+  /caa373d1a3c635755b48cb50dc5417bdc64144af/common/cuda_hip/components
+  /segment_scan.hpp#L26
+
+* COO kernel https://github.com/ginkgo-project/ginkgo/blob
+  /26eb276f03b3b1e3f46cc20e3bca9f4636d225b6/common/cuda_hip/matrix
+  /coo_kernels.cpp#L64
+
+2.3 Implementations of Existing Intrinsics
+------------------------------------------
+
+Efficient implementations for some existing intrinsics involve scan
+operations. For example, consider the following possible implementation
+for the PACK intrinsic.
+
+module m_scan
+contains
+  function inclusive_scan(A) result(S)
+    integer, intent(in) :: A(:)
+    integer :: S(size(A))
+    integer :: i
+    S(1) = A(1)
+    do i = 2, size(A)
+       S(i) = S(i-1) + A(i)
+    end do
+  end function inclusive_scan
+end module m_scan
+
+module m_cram
+  use m_scan
+contains
+  function cram(A, mask) result(P)
+    integer, intent(in) :: A(:)
+    logical, intent(in) :: mask(:)
+    integer, allocatable :: P(:)
+    integer, allocatable :: imask(:)
+    integer :: i
+
+    allocate(P(count(mask)))
+
+    allocate(imask(size(mask)))
+    where (mask)
+       imask = 1
+    elsewhere
+       imask = 0
+    end where
+
+    imask = inclusive_scan(imask)
+
+    do i = 1, size(A)
+       if (mask(i)) then
+          P(imask(i)) = A(i)
+       end if
+    end do
+
+  end function cram
+end module m_cram
+
+program pack_scan
+  use m_cram
+  implicit none
+  integer :: a(8) = [1,2,3,4,5,6,7,8]
+  logical :: m(8)
+  m = modulo(a, 2) == 0
+  print*, pack(a, m)
+  print*, cram(a, m)
+end program pack_scan
+
+3. Use Case and Motivation for CO_SCAN
+======================================
+
+One motivating use case for having a collective scan operation is for
+decomposing a domain when reading data from, or writing data to a file.
+For example, each image will be responsible for reading a different
+part of a dataset from a file, processing that data, and writing the
+results into another file. The below "psuedo-Fortran" illustrates how
+this might easily be achieved with a CO_SCAN intrinsic
+
+    ! determine amount of data each image will process
+    my_start = inp_data_size
+    ! shift my_start to correct position
+    call co_postfix_scan(my_start, add, 0)
+    ! read data from file
+    do i = 1, inp_data_size
+      read(inp_file, rec=i+my_start) inp_data(i)
+    end do
+    ! process the data
+    my_start = out_data_size
+    ! shift my_start to correct position
+    call co_postfix_scan(my_start, add, 0)
+    do i = 1, out_data_size
+      write(out_file, rec=i+my_start) out_data(i)
+    end do
+
+It is conceivable that a programmer could write such a procedure
+themselves with the existing features of the language, but writing
+it efficiently is a hard problem (TM), and the best algorithm to use
+may be platform dependent. It would instead be better if compiler
+developers could provide the best implementations for their supported
+systems.
+
+A reference implementation of a scalar integer co_postfix_scan might
+look like the following.
+
+    module co_scan_m
+        implicit none
+        private
+        public :: co_prefix_scan, co_postfix_scan
+    contains
+        subroutine co_prefix_scan(a, operation)
+            integer, intent(inout) :: a
+            interface
+                pure function operation(lhs, rhs) result(r)
+                    integer, intent(in) :: lhs, rhs
+                    integer :: r
+                end function
+            end interface
+
+            integer, allocatable :: tmp[:]
+            integer :: partial, mask, dst
+
+            if (num_images() == 1) return
+            allocate(tmp[*])
+            partial = a
+            mask = 1
+            do while (mask < num_images())
+                dst = ieor(this_image()-1, mask) + 1
+                if (dst <= num_images()) then
+                    tmp[dst] = partial
+                    sync images (dst)
+                    if (this_image() > dst) then
+                        partial = operation(tmp, partial)
+                        a = operation(tmp, a)
+                    else
+                        partial = operation(partial, tmp)
+                    end if
+                end if
+                mask = mask * 2
+                sync all
+            end do
+        end subroutine
+
+        subroutine co_postfix_scan(a, operation, initial)
+            integer, intent(inout) :: a
+            interface
+                pure function operation(lhs, rhs) result(r)
+                    integer, intent(in) :: lhs, rhs
+                    integer :: r
+                end function
+            end interface
+            integer, intent(in) :: initial
+
+            integer, allocatable :: tmp[:]
+
+            if (num_images() == 1) then
+                a = initial
+                return
+            end if
+
+            allocate(tmp[*])
+            if (this_image() < num_images()) tmp[this_image()+1] = a
+            if (this_image() == 1) tmp = initial
+            sync all
+            a = tmp
+            call co_prefix_scan(a, operation)
+        end subroutine
+    end module
+
+    program main
+        use co_scan_m, only: co_prefix_scan, co_postfix_scan
+        integer :: a
+        a = this_image()
+        call co_prefix_scan(a, add)
+        call print_in_image_order(a)
+        a = this_image()
+        call co_postfix_scan(a, add, 0)
+        call print_in_image_order(a)
+    contains
+        pure function add(lhs, rhs) result(r)
+            integer, intent(in) :: lhs, rhs
+            integer :: r
+            r = lhs + rhs
+        end function
+        subroutine print_in_image_order(x)
+            integer, intent(in) :: x
+            integer :: i
+
+            do i = 1, num_images()
+                if (this_image() == i) then
+                    write(*,*) "image[",i,"]",x
+                end if
+                sync all
+            end do
+        end subroutine
+    end program
+
+However, compared to the implementations present in e.g. MPICH
+https://github.com/pmodels/mpich/blob/main/src/mpi/coll/iscan/*.c
+this implementation is not SMP aware and is not generic with respect to
+type, i.e. only supports integer. Generics may only partially mitigate
+that limitation, and templates will likely not eliminate it either.
+
+4. Conclusion
+=============
+
+As demonstrated by the above examples, scan and collective scan
+operations are commonly used in high performance computing
+applications and can be difficult to implement efficiently. As such
+it is highly encouraged that they be added as intrinsic procedures
+in the Fortran language.
