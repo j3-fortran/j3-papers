@@ -1,0 +1,220 @@
+To: J3                                                     J3/24-168
+From: Hidetoshi Iwashita
+Subject: Comments on 24-139r2, syntax for generic subprograms
+Date: 2024-October-17
+
+References: 24-139r2, N2217
+
+
+(1) Constraint in x01
+Current:
+    Constraint: If a module subprogram is generic, it shall not have an
+        internal subprogram that is generic.
+Proposal:
+    Constraint: If a module subprogram is type-or-kind-generic, it shall
+        not have an internal subprogram that is type-or-kind-generic.
+        If a module subprogram is rank-generic, it shall not have an
+        internal subprogram that is rank-generic.
+
+Comment:
+  For example, a generic library function of type REAL(*) may want to have
+  rank-generic internal functions. Type-or-kind-generic and rank-generic
+  are mutually orthogonal, so there is little risk of generating
+  meaningless combinations.
+
+
+(2) removed
+
+
+(3) The first C8nn of x03
+Current:
+    C8nn A generic dummy argument shall not be a coarray.
+
+    Comment
+      Codimension is not mentioned in the requirements, use cases, or
+      specifications, but seems like it would add complication. So we
+      should prohibit it for now.
+
+    sNN A generic dummy argument cannot be a coarray.
+
+    Reason: This is just a simplification. At a future time we could allow
+            this, and we could also allow generic-corank dummy arguments.
+
+Proposal:
+    Remove these.
+
+Comment:
+  In N2217, a generic type declaration statement is defined in the form of
+  an extension of R801 type-declaration-statement and therefore it allows
+  coarrays as generic dummy arguments.
+
+  I cannot imagine any example where coarrays would be a problem. (My only
+  concern is regarding the value of MAX_RANK and its derived problems.)
+
+  Logically, a program written with a generic subprogram is equivalent to
+  the program written with the corresponding specific subprograms.
+  Therefore, I believe that a generic subprogram can allow a coarray as a
+  generic dummy argument as long as a non-generic subprogram can allow the
+  same coarray as a dummy argument.
+
+
+(4) gen-char-type-params in x04
+Current:
+   R8nn gen-char-type-params is gen-char-len [ KIND = ] int-constant-expr
+                             or LEN= gen-char-len KIND= int-constant-expr
+                             or KIND= int-constant-expr LEN= gen-char-len
+   R8nn gen-char-len is * | :
+Proposal:
+   R8nn gen-char-type-params is type-param-value, <>
+                             <>[ KIND = ] int-constant-expr
+                             or LEN= type-param-value, <>
+                             <> KIND= int-constant-expr
+                             or KIND= int-constant-expr, <>
+                             <> LEN= type-param-value
+     type-param-value is defined by F2023:R701, as follows:
+         R701 type-param-value is scalar-int-expr
+                               or *
+                               or :
+
+Comment:
+  Three commas are missing.
+  The reason why scalar-int-expr is not allowed in gen-char-len is not
+  clear.  I think this makes it difficult to rewrite existing non-generic
+  programs to generic programs. See (8).
+
+
+(5) generic-derived-type-spec in x04
+Current:
+   C8nn A gen-tp-value shall be * or : if and only if the type parameter
+        is a length type parameter, otherwise the int-constant-expr shall
+        be an array of rank one.
+Proposal:
+   C8nn A gen-tp-value shall be * , : or a scalar int-constant-expr if and
+        only if the type parameter is a length type parameter, otherwise
+        it shall be a rank-one array int-constant-expr.
+
+Comment:
+  Similar to (4), I think that the length type parameter should be able
+  to be a scalar int-constant-expr. See (8).
+
+
+(6) generic-intrinsic-type-spec in x04a
+Current:
+   R8nn generic-intrinsic-type-spec is nonchar-intrinsic-type-name
+                                       ( [ KIND = ] generic-kind )
+                                    or nonchar-intrinsic-type-name
+                                       ( [ KIND = ] * )
+                                    or CHARACTER ( gen-char-type-params )
+Correct:
+   R8nn generic-intrinsic-type-spec is nonchar-intrinsic-type-name
+                                       ( [ KIND = ] generic-kind )
+                                    or CHARACTER ( gen-char-type-params )
+Comment:
+  This looks like a simple mistake.
+
+
+(7) gen-char-type-params in x04a
+Current:
+     R8nn gen-char-type-params is gen-char-len [ KIND = ] generic-kind
+                               or LEN= gen-char-len KIND= generic-kind
+                               or KIND= generic-kind LEN= gen-char-len
+New:
+     R8nn gen-char-type-params is gen-char-len , [ KIND = ] generic-kind
+                               or LEN= gen-char-len , KIND= generic-kind
+                               or KIND= generic-kind , LEN= gen-char-len
+Comment:
+  Three commas are missing.
+
+
+(8) The third C8nn in x05
+Current:
+     C8nn A generic-type-specifier shall specify that each length type
+          parameter is assumed or deferred.
+Comment
+     Length type parameters do not participate in generic resolution, so
+     this simplification is mostly about saving the user's toes.
+Proposal:
+    Remove these.
+
+Comment:
+  In (4), (5) and (8), I don't understand what would be improved by
+  disallowing integer constant expressions. I think that, for both users
+  and compilers, it would be easier what is allowed in non-generic
+  subprograms was also allowed in generic subprograms.
+
+
+(9) generic-rank in x06
+Current:
+     R8nn generic-rank-spec is RANK ( generic-rank-list )
+     R8nn generic-rank  is  scalar-int-constant-expr
+                        or  generic-rank-range
+                        or  *
+     R8nn generic-rank-range is scalar-int-constant-expr : <>
+                             <> scalar-int-constant-expr
+     C8nn A scalar-int-constant-expr in a generic-rank-list shall be
+          nonnegative.
+     C8nn If a generic-rank-list contains no * or generic-rank-range, it
+          shall contain at least two <scalar-int-constant-expr>s.
+
+Proposal (same definition in N2217):
+     R8nn generic-rank-spec is RANK ( generic-rank-list )
+     R8nn generic-rank
+                 is  scalar-int-constant-expr
+                 or  [ scalar-int-constant-expr ] : <>
+                 <>  [ scalar-int-constant-expr ]
+     C8nn A scalar-int-constant-expr in a generic-rank-list shall be
+          nonnegative and less than or equal to the maximum rank
+          supported by the processor.
+
+    If the generic-rank does not contain a colon, the value of
+    scalar-int-constant-expr is added to the set of generic rank.
+
+    If the generic-rank is of the form low : high, all values c where
+    low <= c <= high are added to the set of generic rank; if low is
+    omitted, it is assumed to be zero, and if high is omitted, it is
+    assumed to be the maximum rank for non-coarray entities supported by
+    the processor.
+
+Comment:
+  This interpretation of generic-rank is similar to the one of
+  case-value-range-list described in F2023:11.1.9.2 "Execution of a
+  SELECT CASE construct". An only colon means all ranks supported by the
+  processor. So an asterisk is not necessary for the same purpose.
+
+
+(10) removed
+
+
+(11) x07
+Comment:
+  Pending.  The proposal in (9) may resolve this.
+  MAX_RANK seems to be needed, but it might be a function to handle
+  coarrays.
+
+
+(12) Two typos in x10
+Current:
+     C1169a For a given <select-type-construct>, there shall be at most
+            one CLASS DEFAULT <type-guard-stmt>.
+Correct:
+     C1169a For a given <select-gtype-construct>, there shall be at most
+            one TYPE DEFAULT <type-guard-stmt>.
+
+
+(13) Example 1 in Further Examples
+Current:
+                TYPE(REAL,COMPLEX), INTENT(IN), RANK(*) :: a
+Proposal:
+                TYPE(REAL,COMPLEX), INTENT(IN), RANK(:) :: a
+Comment:
+  See (9).
+
+
+(14) Example 2 in Further Examples
+Current:
+           INTEGER (int_kinds) :: n
+Correct:
+           INTEGER (integer_kinds) :: n
+
+
+=== END ===
