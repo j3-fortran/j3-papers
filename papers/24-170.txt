@@ -1,0 +1,205 @@
+To: J3                                                     J3/24-170
+From: Malcolm Cohen
+Subject: Formal Requirements DIN-4I: Intrinsic functions and assumed-rank
+Date: 2024-October-21
+Reference: 24-136r1
+
+
+1. Introduction
+
+This paper proposes formal requirements for DIN-4I, the proposal for
+allowing more intrinsic functions to be used with assumed-rank arguments.
+
+
+2. The basic idea
+
+The basic principle is to allow assumed-rank arrays to be used when the
+rank of the array does not affect the rank of the result. The primary
+candidates here are array reduction functions, which thus must not have a
+DIM argument (with a DIM argument, the rank of the result is one less than
+the rank of the array, thus violating our basic principle).
+
+
+3. Technical issues
+
+(a) Scalar.
+    Most of these functions do not permit the main argument to be scalar,
+    but an assumed-rank array can have runtime rank zero.
+
+    For most (all?), there is a natural answer for scalar: think of the
+    limit, as the rank approaches zero, of an array with a single element.
+    This appears to be a reasonable answer on the face of it,
+    but see the next section.
+
+(b) Scalar and generics.
+    Consider
+        INTERFACE ALL
+            LOGICAL FUNCTION SCALARALL(MASK)
+                LOGICAL,INTENT(IN) :: MASK
+            END FUNCTION
+        END INTERFACE
+    This is valid Fortran 90/95/2003/2008/2018/2023, and does not block the
+    intrinsic but provides a user function for the scalar case.
+
+    If assumed-rank associated with a scalar is permitted,
+        ALL(dummy) ! RANK(ass_rank)==0
+    is now ambiguous: does it call SCALARALL, or does it do
+        ALL([actual])
+    ?
+
+    If it calls SCALARALL, that is runtime genericity which we do not
+    permit (and cannot reasonably permit).
+    If it does ALL([actual]), we now have the undesirable situation
+    where
+        ALL(dummy)
+    does something completely different from
+        ALL(actual)
+    despite them (dummy and actual) having identical types and ranks.
+    This is a violation of our generic principle that generic resolution
+    is based on the type, kind, and rank, of the argument.
+
+    Possible solutions:
+        (b0) admit that we had good reason for not permitting assumed-rank
+             arguments in the first place, and continue to prohibit;
+        (b1) require that if the argument is assumed-rank, it shall be an
+             associate-name of a SELECT RANK construct that has a RANK(0)
+             block (removing the ambiguity);
+        (b2) require that if the argument is assumed-rank, there shall be
+             no generic with the same name with that argument scalar;
+        (b3) that if the assumed-rank argument is associated with a scalar,
+             error termination is initiated;
+        (b4) do something unreasonable, contradictory, and/or ambiguous.
+
+    This paper proposes considering solutions (b1) and (b2) at this time;
+    as such user generics are uncommon, (b2) would probably be the
+    friendliest.
+
+    However, it cannot be denied that the functionality (whole-array
+    reduction of assumed-rank arguments) is a rather niche use-case, which
+    means that consideration should also be given to (b0), i.e. abandoning
+    the proposal, especially if too many additional problems come to light.
+
+(c) Many of the functions under consideration take an optional argument
+    MASK, which must have the same rank and shape as the main argument.
+
+    Permitting MASK to also be assumed-rank would increase the likelihood
+    of a runtime violation of the rank and shape requirement. If MASK is
+    not assumed-rank, there is no need for the main argument to be
+    assumed-rank either (because of the rank requirement).
+
+    Therefore, this paper will recommend not permitting MASK to appear.
+    When the intrinsic has two forms, one with DIM and one without,
+    that means extending the one without and not the one with.
+
+(d) Virtually all of the intrinsics in question do not accept assumed-size
+    arrays as the main argument, but an assumed-rank argument can be
+    associated with an assumed-size array.
+
+    Unlike the scalar case, there is no "limit" argument one might take, as
+    we have no idea what the size of the assumed-size array actually is.
+    (It is common for the size information not to be part of the procedure
+    calling convention.)
+
+    Thus we must abandon the entire proposal unless we can reach agreement
+    as to what should happen for assumed size.
+
+    I note that for intrinsics that return an IEEE real, one natural answer
+    would be to return a NaN. Unfortunately that does not help for other
+    types, and we should be consistent.
+
+    Possible solutions:
+        (d0) abandon the proposal;
+        (d1) require that if the argument is assumed-rank, it shall be an
+             associate-name of a SELECT RANK construct that has a RANK(*)
+             block (so the bad case cannot arise);
+        (d2) specify that if the argument is assumed-rank and associated
+             with an assumed-size array, an error condition is raised at
+             execution time (error termination of the program) - this is
+             similar to what we do for REDUCE if IDENTITY is needed but
+             missing;
+        (d3) specify that the result is the same as for a zero-sized array,
+             seeing as how PRODUCT(SHAPE(ass_rank))<=0;
+        (d4) require that the assumed-rank argument shall not be associated
+             with an assumed-size array, but leave error handling or
+             nonsense value returns up to the processor;
+        (d5) make it conforming but with a processor-dependent result, to
+             maximise the likelihood of silent wrong answers.
+
+    This paper recommends considering (d1) and (d2) at this time.
+
+(e) The PACK function rank does not depend on its argument, but it has a
+    non-optional MASK of the same shape, and the result of its companion
+    function UNPACK does depend on the argument.
+
+    Therefore, PACK should be omitted.
+
+(f) Although the rank of RESHAPE does not depend on the rank of the main
+    argument, it does not permit scalar - see (a) and (b) above, and with
+    the PAD argument, it depends on the number of elements in the array -
+    see (d) above.
+
+    The (d) consideration can be avoided by simply forbidding PAD.
+    The (b) consideration will need to be handled the same as for the other
+    functions.
+
+(g) The C_LOC function in the intrinsic module ISO_C_BINDING already has a
+    load of requirements, and these are not required to be checked.
+    That does not mean we should make it worse.
+
+    This paper recommends that if we do this for C_LOC, we require that an
+    assumed-rank argument have the CONTIGUOUS attribute.
+
+
+3. Functions to be considered
+
+The following functions are to be considered.
+
+Ordinary reduction intrinsic functions:
+        ALL, ANY, IALL, IANY, IPARITY, MAXVAL, MINVAL, PRODUCT, PARITY,
+        REDUCE, SUM.
+
+Special reduction intrinsic: COUNT.
+
+Location (reduction-like) intrinsic functions:
+        FINDLOC, MAXLOC, MINLOC.
+
+Transformational intrinsic function: RESHAPE.
+
+Intrinsic module function: C_LOC.
+
+
+4. Formal Requirements
+
+(IR-1) All the functions listed in section 3 shall permit the first (main)
+       argument to be assumed rank.
+
+(IR-2) If the function has a form with a non-optional DIM argument,
+       an assumed-rank main argument is not permitted for that form.
+
+(IR-3) If the function has a form with an optional DIM argument,
+       that argument shall not appear if the main argument is assumed rank.
+
+(IR-4) If the function has an optional MASK argument that is required
+       to have the same rank and shape as the main argument, the MASK
+       argument shall not appear.
+
+(IR-5) If the function requires its first argument to be an array, that
+       requirement shall remain in force, to maintain the current level
+       of error detection.
+
+(IR-6) That a suitable and consistent solution be used to handle the
+       problems that may arise when the runtime rank is zero.
+       (Technical issue (b) above.)
+
+(IR-7) That a suitable and consistent solution be used to handle the
+       problems that may arise when the assumed-rank argument is associated
+       with an assumed-size array.
+       (Technical issue (d) above.)
+
+The solutions referred to in IR-6 and IR-7 should, as far as is possible,
+maximise the ability to detect errors and minimise the possibility of a
+silent wrong answer. This may result in some user inconvenience.
+
+Choice of the actual solutions is deferred until formal specifications.
+
+===END===
