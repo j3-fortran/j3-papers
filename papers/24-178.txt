@@ -1,0 +1,163 @@
+To: J3                                                     J3/24-178
+From: Malcolm Cohen
+Subject: Interp F23/018 on unallocated coarray correspondence
+Date: 2024-October-26
+References: 24-007, 23-219, 23-219r1, 24-146
+
+
+Introduction
+------------
+
+This is a revised version of 24-146.
+Question 1 is simplified, with the reasoning right there in the question.
+Question 2 is deleted, as the example does not conform to the standard,
+so complaints about its unusual execution results are immaterial.
+(It will remain non-conforming after the supplied edits, so really adds
+little to the discussion other than complexity and confusion.)
+
+The main change to the edits is to put the definition of correspondence
+into 5.4.7 Coarray, not buried in the middle of 9.7.1.2 Execution of an
+ALLOCATE statement. That also exposed the need for a couple of additional
+changes to avoid contradiction.
+
+
+----------------------------------------------------------------------
+
+NUMBER: F23/018
+TITLE: Correspondence of unallocated coarrays
+KEYWORDS: corresponding, unallocated, coarray
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+
+QUESTION:
+
+Consider
+
+    Program example
+        Real,Allocatable :: a[:]
+        Call sub(a)
+    Contains
+        Subroutine sub(x)
+            Real,Allocatable :: x[:]
+            Allocate(x[*])
+            ... do something with A.
+        End Subroutine
+    End Program
+
+According to 5.4.7 paragraph 3 corresponding coarrays have to be
+"established (5.4.8)" in a team.
+
+According to 5.4.8 paragraph 2,
+    "An unallocated allocatable coarray is not established."
+
+Therefore the coarray A on image one does not correspond to the
+coarray A on any other image.
+
+However, 9.7.1.2 Execution of an ALLOCATE statement, paragraph 4,
+requires
+    "If the coarray is a dummy argument, the ultimate arguments
+     (15.5.2.4) on those images shall be corresponding coarrays."
+
+The program cannot satisfy that requirement, and thus does not
+conform to the standard. That makes it impossible to allocate any
+allocatable coarray that is a dummy argument.
+
+Is this intended?
+
+ANSWER:
+
+No, this was not intended.
+The definition of correspondence in subclause 5.4.7 is incomplete.
+
+Edits are supplied to make the definition of correspondence complete,
+extending it to cover unallocated allocatable coarrays. This let us
+simplify and correct the requirements for allocation.
+
+EDITS to 24-007:
+
+[49:26] 5.4.7 Coarray, p3,
+        Change "For each coarray"
+        to "For each established coarray".
+[49:27] After "in which it is established (5.4.8)."
+        insert new sentence
+            "For each unallocated coarray, there exists a
+             corresponding unallocated coarray with the same declared
+             type, rank, corank, and non-deferred type parameters on
+             each active image of the current team."
+        and then end the paragraph (the rest of paragraph becoming a
+        new paragraph).
+[49:27] Insert a new paragraph in between the above insertion and the
+        rest of what was paragraph 3:
+   "For a named coarray that is not a dummy argument, its
+    corresponding coarrays are the ones with the same name in that
+    scoping unit. For a coarray that is a component at any level of
+    component selection, its corresponding coarrays are the same
+    components of the base object that has the same name in that
+    scoping unit. If a coarray component is a potential subobject
+    component of an array element, the array element for its
+    corresponding coarrays has the same position in array element
+    order on each image."
+{Take the correspondence specification from 9.7.1.2 and put it here
+ where it belongs. Correspondence is not just for ALLOCATE!}
+
+***ASIDE:
+
+This makes paragraph 3 of 5.4.7 into these three paragraphs:
+   "For each established coarray on an image, there is a corresponding
+    coarray with the same type, type parameters, and bounds on every
+    other image of a team in which it is established (5.4.8). For each
+    unallocated coarray, there exists a corresponding unallocated
+    coarray with the same declared type, rank, corank, and non-
+    deferred type parameters on each active image of the current
+    team.
+
+    For a named coarray that is not a dummy argument, its
+    corresponding coarrays are the ones with the same name in that
+    scoping unit. For a coarray that is a component at any level of
+    component selection, its corresponding coarrays are the same
+    components of the base object that has the same name in that
+    scoping unit. If a coarray component is an ultimate component of
+    an array element, the array element for its corresponding coarrays
+    has the same position in array element order on each image.
+
+    If a coarray is an unsaved local variable of a recursive
+    procedure, its corresponding coarrays are the ones at the same
+    depth of recursion of that procedure on each image."
+
+***END ASIDE.
+
+[49:30] Same subclause, paragraph 4,
+        After "The set of corresponding"
+        insert "established",
+        making the whole sentence read
+            "The set of corresponding coarrays on all images in a team
+             is arranged in a rectangular pattern."
+{Unallocated coarrays are not arranged in any pattern.}
+
+[148:32-40] In "9.7.1.2 Execution of an ALLOCATE statement", replace
+            the third sentence "If the coarray is a..." to the end of
+            the paragraph with
+   "The coarray shall be corresponding (5.4.7) on those images."
+{If we got the definition of correspondence right, that is all we need
+ to say. It would be inappropriate to define what correspondence means
+ in the middle of the ALLOCATE statement execution.}
+
+[148:40+] Insert new paragraph
+   "If an allocation specifies a coarray, the same ALLOCATE statement
+    shall be executed on every active image of the current team. If
+    the coarray is an unsaved local variable of a recursive procedure,
+    the execution of the ALLOCATE statement shall be at the same depth
+    of recursion of that procedure on those images."
+{The first requirement actually follows from the segment rules, but
+ stating it explicitly means the reader does not have to go off and
+ prove a theorem. The second requirement is the last sentence of the
+ existing p4, with slightly simplified wording.}
+
+SUBMITTED BY: John Reid and Reinhold Bader.
+
+HISTORY: 23-219   m231  Submitted
+         23-219r1 m231  Rejected
+         24-146   m233  Revised but not processed
+         24-nnn   m234  Revised again
+
+----------------------------------------------------------------------

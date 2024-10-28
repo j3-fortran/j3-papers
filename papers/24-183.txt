@@ -1,0 +1,191 @@
+To: J3                                                     J3/24-183
+From: Malcolm Cohen
+Subject: DIN-4M: Specifications, syntax, and edits
+Date: 2024-October-28
+Reference: 24-136r1, 23-184r1, 24-171
+
+
+1. Introduction
+
+This paper proposes formal specifications, syntax, and edits for DIN-4M,
+the proposal for miscellaneous enhancements for assumed-rank arguments.
+
+Some of these come from US-07 "Improve rank-independent functionality".
+Formal requirements are in paper 24-171.
+
+
+2. Overview
+
+The features are as follows:
+
+(1) Allow a simply contiguous assumed-rank argument to be the
+    target in a rank-remapping pointer assignment.
+
+(2) Allow an assumed-rank argument to be the selector in a SELECT TYPE
+    construct.
+
+
+3. Technical issues
+
+See 24-171 for a more complete discussion of various issues.
+
+(a) Scalar (1).
+    Rank-remapping pointer assignment currently requires the target to be
+    an array, that is, it is not permitted to be scalar.
+    If an assumed-rank argument has runtime rank zero, that would violate
+    that constraint.
+
+    The solution proposed here is to permit the target of a rank-remapping
+    pointer assignment to be scalar, and treat it as if it were a single
+    element array. This maximises user-friendliness and consistency, while
+    keeping deleterious effects on error detection to a minimum. It also
+    allows a user to pass an "array view" of a scalar, in the case where
+    they have a scalar variable already and they wish to call a procedure
+    that expects an array; a very minor "niche" feature, but a feature
+    nonetheless.
+
+
+4. Formal specifications and syntax
+
+(MS-1) An assumed-rank variable shall be acceptable as the target in a rank
+       remapping pointer assignment, as long as it is simply contiguous.
+       Simply contiguous here means "has the CONTIGUOUS attribute".
+
+(MS-2) A scalar variable shall be acceptable as the target in a rank
+       remapping pointer assignment, and treated as if it were an array
+       with a single element.
+
+(MS-3) A polymorphic assumed-rank variable shall be acceptable as the
+       selector in a SELECT TYPE statement. Within the construct, the
+       associate names are all assumed-rank.
+
+(MS-4) To enhance comprehensibility, define and use "rank-remapping
+       pointer assignment".
+
+
+5. Editorial preparation of 24-007
+
+The preparatory edits in 24-182 need to be done first.
+
+
+6. Edits to 24-007
+
+[xiii] Introduction, paragraph two, "Data usage and computation" bullet,
+       insert sentences
+        "A scalar variable with the TARGET attribute can be the target in a
+         rank-remapping pointer assignment. An assumed-rank variable with
+         the CONTIGUOUS and TARGET attributes can be the target in a rank-
+         remapping pointer assignment (10.2.2). An assumed-rank variable
+         that is polymorphic can be the selector of a SELECT TYPE
+         construct (11.1.11)."
+{List the three new features in the Introduction.
+ Hyperlink "assumed-rank", "CONTIGUOUS", "TARGET", and "rank-remapping".}
+
+[113:36-37] 8.5.8.7 Assumed-rank entity, p1,
+            After ", or" change "the associate... construct"
+            to "an associate name whose selector is assumed-rank"
+            making that whole sentence read
+   "An assumed-rank entity is a dummy data object whose rank is assumed
+    from its effective argument, or an associate name whose selector is
+    assumed-rank; this rank can be zero."
+{Do not say here what associate names can be assumed-rank, as it is not
+ necessary. Constraint C840 specifies that.}
+
+[114:4] Constraint C840 "An assumed-rank variable name shall not appear..."
+        Before "or the selector"
+        insert "the target in a rank-remapping pointer assignment,"
+        After "RANK" insert "or SELECT TYPE",
+        making the whole constraint read:
+   "C840 An assumed-rank variable name shall not appear in a designator or
+         expression except as an actual argument that corresponds to a
+         dummy argument that is assumed-rank, the argument of the function
+         C_LOC or C_SIZEOF from the intrinsic module ISO_C_BINDING (18.2),
+         the first dummy argument of an intrinsic inquiry function, the
+         target of a rank-remapping pointer assignment, or the selector of
+         a SELECT RANK or SELECT TYPE statement."
+{This is the main edit, allowing assumed-rank in the new places.
+ Hyperlink everything we can.}
+
+[181:33] 10.2.2.3 Data pointer assignment, p6,
+         After "contiguous" insert "or scalar",
+         Making that whole paragraph read:
+   "If the pointer object has the CONTIGUOUS attribute, the pointer target
+    shall be contiguous or scalar."
+{Permit scalar for rank-remapping when the pointer object has CONTIGUOUS.}
+
+[182:1] Same subclause, before p8, insert new paragraph
+    "\label{term:rank-remapping}%
+     A pointer assignment statement that has a <bounds-remapping-list> or
+     an <upper-bounds-expr> is a \mindexd*{rank-remapping pointer
+     assignment}\mindexd{pointer assignment|rank-remapping}; the pointer
+     target shall be simply contiguous (9.5.4) or have rank less than two,
+     and shall not be a disassociated or undefined pointer."
+{This defines "rank-remapping pointer assignment", so that we can use it
+ in other places (the Introduction and Clause 8). The requirement after the
+ semi-colon comes the existing p8, modified to permit scalar.
+ BTW, "\mindexd" means index as a definition i.e. in bold, and the * means
+ also display that text as normal text. The \label provides the target for
+ hyperlinking.}
+
+[182:2-3] Same subclause, p8,
+          Delete "; the pointer ... undefined pointer".
+[182:4] After "by the <bounds-remapping-list>" insert
+        "; a scalar target is treated as an array with a single element".
+{Delete the text we factored out, and say how a scalar target works.}
+
+FOR INFO ONLY, NOT FOR THE EDITOR: the whole p8 will become
+   "If bounds-remapping-list appears, it specifies the upper and lower
+    bounds of each dimension of the pointer, and thus the extents; the
+    pointer target shall be simply contiguous (9.5.4) or have rank less
+    than two, and shall not be a disassociated or undefined pointer. The
+    number of elements of the pointer target shall not be less than the
+    number implied by the bounds-remapping-list; a scalar target is
+    treated as an array with a single element. The elements of the pointer
+    object are associated with those of the pointer target, in array
+    element order; if the pointer target has more elements than specified
+    for the pointer object, the remaining elements are not associated with
+    the pointer object."
+
+[183:2-2] 10.2.2.5 Examples of pointer assignment statements, NOTE 2,
+          Before the last line of the note "... Linear view..."
+          Insert declarations
+            "REAL, CONTIGUOUS, TARGET :: C (..) ! Assumed-rank argument
+             REAL, TARGET :: D ! Scalar"
+          After the last line of the note insert
+            "A ( 1:10 ) => C   ! The first ten elements of C
+             A ( 7:7 ) => D    ! Array view of a scalar."
+{Add examples.}
+
+[190:36] 11.1.3.3 Other attributes of associate names, p1,
+         After "has the same rank as its associated selector"
+         insert "; it is assumed-rank if and only if the selector is
+                 assumed-rank",
+         making that whole sentence read
+   "Within an ASSOCIATE, CHANGE TEAM, or SELECT TYPE construct, each
+    associating entity has the same rank as its associated selector;
+    it is assumed-rank if and only if the selector is assumed-rank."
+{The stuff about assumed-rank only applies to SELECT TYPE, but it is
+ harmless for the others. Hyperlink assumed-rank.}
+
+NOT RECOMMENDED:
+[213:1-] 11.1.11.3 Examples of the SELECT TYPE construct,
+         At the end of the subclause, insert new NOTE
+   "NOTE 3
+    The following example illustrates use with assumed rank; the
+    associate-name is assumed-rank within the construct.
+
+    CLASS(*), INTENT(IN) :: Q (..)
+    ...
+    SELECT TYPE ( A => Q )
+    TYPE IS ( REAL )
+      PRINT *, 'Q is REAL'
+    TYPE IS ( LOGICAL )
+      PRINT *, 'Q is LOGICAL'
+    CLASS DEFAULT
+      PRINT *, 'Q is something else'
+    END SELECT"
+{Here is an example if we think we should have one. Not recommended
+ because I do not think it is very interesting, but others may find
+ value in it?}
+
+===END===

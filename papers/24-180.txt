@@ -1,0 +1,109 @@
+To: J3                                                     J3/24-180
+From: Malcolm Cohen
+Subject: Comment (1) on auto-generic subprogram syntax
+Date: 2024-October-27
+References: 24-139r2, 24-168
+
+
+1. Introduction
+
+24-168 suggests a syntax change (extension) from 24-139r2.
+/DATA subgroup recommends against this change.
+
+Aside: I think maybe we should call these "auto-generic", to better
+       distinguish them from our other generic features. I am doing so
+       in this paper.
+
+
+2. The syntax in 24-139r2
+
+x01. The GENERIC <prefix-spec> in the <subroutine-stmt> or <function-stmt>
+     of a module subprogram or internal subprogram specifies the subprogram
+     to be generic. Its name is a generic name and it defines one or more
+     specific procedures with that generic name. Each dummy argument of a
+     specific procedure has a single type, kind, and rank. The interface of
+     each specific procedure is explicit.
+
+     If the name is already generic, the new specific procedures will
+     be added to the existing set of specific procedures. Any two of
+     these procedures must satisfy the rules of 15.4.3.4.5 to ensure
+     that any reference is unambiguous.
+
+     Constraint: If a module subprogram is generic, it shall not have an
+                 internal subprogram that is generic.
+
+
+3. The suggested change in 24-168
+
+Change the constraint to:
+
+    Constraint: If a module subprogram is type-or-kind-generic, it shall
+        not have an internal subprogram that is type-or-kind-generic.
+        If a module subprogram is rank-generic, it shall not have an
+        internal subprogram that is rank-generic.
+
+Because:
+  For example, a generic library function of type REAL(*) may want to have
+  rank-generic internal functions. Type-or-kind-generic and rank-generic
+  are mutually orthogonal, so there is little risk of generating
+  meaningless combinations.
+
+
+4. Subgroup recommendation
+
+/DATA subgroup stands by its reasoning in 24-139r2, which states (about
+the constraint):
+
+     Comment
+     This is a simplification to avoid nested generic subprograms, which
+     would generate N**2 specifics (most of which might not even be
+     referenced); that would be an unnecessary burden on the processor.
+     Instead of nested generic subprograms, side-by-side generic
+     subprograms (in the containing scoping unit) can be used, perhaps
+     making some of them PRIVATE if they are module subprograms.
+
+Any loss of functionality (viz access via host association to the local
+variables and arguments of each instance of the auto-generic module
+procedure) is minimal, as such variables and arguments could be passed as
+arguments to the side-by-side auto-generic procedure.
+
+
+5. Example of the syntax proposed by 24-168
+
+GENERIC SUBROUTINE outer ( x, ...) ! Only the X argument is generic.
+    TYPE(REAL(real_kinds),INTEGER(integer_kinds),COMPLEX(real_kinds)), &
+        INTENT(INOUT) :: x
+...
+CONTAINS
+    GENERIC SUBROUTINE inner ( y, ...) ! Only the Y argument is generic.
+        LOGICAL,RANK(1:15),INTENT(INOUT) :: y
+...
+END
+
+
+6. Discussion of the example
+
+If the internal procedure INNER accesses X (or anything depending on X)
+by host association, and there are three kinds of REAL and four kinds of
+INTEGER, this will necessarily generate 150 versions of INNER. Making INNER
+a module procedure and passing through the argument list will also generate
+150 versions, but at least it is obvious that that will happen.
+
+If the internal procedure INNER accesses nothing from OUTER, it can be a
+private module procedure without any problem, with only 15 copies.
+
+The burden of this syntax on the processor is not that some combinations
+might be without meaning, but that its auto-generic expansion facility will
+need to be recursive. There is also a lesser burden on error reporting, viz
+identifying what particular combination produced something invalid, when
+some parts of the combination come from the procedure in question and other
+parts come from its host.
+
+There may also be a small burden on the user with this coding style, as the
+nesting of GENERIC may be difficult to observe when the subprogram headings
+are hundreds of lines apart (or even just a screen or two away).
+
+There is also a burden on the standard, for describing nested auto-generic
+subprogram semantics. That burden is reduced if they do not exist.
+
+===END===
