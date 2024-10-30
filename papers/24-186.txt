@@ -1,0 +1,153 @@
+To: J3                                                     J3/24-186
+From: Malcolm Cohen
+Subject: Discussion of LOCK_TYPE
+Date: 2024-October-30
+
+
+1. Introduction
+
+This paper discusses the description and requires on LOCK_TYPE, and in
+particular, whether there are any requirements on the internal
+representation.
+
+
+2. Values and state
+
+Subclause 16.10.2.19 LOCK_TYPE says that a LOCK_TYPE can have several
+different values, and that the "unlocked state" is represented by one
+particular value, and that the "locked state" is represented by all the
+other values.
+
+Concern has been expressed about the verb "represent" here, it being
+conjectured that this means that the "values" being talked about are
+the internal representation.
+
+This concern is unwarranted. The values are the values that can be observed
+by a user program, viz:
+    "unlocked" -> LOCK succeeds, and UNLOCK fails with STAT_UNLOCKED.
+    "locked by me" -> LOCK fails with STAT_LOCKED, and UNLOCK succeeds.
+    "locked by another image" ->
+         LOCK with ACQUIRED_LOCK succeeds with ACQUIRED_LOCK false,
+         and UNLOCK fails with STAT_LOCKED_OTHER_IMAGE.
+Thus there are NUM_IMAGES()+1 user-observable values.
+
+The grouping of these into the "locked" and "unlocked" states, is because
+the main thing about a lock is that it is either locked or unlocked.
+Other observable parts of the value (who locked it) are subsidiary.
+The verb "to represent" here is thus just ordinary English, not referring
+to anything about the internal representation, or how the locking is
+implemented.
+
+
+3. Exclusions
+
+Clause 1 excludes virtually all physical properties from the scope of the
+standard (a partial exception is made for IEEE arithmetic). The exclusions
+are phrased in sweeping terms, so LOCK_TYPE is not specifically mentioned
+(nor are most other types), but it would be natural to interpret those
+exclusions as applying to LOCK_TYPE as well.
+
+
+4. Descriptions
+
+Careful reading of the descriptions of the LOCK and UNLOCK statements
+shows that everything is phrased in terms of the semantics of the user
+program; there is nothing said about the internal representation.
+
+The LOCK_TYPE description mentions Fortran-specific things, e.g. that the
+type is extensible, is fully default-initialised, etc. These things have
+semantic effects, so again, we are talking about semantics.
+
+Particular attention has been drawn to the specification that no component
+is allocatable or a pointer. Having an allocatable or pointer component has
+semantic effects on how one can use an object; for example, an allocatable
+component would mean exclusion from some usage contexts, and a pointer
+component would mean that when defined by another image, the pointer
+component would become undefined. It may be that the other multiple
+constraints on how and where LOCK_TYPE can be used would mean that the
+"no allocatable" rule makes no difference, but it is clear that since these
+types are designed for cross-image access, a Fortran pointer component
+would raise questions.
+
+It can, however, be noted that there is no exclusion of things like machine
+addresses or memory addresses appearing in LOCK_TYPE. That would be because
+such things are not user-visible (except potentially when using TRANSFER,
+but that is completely processor-dependent in this case anyway).
+
+Finally, it should be noted that although it is possible that removing the
+specification (that no component is allocatable or a pointer) might be
+harmless, it could easily be an inadvertent technical change. This has
+happened before, viz an allegedly "editorial" change made the standard
+incorrect, and it had to be corrected (back to the original wording) at
+great expense at a later date. Thus, as long as we can satisfy ourselves
+that the current wording/specification is not a problem, it should be left
+alone.
+
+
+5. Consistency with other type descriptions
+
+It has been noted that there are small differences between the descriptions
+of LOCK_TYPE, EVENT_TYPE, and NOTIFY_TYPE. These mostly arise from
+(a) despite attempts by some committee members, there was never general
+    agreement for some kind of "limited type" concept, to capture the
+    idea of a special type with limits on how it is used;
+(b) there are actual differences in the capabilities of each type, for
+    example, a LOCK can be waited on any image, but an EVENT can only be
+    waited on the image where it is stored;
+(c) the types were all added in different revisions (F2008, F2018, and
+    F2023), with participation by different committee members, and so the
+    later types were designed with more experience.
+
+After EVENT_TYPE was added, there was at least one more attempt to capture
+the idea of a limited type, but it foundered on the actual differences in
+capabilities and requirements needed. That is, any definition of "limited
+type" that we could make was too complicated in its description without
+managing to be general enough to be useful.
+
+
+6. Requirements on the internal representation
+
+As the standard is silent (other than there being "no Fortran allocatable
+or pointer component"), there is thus almost no requirement at all.
+
+In particular, there is no requirement for a single (user-visible) "value"
+to have a single internal representation. This is, of course, true of
+virtually every type, including intrinsic types. Type LOGICAL only has two
+values, and there is nothing that says how the (typically 2**32) internal
+representations are valid, and how many valid internal representations
+correspond to either value. For example, a Fortran processor that followed
+the C model might give one representation to .FALSE. (all bits clear), and
+2**32-1 representations to .TRUE. (any bit set); another processor might
+give 2**31 representations to each (lower bit clear vs lower bit set), and
+a third processor might give one representation to each (0 or -1) with all
+the other representations invalid.
+
+Thus the "unlocked state" (a single value) of LOCK_TYPE might have many
+representations, for example, it might include the history of the last ten
+images that used the lock.
+
+Perhaps surprisingly, the reverse is also true: a lock having a different
+value does not necessarily have a different representation. For example,
+if the LOCK_TYPE contains just the "handle" of an operating system object
+like a semaphore, it would be the operating system internal structures
+that provide the locking and queueing, with no change to any visible part
+of user program memory. That is, the internal representation is merely the
+key to obtaining the "value", it is not the "value" itself.
+
+
+7. Do we need to say any of this normatively?
+
+No. The standard has no requirement on the internal representation, thus
+there is no requirement on the internal representation.
+
+The same is true of nearly every other type (except for IEEE-conformant
+kinds of real type).
+
+Of course we could have a NOTE that said some of the above, but if we had
+such a NOTE here, surely someone would notice that we don't have one for
+EVENT_TYPE or CHARACTER or... and jump to the erroneous conclusion that
+we therefore do have such requirements buried somewhere in the normative
+text or its implications. We would have to word such a NOTE very carefully
+indeed to avoid any possibility of that kind of misunderstanding.
+
+===END===
