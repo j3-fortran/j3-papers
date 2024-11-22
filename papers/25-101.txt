@@ -1,0 +1,187 @@
+To: J3                                                     J3/25-101
+From: Van Snyder
+Subject: Instantiate objects of abstract type -- in a future revision
+Date: 2024-November-19
+Reference: 24-007
+
+Intoduction
+-----------
+
+When type extension was designed, it was agreed that objects of abstract
+type ought not to be allowed to exist. The clear intent was to provide a
+compile-time guarantee that the program could not even attempt to invoke
+a deferred type-bound procedure for which no override had been provided.
+
+C703 in 7.3.2.1 "Type specifier sytax" prohibits the <derived-type-spec>
+in a <type-spec> from being of abstract type.
+
+C711 in 7.3.2.1 "Type specifier sytax" prohibits the <data-ref> in a
+TYPEOF specifier from being of abstract type.
+
+C7101 in 7.5.10 "Construction of derived-type values" prohibits the
+<derived-type-spec> from being an abstract type.
+
+Although it admittedly provides only small benefit, there are situations
+where it would be desirable to allow objects of abstract type to exist.
+
+In many problems in mathematical software, the general-method procedures
+need access to user-provided code to specify the problem. Examples
+include quadrature, differential equations, minimization, and nonlinear
+equation solvers.
+
+A valuable organizational structure for procedures for these kinds of
+problems is to provide both "forward" communication, in which the
+procedure invokes a user-defined procedure (one with an explicit name in
+the procedure, a dummy procedure, a type-bound one, or a procedure
+pointer component), or "reverse" communication, in which the procedure
+returns to the invoker to evaluate the problem (the latter is a
+coroutine model, for which J3 and WG5 have occasionally agreed support,
+and then deleted it before the final content of the revision is agreed,
+see e.g. 24-153). If a procedure provides both methods, it needs some
+sort of "signal" to specify which one to use.
+
+In contemporary design methods, there is some (but not universal)
+consensus that the best method for forward communication is to use a
+type-bound procedure. That would require that the type-bound procedure
+is not deferred, and that some other "signal," such as a logical
+component, would be required to indicate whether to use forward or
+reverse communication. A developer of such a procedure would need to
+provide a default procedure that prints a message "you didn't provide a
+procedure for your problem model, but you didn't ask for reverse
+communication."
+
+An alternative, presently prohibited, is to allow the dummy argument
+structure that describes the problem to be of abstract type, which
+replaces one run-time problem (a perhaps-inscrutable run-time
+user-written message) with a different one (a perhaps
+equally-inscrutable run-time message about trying to invoke a deferred
+procedure), but it eliminates the (perhaps logical) "signal" component
+that might have a value incompatible with whether the "model" type-bound
+procedure actually exists. The "signal" whether to use forward or
+reverse communication would be whether the necessary procedure is
+deferred in the dynamic type of the object that defines the problem.
+
+Proposal
+--------
+
+1. Add an attribute, say ALLOW_INSTANCE or INSTANTIATE, to deferred
+procedure bindings to indicate that objects of the type can be
+instantiated even if a specific overriding procedure is not provided for
+that binding.
+
+2. Replace constraints C703, C711, and C7101 with ones that require the
+ALLOW_INSTANCE attribute on every DEFERRED procedure binding. This
+preserves compile-time diagnosis in cases where a program unit has not
+implicitly "promised" never to cause the problem of attempting to invoke
+a deferred type-bound procedure, or to detect and respond to the
+problem.
+
+3. Add a requirement that a deferred procedure that is not overridden by
+a specific procedure shall not be invoked. This is consistent with
+prohibition to invoke a procedure using a NULL or undefined procedure
+pointer. An important difference is that a deferred type-bound
+(under-the-covers) procedure "pointer" is never undefined, so rather than
+producing an inscrutable "seg fault," a helpful processor might produce
+a procedure that announces which deferred type-bound procedure in which
+type was unlawfully invoked before executing ERROR STOP.
+
+4. Add an intrinsic function to inquire whether a type-bound procedure
+in the dynamic type of an object is or is not deferred. The argument
+would be required to have the attribute.
+
+An example might be
+
+  ! "The_Problem" would polymorphic, and usually be a dummy argument
+  if ( deferred ( the_problem%definition ) ) then
+    return ! "suspend" would make it easier to get back to statement 6
+           ! when coroutines are provided
+  else
+    call the_problem%definition
+  end if
+6 continue
+
+Sample edits to suggest the extent of the change
+------------------------------------------------
+
+[Witter in the introduction not included here.]
+
+[63:19 7.3.1 Relationship of types and values to objects] Replace C703:
+
+"C703 (R702) If <derived-type> specifies an abstract type (7.5.7), every
+      deferred procedure binding in the type shall have the
+      ALLOW_INSTANCE attribute."
+
+[64:1 7.3.1 Relationship of types and values to objects]
+
+Replace "or of abstract type" with "or of an abstract type in which a
+deferred binding does not have the ALLOW_INSTANCE attribute."
+
+[86:29+ 7.5.5 Type Bound procedures] Insert:
+
+"     <<or>> ALLOW_INSTANCE"
+
+[87:1+ 7.5.5 Type Bound procedures] Insert:
+
+"C788a  (R752) ALLOW_INSTANCE shall not appear if DEFERRED does not
+        appear."
+
+[93:5 7.5.10 Construction of derived-type values] Replace C7101:
+
+"C7101 (R756)  If <derived-type-spec> specifies an abstract type
+      (7.5.7), every deferred procedure binding in the type shall have
+      the ALLOW_INSTANCE attribute."
+
+[172:12 10.1.11 Specification expression] After "PRESENT" insert "or
+DEFERRED". [This might not be necessary if a specification inquiry is
+elsewhere required to be a constant.]
+
+[335:3 15.5.3 Function reference] Before "When it is invoked" insert "A
+deferred type-bound procedure shall not be invoked."
+
+[335:10 15.5.4 Subroutine reference] Before "When a subroutine is
+invoked" insert "A deferred type-bound procedure shall not be invoked."
+
+[357 Table 16.1 Standard generic intrinsic procedures]
+
+After the line for DBLE insert
+
+"DEFERRED ( P )          I   The specified procedure is a deferred
+                             type-bound procedure"
+
+[389:10+ 16.9.70a after "DBLE ( A )] Insert an intrinsic function:
+
+
+"16.9.70a  DEFERRED ( P )
+ Description. The specified procedure is a deferred type-bound
+ procedure.
+
+ Class. Inquiry function.
+
+ Argument. P shall be a <procedure-designator> for a type-bound
+ procedure that has the ALLOW_INSTANCE attribute.
+
+ Result characteristics. Default logical.
+
+ Result value. The result has the value true if and only if the
+ specified argument is a type-bound procedure that is deferred in the
+ dynamic type of its <data-ref>.
+
+ Example. Assume type definitions:
+
+    TYPE :: T1
+    CONTAINS
+      PROCEDURE, PASS, DEFERRED, ALLOW_INSTANCE :: P
+    END TYPE T1
+    TYPE, EXTENDS(T1) :: T2
+    CONTAINS
+      PROCEDURE, PASS :: P => P2
+    END TYPE T1
+
+    Assume a variable declaration:
+
+    CLASS(T1) :: X ! A dummy argument, allocatable, or a pointer
+
+    The value of DEFERRED ( X%P ) is true if the dynamic type of X is
+    T1, and false if the dynamic type of X is T2.
+
+"
