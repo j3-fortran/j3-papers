@@ -1,13 +1,13 @@
-all:	meeting-docs index file-types
+all:	meeting-docs index file-types.txt
 
-MEETINGS=232 233
+MEETINGS=235
 meeting-docs:
 	bin/get-docs-for-meeting ${MEETINGS}
 
 index: papers
 	bin/update-index "$@" papers meetings years
 
-file-types:	papers
+file-types.txt:	papers
 	bin/update-file-types "$@" papers
 
 # non-ascii-by-paper.txt: papers/*.txt \
