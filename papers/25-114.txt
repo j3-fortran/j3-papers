@@ -1,0 +1,243 @@
+To: J3                                                     J3/25-114
+From: Gary Klimowicz, Dan Bonachea, Aury Shafran
+Subject: Fortran preprocessor requirements
+Date: 2025-February-06
+
+References: 95-257 Conditional Compilation: The FCC Approach.txt
+            96-063 A Fortran Preprocessor.txt
+            23-192r1 F202Y Define a standard Fortran preprocessor.txt
+            24-108 Preprocessor directives seen in existing Fortran
+                   programs.txt
+            24-109 On Fortran awareness in a Fortran preprocessor.txt
+            24-177r1 Fortran preprocessor requirements.txt
+            Tutorials/Preprocessor Take 2.pptx
+            ISO/IEC 9899:2023 Programming languages -- C
+                   working draft N3096
+
+
+1. Introduction
+---------------
+From paper 96-063, April 3, 1996 (lightly edited):
+
+   Frequently Fortran programmers need to maintain more than one
+   version of a code, or to run the code in various environments. The
+   easiest solution for the programmer is to keep a single source file
+   that has all the code variations interleaved within it so that any
+   version can be easily extracted. This way, modifications that apply
+   to all versions need only be made once.
+
+   Source code preprocessors have long been used to provide these
+   capabilities. They allow the user to insert directive statements
+   within the source code that affect the output of the preprocessor.
+   In general, source code preprocessors permit the user to define
+   special variables and logical constructs that conditionally control
+   which source lines in the file are passed on to the compiler and
+   which lines are skipped over. In addition, the preprocessor's
+   capabilities allow the user to specify how the source code should
+   be changed according to the value of defined string variables and
+   functions.
+
+   Historically, the source code preprocessor found in standard C
+   compilers, CPP, has been used to provide Fortran programmers with
+   these capabilities. However, CPP is too closely tied into the C
+   language syntax and source line format to be used without careful
+   scrutiny. The proposed Fortran PreProcessor, FPP, would provide
+   Fortran-specific source code capabilities that C programmers have
+   long grown to expect.
+
+<end of text borrowed from 96-063>
+
+Existing compiler implementations either use CPP directly, or implement
+Fortran-oriented semantics of CPP in the processor. For simple use
+cases, these implementations support similar functionality and behavior.
+
+Many existing Fortran projects make extensive use of C preprocessor
+directives and macro expansion, despite the lack of an FPP standard.
+This is usually done to tailor the code to specific environments, such
+as target compilers or machines.
+
+Unfortunately, more complex use cases fail to be portable between
+different implementations. This is enough of a problem that WG 5 raised
+this as the number 2 issue to address in Fortran 202y, behind generics.
+
+This is not a new problem, as evidenced by the J3 discussions from the
+mid 1990s. The introduction of CoCo in Fortran 95 did not solve the
+problem, either, because it was not a mandatory part of the standard and
+because it was not compatible with the preprocessor syntax used by many
+existing Fortran projects.
+
+This document attempts to define the requirements for a mandatory
+Fortran preprocessor based on the preprocessor syntax already in common
+use today. The guiding principle is to promote Fortran program
+portability by defining consistent syntax and semantics of a useful
+subset of CPP. Some FPP behavior will be slightly different from CPP, in
+order to accommodate some Fortran idiosyncrasies.
+
+A major overarching goal of this effort is to standardize de facto
+current practice for preprocessing in Fortran compilers and code. It is
+the standard's responsibility to standardize syntax in order to settle
+minor divergences that have arisen amongst pre-standard FPP
+implementations, to the detriment of portability for end users.
+
+
+2. The basic idea: phases before the "processor"
+------------------------------------------------
+The preprocessor will be a mandatory part of the language. Any file
+passed to a processor may contain preprocessor directive lines.
+
+The C standards define eight phases of the compilation process. These
+phases don't prescribe the details of an implementation, but are useful
+for defining in focused terms the expected behavior of implementations.
+
+We plan to take a similar approach for defining FPP. This should
+simplify the explanation of the expected behavior of any given
+implementation.
+
+
+3. FPP Phase 1: Line conjoining
+-------------------------------
+The C language defines phase 2 as a pass where continuation lines are
+removed. To simplify the explanation of FPP's preprocessing phase 2, we
+will define phase 1 to simply remove continuation lines seen in the
+source file. This will apply to both fixed-form and free-form source
+Fortran lines and preprocessor directive lines. The output of this phase
+is a sequence of "logical lines", each of which may be up to 1 million
+characters long. Logical lines are a sequence of strings and
+comment-strings in the same order as they are encountered in the input
+stream.
+
+
+4. FPP Phase 2: Directive processing
+------------------------------------
+The directive processing phase is analogous to CPP phase 4. Preprocessor
+directives are executed. Macros are expanded in non-directive lines
+(Fortran source lines).
+
+The directive language accepted by FPP is based on the syntax of CPP. It
+has syntax that differs from Fortran, but macros can expand to include
+arbitrary Fortran tokens. It differs from C and Fortran syntax in the
+following ways.
+
+Token recognition:
+    1. FPP's directives and token recognition are case sensitive.
+    2. FPP treats blanks adjacent to tokens as significant, even in
+       fixed-form source files.
+
+Line continuation in directives:
+    1. FPP directive lines accept backslash (\) for line continuations.
+    2. FPP does not recognize fixed-form (column 6) or free-form (&)
+       continuations on directive lines.
+
+Comment handling:
+    1. FPP does not recognize '!' as initiating a comment on directive
+       lines. In #if and #elif directive expressions, '!' is interpreted
+       as the C 'not' operator.
+    2. FPP does not recognize '//' as initiating a comment on directive
+       lines. '//' can be used to construct macro definitions that
+       contain Fortran string concatenation.
+    3. FPP recognizes /* ... */ C-style comments on directive lines.
+       /* ... */ comments are not recognized in (non-directive)
+       Fortran source lines.
+    4. Macros are expanded in comment lines that appear to be directives
+       (processor-specific, such as '!$omp', or '!$acc', or others).
+
+Constant expressions in #if and #elif:
+    1. Expressions in #if and #elif directives allow operators from
+       both Fortran and CPP.
+    2. Expressions in #if and #elif directives must be integer constant
+       expressions as specified for CPP (with the extensions described
+       below), and evaluate to INTEGER values. As in CPP, zero values
+       are treated as 'false'. Non-zero values are treated as 'true'.
+    3. .FALSE. and .false. are treated as the integer 0.
+       .TRUE. and .true. are treated as the integer 1.
+    4. Any undefined identifiers that remain after macro expansion
+       (including those lexically identical to keywords or intrinsics)
+       are treated as zero, as in CPP.
+    5. C character constants (such as 'A', '\n') are treated as
+       integer values, as they are in CPP.
+    6. The Fortran operators .AND., .OR., .NOT., =, and /= evaluate
+       to the same values as the C operators &&, ||, !, ==, and !=,
+       respectively.
+    7. There are no KIND specifiers on integer constants in the
+       preprocessor.
+    8. Integer expressions in preprocessor directives are evaluated
+       using the maximum precision the processor supports.
+
+
+4.1. Directives accepted by the preprocessor
+--------------------------------------------
+The following preprocessor directives will have the same semantics
+as defined in the C23 edition of the C programming language standard.
+    #line
+    #define  including function-like macros and those
+             that use the ellipsis notation in the parameters
+    #undef
+    #if, #elif, #else, #endif
+    #ifdef, #ifndef, #elifdef, #elifndef
+    #include
+    #error
+    #warning
+    #pragma
+
+Just as #include lines interpolate the source from other files, the
+preprocessor will include the text from Fortran INCLUDE lines. Text
+interpolated by INCLUDE lines will be treated as if it had been included
+via #include.
+
+
+4.2 Tokens accepted on #define directives
+-----------------------------------------
+    - # (stringify)
+    - ## (token concatenation)
+    - Any valid Fortran token
+    - Any C operator allowed in a #if or #elif expression
+    - Any macro names defined by the preprocessor
+
+
+4.3 Operators accepted in #if and #elif expressions
+---------------------------------------------------
+    - The "defined" operator
+    - From C: && || == != < > <= >= + / * ! & | ^ ~ ( )
+    - From Fortran: = /= .AND. .OR. .NOT.
+
+
+4.4 Macros defined by the preprocessor
+---------------------------------------------
+    __LINE__
+    __FILE__
+    __DATE__
+    __TIME__
+    __STDF__
+    __VA_ARGS__  in the replacement-list of a function-like macro
+                 that uses the ellipsis notation in the parameters.
+    __VA_OPT__   in the replacement-list of a function-like macro
+                 that use the ellipsis notation in the parameters.
+
+__STDF__ is an analog to __STDC__ in C and __cplusplus in C++. Its
+primary role is to provide preprocessor-visible and vendor-independent
+identification of the underlying target language (i.e., "the processor
+is Fortran"), which enables one to write multi-language header files
+with conditional compilation based on language.
+
+
+4.5. Fortran awareness during macro expansion
+---------------------------------------------
+Just as CPP does not expand tokens in strings, there are places in
+Fortran lines that FPP should not recognize or expand tokens.
+
+FPP will not expand in fixed-form
+    - A token "C" or "c" in column 1.
+    - Anything in column 6.
+
+
+FPP will not expand tokens in either fixed- or free-form:
+    - In character constants
+    - In FORMAT statements
+    - In the letter-spec-list in an IMPLICIT statement.
+
+
+4.6 Output of Phase 2
+---------------------
+Similar to phase 1, the output is a sequence of logical lines where the
+logical lines contain the strings representing the now-preprocessed
+characters of the input file and comment-strings.
