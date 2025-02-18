@@ -1,0 +1,185 @@
+To: J3                                                     J3/25-122r1
+From: Mark LeAir
+Subject: Flang Liaison Report
+Date: 2025-February-18
+
+#Reference: 24-175r2
+
+Flang Open Source Fortran Report
+================================
+
+Flang is an open-source compiler for Fortran. It is an official
+subproject of the LLVM Project (llvm.org). NVIDIA's portion of the work
+was partially sponsored by the US Department of Energy
+Exascale Computing Project (particularly, LLNL, Sandia and LANL).
+
+The current goals of the project are to
+    - Create  an open source Fortran compiler with
+      LLVM  licensing,
+    - that can be used for language and parallelization
+      experimentation,
+    - that exists as a peer in the LLVM community of languages,
+      like Clang,
+    - that can rely on LLVM code generation and parallelism
+      support for CPUs and GPUs.
+
+There is a Slack workspace for Flang and a number of conference calls
+related to Flang development.
+    - Flang biweekly sync call ("umbrella call")
+    - Flang biweekly technical call
+    - "Classic Flang" biweekly call
+    - OpenMP in Flang Technical Call
+
+Details can be found on the Getting Involved page
+http://flang.llvm.org/docs/GettingInvolved.html.
+
+The New LLVM Flang Compiler
+---------------------------
+
+The LLVM Fortran compiler is available at
+https://github.com/llvm/llvm-project (the LLVM monorepo) in the flang/
+directory.
+
+LLVM Flang is being developed under the Apache 2.0 license with LLVM
+exceptions (the same as LLVM, Clang, OpenMP, etc.).
+
+New features added between 10-October-2024 and 10-February-2025:
+
+- Added support for the more IEEE intrinsics: IEEE_REAL, IEEE_REM,
+  IEEE_GET_UNDERFLOW_MODE, IEEE_SET_UNDERFLOW_MODE.
+- Added experimental support for UNSIGNED (disabled by default,
+  accessible with -funsigned).
+
+Improvements to existing features added between 10-October-2024 and
+10-February-2025:
+
+- LCOBOUND, UCOBOUND, and ERFC_SCALED can now be folded at compile time.
+- Class(*) arguments are accepted in EOSHIFT.
+- Support defined assignment to CLASS(*).
+- Support "PRINT namelist" IO and "OPEN(..., FORM="BINARY")" legacy
+  extensions
+- Support concatenation with absent optional (extension).
+- Added -f[no-]realloc-lhs option to control semantics of assignments to
+  whole allocatable (opt-out of F2003 semantic).
+- IS_CONTIGUOUS folding was improved for substrings.
+- Better side effects description and aliasing in Fortran IR, including
+  around calls. Better detection of non-overlapping array sections at
+  compile time.
+- Better SCALE/IEEE_SCALB folding overflow warning messages.
+- Preprocessor improvements: Support "if defined" in expanded macro. Retain
+  spaces when preprocessing fixed-form source
+- Improved error reporting in many contexts: report unformatted internal
+  IO, better RESHAPE error messages, refined EVENT_TYPE/LOCK_TYPE usage
+  checks, improve error message on bad complex literal, improved coarray
+  related semantics checks (EVENT_TYPE, LOCK_TYPE, ATOMIC_ADD,
+  EVENT_QUERY), report unsupported kinds for the platform at compile time,
+  and more.
+- Improved SUM runtime precision using Kahan summation.
+- Elide array function call temporary storage when left hand side storage
+  can be used.
+- Optimized transformational intrinsics that were implemented with runtime
+  calls to avoid creating temporary for the arguments and expose loops to
+  vectorizers: SUM(DIM=CONSTANT), CSHIFT, DOT_PRODUCT, RESHAPE, MATMUL with
+  TRANSPOSEd argument.
+- Refined documentation of zero initialization extension of static data and
+  added -f[no-]init-global-zero option to opt-out.
+- Ensured FORTRAN_ERROR_UNIT is not bufferized even when the program is run
+  with MPI for easier user debugging.
+- Interpret 'Q' exponent letter as kind=16 even on x86 (previously was 10
+  on X86, which was not a usual choice).
+- Fix continuation when line begins with empty macro expansion.
+- Avoid generating duplicate symbol in comdat.
+- Fix some misparsed statement functions cases.
+- Fix for finalization in overlapping assignments.
+- Do not allow INT2 and INT8 as specific intrinsic function.
+- Fix spurious error messages due to INTRINSIC nested in BLOCK.
+- Fixed X86-64 ABI bug of COMPLEX(16) functions with character arguments.
+- Fixed bogus folding of IEEE_SUPPORT_HALTING on platforms where this
+  cannot be known at compile time (e.g., ARM).
+- Fixed allocatable coarray INTENT(OUT) check
+- Fixed crash on ASYNCHRONOUS='NO' in child I/O
+
+
+Improvements to existing OpenMP features added between
+10-October-2024 and 17-February-2025:
+
+- Improved OpenMP parsing and semantics support of OpenMP 5.2 constructs
+  ~ These constructs emit a TODO if lowering is not implemented.
+  ~ Status is available in
+    https://github.com/llvm/llvm-project/issues/110008
+- Improved support for combined and composite constructs
+- Support for Scan directive
+- Mapping for derived types with allocatable members
+- Support for loop directive
+- Parallel codegen for the workshare construct
+- Improved task support
+- Improved privatization support
+- Enable alias analysis for privatization
+- Improved semantic checks for several constructs/clauses
+
+Improvements to Debug Support added between 10-October-2024 and
+17-February-2025:
+
+- Assumed Rank support
+- Class Type support
+- Common Block support
+
+Improvements to Runtime added between 10-October-2024 and 17-February-2025:
+
+- Refactoring of Flang's runtime into a separate top-level project flang-rt
+  ~ This enables compilation of the runtime for different targets
+- Improved abort support with backtrace
+
+Improvements to the Driver added between 10-October-2024 and
+17-February-2025:
+
+- Support the -time option
+- Support for -print-supported-cpus
+- Support for -ftime-report
+
+Improvements to Codegen added between 10-October-2024 and 17-February-2025:
+
+- Support for BIND(C) derived types ABI in AArch64
+- SYSTEM intrinsic function extension
+- Improvements to Fortran loop codegen that expose more optimization
+  opportunities related to overflow
+- Support for unroll directive
+- Support for CHDIR intrinsic
+
+Summary
+
+The current state of the LLVM Flang compiler:
+    - written in modern C++ following LLVM conventions
+    - over 200,000 lines of code, tests and scripts
+    - parses all of Fortran 2018 to abstract syntax trees (AST)
+    - parses  OpenMP 4.5 and some OpenMP 5.0
+    - parses OpenACC 3.0
+    - defines a "Fortran Intermediate Representation" (FIR) based on
+      LLVM's MLIR
+    - can analyze most OpenMP and OpenACC constructs
+    - can compile and correctly run Fortran 77 programs (passes FCVS
+      test suite), nearly all Fortran 95 programs, and many programs that
+      use Fortran 2003+ modern features.
+    - supports end-to-end compilation of all OpenMP 1.1 except for
+      reduction, privatization, and one atomic construct.
+    - for later versions of OpenMP, Flang has support for simd, task,
+      taskgroup etc.
+
+
+Current ("Classic") Flang Compiler
+----------------------------------
+
+The previous version of Flang, now known as Classic Flang, is derived from
+the PGI Fortran compiler, with some proprietary features removed (e.g.,
+OpenACC support, inter-procedure analysis). It is the basis for commercial
+Fortran compilers from Arm, AMD, and Huawei.
+
+Classic Flang is available for Linux on x86-64, OpenPOWER, and Arm
+processors. OpenPower support is not currently being maintained but it is
+still available.
+
+Since our last report, Classic Flang developers added improved alias
+analysis.
+
+Detailed status can be found in the biweekly call Google doc at:
+docs.google.com/document/d/1-OuiKx4d7O6eLEJDBDKSRnSiUO2rgRR-c2Ga4AkrzOI

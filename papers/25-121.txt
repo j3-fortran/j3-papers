@@ -1,0 +1,69 @@
+To: J3                                                     J3/25-121
+From: Malcolm Cohen
+Subject: Corank and genericity
+Date: 2025-February-18
+Reference: 25-103
+
+
+1. Discussion
+
+Paper 25-103 correctly observes that
+    "Coranks play no part in generic resolution"
+
+This may have been a mistake. Corank works the same way as rank does in
+most situations: e.g. for bounds, extents, and subscripting we have
+cobounds, coextents, and cosubscripting.
+
+It is long past the time when this part of coarray design could be changed
+very much, however, 25-103 continues on to say
+    "because the coranks of an actual argument and the corresponding dummy
+     argument are not required to agree"
+
+This is a specious argument:
+    Rank agreement is not required for explicit-shape.
+    Corank agreement is not required for explicit-coshape.
+These are almost identical situations.
+
+In fact it is an incorrect argument:
+    For deferred coshape, the coranks are in fact required to agree,
+    just as they are for deferred shape.
+    (See [351:18] 15.5.2.7 Allocatable dummy variables, p3.)
+
+Consider:
+
+    GENERIC :: g => p
+    REAL,ALLOCATABLE :: x[:,:,:]
+    CALL g(x)
+
+    SUBROUTINE p(y)
+        REAL,ALLOCATABLE :: y[:,:]
+        ALLOCATE(y[100,*])
+        ...
+
+Generic resolution turns "CALL g" into "CALL p", which is then incorrect
+because the coranks differ.
+
+Worse, we cannot have a generic that can take corank 2 allocatable and
+corank 3 allocatable unless we mangle the argument lists to make the calls
+incompatible (and thus very confusing!). This is because, as 25-103 quite
+rightly points out, corank is not considered during generic resolution.
+
+
+2. Proposal
+
+Corank should be considered as a disambiguator when one dummy argument is
+an allocatable coarray and the other dummy argument is an allocatable
+coarray of different corank.
+
+(This is somewhat analogous to how allocatable and pointer are considered
+to be disambiguators with respect to each other, though they are not with
+respect to non-allocatable and non-pointer.)
+
+
+3. Comment
+
+This is not sufficient to make auto-generic handle corank genericity, as
+although we added a RANK(value) clause to the type declaration statement,
+we neglected to add a CORANK(value) clause to it.
+
+===END===
