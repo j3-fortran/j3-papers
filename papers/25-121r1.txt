@@ -1,0 +1,171 @@
+To: J3                                                     J3/25-121r1
+From: Malcolm Cohen
+Subject: Corank and genericity
+Date: 2025-February-19
+Reference: 25-103
+
+
+1. Discussion
+
+Paper 25-103 correctly observes that
+    "Coranks play no part in generic resolution"
+
+This may have been a mistake. Corank works the same way as rank does in
+most situations: e.g. for bounds, extents, and subscripting we have
+cobounds, coextents, and cosubscripting.
+
+It is long past the time when this part of coarray design could be changed
+very much, however, 25-103 continues on to say
+    "because the coranks of an actual argument and the corresponding dummy
+     argument are not required to agree"
+
+This is a specious argument:
+    Rank agreement is not required for explicit-shape.
+    Corank agreement is not required for explicit-coshape.
+These are almost identical situations.
+
+In fact it is an incorrect argument:
+    For deferred coshape, the coranks are in fact required to agree,
+    just as they are for deferred shape.
+    (See [351:18] 15.5.2.7 Allocatable dummy variables, p3.)
+
+Consider:
+
+    GENERIC :: g => p
+    REAL,ALLOCATABLE :: x[:,:,:]
+    CALL g(x)
+
+    SUBROUTINE p(y)
+        REAL,ALLOCATABLE :: y[:,:]
+        ALLOCATE(y[100,*])
+        ...
+
+Generic resolution turns "CALL g" into "CALL p", which is then incorrect
+because the coranks differ.
+
+Worse, we cannot have a generic that can take corank 2 allocatable and
+corank 3 allocatable unless we mangle the argument lists to make the calls
+incompatible (and thus very confusing!). This is because, as 25-103 quite
+rightly points out, corank is not considered during generic resolution.
+
+
+2. Further notes
+
+(a) It is inconvenient that ordinary coarrays with corank>one cannot be
+    passed without also passing the coshape, when the caller and the called
+    want the same view. It's like we are stuck in F77 mode.
+
+(b) If we had assumed coshape as a possibility, like assumed-shape arrays,
+    they could be used for corank disambiguation as well.
+
+(c) When we added rank-independent declarations and subscripting, we
+    neglected to add co-rank independent declarations and co-subscripting.
+    This could be useful for template programming as well as auto-generic.
+
+(d) The best way to ensure that if we add coarray generic dummy arguments
+    we do not accidentally obstruct corank genericity is to design corank
+    genericity as part of auto-generic subprograms.
+
+
+3. Proposal - Requirements
+
+These are in approximate order of the amount of work and/or additional
+complication involved. In particular, we could stop after CR1, CR3, CR4,
+CR5, CR6. CR8 makes sense at any point after CR4.
+
+(CR1) Corank should be considered as a disambiguator when one dummy
+      argument is an allocatable coarray and the other dummy argument is an
+      allocatable coarray of different corank.
+
+(CR2) We should add assumed-coshape coarrays; akin to assumed-shape arrays,
+      these will require corank equality between the actual argument and
+      the dummy argument.
+
+(CR3) Corank should be considered as a disambiguator when one dummy
+      argument has assumed coshape and the other has deferred or assumed
+      coshape.
+
+(CR4) We should add corank-independent declarations for allocatable
+      coarrays and assumed-coshape coarrays, akin to the RANK clause.
+
+(CR5) We should add the ability to use fixed-size arrays as cobounds, which
+      will provide corank-independent declaration of explicit coshape, akin
+      to the same for explicit shape arrays.
+
+(CR6) We should add a form of corank-independent cosubscripting, analogous
+      to our rank-independent subscripting. As there are no cosections,
+      this will be simpler than the array case.
+
+(CR7) We should add a CORANK intrinsic akin to the RANK intrinsic. Even
+      without generic-corank-dummy-arguments, such a thing is useful for
+      clear and easy corank-independent programming.
+
+(CR8) We should permit generic-corank dummy arguments of an auto-generic
+      subprogram.
+
+
+4. Proposal - Specifications and Syntax
+
+(CS1) There is no syntax association with requirements CR1 or CR3, these
+      are just semantic.
+
+(CS2) For assumed-coshape, the syntax should be identical to that of
+      assumed-shape (apart from using brackets instead of parentheses).
+      This syntax gives us assumed coshape for all coranks>0.
+
+      SUBROUTINE sub(x)
+      REAL :: x [ : ] ! No ALLOCATABLE attribute, so assumed coshape.
+
+(CS3) Add a CORANK clause. This takes a scalar integer constant expression
+      that must be greater than zero. It can only be used to declare an
+      allocatable coarray or assumed-coshape coarray.
+
+Comment: It is tempting to permit CORANK(0) syntax, as we permit RANK(0).
+         But there is not a huge difference between a scalar and a single-
+         element array, but there is a big difference between coarrays and
+         noncoarrays, which permitting CORANK(0) would obscure.
+
+(CS4) The CODIMENSION clause, and coarray-spec, shall permit the lower
+      and upper cobounds, or just the upper cobounds, to be specified by
+      fixed-size arrays. If the lower cobounds are specified by an array,
+      its size shall be equal to the corank. If the upper cobounds are
+      specified by an array, its size must be one less than the corank.
+      There is no need for an asterisk in this syntax.
+
+      We are omitting the possibility of specifying the lower bounds via
+      an array with the upper bounds being a scalar, because we think this
+      could be confusing, and is in any case, a rare thing to desire.
+
+      CODIMENSION [ 1:10, 1:20, 1:*]
+      CODIMENSION [ 1:10, 2:20, 3:* ]
+
+      can thus be declared as
+
+      INTEGER,PARAMETER :: lower(*) = [ 1,2,3 ], upper(*) = [ 10,20 ]
+
+      CODIMENSION [ 1 : upper ]
+      CODIMENSION [ lower : upper ]
+
+ALTERNATIVE: if people really like having asterisks here, we could instead
+             have the syntax be
+
+      CODIMENSION [ 1 : upper , * ]
+      CODIMENSION [ lower(:corank-1) : upper, lower(corank) : * ]
+
+(CS5) The CORANK intrinsic is an inquiry function that returns the corank
+      of any data object.
+
+(CS6) Co-subscripts may be provided by rank-one arrays of constant size.
+      A cosubscript-list may include scalar and array cosubscripts freely.
+      Because there is no such thing as a vector cosubscript, no at sign @
+      is needed for disambiguation. Even if in the distant future we might
+      consider adding co-sections, I fervently hope we never do gather-
+      scatter cosubscripting.
+
+      REAL,ALLOCATABLE,CORANK(3) :: x
+      INTEGER :: ix(CORANK(x))
+
+      ix = ...
+      x[ix] = 210
+
+===END===
