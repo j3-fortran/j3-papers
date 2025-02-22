@@ -1,0 +1,230 @@
+To: J3                                                     J3/25-116r1
+From: Malcolm Cohen
+Subject: US08 Polymorphic PURE function results, req/specs/syntax.
+Date: 2025-February-21
+Reference: 23-186
+
+
+1. Introduction
+
+This paper contains formal requirements, specifications, and syntax, for
+Fortran 2028 proposal US08, allowing pure functions to have polymorphic
+results.
+
+The Requirements, Specifications, and Syntax will be moved separately,
+in order.
+
+
+2. Requirements
+
+R1. With suitable constraints, a pure (or simple) function shall be able
+    to have a polymorphic result.
+
+R2. With suitable constraints, a local variable of a pure or simple
+    procedure may be polymorphic; in particular, it should be possible to
+    assign the result of referencing a pure polymorphic function to a
+    local variable.
+
+R3. The constraints shall prevent invocation of an impure or non-simple
+    procedure arising from a reference to such a function.
+
+R4. The constraints shall prevent coarray-style synchronisation from being
+    implied.
+
+R5. The constraints shall be statically detectable and the standard shall
+    require diagnosis of their violation (as per our usual Constraints).
+
+R6. Additional constraints that promote reliability, usability, and safety
+    may be added in the specification phase.
+
+
+3. Additional constraints?
+
+We will need to prohibit both impure final subroutines and coarray
+components. We also need to prohibit CLASS(*).
+
+The user is likely to want to do polymorphic assignment, and this is fine
+as long as there is no impure defined assignment, including impure type-
+bound defined assignment.
+
+Type-bound defined assignment is only triggered when the declared type has
+type-bound defined assignment. The actual procedure invoked will be via the
+dynamic type, but that is not problematic because overriding preserves
+purity and simplicity.
+
+However, that does mean that polymorphic assignment will not be available
+if the base type itself has impure type-bound defined assignment. In that
+case, the user will not be able to do
+    x = f(...)
+where X is CLASS(T),ALLOCATABLE and F is a PURE CLASS(T),ALLOCATABLE
+function; usage of function f will be restricted to passing as an actual
+argument.
+
+
+Although there is no technical problem with this situation, it seems a bit
+inconsistent to say that type T can be used within a PURE procedure, but
+that it might not be usable in polymorphic assignment.
+
+Thus we might consider a requirement like:
+
+R6. A type that is suitable as the declared type of a polymorphic pure
+    function shall also be suitable for polymorphic assignment in a pure
+    procedure.
+
+This is a consistency, or perhaps a "good programming practice" rule.
+
+Straw Vote?
+
+
+4. Specifications
+
+S1. There shall be an attribute of a type that permits a pure function to
+    have a polymorphic result of that declared type. Types without the
+    attribute shall remain prohibited as polymorphic result types of a
+    pure function.
+
+S2. There shall be an attribute of a type that permits a simple function to
+    have a polymorphic result of that declared type. Types without the
+    attribute shall remain prohibited as polymorphic result types of a
+    simple function.
+
+Note: The SIMPLE version is perhaps not astonishingly useful, but it seems
+      like a good idea to extend the proposal to include that, for the sake
+      of consistency.
+
+S3, A type with the "pure polymorphic result allowed" attribute shall not
+    have a final subroutine that is impure. Nor shall a potential subobject
+    component have an impure final subroutine.
+
+S4. A type with the "simple polymorphic result allowed" attribute shall not
+    have a final subroutine that is non-simple. Ditto for potential
+    subobject components.
+
+S5. A type with either of those attributes shall not have a coarray
+    ultimate component.
+
+S6. These attributes may be specified in an extended type when the parent
+    type does not have the attribute, subject to other conditions (S9).
+
+S7. An extension of such a type shall have the same attribute, except that
+    a purity attribute in the parent type may become the simplicity
+    attribute in an extension.
+
+Note: S6 and S7 are safe, as although a different extension of an ancestor
+      type may lack the attribute, it cannot be the dynamic type when the
+      declared type is this extension.
+
+S8. The specification of that attribute in an extension type shall be
+    explicit.
+
+Comment: Permitting implicit specification of the attribute would make it
+         easier to "upgrade" an existing type tree to purity or simplicity,
+         as only the base type would need to be edited. On the other hand,
+         it makes the code harder to understand, and might result in
+         confusing errors if the type is further extended - the user is
+         likely to look in the parent type for the attribute, and not
+         find it.
+
+S9. An ancestor type of such a type shall satisfy the constraints of the
+    attribute, even if it does not have the attribute itself.
+
+Comment: This is to make it possible to extend a base type that satisfies
+         the requirements but does not explicitly have the attribute.
+         That could be important if the base type comes from a module that
+         is not under the control of the user.
+
+S10. The requirements imposed by these attributes do not affect pointer
+     components, as pointer components are not potential subobjects. Use of
+     a pointer component in a bad way (side-effect-causing) must be part of
+     our existing PURE/SIMPLE prohibitions.
+
+S11.
+    The requirements imposed by these attributes on final subroutines also
+    apply to type-bound defined assignment.
+
+
+5. Syntax and semantics
+
+{Note: Used "\defn*" and "\ref*" to indicate indexing and hyperlinking,
+       the \defn* form makes the index entry bold.}
+
+5.1 Syntax
+
+The attributes are spelled PURE and SIMPLE, and appear in the
+<derived-type-stmt> in a type definition.
+
+The new BNF for R728 type-attr-spec is thus:
+
+type-attr-spec is ABSTRACT
+               or access-spec
+               or BIND (C)
+               or EXTENDS ( parent-type-name )
+               or PURE
+               or SIMPLE
+
+C7n1 If the type-attr-spec PURE or SIMPLE appears in a derived-type-stmt,
+     BIND(C) shall not appear. If the type-attr-spec PURE appears, SIMPLE
+     shall not appear.
+
+{NB: Omitted "in a derived-type-stmt" after "appear[s]" to shorten it.}
+
+C7n2 If EXTENDS appears and the parent type is a \ref*{pure type}, the PURE
+     or SIMPLE type-attr-spec shall appear.
+
+C7n3 If EXTENDS appears and the parent type is a \ref*{simple type}, the
+     SIMPLE type-attr-spec shall appear.
+
+C7n4 The SEQUENCE statement shall not appear in the definition of a pure or
+     simple type.
+
+5.2 Semantics
+
+I envisage a new subclause "7.5.2.n Purity and simplicity", or perhaps
+"Pure and simple types".
+
+The PURE type-attr-spec specifies that the type is a \defn*{pure type}.
+The SIMPLE type-attr-spec specifies that the type is a \defn*{simple type}.
+A simple type is also a pure type.
+
+C7m1 A final subroutine of a \ref*{pure type} shall be pure. A final
+     subroutine of a potential subobject component of a pure type shall be
+     pure.
+
+C7m2 The declared type of a polymorphic potential subobject component of a
+     pure type shall be pure.
+
+C7m3 A potential subobject component of a pure type shall not be a coarray.
+
+C7m4 A type-bound defined assignment procedure of a pure type shall be
+     pure.
+
+{The convoluted wording here is to permit defined assignment from other
+ types to the pure type to be impure, as such an assignment does not affect
+ intrinsic assignment. On the other hand, that does not exactly promote
+ simplicity or consistency: thus we should consider the ALTERNATIVE.}
+
+C7m5 If a pure type has an ancestor type that is not pure, the parent type
+     shall satisfy constraints C7m1-C7m4.
+
+{I wrote "ancestor type" here, as badness might lie further back up the
+ type tree than the parent type, and even though the parent type has to
+ satisfy the purity constraints, it is not itself pure and so would be
+ unclear as to whether to apply them recursively.}
+
+C7s1-C7s5 Duplicate C7m1-C7m5 replacing "pure" with "simple".
+
+
+6. Remarks
+
+(a) These are not the edits, so the final wording might differ.
+    Also, some changes to 15.7 "Pure procedures" and 15.8 "Simple
+    procedures" will be needed.
+
+(b) If the usage of "pure type" and "simple type" is only in subclause
+    7.5, there is no need for a special term. Even if they are used in
+    subclauses 15.7 and 15.8, if the uses are infrequent and cross-
+    referenced we do not need to have them as special terms in Clause 3
+    (in my opinion).
+    However, if we add a new Annex "Glossary", they would fit there.
+
+===END===
