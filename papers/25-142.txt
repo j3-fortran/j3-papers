@@ -1,0 +1,1037 @@
+To: J3                                                     J3/25-142
+From: Gary Klimowicz & Dan Bonachea & Patrick Fasano
+Subject: Formal specifications for the Fortran preprocessor (FPP)
+Date: 2025-June-09
+References: 25-114r2 Fortran preprocessor requirements
+            25-007 Fortran 2023 Interpretation Document
+            24-108 Preprocessor directives seen in existing Fortran
+                   programs.txt
+            24-109 On Fortran awareness in a Fortran preprocessor.txt
+            ISO/IEC 9899:2023 Programming languages -- C ("C 2023")
+                   (working draft N3096)
+
+
+
+1 Introduction
+==============
+
+At its meeting Feb 19, 2025, J3 decided to approve requirements for
+a cpp-like preprocessor for Fortran 202Y (paper 25-114r2).
+
+This is the formal specifications document, revised according to the
+discussion arising from 25-114r2.
+
+Terminology: For the purpose of this specification, the "preprocessor"
+encompasses all stages of preprocessing of the input text. For
+didactic purposes, that might include additional phases of
+"preprocessing" that help define the expected priorities of
+preprocessing behaviors. (In past discussions, these have included
+line continuation processing, comment handling, and tokenization for
+the preprocessor.)
+
+
+
+2 Lexical specifications
+========================
+
+
+2.1 Lines
+---------
+
+li00. The Fortran preprocessor recognizes three distinct types of
+      lines: preprocessing directives (and continuation lines
+      thereof), Fortran comment lines, and Fortran source fragments.
+
+li11. A line that has a '#' character as the first non-blank character
+      of the line is a directive line (as required by C 2023 section
+      6.10.1 paragraph 2), except when otherwise specified by the next
+      two rules.
+
+li13. In fixed-form input files, a '#' in column 6 of a non-comment
+      line does not introduce a directive line.
+
+li15. A preprocessor directive can be continued with a backslash '\'
+      immediately followed by a new-line. The backslash and new-line
+      are deleted, the content of the subsequent line is textually
+      appended to the current directive, and the subsequent line is
+      deleted. This process repeats until the current directive does
+      not end with a backslash '\' immediately followed by a new-line.
+
+li17. Preprocessor directive continuation processing described by the
+      prior rule is effectively performed before any other processing
+      of the text in affected lines.
+
+li19. The maximum length of a preprocessor directive (including
+      continuation text) is one million characters.
+
+li21. A source file that ends with a directive line shall neither end
+      with a '\', nor a '\' followed immediately by a new-line
+      (analogously to C 2023 section 5.1.1.2 bullet 2).
+
+li31. Fortran comment lines are defined as in 25-007 6.3.2.3 and
+      6.3.3.2.
+
+li41. Fortran source fragments are those lines that are neither
+      preprocessor directive lines (or continuations thereof)
+      nor Fortran comment lines.
+
+li43. Text on fixed-form Fortran source fragments is ignored beyond
+      column 72.
+
+li45. Fortran source fragments may be continued with a continuation
+      ('&' at the end of a free-form line as specified in Fortran 2023
+      6.3.2.4, or with a non-blank, non-zero character in column 6 of
+      a fixed-form line as specified in Fortran 2023 6.3.3.3).
+
+      Example 1 (free-form):
+          call subroutine_foo(1, 2, &
+      #ifdef USE_3
+                                    3, &
+      #else
+                                    666, &
+      #endif
+                                    .true.)
+
+      Example 2 (fixed-form):
+            call subroutine_foo(1, 2,
+      #ifdef USE_3
+           1                       3,
+      #else
+           1                       666,
+      #endif
+           2                       .true.)
+
+
+
+2.2 Case sensitivity of identifiers
+-----------------------------------
+
+cs01. Directive names are case-sensitive and recognized in lower-case.
+
+cs03. Macro names and function-like macro argument names are
+      case-sensitive.
+
+cs05. Preprocessor-defined macro names are case-sensitive.
+
+
+
+2.3 Significance of whitespace
+------------------------------
+
+ws01. The whitespace characters blank and horizontal tab character may
+      appear on directive lines.
+
+ws02. Whitespace may appear before or after the '#' character that
+      introduces a directive line.
+
+ws03. Whitespace characters are significant in determining token
+      boundaries in preprocessor directive lines.
+
+ws05. Outside of character constants, multiple whitespace characters
+      on a directive line are treated as a single space.
+
+ws07. Whitespace characters are significant in determining token
+      boundaries for the purposes of recognizing macro names,
+      in both fixed-form and free-form Fortran source fragments.
+
+ws09. Whitespace characters are significant in determining token
+      boundaries for the purposes of recognizing macro names,
+      in both fixed-form and free-form Fortran comment lines.
+
+ws11. In fixed-form input, macro names are not recognized as such when
+      spaces are inserted into their invocations.
+
+
+
+2.4 Comments
+------------
+
+co01. Directive lines may contain C-style '/*' ... '*/' comments.
+
+co03. Directive lines shall not contain C style '//' comments.
+
+co05. '/*' ... '*/' comments on directive lines shall extend past a
+      new-line only if the line ends in '\' new-line, indicating a
+      continuation line.
+
+co07. '/*' ... '*/' comments on directive lines are replaced by a
+      single space, as specified in C 2023 section 5.1.1.2 bullet 3.
+
+co09. In a directive line, the '!' character is not interpreted as
+      introducing a Fortran-style comment, and neither the '!'
+      character nor any subsequent text are removed by the
+      preprocessor.
+
+co11. Directive lines (by definition) cannot contain Fortran
+      fixed-form 'C' or '*' style comments.
+
+
+
+2.5 Token lexicon
+-----------------
+
+The preprocessor decomposes the source file into preprocessing tokens
+(see C 2023 section 5.1.1.2 Translation phases).
+
+As such, there is a specific lexicon of tokens recognized by the
+preprocessor (including unrecognizable tokens).
+
+As in C 2023, these tokens are recognized after any line and comment
+handling specified in section 2.1 "Lines" and section 2.4 "Comments"
+above.
+
+We use illustrative syntax to describe the directive specifications,
+and the translation behavior of the preprocess on Fortran comment
+lines and Fortran source fragment lines.
+
+This illustrative syntax makes use of these "tokens".
+
+Further definition of the recognized tokens is deferred to the
+upcoming preprocessor syntax paper.
+
+
+to01. In the definitions of object macros and function-like macros,
+      the replacement list may include any arbitrary sequence of
+      characters that doesn't include a new-line. Once tokenized,
+      this for example may include any tokens allowed in Fortran
+      source lines, those allowed in C integer expressions,
+      and any additional tokens recognized by the processor.
+
+to03. Without naming all the tokens explicitly, they appear in the
+      illustrative syntax in subsequent sections.
+
+
+to09. The preprocessor is line-oriented. To define the end of
+      a logical line (after continuation handling), the 'EOL' token
+      is shown explicitly in the illustrative syntax.
+
+to11. The following tokens also appear in the illustrative syntax
+      below.
+
+      |---------------------|---------------------------------------|
+      | Token name          |  Characters                           |
+      |---------------------|---------------------------------------|
+      | ID                  | Regex [A-Za-z][A-Za-z0-9_]*           |
+      | WHOLE_NUMBER        | Regex [0-9]+                          |
+      | CHARACTER_STRING    | Regex "[^"\n]*" where '\n' represents |
+      |                     |    new-line.                          |
+      | EOL                 | The new-line ending a directive line, |
+      |                     | after continuation processing (see    |
+      |                     |    li15).                             |
+      |---------------------|---------------------------------------|
+
+
+
+
+3 #-Directives
+==============
+
+The following directives are recognized during Fortran preprocessing.
+Detailed specifications for each directive appear in the subsections
+below.
+
+We use illustrative syntax in the detailed descriptions. Detailed
+syntax will appear in a paper to be named later.
+
+Most directives take a sequence of tokens (as defined in section 2.5
+"Token lexicon" above). In the detailed descriptions and illustrative
+syntax below, we denote these as just "token-list" or
+"replacement-list".
+
+
+di00. The directives listed in di01-di08 are only recognized as such
+      if the token immediately following the '#' introducing a
+      directive line exactly matches one of the standard directive
+      names ('define', 'if', 'pragma', etc.).
+
+di01. The #define object-like macro directive
+
+di02. The #define function-like macro directive
+
+di03. The #undef directive
+
+di04. The #include directive
+
+di05. The #if, #ifdef, #ifndef, #elif, #elifdef,
+      #elifndef, #else, #endif conditional directives
+
+di06. The #error and #warning directives
+
+di07. The #line directive
+
+di08. The #pragma directive
+
+di09. The null directive
+
+di10. The processor-dependent directive
+
+
+
+3.1 The #define object-like macro directive
+-------------------------------------------
+
+See also the rules for expanding object-like macros in
+section 4 "Macro identification and expansion" below.
+
+Example syntax:
+      #define ID replacement-list EOL
+
+
+
+3.1.1 Static semantics specifications
+-------------------------------------
+
+do02. The replacement-list is a (possibly empty) sequence of tokens.
+
+do04. The identifier ID must be immediately followed by whitespace
+      or EOL.
+
+do06. Whitespace before or after the replacement-list is not
+      considered to be part of the replacement-list.
+
+
+
+3.1.2 Evaluation semantics specifications
+-----------------------------------------
+
+do20. This #define directive defines an object-like macro named by ID
+      with a replacement list comprised of the tokens specified in the
+      replacement-list.
+
+do22. There is one name space for all macro names.
+
+do24. The #define directive does not scan the replacement-list
+      for macros to expand.
+
+do26. An identifier currently defined as an object-like macro shall
+      not be redefined by another #define preprocessing directive
+      unless the second definition is an object-like macro definition
+      and the two replacement lists are identical (as in C 2023).
+
+do28. Two replacement lists are identical if and only if the
+      preprocessing tokens in both have the same number, ordering,
+      spelling, and white-space separation, where all white-space
+      separations are considered identical (as in C 2023).
+
+
+
+3.2 The #define function-like macro directive
+---------------------------------------------
+
+See also the rules for expanding function-like macros in the
+section 4 "Macro identification and expansion" below.
+
+Example syntax:
+      #define ID() replacement-list EOL
+      #define ID(identifier-list) replacement-list EOL
+      #define ID(...) replacement-list EOL
+      #define ID(identifier-list, ...) replacement-list EOL
+
+
+
+3.2.1 Static semantics specifications
+-------------------------------------
+
+df02. The identifier ID must be immediately followed by a
+      left parenthesis '(' with no intervening whitespace.
+
+df04. The identifier-list is a comma-separated list of ID tokens.
+
+df06. No identifier may appear more than once in the identifier-list.
+
+df08. The identifier names in the identifier-list define macro
+      "parameters" that affect macro expansion of the replacement
+      list. (See section 4 "Macro identification and expansion" for
+      the semantics of function-like macro expansion.)
+
+df10. The replacement-list may be the empty sequence of tokens.
+
+df12. Whitespace before or after the replacement-list is not
+      considered to be part of the replacement-list.
+
+df16. The '...' between the parentheses specifies that the
+      function-like macro may be invoked with a variable number of
+      arguments. (See section 4 "Macro identification and expansion"
+      for the semantics of function-like macros with a variable number
+      of arguments.)
+
+
+
+3.2.2 Evaluation semantics specifications
+-----------------------------------------
+
+df30. This #define directive defines a function-like macro named by ID
+      with the specified macro parameters and with a replacement list
+      comprised of the tokens specified in the replacement-list.
+
+df32. This #define directive does not scan the replacement-list for
+      macros to expand.
+
+df34. An identifier currently defined as a function-like macro shall
+      not be redefined by another #define preprocessing directive
+      unless the second definition is a function-like macro
+      definition, with the same number and spelling of the parameters,
+      and the two replacement lists are identical (as in C 2023).
+
+
+
+3.3 The #undef directive
+------------------------
+
+Example syntax:
+      #undef ID EOL
+
+
+
+3.3.1 Static semantics specifications
+-------------------------------------
+
+ud02. ID shall not be one of the macros defined in section 7
+       "Predefined macros" below.
+
+ud04. The specified identifier may or may not have been defined.
+
+
+
+3.3.2 Evaluation semantics specifications
+-----------------------------------------
+
+ud20. If no definition exists for the identifier ID, this directive
+      has no effect.
+
+ud22. The definition for the object-like macro or function-like macro
+      named by ID is removed.
+
+
+
+3.4 The #include directive
+--------------------------
+
+Example syntax:
+      #include CHARACTER_STRING EOL
+      #include <character-list> EOL
+      #include token-list EOL
+
+
+3.4.1 Static semantics specifications
+-------------------------------------
+
+in06. In the second form, the character-list is any sequence of
+      processor-dependent characters except EOL and '>'.
+
+in08. In the third form, the token-list does not match the previous
+      two forms.
+
+
+3.4.2 Evaluation semantics specifications
+-----------------------------------------
+
+in18. In the third form, the token-list is processed as in Fortran
+      source fragments (see section 4 "Macro identification and
+      expansion" below). The directive resulting after all
+      replacements shall match one of the previous two forms, and
+      evaluation proceeds as such.
+
+in20. The preprocessor searches in processor-defined places for the
+      file denoted by the CHARACTER_STRING or the character-list.
+
+in22. It is an error if the processor cannot locate the specified
+      file.
+
+in24. If the file is located, the processor replaces the #include
+      directive line with the contents of that file.
+
+in26. A #include directive may appear in an included file, up to a
+      processor-defined nesting limit.
+
+in28. Unlike INCLUDE lines (see Fortran 2023 section 6.4, "Including
+      source text"), the #include directive is not prohibited from
+      including the same source file at a deeper level of nesting.
+
+
+
+3.5 The #if, #ifdef, #ifndef, #elif, #elifdef, #elifndef, #else,
+        #endif conditional directives
+----------------------------------------------------------------
+
+Example syntax (extra spacing for illustration purposes only):
+    General form:
+        <if-head>  <if-elif-list>             #endif EOL
+        <if-head>  <if-elif-list>  <if-else>  #endif EOL
+
+    Where:
+        <if-head> is one of:
+            #if token-list EOL  <group>
+            #ifdef ID EOL       <group>
+            #ifndef ID EOL      <group>
+
+        <if-elif-list> is zero or more of:
+            <if-elif>
+
+        <if-elif> is one of:
+            #elif     token-list EOL  <group>
+            #elifdef  ID EOL          <group>
+            #elifndef ID EOL          <group>
+
+        <if-else> is one of:
+            #else EOL  <group>
+
+        <group> is zero or more of:
+            directive lines
+            Fortran comment lines
+            Fortran source lines
+
+
+3.5.1 Static semantics specifications
+-------------------------------------
+
+if05. A #if, #ifdef, or #ifndef directive signals the start of a chain
+      of conditional directives.
+
+if15. The chain of #elif, #elifdef, and #elifndef directives, and the
+      #else directive (if present) are part of the same chain of
+      directives introduced by the #if directive.
+
+if20. The chain of conditional directives ends with the #endif
+      directive.
+
+if25. Within a conditional directive chain, a #if, #ifdef, or #ifndef
+      directive introduces a new chain of conditional directives, at a
+      new nesting level, within the enclosing conditional directive
+      chain.
+
+if30. The conditional directive chains must properly nest.
+
+
+
+3.5.2 Evaluation semantics specifications
+-----------------------------------------
+
+
+ix05. The #ifdef and #ifndef directives are evaluated as if they had
+      been written '#if defined(ID)' and '#if !defined(ID)'
+      respectively. (For brevity, the descriptions of #ifdef and
+      #ifndef directives below are omitted, and assume this
+      transformation.)
+
+ix10. The #elifdef and #elifndef directives are evaluated as if they
+      had been written '#elif defined(ID)' and '#elif !defined(ID)'
+      respectively. (For brevity, the descriptions below assume this
+      transformation has been made).
+
+ix12. In the descriptions below, <group> constructs may be "skipped".
+      When skipped:
+
+        - Conditional directives within the <group> are recognized
+          only to maintain proper nesting of conditional directives.
+        - No nested directives in the <group> are processed.
+        - No macro expansion takes place in directive lines, Fortran
+          comment lines or source lines in the <group>.
+        - No skipped lines of any kind in the <group> are made
+          available to subsequent processing by the processor.
+
+ix14. In the descriptions below, <group> constructs that are not
+      skipped participate in further preprocessing and processing.
+      When participating:
+
+        - Macros are expanded in Fortran comment lines and source
+          lines.
+        - Nested directives in the <group> are processed.
+        - The resulting Fortran comment lines and source lines
+          are made available for subsequent processing by the
+          processor.
+
+ix15. Before evaluating the token-lists in any <if-head> and <if-elif>
+      constructs that are not skipped, macros in the token-lists are
+      processed as described in section 4 "Macro identification and
+      expansion".
+
+ix20. After expansion, the resulting token list in <if-head> and
+      <if-elif> constructs that are not skipped must be able to be
+      parsed as a valid integer expression as described in section 5
+      "Expressions allowed in #if and #elif directives" static
+      semantics. This expression is called the "controlling
+      expression" for the directive.
+
+ix25. The values of controlling expressions in <if-head> and <if-elif>
+      constructs are evaluated according to the evaluation semantics
+      described in section 5 "Expressions allowed in #if and #elif
+      directives".
+
+ix30. If the controlling expression in an <if-head> evaluates to a
+      nonzero value, then the <group> contained within that <if-head>
+      construct participates in further preprocessing, as described
+      above. Subsequent <if-elif> and <if-else> constructs at the same
+      level of nesting are skipped.
+
+ix45. If the controlling expression in an <if-head> construct
+      evaluates to a zero value, then the <group> contained within
+      that <if-head> construct is skipped. Preprocessing continues
+      with any <if-elif> constructs at the same level of nesting, as
+      described below.
+
+ix50. When the controlling expression in an <if-head> construct
+      evaluates to zero, the controlling expressions in each <if-elif>
+      construct at the same nesting level are evaluated in turn, until
+      one evaluates to a non-zero value. Those
+      <group>s whose controlling expression evaluates to zero are
+      skipped.
+
+ix55. When the controlling expression in an <if-elif> construct
+      evaluates to a nonzero value, the <group> contained within that
+      <if-elif> construct continues to participate in preprocessing.
+      Subsequent <if-elif> constructs and any remaining <if-else>
+      constructs at the same nesting level are skipped.
+
+ix60. When all controlling expressions in the <if-head> construct and
+      <if-elif> constructs evaluate to a zero value and an <if-else>
+      construct is present at the same nesting level, the <group>
+      contained in the <if-else> construct continues to participate in
+      preprocessing.
+
+ix65. When all controlling expressions in the <if-head> construct and
+      all <if-elif> constructs evaluate to a zero value and no
+      <if-else> construct is present at the same nesting level, then
+      all <group>s in these constructs are skipped.
+
+
+
+3.6 The #error and #warning directives
+--------------------------------------
+
+Example syntax:
+        #error token-list EOL
+        #warning token-list EOL
+
+The #error and #warning directives are used to announce user-defined
+error conditions in the input.
+
+
+3.6.1 Static semantics specifications
+-------------------------------------
+
+
+3.6.2 Evaluation semantics specifications
+-----------------------------------------
+
+ew02. The token-list is not expanded.
+
+ew04. The processor produces a diagnostic message that includes
+      the token-list.
+
+ew06. The processor shall reject a submitted program if the processor
+      encounters a #error directive during preprocessing.
+
+ew10. Additional behavior is processor-dependent.
+
+
+
+3.7 The #line directive
+-----------------------
+
+Example syntax:
+        #line WHOLE_NUMBER EOL
+        #line WHOLE_NUMBER CHARACTER_STRING EOL
+
+
+3.7.1 Static semantics specifications
+-------------------------------------
+
+li02. The WHOLE_NUMBER shall not be zero.
+
+li04. The WHOLE_NUMBER shall not exceed 2147483647.
+
+
+3.7.2 Evaluation semantics specifications
+-----------------------------------------
+
+li20. In both forms, the #line directive causes the processor
+      to behave as if the following sequence of lines begins with a
+      presumed line number specified by the WHOLE_NUMBER.
+
+li24. In the second form, the #line directive causes the processor
+      to change the presumed file name of the source file to be the
+      contents of the CHARACTER_STRING.
+
+
+
+3.8 The #pragma directive
+-------------------------
+
+Example syntax:
+        #pragma token-list EOL
+
+
+3.8.1 Static semantics specifications
+-------------------------------------
+
+pr02. The token-list may not be empty.
+
+pr10. The token-list shall not begin with the identifier 'STDF',
+      either before or after macro expansion.
+
+
+3.8.2 Evaluation semantics specifications
+-----------------------------------------
+
+pr20. The semantics of the token-list are processor-dependent.
+      In particular, it is processor-dependent whether macro
+      expansion is performed on the token-list.
+
+pr22. The #pragma directive causes the processor to behave in a
+      processor-defined manner.
+
+pr24. Any #pragma that is not recognized by the processor is ignored.
+
+
+
+3.9 The null directive
+----------------------
+
+Example syntax:
+        # EOL
+
+
+3.9.1 Static semantics specifications
+-------------------------------------
+
+nu02. The only tokens allowed on a null directive are the '#' and
+      the end-of-line indicator EOL.
+
+
+3.9.2 Evaluation semantics specifications
+-----------------------------------------
+
+nu10. The null directive has no effect.
+
+
+
+3.10 The processor-dependent directive
+--------------------------------------
+
+Example syntax:
+        # token-list EOL
+
+
+3.10.1 Static semantics specifications
+--------------------------------------
+
+nd02. The token-list in a processor-dependent directive may not begin
+      with any of the directive names appearing in the syntax above
+      ('define', 'undef', 'include', etc.).
+
+
+3.10.2 Evaluation semantics specifications
+------------------------------------------
+
+nd20. The result of evaluating a processor-dependent directive is
+      processor-dependent.
+
+
+
+
+4 Macro identification and expansion
+====================================
+
+NOTE: This section is currently incomplete. A self-contained
+specification for macro identification and expansion will appear in a
+forthcoming paper.
+
+
+4.1 Comparison to macro identification and expansion in CPP
+-----------------------------------------------------------
+
+We intend for macro identification and expansion to operate almost
+exactly as specified in C 2023 section 6.10.5, however it will differ
+in minor ways to accommodate Fortran syntax. The following exceptions
+have consensus amongst the authors:
+
+me10. When determining argument boundaries in the invocation of a
+      function-like macro, FPP ignores commas surrounded by matching
+      sets of '[  ]' or '(/  /)' brackets, in addition to matching
+      sets of '(  )' parentheses (as specified in C 2023 section
+      6.10.5-11).
+
+Additional details are still under discussion and will be outlined in
+a future paper.
+
+
+4.2 The identifiers __VA_ARGS__ and __VA_OPT__
+----------------------------------------------
+
+As specified in C 2023 section 6.10.5.1, see also section 4.1
+above.
+
+
+4.9 The '#' and '##' operators
+------------------------------
+
+As specified in C 2023 section 6.10.5.{2,3}, see also section 4.1
+above.
+
+
+
+
+5 Expressions allowed in #if and #elif directives
+=================================================
+
+
+ex05. When evaluating a #if or #elif directive, first every instance
+      of the 'defined ID' or 'defined(ID)' operator is evaluated and
+      replaced with the resulting WHOLE_NUMBER. A 'defined' expression
+      evaluates to 1 if the identifier is currently defined as a macro
+      name (that is, if it is predefined or if it has been the subject
+      of a #define preprocessing directive without an intervening
+      #undef directive with the same subject identifier), 0 if it is
+      not.
+
+ex10. When evaluating a #if or #elif directive and after 'defined'
+      processing described in ex05, the token-list is then subjected
+      to macro expansion and replacement (see section 4 "Macro
+      identification and expansion"). This results in a token-list of
+      the expression to be evaluated.
+
+ex12. Since expression evaluation occurs *after* macro expansion,
+      there will be no object-like macro or function-like macro
+      invocations left to expand. All remaining IDs are replaced with
+      the WHOLE_NUMBER 0.
+
+ex15. The resulting list of tokens shall be a valid expression
+      comprised of WHOLE_NUMBERs and operators as described
+      below.
+
+ex17. Preprocessing computes the integer value of conditional
+      expressions using the greatest integer range available to the
+      processor to determine the truth or falsity of the controlling
+      expression.
+
+ex20. The processor shall reject a program if evaluation of the
+      expression generates a computational error (such as divide by
+      zero).
+
+ex25. When the expression evaluates to zero, the controlling
+      expression will be considered "false". If the expression
+      evaluates to any non-zero value, the controlling expression will
+      be considered "true".
+
+
+5.1 Operators allowed in controlling expressions
+------------------------------------------------
+
+op01. To maintain compatibility with the use of C preprocessing
+      directives in many existing Fortran programs, the operators
+      allowed in controlling expressions in #if and #elif expressions
+      are a subset of those defined in C 2023 section 6.5
+      "Expressions" and section 6.6 "Constant expressions".
+
+op03. A "precedence level" is assigned to each operator that
+      determines how the operators combine with sub-expressions
+      containing other operators at different precedence levels.
+
+op05. An "associativity" is assigned to each operator that determines
+      how operators at the same precedence level are combined. "left"
+      means the operator binds to the left, "right" means the operator
+      binds to the right.
+
+op07. The following table describes the semantics of the allowed
+      operators in conditional expressions. The table is grouped by
+      precedence level, from lowest precedence to highest.
+
+      We label subexpressions "e1", "e2", and "e3" to aid in
+      describing the evaluation semantics. Unless otherwise specified,
+      all operators evaluate with the same semantics as their Fortran
+      counterparts.
+
+
+| Prec |   Op    |    Syntax    | Assoc'y  |  Evaluation Semantics      |
+|------+---------+--------------+----------+----------------------------|
+| low  |   ? :   | e1 ? e2 : e3 |  right   |      conditional-expr      |
+|------+---------+--------------+----------+----------------------------|
+|      |   ||    |   e1 || e2   |  left    |   logical OR (see op12)    |
+|------+---------+--------------+----------+----------------------------|
+|      |   &&    |   e1 && e2   |  left    |   logical AND (see op13)   |
+|------+---------+--------------+----------+----------------------------|
+|      |    |    |   e1 | e2    |  left    |    Fortran IOR(e1, e2)     |
+|------+---------+--------------+----------+----------------------------|
+|      |    ^    |   e1 ^ e2    |  left    |    Fortran IAND(e1, e2)    |
+|------+---------+--------------+----------+----------------------------|
+|      |    &    |   e1 & e2    |  left    |    Fortran IEOR(e1, e2)    |
+|------+---------+--------------+----------+----------------------------|
+|      |   ==    |   e1 == e2   |  left    | 1 if e1 == e2, 0 otherwise |
+|      |   !=    |   e1 != e2   |  left    | 1 if e1 /= e2, 0 otherwise |
+|------+---------+--------------+----------+----------------------------|
+|      |    >    |   e1 > e2    |  left    | 1 if e1 > e2, 0 otherwise  |
+|      |   >=    |   e1 >= e2   |  left    | 1 if e1 >= e2, 0 otherwise |
+|      |    <    |   e1 < e2    |  left    | 1 if e1 < e2, 0 otherwise  |
+|      |   <=    |   e1 <= e2   |  left    | 1 if e1 <= e2, 0 otherwise |
+|------+---------+--------------+----------+----------------------------|
+|      |   <<    |   e1 << e2   |  left    | Fortran ISHFT(e1, e2)      |
+|      |   >>    |   e1 >> e2   |  left    | Fortran ISHFT(e1, -e2)     |
+|------+---------+--------------+----------+----------------------------|
+|      |    +    |   e1 + e2    |  left    |             +              |
+|      |    -    |   e1 - e2    |  left    |             -              |
+|------+---------+--------------+----------+----------------------------|
+|      |    *    |   e1 * e2    |  left    |             *              |
+|      |    /    |   e1 / e2    |  left    |             /              |
+|      |    %    |   e1 % e2    |  left    |    Fortran MOD(e1, e2)     |
+|------+---------+--------------+----------+----------------------------|
+|      | unary + |     + e1     |  right   |        unary +             |
+|      | unary - |     - e1     |  right   |        unary -             |
+|      | unary ~ |     ~ e1     |  right   |     Fortran NOT(e1)        |
+|      | unary ! |     ! e1     |  right   | 1 if e1 == 0, 0 otherwise  |
+|------+---------+--------------+----------+----------------------------|
+| high | ( e1 )  |              |   N/A    |            e1              |
+|------+---------+--------------+----------+----------------------------|
+
+
+op12. The logical OR operator guarantees left-to-right evaluation; if
+      the first operand evaluates to non-zero, the second operand is
+      not evaluated and the resulting value is 1. Otherwise, the
+      second operand is evaluated and provides the resulting value.
+
+op13. The logical AND operator guarantees left-to-right evaluation; if
+      the first operand evaluates to 0, the second operand is not
+      evaluated and the resulting value is 0. Otherwise, the second
+      operand is evaluated and provides the resulting value.
+
+
+
+
+7 Predefined macros
+===================
+
+pm00. Macro names beginning with a leading underscore followed by an
+      uppercase letter or a second underscore are reserved to the
+      processor. Reserved names shall not be the subject of a #define
+      or #undef preprocessing directive within a program unit. [Note:
+      Any macro name matching the regular expression
+      '/^_[A-Z_][A-Za-z0-9_]*$/' is considered reserved.]
+
+pm01. Any macro name predefined by the processor shall begin with a
+      leading underscore followed by an uppercase letter or a second
+      underscore.
+
+pm02. The processor shall not predefine the macro '__cplusplus',
+      nor any macro whose name starts with '__STDC'.
+
+pm03. Unless listed in the following subclauses, the processor shall
+      not predefine any macro whose name starts with '__STDF' or
+      '__stdf'.
+
+pm10. The values of the predefined macros listed in the following
+      subclauses (except for '__FILE__' and '__LINE__') remain
+      constant throughout the program unit.
+
+pm12. The identifier 'defined' shall not be the subject of a #define
+      or a #undef preprocessing directive.
+
+pm15. The presumed source file name and line number can be changed by
+      the #line directive.
+
+The following macro names shall be defined by the processor:
+
+
+7.1 __LINE__
+------------
+
+pm20. '__LINE__' shall be predefined to a WHOLE_NUMBER representing
+      the presumed line number (within the current source file)
+      of the current source line.
+
+
+7.2 __FILE__
+------------
+
+pm30. '__FILE__' shall be predefined to a CHARACTER_STRING
+      representing the presumed name of the current source file
+
+
+7.3 __DATE__
+------------
+
+pm40. '__DATE__' shall be predefined to a CHARACTER_STRING
+      representing the date of translation of the preprocessing
+      program unit
+
+pm41. '__DATE__' shall be a character literal constant of the form
+      "Mmm dd yyyy", where the names of the months are the same as
+      those specified in C 2023 for the asctime function, and the
+      first character of "dd" is a space character if the value is
+      less than 10.
+
+pm42. If the date of translation is not available, a
+      processor-dependent valid date shall be supplied.
+
+
+7.4 __TIME__
+------------
+
+pm50. '__TIME__' shall be predefined to a CHARACTER_STRING
+      representing the time of translation of the preprocessing
+      program unit.
+
+pm51. '__TIME__' shall be a character literal constant of the form
+      "hh:mm:ss", where "hh" is the hour of the day, "mm" is the
+      minutes of the hour, and "ss" is the seconds of the minute.
+
+pm52. If the time of translation is not available, a
+      processor-dependent valid time shall be supplied.
+
+
+7.5 __STDF__
+------------
+
+'__STDF__' is an analog to '__STDC__' in C and '__cplusplus' in C++.
+Its primary role is to provide preprocessor-visible and
+vendor-independent identification of the underlying target language
+(i.e., "the processor is Fortran"), which enables one to write
+multi-language header files with conditional compilation based on
+language.
+
+pm61. '__STDF__' shall be predefined to the WHOLE_NUMBER 1
+
+
+
+
+Appendix A: Divergences from C
+==============================
+
+In many ways, the FPP specified by this document adheres to the
+existing practice established by the C preprocessor over the past
+several decades. However FPP semantics also deliberately diverge from
+the analogous behavior of the C preprocessor as specified in C 2023.
+This non-normative section enumerates such deliberate differences,
+as a reference for readers to assist in comparisons.
+
+General differences include:
+
+dfc10. FPP does not recognize '//'-style comments on directive lines.
+
+dfc20. FPP omits the #embed directive added in C 2023.
+
+dfc30. FPP omits (and forbids) many predefined macros whose names
+       begin with '__STDC'.
+
+dfc40. FPP expands macro invocations inside Fortran comments on
+       source lines and in Fortran comment lines.
+
+dfc60. The token-list in the FPP #pragma directive may not be empty.
+
+Differences in the conditional expression grammar for #if and #elif
+directives include:
+
+dfc80. FPP omits the comma operator.
+
+dfc82. FPP omits character literal constants.
+
+dfc84. FPP omits the 'true' and 'false' boolean literals added in
+       C 2023.
+
+dfc86. FPP omits the '__has_include' expression added in C 2023.
+
+dfc88. FPP omits the '__has_c_attribute' expression added in C 2023.
+
+dfc90. FPP omits the '__has_embed' expression added in C 2023.
+
+Differences in macro identification and expansion are currently
+documented explicitly in section 4.1.
