@@ -1,0 +1,247 @@
+To: J3                                                     J3/25-144
+From: Brandon Cook & Dan Bonachea
+Subject: Requirements for US20 collective subroutines for prefix operations
+Date: 2025-June-11
+
+#Reference: J3/24-157, J3/23-235r2, J3/23-113, WG5/N-2239
+
+1. Introduction
+===============
+
+Scan, or prefix reduction, operations are fundamental building blocks
+in parallel algorithms and data manipulation tasks. The original
+`SCAN` and `CO_SCAN` proposal received "mixed support" , and prefix
+reduction operations were subsequently "conditionally accepted" as a
+prospective work item for F202Y at the 2024 WG5 meeting, pending
+further discussion and refinement. They were again discussed at the
+February 2025 WG5 meeting, and subsequently promoted to "accepted"
+work item US20 via WG5 letter ballot in May 2025 (WG5/N-2239). The
+result of the WG5 vote was 20 yes 5 no and 1 undecided with several
+informative comments.
+
+This paper focuses exclusively on requirements for the collective
+subroutine variant refining previous concepts based on community and
+WG5 feedback. Our aim is to allow consideration independent of the
+closely related but distinct local intrinsics. We briefly revisit use
+cases as we are now addressing the two variants separately.
+
+2. Nomenclature
+================
+
+The term "SCAN" has been identified as problematic due to potential
+conflicts and historical connotations. In this document we adopt the
+terminology of "prefix reduction" to reference the operation.
+
+3. Motivation and Use Cases
+============================
+
+Collective prefix reduction operations are fundamental building blocks
+for many parallel algorithms.
+
+3.1 Parallel I/O use case
+-------------------------
+
+While numerous use cases exist, one particularly compelling motivation
+is the decomposition of a domain for parallel file I/O.
+
+Consider an application where multiple images must write distinct
+blocks of data to a large, shared file. Before writing, each image
+calculates its own contribution to the total output. The size of each
+contribution may vary from image to image. An example is applying a
+filter to the result of a simulation. Then each image must determine
+where to start writing in the file. Communication is now necessary as
+this information is fundamentally distributed.
+
+The following code fragment illustrates this pattern:
+
+! number of results may vary by image
+output(:) = compute_variable_results()
+n = size(output)
+
+! communication is required to determine offset
+offset = n
+call co_sum_prefix_exclusive(offset)
+
+! each image writes into the correct position
+write(out_file, rec=offset) output
+
+Without an intrinsic, programmers must implement this collective
+communication themselves. A reference implementation of a collective
+prefix reduction is non-trivial, and writing an *efficient* and
+*portable* version is a hard problem. The best algorithm is often
+platform-dependent, and user-level implementations are unlikely to
+match the performance of a vendor-provided intrinsic that is tuned for
+specific network hardware and system architecture.
+
+3.2 Motivation
+--------------
+
+* Intrinsic vs. Library: A WG5 comment suggested that prefix reduction
+  operations might be better supported by a standard library. While
+  this may be true for local reductions, for *collectives*, an
+  intrinsic is far superior. It allows compiler and runtime vendors to
+  provide highly optimized implementations that integrate directly
+  with the inter-image communication software and underlying HPC
+  interconnect hardware. This level of optimization is not achievable
+  in a portable user-level library.
+
+* Generality vs. Performance (Hardware Offload): A key piece of
+    feedback noted that a general collective with a user-provided
+    procedure can inhibit performance optimizations, as the operation
+    cannot be offloaded to smart network hardware. To address this
+    concern, this paper proposes a hybrid approach, analogous to the
+    relationship between `CO_SUM` and `CO_REDUCE`.
+
+    1.  A general `CO_REDUCE_PREFIX` for maximum flexibility,
+        analogous to `CO_REDUCE`.
+
+    2.  A specific `CO_SUM_PREFIX` for the most common use case,
+        analogous to `CO_SUM`. This version can be readily optimized
+        by vendors.
+
+
+4. Discussion of Requirements
+====================================
+
+4.1 Generality vs. Performance
+-------------------------
+
+A general collective with a user-provided procedure provides maximum
+flexibility but can inhibit performance optimizations, for example the
+operation cannot be offloaded to smart network hardware.
+
+* Option A) CO_REDUCE_PREFIX only. Minimal API.
+
+* Option B) CO_REDUCE_PREFIX, CO_SUM_PREFIX only. The rest of the
+  paper follows this option.
+
+* Option C) CO_REDUCE_PREFIX, CO_SUM_PREFIX, CO_MIN_PREFIX,
+  CO_MAX_PREFIX. Maximize symmetry with existing collective
+  subroutines.
+
+straw poll: A
+straw poll: B
+straw poll: C
+
+4.1 Separate inclusive and exclusive subroutines
+-------------------------------------------------
+
+Inclusive vs. Exclusive Terminology: Following widespread practice
+(e.g., MPI), this proposal adopts the "inclusive" and "exclusive"
+terminology for the two common variations of prefix reduction. In
+short, an inclusive prefix reduction includes the value of input
+element A_i when computing corresponding output element R_i, whereas
+the exclusive variant does not. To enhance clarity and safety, it
+proposes separate subroutines for each variant, rather than using an
+`EXCLUSIVE` logical argument. This allows the `IDENTITY` argument to
+be made mandatory for exclusive prefix reductions, for which it is a
+fundamental part of the definition.
+
+Straw poll:
+
+4.2 Image ordering
+------------------
+
+All the intrinsics proposed in this paper are collective subroutines,
+and thus subject to all of the common requirements specified in
+Fortran section 16.6. So for example, they must be invoked
+collectively by the same statement on all active images in the current
+team, with arguments that meet specified constraints for corresponding
+references.
+
+Mathematically, a prefix reduction operation accepts an ordered list
+of input values and computes an ordered list of output result
+values. We propose collective prefix reductions where both these input
+and output lists are ordered according to the image indexes in the
+active team. Specifically, for an inclusive prefix reduction, the
+result R_i provided to image i is computed from the inputs provided by
+images (1:i). For an exclusive prefix reduction, the result R_i
+provided to image i is computed from the inputs provided by images
+(1:i-1).
+
+
+5. Collective CO_SUM_PREFIX subroutines
+========================================
+
+Prefix reduction with + across images.
+
+CO_SUM_PREFIX_INCLUSIVE(A [, STAT, ERRMSG])
+CO_SUM_PREFIX_EXCLUSIVE(A [, STAT, ERRMSG])
+
+5.1 Semantic Requirements
+-------------------------
+
+A has any numeric type.
+
+A must have the same shape, type, and type parameter values in
+corresponding references.
+
+A in INTENT(INOUT).
+
+Each element of the computed value assigned into A is equal to a
+processor-dependent approximation to the inclusive/exclusive
+(respectively) prefix sum of corresponding elements of A provided in
+corresponding references.
+
+By definition + is assumed to be (approximately) associative and
+commutative.
+
+The identity value for sum is implicitly zero.
+
+The computed value is assigned to A if no error condition
+occurs. Otherwise, A becomes undefined as in CO_SUM.
+
+Unlike CO_SUM, RESULT_IMAGE is not necessary.
+
+6. Collective CO_REDUCE_PREFIX subroutines
+===========================================
+
+Generalized prefix reduction across images.
+
+CO_REDUCE_PREFIX_INCLUSIVE(A, OPERATION [, STAT, ERRMSG])
+CO_REDUCE_PREFIX_EXCLUSIVE(A, OPERATION, IDENTITY [, STAT, ERRMSG])
+
+6.1 Semantic Requirements
+-------------------------
+
+These requirements follow a straightforward extension of CO_REDUCE:
+
+A may not be polymorphic or have an ultimate component that is
+allocatable or a pointer.
+
+A must have the same shape, type, and type parameter values in
+corresponding references.
+
+Each element of the computed value assigned into A is equal to a
+processor-dependent approximation to the inclusive/exclusive
+(respectively) prefix reduction of corresponding elements of A
+provided in corresponding references.
+
+OPERATION should be a pure function.
+
+OPERATION should accept exactly two arguments; the result and each
+argument must be a scalar, nonallocatable, noncoarray, nonpointer,
+nonpolymorphic, nonoptional data object with the same declared type
+and type parameters as the input ARRAY.
+
+OPERATION is assumed to implement an (approximately) mathematically
+associative operation.
+
+OPERATION must be the same function on all images in corresponding
+references.
+
+IDENTITY must be conformable with A.
+
+IDENTITY must have the same value in corresponding references.
+
+
+6.2 Commutativity
+-----------------
+
+CO_REDUCE assumes that OPERATION is commutative. A new optional
+logical parameter could be introduced, enabling the caller to compute
+a prefix reduction using a non-commutative operation. Examples of
+common operations that are associative but not commutative include
+string concatenation and matrix multiplication.
+
+straw poll:

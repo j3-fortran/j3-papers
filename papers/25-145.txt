@@ -1,0 +1,379 @@
+To: J3                                                     J3/25-145
+From: Brandon Cook & Dan Bonachea
+Subject: Requirements for US20: Local Prefix Operation Intrinsics
+Date: 2025-June-11
+
+#Reference: J3/24-157, J3/23-235r2, J3/23-113, WG5/N-2239
+
+1. Introduction
+===============
+
+Scan, or prefix reduction, operations are fundamental building blocks
+in parallel algorithms and data manipulation tasks. The SCAN and
+CO_SCAN proposal (J3/23-235r2) received "mixed support" at a previous
+meeting, and prospective work items, including prefix reduction
+operations, were "conditionally accepted" at the 2024 meeting, pending
+further discussion. They were again discussed at the February 2025 WG5
+meeting, and subsequently promoted to "accepted" work item US20 via
+WG5 letter ballot in May 2025 (WG5/N-2239). The result of the WG5 vote
+was 20 yes 5 no and 1 undecided with several informative comments.
+
+This document focuses on requirements exclusively for the local prefix
+reduction variant, refining previous concepts based on community and
+WG5 feedback. By focusing exclusively on the local variant our aim is
+to allow consideration independent of the closely related but distinct
+collective subroutines. We do however revisit use cases briefly for
+clarity as we are now addressing the two variants separately.
+
+2. Nomenclature
+================
+
+The term "SCAN" has been identified as problematic due to potential
+conflicts and historical connotations. In this document we adopt the
+terminology of "prefix reduction" to reference the operation.
+
+3. Motivation and Local Prefix Reduction Use Cases
+==================================================
+
+A local prefix reduction intrinsic offers significant benefits for
+Fortran programmers by providing a standardized, optimizable way to
+perform common computational patterns. There are many additional
+motivating use cases available in the literature (and described in
+J3/23-113).
+
+3.1. Sparse Matrix Algorithms
+-------------------------------------------
+
+Many high-performance computing applications rely heavily on sparse
+matrix operations. Prefix operations are important in these contexts,
+for example:
+
+    * Computing Offsets: In constructing sparse matrix
+      representations, a prefix reduction over the number of non-zero
+      elements per row/column is used to compute the offsets into the
+      final data structure.  Document J3/24-157 highlights this use
+      case from the MFDn application, noting that this step is
+      non-trivial to implement portably and efficiently across
+      different architectures (CPU and GPU).
+
+    * Segmented prefix reductions for SpMV: Load-balancing sparse
+      matrix-vector product (SpMV) kernels on GPUs often employ
+      segmented prefix reduction operations.  The Ginkgo library
+      utilizes such algorithms to achieve high performance on these
+      kernels. It is not clearly possible to implement these
+      approaches in Fortran without such an intrinsic.
+
+3.2. Implementation of Existing Intrinsics
+------------------------------------------
+
+Efficient implementations of some existing Fortran intrinsics can be
+expressed using prefix operations. J3/24-157 provides an example
+implementation of the `PACK` intrinsic using an inclusive prefix
+reduction to calculate the destination indices for the packed
+elements.
+
+
+4. Discussion of Requirements
+====================================
+
+Based on feedback and existing practice, the design space for prefix
+intrinsics warrants careful consideration.
+
+4.1. General vs. Specific Intrinsics
+------------------------------------
+
+There are three primary approaches to introducing prefix reduction
+operations as local intrinsic transformational functions into the
+standard.
+
+* Option A: General `REDUCE_PREFIX`
+
+    This approach, modeled on `REDUCE` , provides one powerful and
+    flexible function that takes a user-defined `operation`.  Its
+    strength is its generality and minimalism, however it can be
+    verbose for common operations and may present a greater
+    optimization challenge for compilers.
+
+* Option B: Specific, High-Utility Intrinsics
+
+    This approach follows the precedent set by High Performance
+    Fortran (HPF) and is implemented in libraries like NVIDIA's
+    cutensorex.  It would involve adding specific intrinsics like
+    `SUM_PREFIX`, `COUNT_PREFIX` and so on.  This offers ease of use
+    and maximum optimization potential for common cases but lacks
+    generality. It also opens the door for ongoing future requests of
+    additional operations and therefore more intrinsics and the
+    corresponding effort to standardize and implement them.
+
+* Option C: A Hybrid Approach
+
+    This approach provides benefits of both approaches by adding a
+    general `REDUCE_PREFIX` for flexibility while also providing a
+    highly-optimizable `SUM_PREFIX` for the most common use
+    cases. This creates a complete and consistent family of
+    intrinsics, where `SUM` and `REDUCE` have `_PREFIX` variants. The
+    remainder of the document assumes this option. With
+    straightforward transformations PRODUCT_PREFIX and COUNT_PREFIX
+    can be implemented with SUM_PREFIX and MIN_PREFIX and MAX_PREFIX
+    are possible with appropriate arguments to REDUCE_PREFIX(see
+    Examples).
+
+Straw poll A:
+Straw poll B:
+Straw poll C:
+
+4.2. Handling Inclusive and Exclusive Prefix Reductions
+-------------------------------------------------------
+
+Previous proposals used a single `EXCLUSIVE` logical argument to
+switch between inclusive and exclusive prefix reductions.  An
+alternative is to provide separate, explicitly named functions.
+
+It is not possible to simultaneously preserve consistent argument
+order both between the prefix and non-prefix versions of REDUCE and
+between inclusive and exclusive definitions, with the desired
+constraint that `IDENTITY` be a non-optional argument for
+REDUCE_PREFIX_EXCLUSIVE.
+
+In this paper we present both options.
+
+5. SUM_PREFIX
+==============
+
+5.1 SUM
+-------
+
+For reference, the syntax for SUM is
+
+SUM(ARRAY, DIM [, MASK]) or
+SUM(ARRAY [, MASK])
+
+5.2 Semantic Requirements
+-------------------------
+
+These requirements follow a straightforward extension of SUM.
+
+ARRAY is an array of numeric type.
+
+The type and kind parameter of the result is determined by the type of
+ARRAY, as specified for the `+` operator.
+
+The rank and shape of the result is the same as the rank and shape of
+ARRAY.
+
+MASK is of type logical and conformable with ARRAY.
+
+The values of the result in the inclusive case with rank 1 ARRAY and
+no MASK should be equivalent to the naive serial implementation as
+follows
+
+RESULT(1) = ARRAY(1)
+DO i = 2, size(ARRAY)
+   RESULT(i) = RESULT(i-1) + ARRAY(i)
+END DO
+
+The values of the result in the exclusive case with rank 1 ARRAY and
+no MASK should be equivalent to the naive serial implementation as
+follows
+
+RESULT(1) = 0
+DO i = 2, size(ARRAY)
+   RESULT(i) = RESULT(i-1) + ARRAY(i-1)
+END DO
+
+In the case of a multidimensional ARRAY with no DIM argument, RESULT
+should be computed analogously to the above, with the iteration
+proceeding in array element order.
+
+In the case of a specified DIM, the prefix reduction should be
+performed elementwise along that dimension.
+
+In the case of a specified MASK, elements of ARRAY contribute to the
+sum if and only if the corresponding element of MASK is true.
+
+5.2 INCLUSIVE and EXCLUSIVE
+---------------------------
+
+The ability to select between an inclusive and exclusive prefix sum
+operation can be controlled either via arguments or function
+definitions:
+
+SUM_PREFIX(ARRAY [, MASK, EXCLUSIVE]) or
+SUM_PREFIX(ARRAY, DIM [, MASK, EXCLUSIVE])
+
+OR
+
+SUM_PREFIX_INCLUSIVE(ARRAY [, MASK])
+SUM_PREFIX_INCLUSIVE(ARRAY, DIM [, MASK])
+SUM_PREFIX_EXCLUSIVE(ARRAY, [, MASK])
+SUM_PREFIX_EXCLUSIVE(ARRAY, DIM [, MASK])
+
+straw poll:
+
+6. REDUCE_PREFIX
+================
+
+6.1 REDUCE
+----------
+
+For reference, the syntax of REDUCE is
+
+REDUCE(ARRAY, OPERATION [,MASK, IDENTITY, ORDERED]) or
+REDUCE(ARRAY, OPERATION, DIM [,MASK, IDENTITY, ORDERED])
+
+6.2 Semantic Requirements
+-------------------------
+
+These requirements follow a straightforward extension of REDUCE:
+
+OPERATION should be a pure function.
+
+OPERATION should accept exactly two arguments; the result and each
+argument must be a scalar, nonallocatable, noncoarray, nonpointer,
+nonpolymorphic, nonoptional data object with the same declared type
+and type parameters as the input ARRAY.
+
+OPERATION need not be a commutative operator. The computation will not
+reorder operands.
+
+If ORDERED is absent or .false., then OPERATION should be
+computationally associative. If ORDERED is present with the value
+.true., then the computation is guaranteed to effectively proceed in
+array element order, and operations will not be reassociated.
+
+The rank and shape of the result is the same as the rank and shape of
+ARRAY.
+
+MASK is of type logical and conformable with ARRAY.
+
+IDENTITY has the same type and type parameters as ARRAY and is
+conformable with ARRAY.
+
+The values of the result in the inclusive case with rank 1 ARRAY,
+ORDERED=.true. and no MASK should be equivalent to the naive serial
+implementation as follows
+
+RESULT(1) = ARRAY(1)
+DO i = 2, size(ARRAY)
+   RESULT(i) = OPERATION(RESULT(i-1), ARRAY(i))
+END DO
+
+The values of the result in the exclusive case with rank 1 ARRAY,
+ORDERED=.true. and no MASK should be equivalent to the naive serial
+implementation as follows
+
+RESULT(1) = IDENTITY(1)
+DO i = 2, size(ARRAY)
+   RESULT(i) = OPERATION(RESULT(i-1), ARRAY(i-1))
+END DO
+
+In the case of a multidimensional ARRAY with no DIM argument, RESULT
+should be computed analogously to the above, with the iteration
+proceeding in array element order.
+
+In the case of a specified DIM, the prefix reduction should be
+performed elementwise along that dimension.
+
+In the case of a specified MASK, elements of ARRAY contribute to the
+sum if and only if the corresponding element of MASK is true.
+
+Straw vote: Generalization of IDENTITY to be conformable with ARRAY.
+
+6.3 INCLUSIVE and EXCLUSIVE
+---------------------------
+
+It is not possible to simultaneously preserve consistent argument
+order both between the prefix and non-prefix versions of REDUCE and
+between inclusive and exclusive definitions, with the desired
+constraint that IDENTITY be a non-optional argument for
+REDUCE_PREFIX_EXCLUSIVE.
+
+
+REDUCE_PREFIX(ARRAY, OPERATION [, MASK, IDENTITY, ORDERED, EXCLUSIVE])
+REDUCE_PREFIX(ARRAY, OPERATION, DIM [, MASK, IDENTITY, ORDERED, EXCLUSIVE])
+
+or
+
+REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION [, MASK, IDENTITY, ORDERED])
+REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION, DIM [, MASK, IDENTITY, ORDERED])
+REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, IDENTITY [, MASK, ORDERED])
+REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, IDENTITY, DIM [, MASK, ORDERED])
+
+Straw poll:
+
+7. SEGMENT
+==========
+
+The `SEGMENT` argument from J3/23-113 has compelling use cases. It is
+worth noting that HPF also specified a `SEGMENT` argument which NVIDIA
+has not yet implemented in their cutensorex library. It is also
+possible to implement a segmented prefix reduction with a
+non-segmented version by augmenting the definition of the binary
+operation and the input array with a corresponding segment key at the
+expense of additional memory and pre/post-processing.
+
+Straw poll:
+
+
+8. Examples
+===========
+
+Assume
+
+function add(a,b) result(r)
+	 integer, intent(in) :: a,b; integer :: r; r=a+b
+end function add
+
+8.1 Inclusive prefix reduction with +
+--------------------------------------
+
+A = [1, 2, 3, 4]
+R = SUM_PREFIX_INCLUSIVE(A)
+! R will be [1, 3, 6, 10]
+
+R = REDUCE_PREFIX_INCLUSIVE(A, OPERATION=add)
+! R will be [1, 3, 6, 10]
+
+8.2 Exclusive prefix reduction with +
+--------------------------------------
+
+A = [1, 2, 3, 4]
+R = SUM_PREFIX_EXCLUSIVE(A)
+! R will be [0, 1, 3, 6]
+
+R = REDUCE_PREFIX_EXCLUSIVE(A, OPERATION=add, IDENTITY=0)
+! R will be [0, 1, 3, 6]
+
+8.3 Exclusive Sum along dimension 2 with a mask:
+------------------------------------------------
+
+B = RESHAPE([1,2,3,4,5,6], [2,3]) ! B = | 1 3 5 |
+                                  !     | 2 4 6 |
+M = RESHAPE([.T., .T., .F., .T., .T., .T.], [2,3])
+R = SUM_PREFIX_EXCLUSIVE(B, DIM=2, MASK=M)
+! R will be | 0  1  1 |
+!           | 0  2  6 |
+
+8.4 COUNT_PREFIX via SUM_PREFIX
+-------------------------------
+
+	function COUNT_PREFIX_INCLUSIVE(MASK)
+		LOGICAL, DIMENSION(:), intent(in) :: MASK
+		INTEGER, DIMENSION(:) :: COUNT_PREFIX_INCLUSIVE
+		COUNT_PREFIX_INCLUSIVE = &
+		  SUM_PREFIX_INCLUSIVE(MERGE(1, 0, MASK))
+	end function
+
+8.5 PRODUCT_PREFIX via SUM_PREFIX
+----------------------------------
+
+Note: This implementation is more numerically stable than a direct
+PRODUCT_PREFIX due to the error accumulation properties of addition
+compared to multiplication.
+
+	function PRODUCT_PREFIX_INCLUSIVE(ARRAY)
+		INTEGER, DIMENSION(:), INTENT(IN) :: ARRAY
+		INTEGER, DIMENSION(:) :: PRODUCT_PREFIX_INCLUSIVE
+		PRODUCT_PREFIX_INCLUSIVE = &
+		   EXP(SUM_PREFIX_INCLUSIVE(LOG(ARRAY)))
+	end function
