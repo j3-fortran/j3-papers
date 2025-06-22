@@ -1,0 +1,225 @@
+To: J3                                                     J3/25-127r1
+From: Reinhold Bader & Dan Bonachea & HPC
+Subject: DIN1: Collectives over a specified team, req/spec/syntax/edits
+Date: 2025-June-20
+References:
+  J3/22-163: F202Y feature request - extend collective semantics
+  J3/25-125r1: F202Y feature request: collectives over a specified team
+  WG5/N-2339: Results of WG Consultation on Conditionally Approved Work
+              Items for F202Y
+  J3/25-007: Fortran 202Y Working Draft
+
+1. Background
+~~~~~~~~~~~~~
+
+This paper is an updated version of J3/22-163, with the suggested edits in
+the final section adjusted to apply against the current J3/25-007 Fortran
+202Y Working Draft, and some other minor updates. Revision 1 of this paper
+(J3/25-127r1) makes minor adjustments to the proposed edits (based on
+suggestions received from Malcolm Cohen) and fills in some additional
+detail in earlier sections.
+
+Paper J3/25-125r1 provides expanded background and motivation, and was
+discussed at the February 2025 INCITS/Fortran meeting #235.  At the time,
+work item DIN1 (Collectives over a specified team) was a WG5 Conditionally
+Accepted work item. Paper J3/25-125r1 recommends to WG5 that work item DIN1
+be promoted to the Approved work list for F202Y, and was passed at
+INCITS/Fortran meeting #235 with a vote of 10 in favor, 0 opposed, 4
+absent. WG5 subsequently voted via letter ballot in Apr/May 2025, and
+in WG5/N-2339 formally accepted work item DIN1 as an Approved work item,
+with a vote of 23 Yes, 3 No, 0 Undecided.
+
+This paper contains formal requirements, specifications, syntax and edits
+for Fortran 202Y proposal DIN1, collectives over a specified team.
+
+The Requirements, Specifications, Syntax and Edits will be moved
+separately, in order.
+
+2. Requirements
+~~~~~~~~~~~~~~~
+
+R1. The collective subroutines of Fortran should support execution over a
+    team that is not the current team.
+
+2.1 Rationale
+
+As of Fortran 2023, the collective subroutine intrinsics
+(CO_BROADCAST, CO_MAX, CO_MIN, CO_REDUCE, and CO_SUM) may only be
+executed over the current team, as defined by the CHANGE TEAM
+construct. This becomes very awkward when one needs to execute such a
+collective over an ancestor team; because there is no way to directly
+express that without closing the CHANGE TEAM construct, and invoking
+END TEAM may have undesired side-effects such as deallocating
+team-specific coarrays. It would also be convenient to allow
+collectives directly over a child team without forcing the
+synchronization side effects associated with a CHANGE TEAM to that
+child team.
+
+Collective subroutines are not image control statements, and they are
+entirely decoupled from the coarray feature that motivates the design
+of CHANGE TEAM and the current team stack. There is no fundamental
+reason to disallow execution of a collective subroutine over any named
+team, provided of course that all the members of that specified team
+execute the same collective subroutine statement together. The
+SYNC TEAM statement allows synchronization over any specified ancestor
+team or child team passed as a TEAM_TYPE argument, which is analogous
+to the feature proposed here except for data exchange instead of
+synchronization.
+
+Team collective operations have been a standard part of MPI for
+decades. Every MPI collective operation takes a communicator argument
+that names the team of processes participating in that collective.
+HPC programmers familiar with subset teams expect this feature as a
+natural capability, and are disappointed to find it currently missing
+from Fortran's multi-image feature set.
+
+
+3. Specifications
+~~~~~~~~~~~~~~~~~
+
+S1 Add an optional TEAM argument of type TEAM_TYPE to all collective
+   subroutines and specify that execution of the subroutine applies over
+   the specified team.
+
+S2. The executing image shall be a member of the specified team.
+
+S3. As required by 16.6 "Collective subroutines", all active images in the
+    specified team must invoke the same collective subroutine by the same
+    statement in segments that are not ordered with respect to each other.
+
+
+4. Syntax and Semantics
+~~~~~~~~~~~~~~~~~~~~~~~
+
+4.1 Syntax
+
+An optional TEAM argument of type TEAM_TYPE is added as the final argument
+to each of the five collective subroutines, yielding the following:
+
+X1. CO_BROADCAST (A, SOURCE_IMAGE [, STAT, ERRMSG, TEAM])
+
+X2. CO_MAX (A [, RESULT_IMAGE, STAT, ERRMSG, TEAM])
+
+X3. CO_MIN (A [, RESULT_IMAGE, STAT, ERRMSG, TEAM])
+
+X4. CO_REDUCE (A, OPERATION [, RESULT_IMAGE, STAT, ERRMSG, TEAM])
+
+X5. CO_SUM (A [, RESULT_IMAGE, STAT, ERRMSG, TEAM])
+
+4.2 Semantics
+
+X10. If the TEAM argument is absent in a given invocation of a collective
+     subroutine, the specified team is the current team.
+
+X11. Otherwise, the specified team is the team identified by the value of
+     the TEAM argument.
+
+X12. All active images in the specified team shall invoke the collective
+     subroutine in the same statement and specify the same team in
+     corresponding references.
+
+
+5. Suggested Edits (against J3/25-007)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+16.6 Collective subroutines:
+
+[379:26] para 1:
+ replace "the current team" by "the specified team"
+
+[379:28] para 1:
+ replace "its current team" by "the specified team"
+
+[379:30+] after para 1:
+ Insert new paragraph reading:
+
+"The team specified by an invocation of a collective subroutine is
+ the current team if the TEAM argument is not present in that
+ invocation. Otherwise, it is the team identified by the value of
+ the TEAM argument. On all images participating in the same collective
+ computation, the specified team shall be the same team; either the
+ initial team, or the same team created by the same FORM TEAM statement
+ (11.7.9)."
+
+[380:8,13,19,21] para 3, para 4 bullet 4, para 6 (twice):
+ replace "the current team" by "the specified team".
+
+16.9.54 CO_BROADCAST:
+
+[407:29] in the heading:
+ replace "[, STAT, ERRMSG]" by "[, STAT, ERRMSG, TEAM]"
+
+[407:35-36] in the description of A:
+ replace "the current team" by "the specified team"
+
+[408:4] in the description of SOURCE_IMAGE:
+ replace "the current team" by "the specified team"
+
+[408:8+] after the description of ERRMSG in para 3:
+ add "TEAM (optional) shall be a scalar of type TEAM_TYPE from the
+      intrinsic module ISO_FORTRAN_ENV. It is an INTENT(IN) argument."
+
+[408:9] in para 4:
+ replace "and ERRMSG" by ", ERRMSG and TEAM"
+
+16.9.55 CO_MAX:
+
+[408:13] in the heading:
+ replace "[, STAT, ERRMSG]" by "[, STAT, ERRMSG, TEAM]"
+
+[408:27] in the description of RESULT_IMAGE:
+ replace "the current team" by "the specified team"
+
+[408:30+] after the description of ERRMSG in para 3:
+ add "TEAM (optional) shall be a scalar of type TEAM_TYPE from the
+      intrinsic module ISO_FORTRAN_ENV. It is an INTENT(IN) argument."
+
+[408:31] in para 4:
+ replace "and ERRMSG" by ", ERRMSG and TEAM"
+
+16.9.56 CO_MIN:
+
+[408:35] in the heading:
+ replace "[, STAT, ERRMSG]" by "[, STAT, ERRMSG, TEAM]"
+
+[409:11] in the description of RESULT_IMAGE:
+ replace "the current team" by "the specified team"
+
+[409:14+] after the description of ERRMSG in para 3:
+ add "TEAM (optional) shall be a scalar of type TEAM_TYPE from the
+      intrinsic module ISO_FORTRAN_ENV. It is an INTENT(IN) argument."
+
+[409:15] in para 4:
+ replace "and ERRMSG" by ", ERRMSG and TEAM"
+
+16.9.57 CO_REDUCE:
+
+[409:19] in the heading:
+ replace "[, STAT, ERRMSG]" by "[, STAT, ERRMSG, TEAM]"
+
+[410:3] in the description of RESULT_IMAGE:
+ replace "the current team" by "the specified team"
+
+[410:6+] after the description of ERRMSG in para 3:
+ add "TEAM (optional) shall be a scalar of type TEAM_TYPE from the
+      intrinsic module ISO_FORTRAN_ENV. It is an INTENT(IN) argument."
+
+[410:7] in para 4:
+ replace "and ERRMSG" by ", ERRMSG and TEAM"
+
+16.9.58 CO_SUM:
+
+[410:20] in the heading:
+ replace "[, STAT, ERRMSG]" by "[, STAT, ERRMSG, TEAM]"
+
+[410:35] in the description of RESULT_IMAGE:
+ replace "the current team" by "the specified team"
+
+[410:38+] after the description of ERRMSG in para 3:
+ add "TEAM (optional) shall be a scalar of type TEAM_TYPE from the
+      intrinsic module ISO_FORTRAN_ENV. It is an INTENT(IN) argument."
+
+[410:39] in para 4:
+ replace "and ERRMSG" by ", ERRMSG and TEAM"
+
+===END===

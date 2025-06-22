@@ -1,0 +1,448 @@
+To: J3                                                     J3/25-150
+From: Hidetoshi Iwashita
+Subject: Additional use cases and suggestion for generic subprograms
+Date: 2025-June-20
+References: 25-102, 25-120r1, 24-143
+
+
+
+1. Introduction
+===============
+
+In paper 25-102, we presented use cases for generic subprograms that
+demonstrate how accepting coarrays as generic arguments increases the
+usefulness of generic subprograms. This paper presents additional use
+cases, focusing on the dependency of local variables on generic dummy
+arguments.
+
+
+
+2. Use case: generic operations/functions with BIGINT type
+==========================================================
+
+This section introduces examples of extending operations and functions for
+intrinsic arithmetic types to user-defined derived types.
+Arbitrary-precision number (bigint) is an integer type that can handle
+variable-length digits. Intrinsic integer types have digit overflow issues,
+and intrinsic real types have rounding errors and irreversibility
+issues. However, the bigint type and the rational type, which represents
+the numerator and denominator as bigint type numbers, are said to be useful
+in fields that require reproducibility and accuracy if they can be used in
+the same way as built-in types for arithmetic operations and
+built-in/user-defined function calls. In Python, Haskel, and Julia, the
+bigint type is provided as a built-in type.
+
+The program examples introduced in this section have been prototyped and
+verified using gfortran or flang. However, before compilation, generic
+subprograms have been manually expanded into equivalent specific
+subprograms, and @ notation has been manually decomposed into equivalent
+array expressions or nested loops.
+
+
+2.1 Framework for BIGINT type
+
+The definition of the bigint type is shown below.
+
+  TYPE :: bigint
+     INTEGER :: sign
+     INTEGER :: size
+     INTEGER(int32), ALLOCATABLE :: data(:)
+  END TYPE bigint
+
+The value of the bigint object is as follows:
+sign * (data(1) + r * data(2) + ... + r **(size-1) * data(size))
+where r = 2**31, 0 <= x%data(i) < r
+
+We have created minimum necessary parts of the followings for
+demonstration purposes.
+
+  - defined assignments = that include type conversion from/to intrinsic
+    arithmetic types,
+  - binary operations +, - and * that include mixed operations with
+    intrinsic arithmetic types,
+  - unary operation - and function ABS, and
+  - defined I/O to read/write decimal character strings
+
+Here is one example. The assignment statement from integer x to bigint
+type y:
+
+  y = x
+
+is defined with a generic interface block:
+
+  INTERFACE assignment(=)
+    PROCEDURE :: i32_to_bi, i64_to_bi
+  END INTERFACE assignment(=)
+
+and module subroutines i32_to_bi and i64_to_bi. And the following
+subroutine is selected and used if x is of type INTEGER(int32):
+
+  IMPURE ELEMENTAL SUBROUTINE i32_to_bi(y, x)
+    INTEGER(int32), INTENT(IN) :: x
+    TYPE(bigint), INTENT(INOUT) :: y
+
+    IF (allocated(y%data)) DEALLOCATE(y%data)
+    ALLOCATE (y%data(1))
+    y%size = 1                  ! because abs(x) is always less than 2**31
+    y%sign = sign(1_int32, x)   ! y%sign will be 1 if x>=0, otherwise -1
+    y%data(1) = abs(x)
+  END SUBROUTINE i32_to_bi
+
+In the prototype of this framework, generic subprograms were not used.
+
+Regarding type and kind, since abstraction is difficult when performance is
+important, it is better to write them specific as shown above. However, in
+order to support all integer types supported by the processor, it is
+necessary to use generic subroutines that abstract kind values.
+
+Regarding rank, since all assignments and operations except I/O could be
+implemented as elemental, there was no need to use generic-rank. However,
+since the ALLOCATE statement is used, the "IMPURE ELEMENTAL" prefix was
+used in many functions and subroutines.
+
+
+2.2 SPREAD(SOURCE, DIM, NCOPIES)  for BIGINT type
+
+As an application of the bigint framework, we extended the intrinsic
+functions that support integer types to the bigint type. Among the
+arithmetic type intrinsic procedures in Fortran, support for elemental
+procedures seems to be possible without using generic-rank by using the
+IMPURE ELEMENTAL prefix. However, rank-generic must be used for
+transformational procedures.
+
+Here, we define a bigint type function with the same functionality as
+SPREAD (16.9.197). We have divided it into case (i) scalar version and
+case (ii) array version.
+
+Case (i):
+  GENERIC FUNCTION spread(source, dim, ncopies) RESULT(r)
+    TYPE(bigint), INTENT(in) :: source                            ! (1)
+    INTEGER, INTENT(in) :: dim
+    INTEGER, INTENT(in) :: ncopies
+    TYPE(bigint), ALLOCATABLE :: r(:)                             ! (2)
+
+    IF (dim /= 1) THEN
+       ERROR STOP 'The value of DIM must be 1 if SOURCE is scalar'
+    END IF
+
+    ALLOCATE (r(max(0, ncopies)))                                 ! (3)
+    r = source                                                    ! (4)
+
+  END FUNCTION spread
+
+The scalar value source is the main argument (1), and a one-dimensional
+array r of type bigint with size max(0, NCOPIES) is returned (2, 3). In the
+array assignment statement (4), the procedure for assigning from bigint to
+bigint is called, but since assignment (=) is provided as an elemental
+subroutine, the assignment is from a scalar to an array.
+
+Case (ii):
+  GENERIC FUNCTION spread(source, dim, ncopies) RESULT(r)
+    TYPE(bigint), RANK(1:15), INTENT(in) :: source                ! (1)
+    INTEGER, INTENT(in) :: dim
+    INTEGER, INTENT(in) :: ncopies
+    TYPE(bigint), RANK(rank(source)+1), ALLOCATABLE :: r          ! (2)
+    INTEGER ext1(dim-1), ext2(dim:rank(source))                   ! (3)
+    INTEGER i, nc
+
+    IF (dim < 1 .or. rank(source)+1 < dim) THEN
+       ERROR STOP 'The value of DIM must be >= 1 and <= RANK(SOURCE)+1'
+    END IF
+
+    nc = max(0, ncopies)
+    ext1 = [(size(source, i), i = 1, dim-1)]                     ! (4)
+    ext2 = [(size(source, i), i = dim, rank(source))] 	      	 ! (5)
+    ALLOCATE(r(@ext1, nc, @ext2))     	      	      	      	 ! (6)
+    DO i = 1, nc
+       r(@1:ext1, i, @1:ext2) = source(@1:ext1, @1:ext2)      	 ! (7)
+    END DO
+
+  END FUNCTION spread
+
+The type declaration statement (1) is generic, unlike the type declaration
+statement (1) in case (i), and expresses that source has a rank from 1 to
+15.Since the rank of the result r is one greater than the rank of source,
+it is expressed as RANK(rank(source)+1). References to the rank of generic
+dummy arguments other than RANKOF are not allowed in 25-120r1, but it is
+necessary here.
+Vectors ext1 and ext2 are declared in
+(3) with sizes that are smaller than the number of dimensions of array r
+and larger than the number of dimensions of array r, respectively. Here,
+the expression rank(source) appears in the array-spec of ext2. In array
+assignment statements (4) and (5), the size of each dimension is obtained
+by size(source, i). For the allocation of r, the allocate-shape-spec (R935)
+in the ALLOCATE statement (6) also requires an extension of the @-notation
+similar to multiple-subscript (R920) or multiple-subscript-triplet (R923).
+The array assignment statement (7) uses multiple-subscript-triplet (R923).
+
+
+2.3 SUM(ARRAY [, MASK]) for BIGINT type
+
+Consider support for bigint for SUM(16.9.201) without the argument DIM.
+
+  GENERIC FUNCTION sum(array, mask) RESULT(r)
+    TYPE(bigint), RANK(1:), INTENT(in) :: array                 ! (1)
+    LOGICAL, DIMENSION(..), INTENT(in), OPTIONAL :: mask        ! (2)
+    TYPE(bigint) :: r
+    INTEGER :: idx(rank(array))                                 ! (3)
+    IF (.not.present(mask)) THEN
+       r = 0
+       DO @idx = 1, ubound(array)                               ! (4)
+          r = r + array(@idx)
+       END DO
+       RETURN
+    END IF
+
+    SELECT RANK(mask)
+    RANK (0)
+       r = 0
+       IF (mask) THEN
+          DO @idx = 1, ubound(array)                            ! (5)
+             r = r + array(@idx)
+          END DO
+       END IF
+    RANK (rank(array))                                          ! (6)
+       r = 0
+       DO @idx = 1, ubound(array)                               ! (7)
+          IF (mask(@idx)) r = r + array(@idx)
+       END DO
+    RANK DEFAULT
+       PRINT *, 'Argument MASK is not conformable with ARRAY'
+    END SELECT
+
+  END FUNCTION sum
+
+Generic type declaration statement (1) RANK(1:) follows 25-120r1. It can
+also be written as RANK(1:MAXRANK()). The handling of the argument mask in
+(2) is troublesome. Since it is optional, it cannot be a generic dummy
+argument, but its rank can be 0 or the same as the array, so the decision
+is carried over to execution time and it is treated as an assumed-rank
+array. In (3), the size of the loop index variable idx is the rank of the
+argument ARRAY. As such, the appearance of rank(array) in array-spec is
+necessary and should be allowed.(4), (5), and (7) use the rank-independent
+loop proposed in 24-143. This feature is highly desired. (6) is an example
+where rank(array) appears as a scalar-int-constant-expr in the execution
+statement.
+
+
+2.4 SUM(ARRAY, DIM [, MASK]) for BIGINT type
+
+Consider support for bigint for SUM(16.9.201) with the argument DIM. Divide
+the function into two based on whether the result r is a scalar or an
+array. The result r is a scalar when the rank of the argument array is 1,
+but that function is easy, so it is omitted here. The function for when the
+result r is an array is as follows.
+
+  GENERIC FUNCTION sum(array, dim, mask) RESULT(r)
+    TYPE(bigint), RANK(2:), INTENT(in) :: array                 ! (1)
+    INTEGER, INTENT(in) :: dim
+    LOGICAL, DIMENSION(..), INTENT(in), OPTIONAL :: mask
+    TYPE(bigint), RANK(rank(array)-1), ALLOCATABLE :: r         ! (2)
+    INTEGER :: ext1(1:dim-1), ext2(dim+1:rank(array))           ! (3)
+    INTEGER :: i
+
+    ext1 = [(size(array, i), i = 1, dim-1)]
+    ext2 = [(size(array, i), i = dim+1, rank(array))]           ! (4)
+    ALLOCATE(r(@ext1, @ext2))
+
+    IF (.not.present(mask)) THEN
+       r = 0
+       DO i = 1, size(array, dim)
+          r = r + array(@ext1, i, @ext2)
+       END DO
+       RETURN
+    END IF
+
+    SELECT RANK(mask)
+    RANK (0)
+       r = 0
+       IF (mask) THEN
+          DO i = 1, size(array, dim)
+             r = r + array(@1:ext1, i, @1:ext2)
+          END DO
+       END IF
+    RANK (rank(array))                                         ! (5)
+       r = 0
+       DO i = 1, size(array, dim)
+          WHERE (mask(@1:ext1, i, @1:ext2)) &
+               r = r + array(@1:ext1, i, @1:ext2)
+       END DO
+    RANK DEFAULT
+       ERROR STOP 'Argument MASK is not conformable with ARRAY'
+    END SELECT
+
+  END FUNCTION sum
+
+The generic type declaration statement (1) declares that the rank of the
+array is 2 or more. Since the rank of r is one less than the rank of ARRAY,
+it is expressed as rank(array)-1 in the RANK clause in (2). As in case (ii)
+in 2.2 and 2.3, this function also makes frequent use of rank references
+using the RANK function from generic dummy arguments. In (3), (4), and (5),
+it is referenced in the form rank(array).
+
+
+2.5 REDUCE(ARRAY, OPERATION [, IDENTITY]) for multiple type
+
+Consider support for multiple types including the bigint type for REDUCE
+(16.9.173) with arguments ARRAY, OPERATION and IDENTITY. Unlike the
+intrinsic REDUCE, this REDUCE omits the arguments DIM, MASK and ORDERED.
+
+  GENERIC FUNCTION reduce(array, operation, identity) RESULT(r)
+    TYPE(bigint,fraction), RANK(1:), INTENT(in) :: array           ! (1)
+    TYPEOF(array), INTENT(in), OPTIONAL :: identify
+    TYPEOF(array) :: r
+    INTERFACE                                                      ! (2)
+       FUNCTION operation(x, y) RESULT(z)                          ! (3)
+         IMPORT array                                              ! (4)
+         TYPEOF(array), INTENT(in) :: x, y                         ! (5)
+         TYPEOF(array) :: z                                        ! (6)
+       END FUNCTION operation
+    END INTERFACE
+    INTEGER :: idx(rank(array))                                    ! (7)
+    LOGICAL :: is_first
+
+    is_first = .true.
+    DO @idx = 1, ubound(array)                                     ! (8)
+       IF (is_first) THEN
+          r = array(@idx)
+          is_first = .false.
+       ELSE
+          r = operation(r, array(@idx))
+       END IF
+    END DO
+
+    IF (is_first) THEN
+       IF (present(identity)) THEN
+          r = identity
+       ELSE
+          ERROR STOP 'Argument IDENTITY expected for empty sequence'
+       END IF
+    END IF
+
+  END FUNCTION reduce
+
+By the generic type declaration statement (1), ARRAY is specified as
+type-generic and rank-generic. The dummy procedure OPERATION is made
+explicit by the interface block (2). The intrinsic REDUCE allows only pure
+functions as its argument OPERATION, but this reduce allows impure
+functions as its argument OPERATION (3). This is because most procedures
+for the bigint type are impure. By using the IMPORT statement (4) and
+TYPEOF statements (5, 6), the arguments x and y and the result r of
+OPERATION have the same type of the argument ARRAY. The reference of
+rank(array) (7) and the use of rank-independent loops (24-143) (8) are the
+same as in 2.3.
+
+Following functions max_bi and sum_bi are examples of functions that define
+the procedure OPERATION:
+
+  FUNCTION max_bi(x, y) RESULT(r)
+    TYPE(bigint), INTENT(in) :: x, y
+    TYPE(bigint) :: r
+    IF (x >= y) THEN
+       r = x
+    ELSE
+       r = y
+    END IF
+  END FUNCTION max_bi
+
+  FUNCTION sum_bi(x, y) RESULT(r)
+    TYPE(bigint), INTENT(in) :: x, y
+    TYPE(bigint) :: r
+    r = x + y
+  END FUNCTION sum_bi
+
+These functions are not pure because each r%data is an allocatable array
+and allocated in the defined assignemnt statements.
+
+
+
+3. Another use case
+===================
+
+This section presents a use case that references the kind type parameter of
+generic dummy arguments.
+
+
+3.1 Kind type parameter of generic dummy argument
+
+The function absmax takes a one-dimensional array of arithmetic types as an
+argument and returns the largest absolute value in the array elements.
+According to the definition of the intrinsic function ABS, the type and
+kind of the result y are the same as x when x is not a complex number, and
+the type is real and the kind is the same as x when x is a complex
+number. Since these type declaration statements for the result y cannot be
+unified, the generic subprogram must be divided into two depending on the
+type of x, as follows.
+
+  GENERIC FUNCTION absmax(x) RESULT(y)
+    TYPE(INTEGER(*),REAL(*)), INTENT(in) :: x(:)
+    TYPEOF(x) :: y, abs_x
+    INTEGER i, n
+
+    y = -huge(y)
+    DO i = 1, size(x)
+       abs_x = abs(x(i))
+       IF (abs_x > y) y = abs_x
+    END DO
+  END FUNCTION absmax
+
+  GENERIC FUNCTION absmax(x) RESULT(y)
+    COMPLEX(*), INTENT(in) :: x(:)
+    REAL(kind(x)) :: y, abs_x                                    ! (1)
+    INTEGER i, n
+
+    y = -huge(y)
+    DO i = 1, size(x)
+       abs_x = abs(x(i))
+       IF (abs_x > y) y = abs_x
+    END DO
+  END FUNCTION absmax
+
+In the generic declaration type statement (1) of the latter subprogram,
+kind(x) is used to represent the kind parameter of the result y and the
+local variable abs_x. This is allowed in 25-120r1.
+
+
+
+4. Requirements from use cases
+==============================
+
+4.1 Reference to the attributes of generic dummy argument
+
+Through the use cases shown in Sections 2 and 3, it became clear that there
+are various ways to refer to the attributes of generic dummy arguments
+other than TYPEOF, CLASSOF, and RANKOF. The patterns that actually appeared
+are as follows, and at least these must be supported in order to make
+generic subprograms useful.
+
+  - type declaration statements
+    - RANK(rank(x) + 1)  as a rank-clause (not permitted)           (2.2)
+    - RANK(rank(x) - 1)  as a rank-clause (not permitted)           (2.4)
+    - INTEGER :: v(rank(x))                          (2.2, 2.3, 2.4, 2.5)
+    - REAL(kind(x))  as a declaration-type-spec                     (3.1)
+  - expression in the execution part
+    - size(x, i)                                                    (2.2)
+    - RANK (rank(x))  as a select-rank-case-stmt               (2.3, 2.4)
+
+Where x is a generic dummy argument, v is a variable, and i is an integer
+variable.
+
+
+4.2 "@" symbol notations
+
+It became clear that @ symbol notation was often needed in rank-generic
+subprograms. Not only multiple-subscript (R920) and
+multiple-subscript-triplet (R923) in Fortran 2023, rank-independent loop,
+which has been proposed in 24-143, is strongly expected.
+
+We also want to use @ symbol notation in ALLOCATE statement, as shown in
+sections 2.2 and 2.3.
+
+  - ALLOCATE( r(@v1, n, @v2) )           (2.2)
+  - ALLOCATE( r(@v1, @v2) )              (2.4)
+
+Where r is an allocatable variable, v1 and v2 are one-dimensional array
+variables, and n is a scalar integer.
+
+
+=== END ===
