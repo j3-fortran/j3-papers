@@ -1,0 +1,259 @@
+To: J3                                                     J3/25-153
+From: Malcolm Cohen
+Subject: US08 Polymorphic PURE function results, edits
+Date: 2025-June-23
+Reference: 23-186, 25-116r1
+
+
+1. Introduction
+
+This paper contains the edits for Fortran 2028 proposal US08,
+allowing pure functions to have polymorphic results.
+
+Requirements, Specifications, and Syntax are all in 25-116r1.
+
+
+2. Edits to 25-007
+
+[xv] Introduction, Data declaration bullet, insert sentence:
+
+   "A derived type can be given the PURE or SIMPLE attribute; such a type
+    has restrictions that ensure it is usable in pure or simple
+    procedures, respectively."
+
+{NOTE to J3: This "enforced usability" effect applies equally to non-
+             polymorphic entities, so is slightly different from the main
+             effect of the feature. That said, it is pretty minor, so we
+             could omit this edit without great loss.}
+
+[xv] Introduction, Program units and procedures bullet, insert sentence:
+
+   "A polymorphic entity whose declared type has the PURE or SIMPLE
+    attribute can be used within, or as the function result of, a pure or
+    simple procedure, respectively."
+
+{NOTE to J3: Explain the main feature.}
+
+[79:22+] 7.5.2.1 Syntax of a derived-type definition, R728 type-attr-spec,
+         append two new productions:
+
+    "or PURE
+     or SIMPLE"
+
+Index both these keywords as attribute definitions, but not as hyperlink
+targets - existing hyperlinks for PURE and SIMPLE should continue to be
+the ones in Clause 15 Procedures.
+
+If no other paper adds a new type-attr-spec, that makes the whole rule:
+
+type-attr-spec is ABSTRACT
+               or access-spec
+               or BIND (C)
+               or EXTENDS ( parent-type-name )
+               or PURE
+               or SIMPLE
+
+[79:25+] Same subclause, after C735 "The same type-attr-spec...",
+         insert new constraints:
+
+    "C735a If the \si{type-attr-spec} PURE or SIMPLE appears in a
+           \si{derived-type-stmt}, BIND(C) shall not appear in the
+           statement. If PURE appears, SIMPLE shall not appear."
+
+{NOTE to J3: I might just do "PURE or SIMPLE attribute" instead of using
+             the BNF term. That would probably be easier to read.}
+
+Edit continues:
+
+    "C735b If EXTENDS appears in a \si{derived-type-stmt} and the parent
+           type is a \ref*{pure type}, the PURE or SIMPLE
+           \si{type-attr-spec} shall appear in the statement."
+
+{NOTE to J3: The wording "has the PURE attribute"
+             might be better than "is a pure type"?}
+
+Edit continues:
+
+    "C735c If EXTENDS appears in a \si{derived-type-stmt} and the parent
+           type is a \ref*{simple type}, the SIMPLE \si{type-attr-spec}
+           shall appear in the statement.
+
+     C735d If the \si{type-attr-spec} PURE or SIMPLE appears in a
+           \si{derived-type-stmt}, the SEQUENCE statement shall not appear
+           in that type definition."
+
+[82:1-] Just before 7.5.3 Derived-type parameters, insert new subclause
+
+   "7.5.2.5 Pure and simple types
+
+    The PURE \si{type-attr-spec} specifies that the type is a
+    \defn*{pure type}. The SIMPLE \si{type-attr-spec} specifies that the
+    type is a \defn*{simple type}; a simple type is also a pure type.
+
+    C745a A final subroutine of a \ref*{pure type} shall be pure. A final
+          subroutine of a potential subobject component of a pure type
+          shall be pure.
+
+    C745b The declared type of a polymorphic potential subobject component
+          of a pure type shall be pure.
+
+    C745c A potential subobject component of a pure type shall not be a
+          coarray.
+
+    C745d A type-bound defined assignment procedure of a pure type shall be
+          pure. A type-bound defined assignment procedure of a nonpointer
+          component of a pure type shall be pure."
+
+{NOTE to J3: The second sentence of C745d did not appear in the syntax
+             paper, but seems necessary for this to work.}
+
+Edit continues:
+
+   "C745e An ancestor type of a simple type that is not itself simple shall
+          satisfy constraints C745a-C745d as if it were simple."
+
+    C745f A final subroutine of a \ref*{simple type} shall be simple. A
+          final subroutine of a potential subobject component of a simple
+          type shall be simple.
+
+    C745g The declared type of a polymorphic potential subobject component
+          of a simple type shall be simple.
+
+    C745h A potential subobject component of a simple type shall not be a
+          coarray.
+
+    C745i A type-bound defined assignment procedure of a simple type shall
+          be simple. A type-bound defined assignment procedure of a
+          nonpointer component of a simple type shall be simple.
+
+    C745j An ancestor type of a simple type that is not itself simple shall
+          satisfy constraints C745f-C745i as if it were simple."
+
+{Note to the editor: the usages in these constraints of pure and simple
+    referring to a procedure being pure or simple should be hyperlinked
+    to our usual pure/simple terms.}
+
+Edit continues:
+
+"NOTE 1
+
+    A nonpolymorphic component of a pure or simple type can be of a type
+    that is not pure or simple, as long as that type does not have impure
+    (or nonsimple when the containing type is simple) type-bound defined
+    assignment.
+
+    An intrinsic type is not considered to be pure or simple, even though
+    it satisfies the requirements re final and assignment. That is because
+    cannot be the declared type of a polymorphic entity, so calling an
+    intrinsic type pure or simple would have no effect.
+
+NOTE 2
+
+    Here is an example of a pure type definition.
+    A useful definition would have a lot more type-bound operators.
+
+    TYPE, PURE :: rational
+        INTEGER numerator, denominator
+    CONTAINS
+        PROCEDURE :: rat_asgn_i
+        GENERIC :: ASSIGNMENT(=) => rat_asgn_i
+    END TYPE
+    ...
+    PURE SUBROUTINE rat_asgn_i(a, b)
+        CLASS(rational), INTENT(OUT) :: a
+        INTEGER, INTENT(IN) :: b
+        a%numerator = b
+        a%denominator = 1
+    END SUBROUTINE
+
+    Given this example, the following pure function can be defined.
+
+    PURE FUNCTION new_rational(num, dem, mold) RESULT(new)
+        CLASS(rational), ALLOCATABLE :: new
+        INTEGER, INTENT(IN) :: num, dem
+        CLASS(rational), OPTIONAL :: mold
+
+        IF (PRESENT(mold)) THEN
+            new = mold
+        ELSE
+            ALLOCATE(new)
+        END IF
+        new%numerator = num
+        new%denominator = dem
+    END FUNCTION
+"
+
+{NOTES to J3:
+    - The macro \defn* creates a new definition, indexed in bold.
+    - The macro \ref* indexes it (not bold) and hyperlinks to the
+      definition.
+    - Both of them put the argument into the standard as is.
+    - If anyone has a better (not any longer, please) example, please
+      suggest it.
+    - If someone has a long example which they think is useful, we
+      could put that in Annex C, with a sentence in NOTE 2 linking to it.}
+
+[370:19-20] 15.7 Pure procedures, constraint C1594 which begins
+                "The function result... polymorphic..."
+    Replace whole constraint with
+
+       "C1594 If the function result of a pure function is both polymorphic
+              and allocatable, it shall have a declared type that is pure.
+              If it has a polymorphic potential subobject component, the
+              component shall have a declared type that is pure."
+
+{NOTE: "declared type with the PURE or SIMPLE attribute" also works, and
+       would avoid using "pure type" outside of 7.2.5.2.
+ NOTE: The existing constraint used "polymorphic allocatable ultimate",
+       and this is *WRONG*, as an intervening allocatable component would
+       deactivate the constraint while still permitting side-effects.}
+
+[370:25-26] Same subclause, constraint C1597 which begins
+                "An INTENT (OUT) dummy argument... polymorphic..."
+            Replace whole constraint with two constraints:
+
+       "C1594 If an INTENT (OUT) dummy argument of a pure procedure is
+              polymorphic, it shall have a declared type that is pure.
+
+        C1594a If an INTENT (OUT) dummy argument of a pure procedure has a
+               polymorphic potential subobject component, the component
+               shall have a declared type that is pure."
+
+{NOTE: Separating into two because C1594a operates when the argument is not
+       polymorphic, i.e. the situations are mutually exclusive. That's
+       because when it is polymorphic, C1594 already requires polymorphic
+       subobjects to be have a pure declared type.
+ NOTE: The original constraint also suffered from the polymorphic
+       allocatable ultimate defect.
+ NOTE: Could use "type with the PURE or SIMPLE attribute" here too.
+       I won't say this again for the following edits.}
+
+[371:20-21] Same subclause, constraint C15106 "A statement that might...",
+            Replace whole constraint with
+
+   "C15106 If a statement that might result in the deallocation of a
+           polymorphic entity appears in a pure procedure, the entity shall
+           have a declared type that is pure."
+
+[373:5+] 15.8 Simple procedures, after C15117 "A simple... ENTRY...",
+         insert new constraints:
+
+   "C15117a If the function result of a simple function is both polymorphic
+            and allocatable, it shall have a declared type that is simple.
+
+    C15117b If the function result of a simple function has a polymorphic
+            potential subobject component, the component shall have a
+            declared type that is pure.
+
+    C15117c If an INTENT (OUT) dummy argument of a simple procedure is
+            polymorphic, it shall have a declared type that is simple.
+
+    C15117d If an INTENT (OUT) dummy argument of a simple procedure has a
+            polymorphic potential subobject component, the component shall
+            have a declared type that is simple.
+
+    C15117e If a statement that might result in the deallocation of a
+            polymorphic entity appears in a simple procedure, the entity
+            shall have a declared type that is simple."
+
+===END===
