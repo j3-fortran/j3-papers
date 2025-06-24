@@ -1,0 +1,106 @@
+To: J3                                                     J3/25-115r1
+From: John Reid
+Subject: Specific versions of auto-generic subprograms
+Date: 2025-June-23
+
+References: N2217, 24-147r1, 23-148r1, 24-139r2
+
+1. Introduction
+===============
+
+At its meeting Jun 12-16, 2023, WG5 decided to approve generic subprograms
+as described in N2217 for Fortran 202Y. Section 3.2.1 of N2217 contains
+this note
+    In a generic subprogram, type declaration statement:
+       TYPE(INTEGER(2,4)) :: X, Y
+    represents that either both X and Y are of integer(kind=2), or both
+    X and Y are of integer(kind=4). The corresponding specific procedures
+	are two. The statement can also be rewritten as follows, keeping the
+	meaning:
+       TYPE(INTEGER(2,4)) :: X
+       TYPEOF(X) :: Y
+
+Formal requirements were approved by J3 in 24-147r1, which contains these
+two clauses
+
+d. An auto-generic procedure may have zero, one, or more "generic" dummy
+   arguments; a generic dummy argument is one that might have more than one
+   value for a kind type parameter, more than one rank, or (assuming
+   feasibility) more than one type.
+
+e. As implied by the above, such a generic procedure implicitly defines an
+   anonymous set of specific procedures, one for every combination of type,
+   kind type parameter value, and rank. We will call each such combination
+   a "generic combination".
+
+There is an ambiguity in these clauses. In the case
+       TYPE(INTEGER(2,4)) :: X
+       TYPEOF(X) :: Y
+there are two generic arguments but they always have the same type so there
+are two combinations. In the case
+       TYPE(INTEGER(2,4)) :: X
+       TYPE(INTEGER(2,4)) :: Y
+there are two generic arguments but they do not always have the same type
+so there are four combinations. The case
+       TYPE(INTEGER(2,4)) :: X, Y
+can be interpreted either way.  The first interpretation, where the
+statements (only one in this case) define the genericity, we will call GS.
+The second interpretation, where the arguments (two in this case) define
+the genericity, we will call GA. N2217 made it clear that GS was intended.
+
+Formal specifications were approved by J3 in 24-148r1. These were silent on
+whether GS was GA intended.
+
+Syntax was approved by J3 in 24-139r2. It has this example in clause x06
+     GENERIC SUBROUTINE lift(x,y)
+        TYPE(INTEGER(int32,int64), REAL), RANK(1:2), ALLOCATABLE :: x, y
+and states that this generates 36 specific procedures, implying that GA
+is intended, in contradiction to intention of N2217.
+
+Clause x08 of 24-139r2 distinguishes between generic dummy arguments,
+such as
+       TYPE(INTEGER(2,4)) :: X
+and generic-dependent entities, such as
+       TYPEOF(X) :: Y
+If GS were use, the statement
+	   TYPE(INTEGER(2,4)) :: X, Y
+would declare one generic dummy argument and one generic-dependent entity.
+This implies that GA needs to be in use.
+
+There is a simple change that removes the problem, which is to allow only
+one dummy argument in a generic type declaration statement. This means
+that there is no distinction between GA and GS. There is no loss of
+generality because separate type declaration statements can be used for
+each generic argument. This change makes the intention clear to the reader
+and avoids accidental generation of huge numbers of specific procedures
+without any warning from the compiler when GS is intended.
+
+
+2. Proposal
+===========
+
+Make the following edits to the approved syntax, see 24-139r2:
+
+x03/R8nn. Delete "-list" twice so that it becomes
+
+R8nn generic-type-decl-stmt is generic-type-spec
+                                    [ [  , generic-attr-spec ] ... :: ]
+                                    generic-dummy-arg-decl
+                                 or declaration-type-spec
+                                    , generic-attr-spec-list ::
+                                    generic-dummy-arg-decl
+
+x06/Example x06. Replace the line
+        TYPE(INTEGER(int32,int64), REAL), RANK(1:2), ALLOCATABLE :: x, y
+by the lines
+        TYPE(INTEGER(int32,int64), REAL), RANK(1:2), ALLOCATABLE :: x
+        TYPE(INTEGER(int32,int64), REAL), RANK(1:2), ALLOCATABLE :: y
+
+Make the following edit to the approved formal specifications, see
+24-148r1:
+
+3. Example. Replace the line
+                Type(Real,Complex), Intent(InOut), Rank(*) :: a, b
+by the lines
+                Type(Real,Complex), Intent(InOut), Rank(*) :: a
+                Type(Real,Complex), Intent(InOut), Rank(*) :: b

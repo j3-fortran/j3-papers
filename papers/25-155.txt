@@ -1,0 +1,81 @@
+To: J3                                                     J3/25-155
+From: Lorri Menard
+Subject: US11 - Provide intrinsics for source location
+Date: 2025-June-24
+
+Reference: 23-193r1
+
+I  Introduction
+
+Paper 23-193r1 notes that users have requested a way to get the source
+name and source line in their programs, as well as the current
+procedure name.  Uses for this would be for debugging, for
+logging purposes, etc.
+
+The source name and source line request is being addressed in the
+preprocessor work via __FILE__ and __LINE__ respectively.  However
+the preprocessor would not be able to determine the current procedure
+name without actually parsing the program itself.
+
+There was a question raised earlier as to whether a run-time routine
+would be useful when a template was instantiated, to at least point back
+to the instantiation line itself.  Further investigation showed that
+this would not be possible without a stack-trace facility, since an
+implementation may (likely) create only a single routine called from
+each identical instantiation within the entire set of files for a
+program.
+
+This paper addresses only the request for getting the current
+procedure name.
+
+II Specifications
+
+PROCEDURE_NAME()
+Description: Processor-dependent string that describes the name of the
+             current procedure being executed or the current program
+             unit if it appears in the specification section.
+             If the program unit is an unnamed main program, the result
+             is processor-dependent.
+
+Class: Transformational function
+Argument: None
+Result Characteristics: Default character scalar with processor-dependent
+                        length
+
+Examples for PROCEDURE_NAME():
+
+! For a module procedure
+MODULE MYMOD
+CHARACTER*(*), PARAMETER :: mymod_name = PROCEDURE_NAME()
+                           ! Might become MYMOD
+contains
+   subroutine mymod_sub1
+   character(*), PARAMETER, &
+       private :: myname = mymod_name // "::" // PROCEDURE_NAME()
+   print *, myname        ! Might print MYMOD::MYMOD_SUB1
+   end subroutine mymod_sub1
+end module mymod
+
+! For an unnamed program
+print *, PROCEDURE_NAME() ! Processor dependent output
+
+! For a named program
+PROGRAM EXAMPLE3
+print *, PROCEDURE_NAME() ! Might print EXAMPLE3
+
+! For a templated procedure
+PROGRAM EXAMPLE4
+    TEMPLATE iterate_tmpl(T)
+       PRIVATE
+       CHARACTER*(*), PARAMETER :: mytempl_name = PROCEDURE_NAME()
+                                 ! Might become ITERATE_TEMPL
+       PUBLIC :: iterate
+       DEFERRED TYPE :: T
+    CONTAINS
+       SUBROUTINE iterate(x)
+          TYPE(T), INTENT(INOUT) :: x
+          character(*), PARAMETER, &
+           private :: myname = mytempl_name // "::" // PROCEDURE_NAME()
+          print *, "My name is ", PROCEDURE_NAME()
+          print *, "but my full name is ", myname
+       END SUBROUTINE iterate
