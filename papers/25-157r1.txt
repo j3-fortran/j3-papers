@@ -1,0 +1,165 @@
+To: J3                                                     J3/25-157r1
+From: Malcolm Cohen
+Subject: Corank and genericity
+Date: 2025-June-25
+Reference: 25-103, 25-121r3
+
+
+1. Background
+
+See section 1 of 25-121r3 for background history in greater detail.
+
+Basically, because corank plays no part in generic resolution, a single
+generic cannot have two procedures whose only difference is that an
+argument has different corank. However, when the argument is ALLOCATABLE,
+the corank of the actual argument is required to match. This is quite
+inconvenient.
+
+The other main observation is that because we do not have the coarray
+equivalent of assumed-shape, which means that for nonallocatable
+multi-codimensional coarrays the user is forced to pass the coshape
+information manually, which is again inconvenient and may be error-prone.
+
+A minor observation is that a corank-independent form of declaration would
+make using coarrays in templates and auto-generic subprograms easier.
+
+
+2. Proposal (feature)
+
+The proposal is that the we improve the interaction of coarrays with
+generic procedures, by the following.
+
+(a) Add assumed-coshape coarrays.
+
+(b) Allow corank to disambiguate two dummy arguments if they are both
+    either deferred coshape (i.e. are allocatable) or assumed coshape.
+
+(c) Add declaration clause CORANK(n) analogous to RANK(n).
+
+(d) Add intrinsic inquiry function CORANK(object) analogous to RANK(obj).
+
+This paper proposes that INCITS/Fortran recommend to WG5 that WG5 consider
+adding this feature to the list of approved features for Fortran 2028.
+
+Section 3 of this paper contains some obvious use cases.
+
+Note that sections 4 and 5 of this paper are illustrative to show how the
+feature would look and what the scope of it is. Passing this paper does not
+in itself approve those requirements/specs/syntax.
+
+
+3. Use cases
+
+(a) If we have a multi-codimensional coarray where the codimensions have
+    meaning/use in our algorithm, when our coarray is declared as say
+        TYPE(data) x[n1,n2,n3,*]
+    it would be more convenient to be able to write something like:
+        CALL process_step_2(x)
+        ...
+        SUBROUTINE process_step_2(y)
+            TYPE(data) y[:,:,:,*]
+    than
+        CALL process_step_2(x,n1,n2,n3)
+        ...
+        SUBROUTINE process_step_2(y,m1,m2,m3)
+            INTEGER,INTENT(IN) :: m1,m2,m3
+            TYPE(data) y[m1,m2,m3,*]
+
+    Of course, if n1/n2/n3 are expressions rather than named variables,
+    the assumed-coshape version is also slightly less error-prone than
+    copying the whole expression.
+
+(b) Suppose we have an algorithm for distributing a computation across a
+    grid of coarrays, and versions of that algorithm are available for
+    coranks 2 and 3, it would be convenient to have a generic interface
+
+    INTERFACE distributed_computation
+        SUBROUTINE distributed_computation_2(x)
+            USE types
+            TYPE(data) x[:,*]
+        END SUBROUTINE
+        SUBROUTINE distributed_computation_3(x)
+            USE types
+            TYPE(data) x[:,:,*]
+        END SUBROUTINE
+    END INTERFACE
+
+    rather than having to use the specific routines.
+
+(c) Being able to declare an allocatable or assumed-coshape coarray with a
+    CORANK clause would make it easier to write code whose syntax does not
+    depend on the actual corank. For example, where ncodims is a named
+    constant, perhaps accessible by use or host association,
+
+        TYPE(data),ALLOCATABLE,CORANK(ncodims) :: x, y
+
+    The usages here are basically identical to those of the RANK clause;
+    it is useful in general-purpose macros, templates, and perhaps even
+    auto-generic subprograms.
+
+(d) A CORANK intrinsic inquiry function would be symmetric with our RANK
+    intrinsic inquiry function. It would be similarly useful for writing
+    code whose syntax does not depend on the corank, e.g. in macros,
+    templates, etc..
+
+
+4. Illustrative formal requirements
+
+(CR1) Corank should be considered as a disambiguator when one dummy
+      argument is an allocatable coarray and the other dummy argument is an
+      allocatable coarray of different corank.
+
+(CR2) We should add assumed-coshape coarrays; akin to assumed-shape arrays,
+      these will require corank equality between the actual argument and
+      the dummy argument.
+
+(CR3) Corank should be considered as a disambiguator when one dummy
+      argument has assumed coshape and the other has deferred or assumed
+      coshape.
+
+(CR4) We should add corank-independent declarations for allocatable
+      coarrays and assumed-coshape coarrays, akin to the RANK clause.
+
+(CR7) We should add a CORANK intrinsic akin to the RANK intrinsic. Even
+      without generic-corank-dummy-arguments, such a thing is useful for
+      clear and easy corank-independent programming.
+
+
+5. Illustrative specifications and syntax
+
+(CS1) There is no syntax association with requirements CR1 or CR3, these
+      are just semantic.
+
+(CS2) For assumed-coshape, the syntax should be identical to that of
+      assumed-shape (apart from using brackets instead of parentheses).
+      This syntax gives us assumed coshape for all coranks>0.
+
+      SUBROUTINE sub(x)
+      REAL :: x [ :, : ] ! No ALLOCATABLE attribute, so assumed coshape.
+
+      Note: For corank one, that would be X[:], not X[*]. This allows
+            corank one assumed-coshape arguments to participate in generic
+            resolution.
+
+(CS3) Add a CORANK clause. This takes a scalar integer constant expression,
+      which must be non-negative. It can be used to declare allocatable
+      coarrays and assumed-coshape coarrays.
+
+OPTION 1:
+      If the value of the expression is zero, it declares a non-coarray.
+OPTION 2:
+      The value of the expression must be greater than zero.
+DISCUSSION:
+      We do permit RANK(0) to declare a scalar.
+      But the difference between a scalar and a single-element array is not
+      so great as the difference between a coarray and a noncoarray;
+      permitting zero would obscure that large difference.
+      (It may nonetheless be desirable, for flexibility.)
+
+(CS4) The CORANK intrinsic is an inquiry function that returns the corank
+      of any data object.
+
+(CS5) It might be desirable to have a CORANKOF clause, if we end up with a
+      RANKOF clause.
+
+===END===

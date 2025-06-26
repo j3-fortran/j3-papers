@@ -1,0 +1,238 @@
+To: J3                                                     J3/25-136r2
+From: generics
+Subject: Edits for templates: deferred arguments
+Date: 2025-June-25
+References: 25-107, 25-135, 24-125r5, 24-126r4, 24-127r4
+
+Introduction:
+=============
+
+This is the 2nd of 6 papers that provide edits for the approved syntax
+for templates.
+
+Section 1:
+==========
+
+* Append the following at the end of the clause from paper 25-135
+  (template).
+
+tt.4 Deferred arguments
+
+tt.4.1 Declarations of deferred arguments
+
+tt.4.1.1 General
+
+A deferred argument is an entity whose identifier appears in a
+<deferred-arg-name-list> in a template, requirement, or templated
+procedure.  A deferred argument can be a constant, procedure, or type.
+A deferred argument declaration statement is used to declare deferred
+arguments.
+
+Rtt02 <deferred-arg-decl-stmt>
+          <<is>> <deferred-type-declaration-stmt>
+          <<or>> <deferred-const-declaration-stmt>
+          <<or>> <deferred-proc-declaration-stmt>
+          <<or>> <require-stmt>
+
+tt.4.1.2 Deferred types
+
+A deferred type is a deferred argument that can appear in a type
+specifier within a REQUIREMENT construct, TEMPLATE construct, or
+templated procedure.
+
+Rtt04 <deferred-type-declaration-stmt> <<is>>
+         DEFERRED TYPE[, <deferred-type-attr-list>] ::
+         <deferred-type-name-list>
+
+Ctt04 (Rtt04) Each <deferred-type-name> shall be the name of a deferred
+              argument of the scoping unit in which the declaration
+              appears.
+
+Rtt05 <deferred-type-attr> <<is>> ABSTRACT
+                           <<or>> EXTENSIBLE
+
+Ctt05 (Rtt05) Only one of ABSTRACT or EXTENSIBLE shall appear.
+
+Ctt06 (Rtt05) The same <deferred-type-attr> shall not appear more than
+              once in a given <deferred-type-attr-list>.
+
+Ctt07 The name of a deferred type shall not appear as a
+      <parent-type-name> in a <type-attr-spec>.
+
+Ctt08 A variable of deferred type shall not be a coarray.
+
+A deferred type with the EXTENSIBLE attribute is an extensible type. A
+deferred type with the ABSTRACT attribute is an abstract type. A deferred
+type with the ABSTRACT attribute implicitly has the EXTENSIBLE
+attribute.
+
+NOTE 1
+
+    A deferred type cannot be extended. The use of the term "extensible"
+    is to imply a restriction on the associated instantiation argument.
+
+NOTE 2
+
+    Even with the EXTENSIBLE attribute, a deferred type cannot be
+    constructed because it has unspecified components and type
+    parameters within the template.
+
+NOTE 3
+
+    Examples of deferred type declarations are:
+
+        DEFERRED TYPE :: T1
+        DEFERRED TYPE, EXTENSIBLE :: T2
+        DEFERRED TYPE, ABSTRACT :: T3
+
+NOTE 4
+
+    The distinction between deferred types that are extensible or
+    not, and deferred types that are abstract or not, helps to ensure
+    a processor can verify a template is internally consistent.  For
+    example, a deferred type cannot be used in a CLASS declaration if
+    it might be instantiated as INTEGER.  Likewise, a deferred type
+    cannot be used in a TYPE declaration if it might be instantiated
+    with an abstract type.
+
+    Using the deferred type declarations from NOTE 3, the following
+    examples of type declaration statements are valid or invalid as
+    marked:
+
+        TYPE(T1)  :: A1   ! Valid
+        CLASS(T1) :: A2   ! Invalid
+
+        TYPE(T2)  :: B1   ! Valid
+        CLASS(T2) :: B2   ! Valid
+
+        TYPE(T3)  :: C1   ! Invalid
+        CLASS(T3) :: C2   ! Valid
+
+NOTE 5
+
+    Variables of deferred type are not permitted to be coarrays because
+    it is invalid to coindex a variable that has polymorphic ultimate
+    components, and instantiation arguments are permitted to have
+    polymorphic ultimate components.  Straightforward workarounds are
+    possible using deferred procedures.
+
+{
+Future work could relax Ctt08 while introducing a "intrinsic requirement"
+that specifies that the type does not have allocatable components. And
+this would be checked at instantiate.
+}
+
+tt.4.1.3 Deferred constants
+
+A deferred constant is a deferred argument that can appear in constant
+expressions.  A deferred constant is a deferred argument that has the
+PARAMETER attribute.
+
+Rtt06 <deferred-const-declaration-stmt> <<is>>
+           DEFERRED <declaration-type-spec>,
+                 <deferred-const-attr-spec-list> ::
+                 <deferred-const-entity-decl-list>
+
+Rtt07 <deferred-const-attr-spec> <<is>> DIMENSION(<array-spec>)
+                                 <<or>> PARAMETER
+                                 <<or>> <rank-clause>
+
+Rtt08 <deferred-const-entity-decl>
+          <<is>> <deferred-const-name> [ ( <array-spec> ) ]
+
+Ctt09 (Rtt06) The <deferred-const-attr-spec-list> shall include
+              PARAMETER.
+
+Ctt10 (Rtt07) An entity declared in <deferred-const-declaration-stmt>
+              shall be INTEGER, LOGICAL, or assumed-length CHARACTER.
+
+Ctt11 (Rtt08) Each <deferred-const-name> shall be the name of a deferred
+              argument of the scoping unit in which the declaration
+              appears.
+
+Ctt12 (Rtt06) If <array-spec> appears in
+              <deferred-const-declaration-stmt>, it shall be
+              <implied-shape-spec>, <assumed-or-implied-rank-spec>,
+              <explicit-shape-spec-list>, or
+              <explicit-shape-bounds-spec>.
+
+Ctt13 (Rtt06) If <implied-shape-spec>, <explicit-shape-spec> or
+              <explicit-shape-bounds-spec> appears in
+              <deferred-const-declaration-stmt>, then <lower-bound>
+              shall not be specified.
+
+Ctt14 (Rtt06) If <explicit-shape-bounds-spec> appears in
+              <deferred-const-declaration-stmt>, then
+              <lower-explicit-bounds-expr> shall not appear.
+
+NOTE 1
+................................................................
+    Deferred constant arrays always have default lower bounds.
+................................................................
+{
+ Subgroup prefers to disallow explicit confirmation of default lower
+ bounds because we envision that there may be a useful distinction to
+ be made in the future between specified lower bounds and default
+ lower bounds.
+}
+
+
+NOTE 2
+................................................................
+    Examples of deferred constant declarations are:
+
+    ! explicit shape
+    DEFERRED INTEGER, PARAMETER  :: x1
+    DEFERRED INTEGER, PARAMETER :: x2(3)
+    DEFERRED INTEGER, PARAMETER :: v1(2) = [5,15] ! not a deferred constant
+    DEFERRED INTEGER, PARAMETER  :: x3(v1)
+
+    ! implied shape
+    DEFERRED INTEGER, PARAMETER :: x4(*)
+    DEFERRED INTEGER, PARAMETER :: x5(*,*)
+    DEFERRED INTEGER, PARAMETER, RANK(2) :: x6
+
+    ! assumed-or-implied-rank-spec
+    DEFERRED INTEGER, PARAMETER :: x7(..)
+................................................................
+
+tt.4.1.4 Deferred procedures
+
+A deferred procedure is a deferred argument that is declared to be a
+procedure.  A deferred procedure's interface can be established by a
+<deferred-proc-declaration-stmt>, <deferred-interface-body>, or a
+<require-stmt>.
+
+Rtt09 <deferred-proc-declaration-stmt> <<is>> DEFERRED PROCEDURE #
+                # (<interface>) [ :: ] <deferred-proc-name-list>
+
+Ctt15 (Rtt09) Each <deferred-proc-name> shall be the name of a deferred
+              argument of the scoping unit in which the declaration
+              appears.
+
+NOTE 1
+................................................................
+    The interface of a deferred procedure may be defined in terms of
+    other deferred arguments.
+................................................................
+
+NOTE 2
+................................................................
+    The following example declares deferred procedures F, S, and G.
+    The declaration of G is in terms of an interface F_I.
+
+
+        DEFERRED TYPE :: T
+        DEFERRED INTERFACE
+           FUNCTION F(X)
+              TYPE(T), INTENT(IN) :: X
+              TYPE(T) :: F
+           END FUNCTION
+           SUBROUTINE S(Y)
+              TYPE(T), INTENT(INOUT) :: Y
+           END SUBROUTINE
+        END INTERFACE
+        DEFERRED PROCEDURE(F_I) :: G
+................................................................
+
+===END===
