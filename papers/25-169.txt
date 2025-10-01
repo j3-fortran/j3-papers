@@ -1,0 +1,743 @@
+To: J3                                                     J3/25-169
+From: John Reid & Hidetoshi Iwashita
+Subject: Edits for auto-generic subprograms
+Date: 2025-September-23
+
+References: 24-147r1, 25-007, 25-129, 25-163, 25-164, 25-168.
+
+Formal requirements for auto-generic subprograms were approved by J3 in
+24-147r1 and revisions have been suggested in 25-163. Specifications
+were approved by J3 in 25-129 and revisions have been suggested in 25-164.
+Syntax was approved by J3 in several papers. This was collected in 25-168
+and slightly revised there. This paper proposes edits to 25-007, based on
+the papers 25-163, 25-164, and 25-168.
+
+xiv/8. In Foreword, para 8, after line 2, add
+       - generic subprograms have been added;
+
+xv/2. In Introduction, para 2, after o Intrinsic modules:, add
+The function MAX_RANK has been added to the intrinsic module
+ISO_FORTRAN_ENV.
+
+xv/2. In Introduction, para 2, after o Program units and procedures:,
+add
+A subprogram can be specified as generic and define a set of unnamed
+specific procedures with a single generic name.
+
+16/1-. Before 3.75 Generic identifier, add
+
+3.74a
+<generic dummy argument>
+type-generic dummy argument or rank-generic dummy argument
+
+3.74a.1
+<type-generic dummy argument>
+dummy argument declared with a <generic-type-spec>
+
+3.74a.2
+<rank-generic dummy argument>
+dummy argument declared with a <generic-rank-spec>
+
+21/33+. In 3.109 before 3.109.3 add
+3.109.2a
+<generic procedure>
+set of procedures identified by a generic name
+
+27/16+. In 3.139 before 3.139.2 add
+3.139.1a
+<generic subprogram>
+subprogram with GENERIC in its <function-stmt> or <subroutine-stmt>
+
+45/38+.  In 5.1 High level syntax, R514 executable-construct, add
+<<or>>  <select-grank-construct>
+<<or>>  <select-gtype-construct>
+
+68/30+. In 7.3.2.1 Type specifier syntax, after R703 add
+
+R7nn generic-type-spec <is> TYPE ( generic-type-specifier-list )
+                       <or> CLASS ( generic-type-specifier-list )
+                       <or> generic-intrinsic-type-spec
+
+R7nn generic-type-specifier <is> intrinsic-type-spec
+                            <or> derived-type-spec
+                            <or> enum-type-spec
+                            <or> enumeration-type-spec
+                            <or> kind-generic-type-spec
+
+C7nn If the generic-type-spec keyword is CLASS, each
+     generic-type-specifier shall identify an extensible type.
+
+C7nn A generic-type-specifier-list that contains no
+     kind-generic-type-spec shall have more than one item.
+
+C7nn A generic-type-specifier shall specify that each length type
+     parameter is assumed or deferred.
+
+R7nn kind-generic-type-spec <is> generic-intrinsic-type-spec
+                            <or> generic-derived-type-spec
+
+R7nn generic-intrinsic-type-spec <is> nonchar-intrinsic-type-name #
+                                    # ( [ KIND = ] int-constant-expr )
+                                  <or> CHARACTER ( gen-char-type-params )
+
+R7nn nonchar-intrinsic-type-name <is> REAL
+                                 <or> INTEGER
+                                 <or> LOGICAL
+                                 <or> COMPLEX
+R7nn gen-char-type-params
+                  <is> gen-char-len [ , [ KIND = ] int-constant-expr ]
+                  <or> LEN= gen-char-len [, KIND= int-constant-expr ]
+                  <or> KIND= int-constant-expr, LEN= gen-char-len
+
+R7nn gen-char-len     <is> *
+                      <or> :
+
+C7nn The int-constant-expr in a generic-intrinsic-type-spec shall be an
+     array of rank one.
+
+NOTE
+..........................................................................
+     Example
+     GENERIC SUBROUTINE gensub(x,y)
+        USE ISO_FORTRAN_ENV
+        INTEGER([int8,int16,int32]),INTENT(INOUT) :: x
+        CHARACTER(*,KIND=character_kinds) :: y
+..........................................................................
+
+R7nn generic-derived-type-spec <is> type-name ( gen-tp-spec-list )
+
+R7n1 gen-tp-spec <is> [ keyword = ] gen-tp-value
+
+C7nn (R7n1) Each keyword shall be the name of a parameter of the type.
+
+R7nn gen-tp-value <is> int-constant-expr
+                  <or> *
+                  <or> :
+
+C7nn A gen-tp-value shall be * or : if and only if the type parameter
+     is a length type parameter, otherwise the int-constant-expr shall
+     be a scalar or an array of rank one.
+
+C7nn A generic-derived-type-spec shall specify at least one kind type
+     parameter that is an array of rank one.
+
+NOTE
+..........................................................................
+     Example
+     TYPE T(k1,k2,n)
+        INTEGER,KIND :: k1,k2
+        INTEGER,LEN :: n
+        REAL(k1) value(k2,n)
+     END TYPE
+     GENERIC SUBROUTINE gensub2(x)
+        TYPE(t([kind(0.0),kind(0d0)],k2=[1,2,4,8],n=*)),INTENT(INOUT) :: x
+
+This covers 2 values for k1, and independently 4 values for k2, thus
+     eight specifics:
+        TYPE(t(k1=kind(0.0),k2=1,n=*)
+        TYPE(t(k1=kind(0.0),k2=2,n=*)
+        TYPE(t(k1=kind(0.0),k2=4,n=*)
+        TYPE(t(k1=kind(0.0),k2=8,n=*)
+        TYPE(t(k1=kind(0d0),k2=1,n=*)
+        TYPE(t(k1=kind(0d0),k2=2,n=*)
+        TYPE(t(k1=kind(0d0),k2=4,n=*)
+        TYPE(t(k1=kind(0d0),k2=8,n=*)
+..........................................................................
+
+Duplicate kind values in a kind-generic-type-spec are permitted, and
+      treated as if only one appeared.
+
+NOTE
+..........................................................................
+For example, consider the statement
+     TYPE(REAL([selected_real_kind(3),selected_real_kind(2)]))x
+On a processor with no 16-bit real, or which has only one kind of 16-bit
+real, this would have duplicate values; on a processor that has both
+IEEE 16-bit and bfloat16, the values would be distinct.
+..........................................................................
+
+A generic-type-specifier in a generic type declaration statement may
+specify the same type and type parameters as another. The redundant
+specification is ignored; however, the dummy arguments remain generic
+dummy arguments.
+
+NOTE
+..........................................................................
+For example, consider the statements
+        USE ISO_FORTRAN_ENV
+        TYPE(REAL(REAL64), DOUBLE PRECISION) :: x
+        TYPE(INTEGER, INTEGER(INT32)) :: y
+On some processors, the first type-spec will specify the same type and
+type parameters as the second in one of those statements, and on other
+processors the types will be distinct.
+..........................................................................
+
+110/13+ In 8.2 Type declaration statement, replace R801 by
+R801 type-declaration-stmt <is> declaration-type-spec #
+                              # [ [ , attr-spec ] ... :: ] entity-decl-list
+                           <or> generic-type-decl-stmt
+
+R8nn generic-type-decl-stmt <is> generic-type-spec #
+                                 # [ [  , generic-attr-spec ] ... :: ] #
+                                 # generic-dummy-arg-decl
+                            <or> declaration-type-spec, #
+                                 # generic-attr-spec-list :: #
+                                 # generic-dummy-arg-decl
+
+C8nn If a generic-type-decl-stmt does not have a generic-type-spec, its
+     generic-attr-spec-list shall contain a generic-rank-spec.
+
+C8nn A <generic-type-decl-stmt> shall appear only in the specification
+     part of a generic subprogram.
+
+110/14-16. In 8.2 Type declaration statement, para 1, at the end of
+sentence 1 add "or generic dummy argument declaration"; in sentence 2,
+after <declaration-type-spec> add "or <generic-type-spec>" and after
+<entity-decl> add "or <generic-dummy-arg-decl>", so that the paragraph
+becomes
+"The type declaration statement specifies the declared type of the
+entities in the entity declaration list or generic dummy argument
+declaration. The type and type parameters are those specified by
+<declaration-type-spec> or <generic-type-spec>, except that the character
+length type parameter can be overridden for an entity by the appearance
+of * <char-length> in its <entity-decl> or <generic-dummy-arg-decl>."
+
+110/16+. In 8.2 Type declaration statement, after para 1, add
+
+A generic dummy argument is a type-generic dummy argument
+and/or a rank-generic dummy argument. A type-generic dummy
+argument is declared with a <generic-type-spec>. A rank-generic dummy
+argument is declared with a <generic-rank-spec>.
+
+NOTE
+..........................................................................
+An attribute of a generic dummy argument can depend on the type, kind,
+or rank of another generic dummy argument. Here is an example
+      GENERIC SUBROUTINE sub(x, y)
+        REAL(REAL32, REAL64), RANK(1:3), INTENT(IN) :: x
+        REAL(REAL32, REAL64), RANKOF(X), INTENT(INOUT) :: y
+..........................................................................
+
+110/36+. In 8.2 Type declaration statement, before C801, add
+R802a generic-attr-spec <is> attr-spec
+                        <or> generic-rank-spec
+
+111/24+. In 8.2 Type declaration statement, after C810, add
+R8nn generic-dummy-arg-decl <is> dummy-arg-name [ ( array-spec ) ] #
+                                 # [ lbracket coarray-spec rbracket ]#
+                                 # [ * char-length ]
+
+C8nn A generic dummy argument shall be a nonoptional dummy data object.
+
+C8nn A dummy procedure of a generic subprogram shall have an explicit
+     interface.
+
+C8nn (R8nn) Unless the generic dummy argument is always of type character,
+     * char-length shall not appear.
+
+C8nn A type-param-value in a char-length in a generic-dummy-arg-decl
+     shall be a colon, asterisk, or specification expression.
+
+C8nn In a generic-type-decl-stmt with a CHARACTER
+    generic-intrinsic-type-spec, a char-length in the
+    generic-dummy-arg-decl shall be ( : ) or ( * ) .
+[Explanation: This matches the constraint
+C7nn A generic-type-specifier shall specify that each length type
+     parameter is assumed or deferred.
+added for 67/30+]
+
+126/27+ In 8.5.17 RANK clause, add to R830
+                 <or> RANKOF (dummy-argument-name)
+                 <or> generic-rank-spec
+so that it becomes
+R830 rank-clause <is> RANK ( scalar-int-constant-expr )
+                 <or> RANKOF (dummy-argument-name)
+                 <or> generic-rank-spec
+
+127/4+ In 8.5.17 RANK clause, after C864 add
+C8nn The dummy-argument-name in a RANKOF clause shall be the name of a
+     rank-generic dummy argument.
+
+C8nn At most one rank-clause shall appear in a type-declaration-stmt.
+
+C8nn If the RANKOF clause or generic-rank-spec appears in a
+     type-declaration-stmt, no entity-decl in the statement shall have
+     an array-spec.
+
+R8nn generic-rank-spec  is RANK ( generic-rank-list )
+
+R8nn generic-rank       is scalar-int-constant-expr
+                        or generic-rank-range
+
+R8nn generic-rank-range is scalar-int-constant-expr : #
+                           # scalar-int-constant-expr
+
+C8nn A scalar-int-constant-expr in a generic-rank shall be nonnegative
+     and less than or equal to the maximum supported rank for the corank
+     of the generic dummy argument.
+
+C8nn If a generic-rank-list contains no generic-rank-range, it
+     shall contain more than one <scalar-int-constant-expr>.
+
+127/7+ In 8.5.17 RANK clause, after para 2 add
+
+A dummy argument that is generic by rank is declared using a
+generic-rank-spec; such a dummy argument is a rank-generic dummy argument.
+
+A generic-rank-range specifies all the values that are greater than or
+equal to the value of the first expression and are less than or equal to
+the value of the second expression.
+
+Duplicate values specified by a generic-rank-list are permitted and are
+ignored.
+
+127/7+ In 8.5.17 RANK clause, at the end of the section, change "NOTE"
+to "NOTE 1" and add
+
+NOTE 2
+.......................................................................
+Example of generic rank
+     GENERIC SUBROUTINE lift(x,y)
+        TYPE (INTEGER, REAL), ALLOCATABLE, RANK(1:2) :: x
+        TYPEOF(x), RANKOF(x) :: y
+        ...
+     END SUBROUTINE
+.......................................................................
+
+NOTE 3
+........................................................................
+The generic subprogram
+     GENERIC SUBROUTINE lift(x,y)
+        TYPE(INTEGER(int32,int64), REAL), RANK(1:2), ALLOCATABLE :: x
+        TYPE(INTEGER(int32,int64), REAL), RANK(1:2), ALLOCATABLE :: y
+        TYPEOF(x),RANKOF(y),ALLOCATABLE :: z
+        ...
+     END SUBROUTINE
+defines 36 specific procedures with generic name lift, in which the
+variables x, y and z are allocatable, and have the characteristics
+respectively:
+        int32, rank 1   int32, rank 1   int32, rank 1
+        int64, rank 1   int32, rank 1   int64, rank 1
+        real, rank 1    int32, rank 1   real, rank 1
+        int32, rank 2   int32, rank 1   int32, rank 1
+        int64, rank 2   int32, rank 1   int64, rank 1
+        real, rank 2    int32, rank 1   real, rank 1
+        int32, rank 1   int32, rank 2   int32, rank 2
+        ...
+        real, rank 2    real, rank 2    real, rank 2
+
+The generic subprogram
+     GENERIC SUBROUTINE lift(x,y)
+        TYPE(INTEGER(int32,int64), REAL), RANK(1:2), ALLOCATABLE :: x
+        TYPEOF(x),RANKOF(x),ALLOCATABLE :: y, z
+        ...
+     END SUBROUTINE
+defines 6 specific procedures with generic name lift, in which the
+variables x, y and z are allocatable, and have the characteristics:
+        int32, rank 1
+        int64, rank 1
+        real, rank 1
+        int32, rank 2
+        int64, rank 2
+        real, rank 2
+........................................................................
+
+184/35+. In 10.1.11 Specification expression, para 2, after (13) add
+(13a) a reference to a transformational function MAX_RANK from the
+intrinsic module ISO_FORTRAN_ENV, where the argument, if present,
+is a restricted expression.
+
+186/36+. In 10.1.12 Constant expression, para 1, after (11) add
+(11a) a reference to a transformational function MAX_RANK from the
+intrinsic module ISO_FORTRAN_ENV, where the argument, if present,
+is a constant expression.
+
+203/11+ In 11.1.1 Blocks, para 1, after "o SELECT CASE construct;" add
+o SELECT GENERIC RANK construct;
+o SELECT GENERIC TYPE construct;
+
+225/1- Before 11.1.11 SELECT TYPE construct, insert
+
+11.1.10a SELECT GENERIC RANK construct
+
+11.1.10a.1 Purpose and form of the SELECT GENERIC RANK construct
+
+The SELECT GENERIC RANK construct in a generic subprogram selects at most
+one of its constituent blocks in each instance of the subprogram. The
+selection is based on the rank of a rank-generic dummy argument.
+
+R11nn <select-grank-construct>  <is> <select-grank-stmt>
+                                      [ <select-grank-case-stmt>
+                                         <block>  ]...
+                                      <end-select-grank-stmt>
+
+R11nn <select-grank-stmt>  <is> [ <select-construct-name> : ] #
+                                 # SELECT GENERIC RANK ( <selector> )
+
+C11nn The <selector> in a <select-grank-stmt> shall be the name of a
+      rank-generic dummy argument.
+
+R11nn <select-grank-case-stmt>
+           <is>  RANK ( <generic-grank-list> ) [ <select-construct-name> ]
+           <or>  RANK DEFAULT [ <select-construct-name> ]
+
+Duplicate values specified by a generic-rank-list are permitted;
+the duplicate values are ignored.
+
+C11nn In a given <select-grank-construct>, there shall be at most
+      one RANK DEFAULT statement.
+
+R11nn end-select-grank-stmt <is>
+                             END SELECT [ select-construct-name ]
+
+C11nn If the select-grank-stmt of a select-grank-construct specifies a
+      select-construct-name, the corresponding end-select-grank-stmt
+      shall specify the same select-construct-name. If the
+      select-grank-stmt of a select-grank-construct does not specify a
+      select-construct-name, the corresponding end-select-grank-stmt shall
+      not specify a select-construct-name. If a select-grank-case-stmt
+      specifies a select-construct-name, the corresponding
+      select-grank-stmt shall specify the same select-construct-name.
+
+11.1.10a.2 Execution of the SELECT GENERIC RANK construct
+
+Each specific procedure of a generic subprogram contains at most one block
+of a SELECT GENERIC RANK construct. A RANK ( <generic-rank-list> )
+statement matches the <selector> if the rank of the <selector> appears in
+the <generic-rank-list>. A RANK DEFAULT statement matches the <selector>
+if no other <select-grank-case-stmt> of the construct matches the
+<selector>. If a <select-grank-case-stmt> matches the selector, the block
+following that statement is selected; otherwise, no block is selected. It
+is permissible to branch to an <end-select-grank-stmt> only from within
+its construct.
+
+11.1.10a.3 Example of the SELECT GENERIC RANK construct
+
+     GENERIC FUNCTION fun(x) RESULT(y)
+        TYPE(type1), RANK(0:7) :: x
+        TYPEOF(x), RANK(RANK(x)) :: y
+
+        SELECT GENERIC RANK (x)
+        RANK (0)
+           !! code if x is a scalar
+        RANK (1:3)
+           !! code if x is an array of 1 to 3 dimensions
+        RANK DEFAULT
+           !! code if x is an array of 4 to 7 dimensions
+        END SELECT
+     END FUNCTION fun
+
+
+
+228/1- Before 11.1.12 EXIT statement, insert
+
+11.1.11a SELECT GENERIC TYPE construct
+
+11.1.11a.1 Purpose and form of the SELECT GENERIC TYPE construct
+
+The SELECT GENERIC TYPE construct in a generic subprogram selects at most
+one of its constituent blocks in each instance of the subprogram. The
+selection is based on the declared type and kind of a type-generic dummy
+argument.
+
+R11nn <select-gtype-construct>  <<is>> <select-gtype-stmt>
+                                        [ <gtype-guard-stmt>
+                                              <block>  ]...
+                                        <end-select-gtype-stmt>
+
+R11nn <select-gtype-stmt>  <<is>>
+        [ <select-construct-name> : ] SELECT GENERIC TYPE ( <selector> )
+
+C11nn The <selector> in a <select-gtype-stmt> shall be a type-generic
+      dummy argument.
+
+R11nn <gtype-guard-stmt>
+            <<is>>  TYPE IS ( <type-spec> ) [ <select-construct-name> ]
+            <<or>>  TYPE DEFAULT [ <select-construct-name> ]
+
+C11nn The <type-spec> shall be <intrinsic-type-spec> or
+      <derived-type-spec> and shall specify that each length type
+      parameter is assumed.
+
+C11nn For a given <select-gtype-construct>, the same type and kind
+      type parameter values shall not be specified in more than one
+      TYPE IS <gtype-guard-stmt>.
+
+C11nn For a given <select-gtype-construct>, there shall be at most one
+      TYPE DEFAULT <gtype-guard-stmt>.
+
+R11nn <end-select-gtype-stmt>  <<is>>
+               END SELECT [ <select-construct-name> ]
+
+C11nn If the <select-gtype-stmt> of a <select-gtype-construct> specifies
+      a <select-construct-name>, the corresponding <end-select-gtype-stmt>
+      shall specify the same <select-construct-name>. If the
+      <select-gtype-stmt> of a <select-gtype-construct> does not specify a
+      <case-construct-name>, the corresponding <end-select-gtype-stmt>
+      shall not specify a <select-construct-name>. If a
+      <select-gtype-case-stmt> specifies a <select-construct-name>, the
+      corresponding  <select-gtype-stmt> shall specify the same
+      <select-construct-name>.
+
+11.1.11a.2 Execution of the SELECT GENERIC TYPE construct
+
+Each specific procedure of a generic subprogram contains at most one block
+of a SELECT GENERIC TYPE construct. The block is selected by the declared
+type and kind type parameters of the <selector>. If it matches the
+<type-spec> of a TYPE IS <gtype-guard-stmt>, the block following that
+statement is selected. Otherwise, if there is a TYPE DEFAULT
+<gtype-guard-stmt>, the block following that statement is selected.
+Otherwise, no block is selected. It is permissible to branch to an
+<end-select-gtype-stmt> only from within its construct.
+
+11.1.10a.3 Examples of the SELECT GENERIC TYPE construct
+
+NOTE 1
+.............................................................
+     GENERIC FUNCTION fun(x) RESULT(y)
+        TYPE(type1,type2) :: x
+        TYPEOF(x) :: y
+        SELECT GENERIC TYPE (x)
+        TYPE IS (type1)
+           !! code if x is type1
+        TYPE IS (type2)
+          !! code if x is type2
+        END SELECT
+     END FUNCTION fun
+................................................................
+
+NOTE 2
+................................................................
+        MODULE example
+            INTERFACE OPERATOR(.myop.)
+                PROCEDURE s ! All of the specific procedures of s.
+            END INTERFACE
+        CONTAINS
+            GENERIC FUNCTION s(a,b) RESULT(c)
+                TYPE(REAL,COMPLEX), INTENT(IN), RANK(0:MAX_RANK()) :: a
+                TYPEOF(a), RANKOF(a), INTENT(IN) :: b
+                TYPEOF(a), RANKOF(a) :: c, temp
+                ...
+                SELECT GENERIC TYPE (a)
+                TYPE IS (REAL)
+                    temp = temp * (1-b)
+                TYPE IS (COMPLEX)
+                    ! Just this once, we want the conjugate.
+                    temp = temp * (1-CONJG(b))
+                END SELECT
+                ...
+                c = temp
+            END FUNCTION
+        END MODULE
+................................................................
+
+335/6+  In 15.4.3.2 Interface block, after R1507 add
+        <<or>> generic-name
+C15nn If a <generic-name> appears in the <specific-procedure-list> of a
+      <procedure-statement> in a generic interface block, the
+      <generic-spec> of the <interface-stmt> shall not be a generic name.
+
+336/7. In 15.4.3.2 Interface block, para 4, after sentence 2, add
+The GENERIC <prefix-spec> in the <subroutine-stmt> or <function-stmt> of
+a separate module procedure interface declares that the separate module
+procedure name is generic, and defined by a module subprogram that has
+both the GENERIC and MODULE prefixes.
+
+337/1-. Before 15.4.3.3 GENERIC statement, add
+NOTE 3
+.........................................................................
+Constraint C15nn allows a generic identifier for an operation, assignment
+or I/O to identify a generic name but prohibits a generic name
+identifying another generic name. This avoids complicated situations due
+to mutual inclusions, recurrent references, and evaluation order issues
+of generic names.
+
+Invalid example
+     MODULE bad
+        INTERFACE invalid
+            PROCEDURE xyz
+            PROCEDURE gsub ! Violates C15nn.
+        END INTERFACE
+     CONTAINS
+        SUBROUTINE xyz()
+        END SUBROUTINE
+        GENERIC SUBROUTINE gsub(a)
+            TYPE(integer,real) :: a
+            a = 999
+        END SUBROUTINE
+     END MODULE
+.........................................................................
+
+NOTE 4
+.........................................................................
+Valid example
+     MODULE example
+       INTERFACE OPERATOR(.myop.)
+         PROCEDURE fun  ! All specific procedures with generic name fun
+         FUNCTION fen(a,b)                     ! External function fen
+           REAL, INTENT(IN) :: a, b
+           REAL :: fen
+         END FUNCTION fen
+       END INTERFACE
+     CONTAINS
+         GENERIC FUNCTION fun(a)
+            REAL, INTENT(IN), RANK(0) :: a
+            REAL, RANK(0) :: fun
+            ...
+         END FUNCTION fun
+         GENERIC FUNCTION fun(a) RESULT(b)
+            REAL, INTENT(IN), RANK(1:MAX_RANK()) :: a
+            REAL, RANK(RANK(a)) :: b
+            ...
+         END FUNCTION fun
+     END MODULE
+...........................................................................
+
+337/6+. In 15.4.3.3 Generic statement, after C1510 add
+A generic name appearing in the <specific-procedure-list> is treated
+as if all specific procedures identified by the generic name were
+included to the list.
+
+337/10. In 15.4.3.4.1 Generic identifiers, para 1, after the first
+sentence add
+A generic name appearing in the <specific-procedure-list> is treated
+as if all specific procedures identified by the generic name were
+added to the list.
+
+337/12. In 15.4.3.4.1 Generic identifiers, para 1, line 3, change
+"named" to "referenced".
+
+337/15. In 15.4.3.4.1 Generic identifiers, para 2, line 2, change
+"named" to "referenced".
+
+363/9+. In 15.6.2 Procedures defined by subprograms, R1530, after
+      <<or>> ELEMENTAL
+add
+      <<or>> GENERIC
+
+366/18-. Before 15.6.2.4 Instances of a subprogram, add
+
+15.6.2.3a Generic subprogram
+
+A subprogram with the prefix GENERIC in its <subroutine-stmt> or
+<function-stmt> is a generic subprogram and defines a set of unnamed
+specific procedures with explicit interfaces. The <subroutine-name> in
+the <subroutine-stmt> or <function-name> in the <function-stmt> is the
+generic identifier for all the unnamed specific procedures.  There is
+a specific procedure for each combination of type and kind of the
+type-generic dummy arguments, and rank of the rank-generic dummy
+arguments.
+
+A generic subprogram conforms to this document if the set of specific
+procedures, when given distinct specific names and a single generic name,
+can be included in a program in a manner that allows the program to be
+standard conforming.
+
+NOTE 1
+....................................................................
+Invalid example
+     GENERIC REAL FUNCTION mine(x,y)
+     USE ISO_FORTRAN_ENV
+     INTRINSIC MOD
+        REAL(real32,real64) :: x
+        REAL(real32,real64) :: y
+        mine=MOD(x,y)
+     END FUNCTION
+This generic function does not conform to the standard because two of
+its specific procedures have different kind values for x and y and the
+intrinsic function MOD requires them to be the same.
+......................................................................
+
+NOTE 2
+....................................................................
+If the name of the generic subprogram is already generic, the new specific
+procedures will be added to the existing set of specific procedures. Any
+two of these procedures must satisfy the rules of 15.4.3.4.5 to ensure
+that any reference is unambiguous.
+......................................................................
+
+C15nn A generic subprogram shall be a module or internal subprogram.
+
+C15nn A subprogram that is internal to a generic subprogram shall
+      not be generic.
+
+C15nn A generic subprogram shall not have an asterisk dummy argument.
+
+NOTE 3
+........................................................
+Only internal subprograms and module subprograms can have the GENERIC
+prefix, not external subprograms or interface bodies other than
+separate module procedure interface bodies.
+........................................................
+
+NOTE 4
+........................................................
+An example of a program containing a generic function is
+    PROGRAM main
+        USE ISO_FORTRAN_ENV
+        WRITE(*,*) factorial(5_int16), factorial(13_int64)
+     CONTAINS
+        GENERIC RECURSIVE FUNCTION factorial(n) RESULT (res)
+           INTEGER (int_kinds) :: n
+           TYPEOF(n) :: res
+           IF (n >1) THEN
+             res = n*factorial(n-1)
+           ELSE  IF (n==1) THEN
+             res = 1
+           ELSE
+             res =0
+           END IF
+         END FUNCTION factorial
+     END PROGRAM main
+.........................................................
+
+NOTE 5
+.........................................................
+An example of a module containing a generic function is
+     MODULE mod
+     CONTAINS
+        GENERIC SUBROUTINE my_lift(x)
+           TYPE(INTEGER, REAL) :: x
+           ...
+        END SUBROUTINE
+     END MODULE mod
+........................................................
+
+368/3. In 15.6.2.6 ENTRY statement (obsolescent), C1580, after the
+first sentence, add
+"An entry-stmt shall not appear in an generic subprogram."
+
+496/16+ In 16.10.2 The ISO_FORTRAN_ENV intrinsic module, before
+16.10.2.22 NOTIFY_TYPE, add
+
+16.10.2.21a MAX_RANK ([CORANK])
+
+Description. Maximum rank of a data object.
+
+Class. Transformational function.
+
+Argument.
+
+CORANK (optional) shall be a scalar integer expression whose value is not
+      negative.
+
+Result Characteristics. Default scalar.
+
+Result Value. If CORANK is not present or present with the value zero,
+     the maximum rank supported by the processor for an array that is
+     not a coarray. If CORANK is present with a positive value, the
+     maximum rank of a coarray of corank CORANK supported by the
+     processor or -HUGE(0) if such a corray is not supported.
+
+Example. For a processor whose limits are exactly the minimum required by
+         the standard,
+            MAX_RANK() = 15
+            MAX_RANK(1) = 14
+            MAX_RANK(15) = 0
+            MAX_RANK(16) = -2147483647 if default integer has 32 bits.
+         For a processor whose maximum rank is 24, and whose maximum rank
+         does not depend on the corank,
+            MAX_RANK() = 24
+            MAX_RANK(1) = 24
+            MAX_RANK(24) = 24
+            MAX_RANK(25) = -2147483647 if default integer has 32 bits.

@@ -1,0 +1,98 @@
+To: J3                                                     J3/25-162
+Subject: US04: Requirements for Asynchronous Collective Subroutines
+From: Brandon Cook & Damian Rouson & Dan Bonachea
+Date: 2025-August-08
+References: J3/23-174, WG5/N2245, WG5/N2249
+
+Introduction
+------------
+
+Use case paper 23-174 "Asynchronous Tasks in Fortran" describes
+"non-blocking collectives" that inspire the current requirements for what
+we are now referring to as "asynchronous collective subroutines".  Paper
+WG5/N2245 provides a rationale for asynchronous collective subroutines. The
+current Fortran 202Y work list WG5/N2249 includes asynchronous collective
+subroutines as accepted work item US04.  The current paper provides an
+illustrative use case and a list of requirements.
+
+The primary benefit of allowing the programmer to express asynchrony is to
+enable the overlap of communication with computation or other
+communication.  Such overlap plays a significant role in writing scalable
+applications that effectively utilize hardware elements, including
+processors and networks, on leading high-performance computing platforms.
+Empowering programmers to explicitly express asynchrony eases the burden on
+compiler developers who would otherwise need to prove properties of code
+that are difficult or impossible to establish statically in order to
+exploit the available asynchrony.
+
+Illustrative Use Case
+---------------------
+The example below demonstrates the launching of asynchronous co_sum and
+co_min subroutines.
+
+module async_collectives
+  real :: A=1., B=2.
+  type(completion_type) :: C(2)
+contains
+  subroutine overlap_communication_computation
+    call co_sum(A, completion=C(1))   ! initiate non-blocking collectives
+    call co_min(B, completion=C(2))
+    call do_something() ! promises no A,B reference/define in do_something
+    call test_progress
+    completion wait ( C ) ! await completion of all collectives in C
+    print *, A, B
+  end subroutine
+  subroutine test_progress
+    logical :: complete
+    call completion_query(C(1), complete)
+	  if (complete) print *, A
+  end subroutine
+end module
+
+This code presumes the existence of a new intrinsic type, which we
+notionally spell as "completion_type", whose purpose is to track completion
+of explicitly asynchronous collectives.  The above code shows an object of
+completion_type as a new optional argument to the existing collective
+subroutines.  By passing that argument, the programmer expresses their
+desire for the collective to proceed asynchronously with respect to other
+work and additionally that the variables involved in the collective will
+not be referenced or defined until after the collective is successfully
+synchronized.  The synchronization happens in a subsequent statement that
+we notionally refer to as "completion wait".
+
+Requirements
+------------
+
+R1. Allow the programmer to express explicitly asynchronous collective
+    subroutines.
+  - Rationale:
+    Asynchronous collective subroutines must support the ability to overlap
+    the latency of a collective subroutine with other communication or
+    computation.  For example, this implies that the result image may
+    return from a collective subroutine call before the result is
+    available.  Asynchronous collective subroutines must also allow the
+    programmer to express to the compiler that they will not reference the
+    variables involved in a collective subroutine until after the variables
+    have been explicitly synchronized.
+
+R2. Ability for an image to determine whether a previously launched
+    collective subroutine is complete with respect to this image.
+  - Rationale: Completion implies that it is safe to reference any
+    variables involved in the collective subroutine.
+
+R3. Ability for an image to wait until a previously launched collective
+    subroutine call is complete with respect to the waiting image.
+  - Rationale: Completion implies that it is safe to reference any
+    variables involved in the collective subroutine.
+
+R4. Allow multiple asynchronous collective subroutines to be in-flight at
+    any given time and synchronized independently.
+
+R5. Allow completion to be unrelated to segment ordering.
+  - Rationale: The execution of an image control statement should have no
+    bearing on determining whether completion has occurred.  Additionally,
+    neither collective subroutines nor an associated completion query or
+    completion wait are image control statements.
+
+R6. Don't introduce semantic requirements that foreseeably degrade
+    performance of existing features.
