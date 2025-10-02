@@ -1,0 +1,178 @@
+To: J3                                                     J3/25-177
+From: Brandon Cook & Dan Bonachea
+Subject: Specifications and Syntax for US20 Collective Subroutines
+ for Prefix Reductions
+Date: 2025-October-01
+References: J3/25-144r1, J3/25-145r1, J3/25-007r1, WG5/N-2239
+
+1. Background
+=============
+
+The Fortran 202Y work list (WG5/N-2239) includes work item US20:
+"Add Intrinsic and collective subroutines for prefix operations"
+
+Paper J3/25-144r1 "Requirements for US20: Collective Subroutines for
+Prefix Operations" presents illustrative use cases and requirements
+for collective subroutines for prefix reduction.  That paper was
+passed at J3 meeting #236 in June 2025.
+
+This paper focuses exclusively on specifications and syntax for the
+collective subroutine variant of prefix reduction operations.  Our aim
+is to allow consideration independent of the closely related but
+distinct local intrinsics.
+
+2. Consistency with Local Prefix Operation Intrinsics
+=====================================================
+
+Paper J3/25-145r1 describes requirements and use cases for local
+prefix reduction operation intrinsics, which are mathematically
+similar to the operations performed by the collective subroutines
+proposed in this paper.
+
+This paper endeavors to preserve symmetry in the naming of
+corresponding intrinsics and dummy arguments between the two families
+of intrinsics.
+
+3. Image ordering
+=================
+
+All the intrinsics proposed in this paper are collective subroutines,
+and will be subject to all of the common requirements specified in
+section 16.6 of J3/25-007r1. So for example, they must be invoked
+collectively by the same statement on all active images in the current
+team, with arguments that meet specified constraints for corresponding
+references.
+
+Mathematically, a prefix reduction operation accepts an ordered list
+of input values and computes an ordered list of output result
+values. We propose collective prefix reductions where both these input
+and output lists are ordered according to the image indexes in the
+selected team. Specifically, for an inclusive prefix reduction, the
+result R_i provided to image i is computed using the inputs provided
+by images (1:i). For an exclusive prefix reduction, the result R_i
+provided to image i is computed using the inputs provided by images
+(1:i-1).
+
+4. Collective CO_SUM_PREFIX subroutines
+========================================
+
+Prefix reduction with sum (addition) across images.
+
+4.0 Syntax
+----------
+
+CO_SUM_PREFIX_INCLUSIVE(A [, STAT, ERRMSG])
+CO_SUM_PREFIX_EXCLUSIVE(A [, STAT, ERRMSG])
+
+4.1 Specifications
+------------------
+
+S01. A shall be of numeric type.
+
+S03. A shall have the same shape, type, and type parameter values in
+     corresponding references.
+
+S05. A is an INTENT(INOUT) argument and shall not be a coindexed
+     object.
+
+S07. Each element of the computed value assigned into A is equal to a
+     processor-dependent approximation to the inclusive/exclusive
+     (respectively) prefix sum of corresponding elements of A provided
+     in corresponding references.
+
+S09. Definition of computed values assigned to A.
+
+     The input value provided by image i is referred to as A_i.
+     The computed value provided to image i is referred to as R_i.
+     In the inclusive case, S_i is the ordered list [A_1, ..., A_i].
+     In the exclusive case, S_i is the ordered list [A_1, ..., A_{i-1}].
+     If A is scalar, the value of R_i is a processor-dependent
+     approximation of the sum of the elements of S_i.
+     If A is an array, each element in the computed value of R_i is a
+     processor-dependent approximation of the sum of corresponding
+     elements across the elements of S_i.
+
+S11. By definition, sum is assumed to be associative and commutative.
+
+S13. The identity value for sum is implicitly zero.
+
+S15. The computed value is assigned to A if no error condition
+     occurs. Otherwise, A becomes undefined (as in CO_SUM).
+
+S17. The specifications for STAT and ERRMSG directly mirror the same
+     arguments in the existing collective subroutines, and the semantics
+     of STAT and ERRMSG are described in section 16.6 of J3/25-007r1.
+
+5. Collective CO_REDUCE_PREFIX subroutines
+===========================================
+
+Generalized prefix reduction across images.
+
+5.0 Syntax
+----------
+
+CO_REDUCE_PREFIX_INCLUSIVE(A, OPERATION [, STAT, ERRMSG])
+CO_REDUCE_PREFIX_EXCLUSIVE(A, OPERATION, IDENTITY [, STAT, ERRMSG])
+
+5.1 Specifications
+------------------
+
+R01. A shall not be polymorphic or have an ultimate component that is
+     allocatable or a pointer.
+
+R03. A shall have the same shape, type, and type parameter values in
+     corresponding references.
+
+R05. A is an INTENT(INOUT) argument and shall not be a coindexed
+     object.
+
+R07. OPERATION shall be a pure function.
+
+R09. OPERATION shall accept exactly two arguments; the result and
+     each argument must be a scalar, nonallocatable, noncoarray,
+     nonpointer, nonpolymorphic, nonoptional data object with the same
+     declared type and type parameters as the input ARRAY.
+
+R11. OPERATION shall implement a mathematically associative operation.
+
+R13. OPERATION shall be the same function on all images in
+     corresponding references.
+
+R15. IDENTITY shall be a scalar with the same declared type and type
+     parameters as A.
+
+R17. IDENTITY shall have the same value in corresponding references.
+
+R19. Definition of computed values assigned to A.
+
+     The input value provided by image i is referred to as A_i.
+     The computed value provided to image i is referred to as R_i.
+     In the inclusive case S_i is the ordered list [A_1, ..., A_i].
+     In the exclusive case S_i is the ordered list
+     [IDENTITY, A_1, ..., A_{i-1}].
+     The value of R_i is the generalized noncommutative reduction with
+     OPERATION of S_i.
+
+     The generalized noncommutative reduction of an ordered list of
+     elements with binary operation OPERATION is defined as the result
+     of an iterative process:
+
+     1. If the list contains a single element, then the result is the
+        value of the element and the iterative process is complete.
+     2. Select any two adjacent elements x and y such that y follows
+        x. The choice is processor dependent.
+     3. If A is scalar, compute a scalar temporary value:
+            T = OPERATION(x, y).
+        If A is an array, compute an array temporary value T by
+        applying OPERATION element-wise to corresponding elements of x
+        and y, passing the element of x as the first argument and y as
+        the second.  Replace the two elements x and y in the list with
+        the value T.
+     4. Repeat steps 1,2 and 3 until complete
+
+R21. The specifications for STAT and ERRMSG directly mirror the same
+     arguments in the existing collective subroutines, and the
+     semantics of STAT and ERRMSG are described in section 16.6 of
+     J3/25-007r1.
+
+===END===
