@@ -1,0 +1,155 @@
+To: J3                                                     J3/25-180
+From: Malcolm Cohen
+Subject: US14 Scoped enumerator access, requirements, specs, syntax
+Date: 2025-October-03
+Reference: 23-197
+
+
+1. Introduction
+
+This paper contains the formal requirements, specifications, and syntax,
+for US14 "Provide scoped access to enumeration enumerators".
+
+Some feature creep is recommended. I believe that is (just barely) within
+the scope of the feature suggested to WG5.
+
+
+2. Requirements
+
+R1. There shall be a means of accessing an enumerator of an enumeration,
+    even if its name is not accessible as a class (1) local identifier,
+    provided the name of the enumeration type itself is accessible.
+
+OPTIONAL:
+R2. It shall be possible to declare all the attributes of an enumerator
+    of an enumeration type within the enumeration type definition.
+
+{Note to J3: the only attribute that is not and cannot be declared, at
+ present, is the accessibility attribute.}
+
+OPTIONAL:
+R3. The same means shall also serve for accessing the enumerators of an
+    enum type (the optional type created by an interoperable enumeration
+    definition).
+
+OPTIONAL:
+R4. It shall be possible to declare all the attributes of an enumerator
+    of an interoperable enumeration with the enum-def.
+
+OPTIONAL:
+R5. It should be possible to declare the accessibility of an interoperable
+    enum type at the beginning of its definition, the same as for other
+    user-defined types.
+
+Rationale: I think this just improves consistency.
+
+
+3. Specifications and syntax
+
+S1. An enumeration type name is permitted to be followed by a percent sign
+    and the name of an enumerator from its definition.
+    This is not (lexically) a constant, but it is a constant expression.
+
+S2. The name of an enumerator that appears after the percent sign is not
+    affected in any way by use-renaming: it is always the name that appears
+    in the definition.
+
+S3. This use of an enumerator-name is unaffected by the accessibility of
+    the enumerator-name as a class (1) identifier in the module. That is,
+    even if the enumerator-name is PRIVATE, it can be used here.
+
+Rationale: This is to enable the module to just export the enumeration type
+           name, and none of the enumerators (as class (1) names), without
+           inhibiting access to the enumerator values by their scoped
+           names.
+
+Note: All the enumeration values are available from the NEXT and PREVIOUS
+      intrinsics anyway.
+
+S4. An optional access-spec, preceded by a comma and followed by a double-
+    colon, is permitted in an enumeration-enumerator-stmt. It overrides or
+    confirms the default accessibility. If it appears, the enumerator names
+    defined by that statement shall not have their accessibility also
+    declared in an accessibility-stmt.
+{This is for R2.}
+
+S5. An enum type name can be followed by a percent sign and one of its
+    enumerator names, in the same way as the above.
+    This is similarly unaffected by accessibility of the enumerator names
+    and use-renaming.
+{This is for R3.}
+
+Rationale: This kind of scoped access seems just as useful for enum types
+           as for enumeration types, if not more so, as the values of the
+           enumerators do not form an ordered set.
+
+S6. An optional access-spec can appear in an enumerator-def-stmt, with the
+    same semantics and restrictions as for an enumeration-enumerator-stmt.
+{This is for R4.}
+
+S7. An optional access-spec can appear in an enum-def-stmt. If it appears,
+    enum-type-name shall also appear. It declares the accessibility of the
+    enum type name. It has no effect on the enumerator accessibility.
+{This is for R5.}
+{Note: One might contend that it should declare the default accessibility
+ of the enumerators, the same as for enumeration types, but this way is the
+ same as for derived types.}
+
+
+4. Examples
+
+Example 1: Enumeration type
+
+Given
+
+    Module m
+        Private
+        Enumeration Type, Public :: traffic_signal
+            Enumerator, Private :: off, green, amber, red
+        End Enumeration Type
+    End Module
+
+We can do:
+
+    Subroutine s
+        Use m, signal => traffic_signal
+        Type(signal) :: light = signal(1)
+        ...
+        light = signal%green
+        ..
+        Select Case (light)
+        Case (signal%green)
+            Call go
+        Case (signal%amber)
+            Call go_faster
+        Case (signal%red)
+            Stop
+        Case (signal%off)
+            Call go_carefully
+        End Select
+    End Subroutine
+
+Example 2: Enum type
+
+With
+
+    Module permissions_m
+        Private
+        Enum, Bind(C), Public :: permission_mask_t
+            Enumerator :: s_iroth=o'001', s_iwoth=o'002', s_ixoth=o'004'
+            Enumerator :: s_irgrp=o'010', s_iwgrp=o'020', s_ixgrp=o'040'
+            Enumerator :: s_irusr=o'100', s_iwusr=o'200', s_ixusr=o'400'
+        End Enum
+        ! Note: The enumerators are private as that is the module default.
+    End Module
+
+We can do
+
+    Subroutine set_my_default_access(filename)
+        Use permissions_m,Only:perm=>permission_mask_t
+        Character(*), Intent (In) :: filename
+        ! I can read and write, group can read, others can do nothing.
+        Call chmod (filename, perm%s_irusr + perm%s_iwusr + perm%s_irgrp)
+    End Subroutine
+
+===END===

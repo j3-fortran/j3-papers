@@ -1,0 +1,225 @@
+To: J3                                                     J3/25-179
+From: Malcolm Cohen
+Subject: US15 Readonly pointers, formal requirements and specifications
+Date: 2025-October-03
+Reference: 23-198, 24-167, 25-007r1.
+
+1. Introduction
+
+23-198 is the background paper for US15; meeting 230, unanimous consent.
+24-167 is the estimate of effort involved (UK panel): level 4.
+
+No formal progress has been made since, though it could be noted that there
+were extensive subgroup discussions on the forerunners to 23-198, and the
+feature as described in 23-198 is not large. The most contentious aspect is
+the choice of keyword. This paper will not address that issue.
+
+
+2. Formal requirements
+
+R1. That there be a form of pointer where its target cannot be modified via
+    the pointer itself.
+
+R2. The target may however be modified by other means, if they exist.
+
+R3. The level of protection of the target, from being modified via the
+    pointer, shall be similar to that provided by our existing protection
+    attributes PROTECTED (when outside the module) and INTENT(IN).
+
+R4. Despite the obvious drawbacks, backwards compatibility shall not be
+    affected by this feature in this revision.
+
+
+3. Discussion
+
+Currently the standard permits ordinary data pointers to be associated with
+targets that are not permitted to be changed, e.g.
+    REAL,INTENT(IN),TARGET :: x
+    REAL,POINTER :: p
+    p => x ! Valid.
+
+The same applies to a PUBLIC,PROTECTED,TARGET variable in a module. It is
+all too easy to remove the protection (from the compiler's visibility) by
+using an ordinary data pointer.
+
+The standard does forbid subsequent modification of an INTENT(IN) or
+PROTECTED target via the pointer, but does not provide any help or support
+that would make compile-time detection feasible.
+
+In a subsequent revision, we *could* make association of an ordinary data
+pointer with an INTENT(IN) or PROTECTED target obsolescent. That would at
+least encourage compilers to report it, which may help to avoid inadvertent
+errors.
+
+
+4. Formal specifications
+
+S1. There shall be an attribute, applicable only to pointers, which means
+    that the target of the pointer shall not be modified (be defined or
+    become undefined) via the pointer.
+
+    For the purposes of this paper only, we will call this the
+    READONLYPOINTER attribute (name deliberately chosen because it is
+    both informative and unsuitable to be the actual keyword name).
+
+S1a. Corollary: A READONLYPOINTER pointer shall not be deallocated, as that
+                would cause the target to become undefined.
+
+S2. A READONLYPOINTER pointer shall not appear in a variable definition
+    context.
+
+Note: This is the static variant of S1, which could be read as not
+      disallowing e.g. "IF (.FALSE.) my_readonly_pointer = 999".
+
+S3. The READONLYPOINTER attribute does not affect whether the pointer
+    association status may be changed (apart from forbidding DEALLOCATE).
+
+S3a. Corollary: A READONLYPOINTER pointer can be pointer-assigned,
+                nullified, or allocated, unless its pointer association
+                status is not permitted to be changed.
+
+Note: A pointer's association status is permitted to be changed unless
+      it has the INTENT(IN) attribute, the PROTECTED attribute, or is a
+      dummy argument associated with a pointer function reference, an
+      INTENT(IN) pointer, or a PROTECTED pointer.
+
+S3b. Corollary: A changeable READONLYPOINTER pointer can be an actual
+                argument corresponding to an INTENT(OUT) POINTER dummy, but
+                cannot be an actual argument corresponding to an
+                INTENT(OUT) non-POINTER dummmy.
+
+S4. A READONLYPOINTER shall not be pointer-assigned to an ordinary pointer,
+    including by being a value in a structure constructor,
+    nor shall it be an actual argument corresponding to an ordinary pointer
+    dummy argument.
+
+Pro: Otherwise it is not only too trivially easy to bypass the feature, it
+     would be all too likely to lead to accidental bypasses.
+
+Con: Updating a large project by inserting a READONLYPOINTER attribute will
+     be a bit more work, as one would need to insert it at the "leaves" of
+     the pointer association tree, as it were.
+
+S5. A READONLYPOINTER shall not appear in a common block.
+
+Notes: (a) COMMON is obsolescent, so we should not be extending it.
+       (b) Permitting this would be far too error-prone.
+
+S6. An ALLOCATE statement with a READONLYPOINTER allocate-object shall have
+    a SOURCE= clause.
+
+Note: This is because you cannot give the allocated target a value in any
+      other way without breaking the rules.
+
+Note 2: We could say "have a SOURCE= clause or default initialisation",
+        but I think that is getting too complicated.
+
+OPTIONAL?
+S7. A READONLYPOINTER shall not be an actual argument to a procedure with
+    an implicit interface.
+
+Note: This is stronger than the protection we give to INTENT(IN) and
+      PROTECTED targets. I still think it is a good idea.
+
+Note 2: Actually, it would probably be a good idea to obsolete implicit
+        interface procedures anyway!
+
+OPTIONAL:
+S8. A READONLYPOINTER shall not be an actual argument corresponding to a
+    nonpointer dummy argument with unspecified INTENT.
+
+Note: This is much stronger than the protection we give to INTENT(IN) and
+      PROTECTED. It would make the feature more robust against accidental
+      subversion however.
+
+S9. The requirements S2-S8 shall be constraints, i.e. diagnosis at compile
+    time is required of a standard-conforming processor.
+
+Note: I would hope that everyone implementing this feature would diagnose
+      violations, even if not aspiring to full standard conformance!
+
+
+5. Examples
+
+Consider module M, which the examples access by USE association.
+
+    MODULE m
+        REAL,PROTECTED,TARGET :: x, y
+        REAL,TARGET :: z
+    END MODULE
+
+Examples for S1 (there is an attribute...):
+
+        REAL,POINTER :: wp                  ! Writable Pointer
+        REAL,POINTER,READONLYPOINTER :: np  ! Nonwritable Pointer
+        wp => x ! Valid but unsafe, and we cannot change for 2+ revisions.
+        np => x ! Valid and safer
+and
+        DEALLOCATE(wp)  ! Invalid, hard to diagnose at compile time.
+        DEALLOCATE(np)  ! Invalid, violates constraint for S1.
+
+Examples for S2:
+
+        wp = 999 ! Invalid, but does not violate a constraint.
+        np = 999 ! Invalid, will violate the constraint for S2
+
+Examples for S3:
+        np => y     ! Valid to pointer-assign to another protected target.
+        np => z     ! Valid to pointer-assign to a definable target.
+        NULLIFY(np) ! Valid to nullify.
+        ! For ALLOCATE see later.
+
+Examples for S4:
+
+        np => wp ! Valid, can pointer-assign from a non-READONLYPOINTER
+        np => np ! Valid. can pointer-assign from a READONLYPOINTER
+        wp => np ! Invalid, will violate constraint for S4
+
+Also, given
+        TYPE t
+            REAL,POINTER :: wpc ! Writeable Pointer Component
+        END TYPE
+        TYPE(t) u
+then
+        u = t(wp) ! Valid
+        u = t(np) ! Invalid, will violate the constraint for S4
+
+Examples for S5:
+
+        REAL,POINTER,READONLYPOINTER :: cp
+        COMMON/bad_idea/cp      ! Invalid, will violate constraint for S5.
+
+Examples for S6:
+
+        ALLOCATE(np)    ! Invalid, will violate the constraint for S6.
+        ALLOCATE(np,SOURCE=43.0)    ! Valid, 43.0 cannot later be changed.
+
+Examples for S7:
+
+        ! with ASSOCIATED(wp,x):
+        CALL implicit_sub(wp)   ! Invalid, hard to diagnose at compile time
+        ALLOCATE(wp)
+        CALL implicit_sub(wp)   ! Valid
+        CALL implicit_sub(np)   ! Invalid, will violate constraint for S7.
+
+Here is the subroutine in another file:
+        SUBROUTINE implicit_sub(out)
+            out = 999
+        END SUBROUTINE
+
+Examples for S8:
+
+Given
+        INTERFACE
+            SUBROUTINE explicit(q)
+                REAL q ! Does Q get assigned to? Who knows. Could be.
+            END SUBROUTINE
+        END INTERFACE
+
+Then
+        CALL explicit(wp)   ! Valid
+        CALL explicit(x)    ! Valid if and only if Q is not assigned to,
+                            ! which is hard to diagnose at compile time.
+        CALL explicit(np)   ! Invalid, violates constraint for S8.
+
+===END===

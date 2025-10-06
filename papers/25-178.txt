@@ -1,0 +1,110 @@
+To: J3                                                     J3/25-178
+From: Malcolm Cohen
+Subject: US08 Polymorphic PURE function results, more specs and syntax
+Date: 2025-October-03
+Reference: 23-186, 25-116r1
+
+
+1. Introduction
+
+This paper contains additional specifications and syntax for US08,
+Polymorphic PURE function results.
+
+The base specifications and syntax are from 25-116r1.
+
+
+2. Additional specifications and syntax
+
+S12. A pure/simple function result can have a polymorphic allocatable
+     ultimate component if the declared type of the result is pure or
+     simple.
+
+Rationale:
+    (1) Having a polymorphic allocatable ultimate component is described in
+        the same constraint as the result itself being polymorphic
+        allocatable, and the reason for its prohibition is the same, and is
+        "fixed" by requiring a pure (or simple) declared type.
+    (2) It should be possible to "wrap" a polymorphic allocatable result in
+        a derived type - this is basic type design stuff. So keeping this
+        restriction would be inconsistent with how our types work.
+    (3) Furthermore, what if you want to return CLASS(t) ALLOCATABLE, which
+        we want to allow, but type T itself has an ultimate allocatable
+        that is polymorphic. Without S12, that would be forbidden, but that
+        would not make sense.
+    (4) In principle it would be possible to just require the polymorphic
+        allocatable components to have pure declared type, not the whole
+        result. However, that would be more complicated to understand, and
+        increase the risk of some compilers not diagnosing an impurity,
+        as it would be more complicated to check.
+
+S13. A pure or simple type can also be used for an INTENT(OUT) dummy
+     argument of a pure or simple procedure, respectively, when the dummy
+     argument is polymorphic or has a polymorphic allocatable component.
+
+Rationale:
+    (5) The constraint for INTENT(OUT) dummy arguments is almost identical
+        to the one for function results, the only difference being that one
+        can have a polymorphic INTENT(OUT) argument without it needing to
+        be allocatable.
+    (6) It should be possible to replace a function returning a result with
+        a subroutine that has an extra argument for that result. Not being
+        able to do that only for pure/simple would be inconsistent with the
+        way things work for all other procedures.
+    (7) Same comment re polymorphic allocatable components in a function
+        result: the easiest thing to understand and to check is for the
+        declared type of the argument being pure/simple.
+
+
+3. Some possibly-motivating examples
+
+Assume wlog that we have a pure function that returns a polymorphic
+allocatable result of pure type,
+    PURE FUNCTION f(something) RESULT(r)
+        TYPE(whatever),INTENT(IN) :: something
+        CLASS(pure_t),ALLOCATABLE :: r
+        ...
+
+(a) Let us conjecture that for some applications, there is something else
+    that could be efficiently calculated at the same time. One could extend
+    PURE_T to contain this additional information, but it might not even be
+    of the same shape, and in any case that would interfere with other
+    extensions of the type.
+
+    A natural way to do this would be
+        TYPE pure_t_with_extra
+            CLASS(pure_t),ALLOCATABLE :: pure_t_stuff
+            TYPE(extra_info),ALLOCATABLE :: extra(:)
+        END TYPE
+
+    and make the function
+
+        PURE FUNCTION f_with_extra(something) RESULT(r)
+            TYPE(whatever),INTENT(IN) :: something
+            TYPE(pure_t_with_extra) :: r
+            ...
+
+(b) Let us conjecture that there could be some error conditions. Of course
+    we can raise those using ERROR STOP, but that is not much help to a
+    program that should continue execution. We cannot handle errors via the
+    argument list, as pure function arguments are all INTENT(IN).
+
+    The natural thing to do is to turn it into a subroutine with an extra
+    argument for passing back a success/error code. For example,
+        PURE SUBROUTINE safe_f(r,something,stat,errmsg)
+            TYPE(whatever),INTENT(IN) :: something
+            CLASS(pure_t),ALLOCATABLE,INTENT(OUT) :: r
+            INTEGER,OPTIONAL,INTENT(OUT) :: stat
+            CHARACTER(*),OPTIONAL,INTENT(INOUT) :: errmsg
+            ...
+            IF (some error) THEN
+                IF (PRESENT(stat)) THEN
+                    stat = some_error_code
+                    IF (PRESENT(errmsg)) errmsg = some_error_message
+                ELSE
+                    ERROR STOP 'some error'
+                END IF
+            ELSE
+                r = ...
+            END IF
+
+===END===
