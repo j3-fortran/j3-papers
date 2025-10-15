@@ -1,0 +1,796 @@
+To: J3                                                     J3/25-176r1
+From: Patrick Fasano & Dan Bonachea
+Subject: Formal specifications for macro identification and expansion in
+         the Fortran preprocessor (FPP)
+Date: 2025-October-14
+References:
+      25-142r2 Formal specifications for the Fortran preprocessor (FPP)
+      25-114r2 Fortran preprocessor requirements
+      WG5/N2249 Fortran 202Y Work Items
+      ISO/IEC 9899:2024 Programming languages -- C ("C 2023")
+            (working draft N3220)
+
+Background
+==========
+
+The current Fortran 202Y work list WG5/N2249 includes specifying a
+Fortran-friendly preprocessor as accepted work item US10.
+
+At meeting #235 in Feb 2025, J3 approved requirements for cpp-like
+preprocessing (paper 25-114r2).
+
+At meeting #236 in Jun 2025, J3 approved corresponding specifications
+covering the majority of preprocessing (paper 25-142r2). That document
+left one incomplete section, section 4 "Macro identification and
+expansion".
+
+This document provides the remaining specifications for preprocessing,
+specifying the details of macro identification and expansion. It should
+be read along with 25-142r2, which provides all the other
+specifications.
+
+
+1 General
+=========
+
+ge01. Macro identification and expansion is a process that occurs on
+      source fragment lines and comment lines when they are first
+      encountered during preprocessing, and may be recursively repeated
+      as specified in section 4.
+
+ge03. During expansion, an identifier that is the name of a defined
+      object-like macro (25-142r2 section 3.1) is replaced by the
+      replacement-list of that macro's definition.
+
+ge05. During expansion, an identifier that is the name of a defined
+      function-like macro (25-142r2 section 3.2) followed by a left
+      parenthesis '(' introduces an invocation of the function-like
+      macro. The arguments of the macro invocation are collected before
+      the macro is expanded (section 2).
+
+ge07. After expansion has replaced a macro invocation, the resulting
+      tokens are rescanned to find additional macro invocations for
+      expansion (section 4).
+
+
+
+2 Function-like macro invocation
+================================
+
+
+2.1 Function-like macro identification
+--------------------------------------
+
+2.1.1 Argument gathering
+------------------------
+
+This subsection specifies the rules used to gather the arguments for the
+invocation of a function-like macro.
+
+ag01. During expansion when a function-like macro name is encountered
+      followed by a '(' as the next nonblank character, the processor
+      shall scan ahead, removing comments (section 2.1.4), to identify
+      the full list of macro arguments. The argument list begins after
+      the initial '(' and terminates before the matching closing
+      parenthesis ')', skipping intervening matched pairs of `(` and `)`
+      parentheses. The argument list shall terminate before the end of
+      the current file.
+
+ag03. Commas within the argument list separate individual arguments.
+      However, a comma that appears within a balanced set of parentheses
+      '()', square brackets '[]', or curly braces '{}' does not act as
+      an argument separator. All such bracketing characters within an
+      argument must be balanced and properly nested. Array constructor
+      delimiters '(/ /)' are implicitly handled as a special case of
+      parentheses.
+
+ag05. During argument gathering, commas and bracketing characters within
+      comments are removed (section 2.1.4) and thus do not affect
+      argument separation.
+
+ag07. An argument consists of all tokens between the beginning of the
+      argument list and a separating comma, between a pair of separating
+      commas, or between a separating comma and the end of the argument
+      list. Line continuations (sections 2.1.2 and 2.1.3), and comments
+      (section 2.1.4) are removed as part of argument gathering and thus
+      are not part of any arguments themselves.
+
+ag11. For a macro that is not variadic (section 2.3), the number of
+      arguments in the invocation shall be equal to the number of
+      parameters in the macro definition.
+
+ag13. For a variadic macro (section 2.3), the number of arguments shall
+      not be less than the number of named parameters in the macro
+      definition, and any arguments supplied beyond the number of named
+      parameters are collectively known as the "variable arguments list"
+      (section 2.3). If the number of arguments is equal to the number of
+      named parameters, then the variable arguments list is empty.
+
+ag15. An argument is considered empty if it contains no preprocessing
+      tokens. When an empty argument is substituted, it is replaced by a
+      placemarker token (section 3).
+
+ag17. Preprocessing directives are not recognized as such within the
+      arguments of a function-like macro invocation.
+
+ag19. Within the arguments of a function-like macro invocation, the
+      token INCLUDE is not treated as introducing an INCLUDE line, even
+      if it resembles one.
+
+EXAMPLE age01:
+
+      Given the macro definition:
+
+      #define F(a,b,c) a;b;c
+
+      The invocation:
+
+            F(1,,3)
+
+      is equivalent to:
+
+            1;;3
+
+      The second argument is empty, so 'b' is replaced by a placemarker
+      token, which is then removed (section 4).
+
+EXAMPLE age02:
+
+      #define ASSIGN(x, y) x = y
+
+            ASSIGN( A(1,2)[3,4], 10 )
+
+      the invocation is equivalent to:
+
+            A(1,2)[3,4] = 10
+
+      The commas within the bracketing characters do not act as argument
+      separators, they are instead part of the first argument.
+
+EXAMPLE age03:
+
+      Given the macro definition:
+
+      #define ACCUM(var, val) \
+          var = var+val ;  \
+          print *, "value:", var
+
+      The invocation:
+
+            ACCUM( A(1,2)[3,4], 10 )
+
+      is equivalent to:
+
+            A(1,2)[3,4] = A(1,2)[3,4]+10 ; print *, "value:", A(1,2)[3,4]
+
+EXAMPLE age04:
+
+      Given the macro definition:
+
+      #define ASSIGN(x, y) x = y
+
+      The invocation:
+
+            ASSIGN(A(5,6)[7,8], foo{T1, T2}(9, B[10,11]))
+
+      is equivalent to:
+            A(5,6)[7,8] = foo{T1, T2}(9, B[10,11])
+
+2.1.2 Line breaks and continuations in macro invocations (free-form)
+--------------------------------------------------------------------
+
+This subsection describes the handling of line continuations
+within function-like macro invocations in free source form.
+
+lb01. An invocation of a function-like macro can be broken across
+      multiple lines. An invocation that begins with an open parenthesis
+      '(' continues until the matching closing parenthesis ')' is found
+      (outside of a comment), which may occur on a subsequent source
+      fragment line.
+
+lb03. Comment lines within the argument list of an invocation of a
+      function-like macro are discarded (section 2.1.4).
+
+lb05. A newline character appearing within the argument list is treated
+      as a blank character, except where rule lb07 applies.
+
+lb07. Fortran-style continuation markers are permitted. An ampersand '&'
+      which is the last non-whitespace character (after the removal of
+      comments) preceding a newline character is removed, and all
+      subsequent characters up to and including the newline are removed.
+      If the first non-whitespace character on a continuation line is an
+      ampersand '&', all characters up to and including the leading
+      ampersand '&' are removed.
+
+EXAMPLE lbe01:
+
+      If MAC is a function-like macro which accepts three arguments,
+      then the following lines:
+
+            MAC(a,
+                b,
+                c)
+            MAC(a, &
+                b, &
+              & c)
+            MAC(d, &
+                e &
+               &f, g)
+            MAC(h, &
+                i&
+               &j, k)
+            MAC(l, m&
+                n&
+               &o, p)
+            MAC(q,r
+            s,
+            t)
+
+      are equivalent to:
+
+            MAC(a,b,c)
+            MAC(a,b,c)
+            MAC(d,e f,g)
+            MAC(h,ij,k)
+            MAC(l,m no,p)
+            MAC(q,r s,t)
+
+      where all line continuations and extraneous blank characters have
+      been removed.
+
+
+2.1.3 Line breaks and continuations in macro invocations (fixed-form)
+---------------------------------------------------------------------
+
+This subsection describes the handling of line continuations within
+function-like macro invocations in fixed source form.
+
+lc01. An invocation of a function-like macro can be broken across
+      multiple lines. An invocation that begins with an open parenthesis
+      '(' continues until the matching closing parenthesis ')' is found
+      (outside of a comment), which may occur on a subsequent source
+      fragment line.
+
+lc03. Comment lines within the argument list of an invocation of a
+      function-like macro are discarded (section 2.1.4).
+
+lc07. If character position 6 of a continuation line contains any
+      character other than a blank or zero, then any trailing blank
+      characters of the continued line are removed along with the
+      newline. Otherwise, the newline of the continued line is replaced
+      with a blank character. Characters in positions 1-6 are removed
+      from the continuation line regardless of the character in position
+      6.
+
+EXAMPLE lce01:
+
+      If MAC is a function-like macro which accepts three arguments,
+      then the following lines:
+
+      !23456
+            MAC(a,
+                b,
+                c)
+            MAC(a,
+      foo       b,
+           &    c)
+            MAC(d,
+           &    e
+            f, g)
+            MAC(h,
+           &    i
+           &j, k)
+            MAC(l, m
+           &    n
+           &o, p)
+            MAC(q,r
+            s,
+            t)
+
+      are equivalent to:
+
+      !23456
+            MAC(a,b,c)
+            MAC(a,b,c)
+            MAC(d,e f,g)
+            MAC(h,ij,k)
+            MAC(l,m no,p)
+            MAC(q,r s,t)
+
+      where all line continuations and extraneous blank characters have
+      been removed.
+
+
+2.1.4 Comments in macro invocations
+-----------------------------------
+
+This subsection details how Fortran-style comments and comment lines
+appearing within the argument list of a function-like macro invocation
+are removed during argument gathering and do not become part of the
+arguments.
+
+cm03. A Fortran comment line encountered during argument gathering,
+      including the newline, is removed.
+
+cm05. During argument gathering, a Fortran-style comment on a source
+      fragment line begins with an exclamation mark '!' and includes all
+      subsequent characters on that line. The entire sequence is removed
+      (not including the newline character).
+
+cm07. In a source fragment line, the token sequence '/*' ... '*/' is not
+      interpreted as a comment (unlike in directive lines, see 25-142r2
+      section 2.4).
+
+cm09. In a source fragment line, the '//' token is not interpreted as
+      introducing a comment.
+
+cm11. The processing specified in this subsection effectively takes
+      place before line continuation processing (sections 2.1.2 and
+      2.1.3).
+
+EXAMPLE cme01:
+
+      Given the macro definition:
+
+      #define ADD(a,b) a+b
+
+      The following invocation:
+
+            ADD(1,   ! first argument is 1
+                2)   ! second argument is 2
+
+      is equivalent to:
+
+            1+2   ! second argument is 2
+
+EXAMPLE cme02: (free-form)
+
+      If MAC is a function-like macro which accepts three arguments,
+      then the following free form source lines:
+
+            MAC(a, ! comment 1
+                b, ! comment 2
+                c)
+            MAC(d, & ! comment 1
+                e, & ! comment 2
+                     ! comment line
+              & f)
+            MAC(g, !$foo 1
+                h, !$foo 2
+                i) !$foo 3
+            MAC(j,k& ! comment 1
+                &l&  ! comment 2
+                     ! comment line
+                &m, n)
+            MAC(o,p& ! comment 1
+                &q! comment 2
+                &r,s)
+            MAC(t,u!comment 1
+            v,!comment 2
+            w)
+
+      are equivalent to:
+
+            MAC(a,b,c)
+            MAC(d,e,f)
+            MAC(g,h,i) !$foo 3
+            MAC(j,klm,n)
+            MAC(o,pq r,s)
+            MAC(t,u v,w)
+
+      where all line continuations and extraneous blank characters have
+      been removed.
+
+EXAMPLE cme03: (fixed-form)
+
+      If MAC is a function-like macro which accepts three arguments,
+      then the following fixed form source lines:
+
+      !23456
+            MAC(a, ! comment 1
+                b, ! comment 2
+                c)
+            MAC(d, ! comment 1
+      junk      e, ! comment 2
+      c comment line
+           &    f)
+            MAC(g, !$foo 1
+           &    h, !$foo 2
+                i) !$foo 3
+            MAC(j,k !comment 1
+           &l ! comment 2
+             ! comment line
+           &m, n)
+            MAC(o,p ! comment 1
+           &q! comment 2
+           & r,s)
+            MAC(t,u!comment 1
+            v,!comment 2
+            w)
+
+      are equivalent to:
+
+      !23456
+            MAC(a,b,c)
+            MAC(d,e,f)
+            MAC(g,h,i) !$foo 3
+            MAC(j,klm,n)
+            MAC(o,pq r,s)
+            MAC(t,u v,w)
+
+      where all line continuations and extraneous blank characters have
+      been removed.
+
+
+2.2 Argument substitution and expansion
+---------------------------------------
+
+After the arguments of a function-like macro have been identified, argument
+substitution is performed. This section details how argument substitution
+is performed, which may include macro expansion of the argument tokens as a
+part of substitution.
+
+
+2.2.1 Macro expansion during argument substitution
+--------------------------------------------------
+
+me01. For each parameter appearing in the replacement list of a
+      function-like macro that is neither preceded by '#' (section
+      2.2.2), nor preceded or followed by '##' (section 3), nor part of
+      a <va-opt-replacement> (section 2.3.1), the tokens comprising the
+      corresponding argument of an invocation are subjected to complete
+      macro expansion as if they were the only tokens remaining in the
+      file. The result of that expansion is then substituted for the
+      parameter in the replacement list. If the '__VA_ARGS__' identifier
+      (section 2.3) appears in the replacement-list, it is treated as if
+      it were a parameter and the variable arguments form the tokens
+      that are expanded (as described above) and then used to replace
+      it.
+
+me05. The entire function-like macro invocation, from the identifier to
+      the closing ')', is replaced by the tokens from the
+      replacement-list after all substitutions as described in this
+      document.
+
+me07. The resulting tokens are rescanned for the presence of further
+      macro names to be expanded, according to the rules in section 4.
+
+
+2.2.2 The Stringizing Operator (#)
+----------------------------------
+
+st01. If a parameter in a function-like macro's replacement list is
+      immediately preceded by a '#' token, the '#' and the parameter are
+      replaced by a single character literal containing the
+      preprocessing tokens of the corresponding argument (which are not
+      expanded, see me01).
+
+st02. (C2023 6.10.5.2-3) Let the "stringizing argument" be the
+      preprocessing token sequence for the corresponding argument with
+      placemarker tokens removed. Each occurrence of white space between
+      the stringizing argument's preprocessing tokens becomes a single
+      space character in the character string literal. White space
+      before the first preprocessing token and after the last
+      preprocessing token composing the stringizing argument is deleted.
+      Otherwise, the original spelling of each preprocessing token in
+      the stringizing argument is retained in the character string
+      literal, except for special handling for producing the spelling of
+      character literals (st03).
+
+st03. Each double quote character (") within the stringizing
+      argument is replaced by a pair of double quote characters ("").
+      The resulting sequence of characters is then enclosed in double
+      quotes to form the character literal.
+
+EXAMPLE ste01:
+
+      Given the macro definitions:
+
+      #define fox rabbit
+      #define STR(x) #x
+
+      The invocation:
+
+            STR( The "quick"   brown fox )
+
+      is equivalent to:
+
+            "The ""quick"" brown fox"
+
+
+
+2.3 Variadic Macros
+-------------------
+
+vm01. A function-like macro can be defined to accept a variable number
+      of arguments by specifying an ellipsis '...' as its final
+      parameter (25-142r2 section 3.2). Such a macro is a "variadic"
+      macro.
+
+vm03. The special identifier '__VA_ARGS__' may only appear in the
+      replacement list of a variadic macro.
+
+vm05. During expansion of a variadic macro, the variable arguments list
+      is merged by inserting commas between the elements of the list. An
+      identifier '__VA_ARGS__' in the replacement list is treated as a
+      parameter and the merged variable arguments are the corresponding
+      argument which is then substituted according to rule me01. If the
+      variable arguments list is empty or if the substitution of the
+      merged variable arguments results in no tokens, then the
+      '__VA_ARGS__' identifier in the replacement-list is replaced by a
+      placemarker token (section 3).
+
+EXAMPLE vme01:
+
+      Given the macro definitions:
+
+      #define LOG(p, ...) call log_message(p, __VA_ARGS__)
+      #define WARN(...) call log_message("WARNING", __VA_ARGS__)
+
+      The invocation:
+
+            LOG("Index out of bounds:", i, j, k )
+
+      is equivalent to:
+
+            call log_message("Index out of bounds:", i, j, k)
+
+      The invocation:
+
+            WARN("Initialization failed")
+
+      is equivalent to:
+
+            call log_message("WARNING", "Initialization failed")
+
+      The invocation:
+
+            LOG("Task complete")
+
+      is equivalent to:
+
+            call log_message("Task complete", )
+
+
+2.3.1 '__VA_OPT__'
+------------------
+
+Syntax:
+
+  <va-opt-replacement> <<is>>
+      __VA_OPT__ ( <va-opt-arg> )
+
+vo01. The special identifier '__VA_OPT__' may only appear in the
+      replacement list of a variadic macro, followed by a parenthesized
+      sequence of preprocessing tokens. The sequence of preprocessing
+      tokens within the parentheses is called the <va-opt-arg>. The
+      closing ')' is determined by skipping intervening pairs of
+      matching left and right parentheses in its preprocessing tokens.
+
+vo03. A <va-opt-arg> shall not contain the identifier '__VA_OPT__'.
+
+vo05. When a variadic function-like macro is being expanded, if the
+      replacement-list contains a <va-opt-replacement>, the following
+      two rules apply.
+
+vo07. If the variable arguments list is empty (rule ag13) or if the
+      expansion of the merged variable argument list (rule vm05) results in
+      no tokens, then the <va-opt-replacement> is replaced by a placemarker
+      token (section 3).
+
+vo09. If the expansion of the merged variable argument list (rule vm05)
+      results in a non-empty sequence of tokens, then the
+      <va-opt-replacement> is replaced by the expansion of <va-opt-arg>.
+      Any occurrences of macro parameters including '__VA_ARGS__' within
+      the <va-opt-arg> are substituted as specified in rule me01 before
+      that expansion is performed.
+
+EXAMPLE voe01:
+
+      Given the macro definitions:
+
+      #define LOG(msg, ...) call log_message(msg __VA_OPT__(, __VA_ARGS__))
+      #define NOTHING
+
+      The invocation:
+
+            LOG("hello")
+
+      is equivalent to:
+
+            call log_message("hello" )
+
+      The invocation:
+
+            LOG("Answer:", 42)
+
+      is equivalent to:
+
+            call log_message("Answer:" , 42)
+
+      The invocation:
+
+            LOG("nothing:", NOTHING)
+
+      is equivalent to
+
+            call log_message("nothing:" )
+
+
+
+3 The Token-Pasting Operator (##)
+=================================
+
+tp01. If a '##' operator appears in the replacement list of an
+      object-like or function-like macro, it concatenates the preceding
+      and following preprocessing tokens to form a single new
+      preprocessing token. Any whitespace surrounding the '##' operator
+      is removed. The result of the concatenation must be a valid
+      preprocessing token.
+
+tp02. Placemarker tokens are handled specially: concatenation of two
+      placemarkers results in a single placemarker token, and
+      concatenation of a placemarker with a non-placemarker token
+      results in the non-placemarker token.
+
+tp03. If an operand of the '##' operator is a macro parameter, the
+      parameter is replaced by the corresponding argument's
+      preprocessing tokens, and the resulting token adjacent to the '##'
+      operator becomes its operand. The argument tokens are not
+      macro-expanded before this concatenation (see me01).
+
+tp07. The '##' operator shall not appear at the beginning or end of a
+      replacement list.
+
+EXAMPLE tpe01:
+
+      Given the macro definition:
+
+      #define MAKE_VAR(type, index) type ## var ## index
+
+      The invocation:
+
+            integer :: MAKE_VAR(real, 1)
+
+      is equivalent to:
+
+            integer :: realvar1
+
+
+
+4 Rescanning and Recursion Prevention
+=====================================
+
+rs01. After a macro invocation is replaced, all placemarker tokens are
+      removed from the replacement. This removal never pastes adjacent
+      tokens together. The resulting sequence of tokens is rescanned,
+      together with the subsequent tokens in the source file,
+      for more macro names to expand.
+
+rs03. (C2023 6.10.5.4-2) If the name of the macro being replaced is found
+      during this scan of the replacement list (not including the rest
+      of the source file's preprocessing tokens), it is not replaced.
+      Furthermore, if any nested replacements encounter the name of the
+      macro being replaced, it is not replaced. These nonreplaced macro
+      name preprocessing tokens are no longer available for further
+      replacement even if they are later (re)examined in contexts in
+      which that macro name preprocessing token would otherwise have
+      been replaced.
+
+rs05. The resulting completely macro-replaced preprocessing token
+      sequence is not recognized as a preprocessing directive, even if
+      it resembles one.
+
+rs07. An INCLUDE line which results from a completely macro-replaced
+      preprocessing token sequence is then processed as described in
+      25-142r2 section 8 (meaning the INCLUDE line is honored).
+
+EXAMPLE rse01:
+
+      Given the macro definitions:
+
+      #define A A
+      #define B C
+      #define C B
+
+      The invocations:
+
+            A
+            B
+
+      once fully expanded are equivalent to:
+
+            A
+            B
+
+      Here A was expanded once, then expansion stopped due to rule rs03.
+      Similarly, B was expanded once to C, then rescanned and expanded
+      back into B, then expansion stopped due to rule rs03.
+
+EXAMPLE rse02:
+
+      Given the macro definitions:
+
+      #define X(a) (a, Y(a))
+      #define Y(a) (a, X(a))
+
+      The invocation:
+
+            X(1)
+
+      is equivalent to:
+
+            (1, (1, X(1)))
+
+EXAMPLE rse03:
+
+      Given the macro definition:
+
+      #define ID(x) x
+
+      The invocation
+
+            ID(ID(1))
+
+      is equivalent to:
+
+            1
+
+EXAMPLE rse05:
+
+      Given the macro definitions:
+
+        #define H I
+        #define I(x) J(1)+x(2)
+        #define J H
+
+      The invocations:
+
+            H(K)
+            H(H)
+
+      are equivalent to:
+
+            I(1)+K(2)
+            I(1)+I(2)
+
+
+
+Appendix A: Divergences from C
+==============================
+
+In most ways, the FPP specified by this document and 25-142r2 adheres to
+the existing practice established by the C preprocessor over the past
+several decades. However FPP semantics also deliberately diverge from
+the analogous behavior of the C preprocessor as specified in C 2023.
+This non-normative section enumerates such deliberate differences that
+were discussed in this document, as a reference for readers to assist in
+comparisons.
+
+For additional differences not discussed within this document, see the
+corresponding Appendix in 25-142r2.
+
+Differences include:
+
+dfc40. FPP expands macro invocations inside Fortran comments on Fortran
+       source fragment lines and in Fortran comment lines (rule ge01).
+
+dfc50. Line continuation semantics within the argument list of
+       function-like macro invocation have been adjusted to allow for
+       Fortran-style line continuation (sections 2.1.2 and 2.1.3).
+
+dfc60. Fortran-style comments within the argument list of function-like
+       macro invocation are removed during argument gathering
+       (section 2.1.4).
+
+dfc70. When determining argument boundaries in the invocation of a
+       function-like macro, FPP ignores commas surrounded by matching
+       sets of '[  ]' and '{ }' bracketing characters, in addition to
+       matching sets of '(  )' parentheses (rule ag03).
+
+dfc80. The rules for applying the stringizing operator `#` have been
+       adjusted to match Fortran character string quoting (rule st03).
+
+
+
+===END===

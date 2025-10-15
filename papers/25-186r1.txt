@@ -1,0 +1,503 @@
+To: J3                                                     J3/25-186r1
+From: Brandon Cook & Dan Bonachea
+Subject:  Specifications and Syntax for Local Prefix Operation Intrinsics
+Date: 2025-October-13
+References: J3/25-145r1, WG5/N-2249
+
+1. Background
+=============
+
+The Fortran 202Y work list (WG5/N-2249) includes work item US20:
+"Add Intrinsic and collective subroutines for prefix operations"
+
+Paper J3/25-145r1 "Requirements for US20: Local Prefix Operation
+Intrinsics" presents illustrative use cases and requirements for local
+prefix operation intrinsics. That paper was passed at J3 meeting #236
+in June 2025.
+
+This document focuses on specifications and syntax exclusively for the
+local prefix reduction variant, refining previous concepts based on
+community and WG5 feedback. By focusing exclusively on the local
+variant our aim is to allow consideration independent of the closely
+related but distinct collective subroutines.
+
+2. SUM_PREFIX
+=============
+
+2.1 Syntax
+-----------
+
+For reference, the syntax for the existing SUM intrinsic is:
+
+SUM(ARRAY, DIM [, MASK]) or
+SUM(ARRAY [, MASK])
+
+The new intrinsics are:
+
+SUM_PREFIX_INCLUSIVE(ARRAY [, MASK]) or
+SUM_PREFIX_INCLUSIVE(ARRAY, DIM [, MASK])
+SUM_PREFIX_EXCLUSIVE(ARRAY, [, MASK]) or
+SUM_PREFIX_EXCLUSIVE(ARRAY, DIM [, MASK])
+
+2.2 Specifications
+------------------
+
+Arguments
+---------
+
+S01. ARRAY shall be an array of numeric type.
+
+S03. DIM shall be an integer scalar with a value in the range
+     1 <= DIM <= n, where n is the rank of ARRAY.
+
+S05. MASK (optional) shall be of type logical and shall be conformable
+     with ARRAY.
+
+Result Characteristics
+----------------------
+
+S07. The result shall have the same type, rank, shape and kind
+     parameter as ARRAY.
+
+Result Value: SUM_PREFIX_INCLUSIVE
+----------------------------------
+
+S09. The inclusive prefix sum of a sequence S with n elements
+     s_1, s_2, ..., s_n, is the sequence R with n elements
+     r_1, r_2, ..., r_n, where r_i = \sum_{j=1}^i s_j.
+
+S11. The result of SUM_PREFIX_INCLUSIVE(ARRAY) is the inclusive prefix
+     sum of the sequence of elements of ARRAY in array element order,
+     with the result sequence provided in array element order.
+
+     Example:
+
+     If A is | 1 2 3 |, SUM_PREFIX_INCLUSIVE(A) is | 1 3 6 |.
+
+S13. The MASK argument affects the prefix sum as if ARRAY elements
+     corresponding to false elements of MASK had been replaced by 0.
+     Specifically, the result of SUM_PREFIX_INCLUSIVE(ARRAY, MASK) is
+     equal to SUM_PREFIX_INCLUSIVE(MERGE(ARRAY, 0, MASK)).
+
+     Example:
+
+     If A is | 1 2 3| and M is | T F T |,
+     SUM_PREFIX_INCLUSIVE(A, MASK = M) is
+     SUM_PREFIX_INCLUSIVE( | 1 0 3 | ) == | 1 1 4 |.
+
+S15. If ARRAY has rank one, the result of
+     SUM_PREFIX_INCLUSIVE(ARRAY, DIM = DIM [, MASK = MASK])
+     has a value equal to
+     SUM_PREFIX_INCLUSIVE(ARRAY [, MASK = MASK]).
+
+     Otherwise, the result of
+     SUM_PREFIX_INCLUSIVE(ARRAY, DIM = DIM [, MASK = MASK]) is defined
+     by the semantics of S13 applied independently along each sequence of
+     ARRAY elements in dimension DIM. More specifically, the value of
+     result elements (i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1}, ..., i_n) of
+     SUM_PREFIX_INCLUSIVE(ARRAY, DIM = DIM [, MASK = MASK]) is equal to
+     SUM_PREFIX_INCLUSIVE(
+       ARRAY(i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1}, ..., i_n),
+       DIM = 1
+    [, MASK(i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1}, ..., i_n)])
+
+     Example:
+
+     If A is | 1 2 3 |
+             | 4 5 6 |,
+     SUM_PREFIX_INCLUSIVE(A, DIM=2) is the array
+         | SUM_PREFIX_INCLUSIVE(A(1,:)) |
+         | SUM_PREFIX_INCLUSIVE(A(2,:)) |
+     which is | 1 3 6  |
+              | 4 9 15 |.
+
+Result Value: SUM_PREFIX_EXCLUSIVE
+----------------------------------
+
+S19. The exclusive prefix sum of a sequence S with n elements
+     s_1, s_2, ..., s_n, is the sequence R with n elements
+     r_1, r_2, ..., r_n, where r_i = \sum_{j=0}^{i-1} s_j with s_0 = 0.
+
+S21. The result of SUM_PREFIX_EXCLUSIVE(ARRAY) is the exclusive prefix
+     sum of the sequence of elements of ARRAY in array element order,
+     with the result sequence provided in array element order.
+
+     Example:
+
+     If A is | 1 2 3 |, SUM_PREFIX_EXCLUSIVE(A) is | 0 1 3 |.
+
+S23. The MASK argument affects the prefix sum as if ARRAY elements
+     corresponding to false elements of MASK had been replaced by 0.
+     Specifically, the result of SUM_PREFIX_EXCLUSIVE(ARRAY, MASK) is
+     equal to SUM_PREFIX_EXCLUSIVE(MERGE(ARRAY, 0, MASK)).
+
+     Example:
+
+     If A is | 1 2 3| and M is | T F T |,
+     SUM_PREFIX_EXCLUSIVE(A, MASK = M) is
+     SUM_PREFIX_EXCLUSIVE( | 1 0 3 | ) == | 0 1 1 |.
+
+S25. If ARRAY has rank one, the result of
+     SUM_PREFIX_EXCLUSIVE(ARRAY, DIM = DIM [, MASK = MASK])
+     has a value equal to
+     SUM_PREFIX_EXCLUSIVE(ARRAY [, MASK = MASK]).
+
+     Otherwise, the result of
+     SUM_PREFIX_EXCLUSIVE(ARRAY, DIM = DIM [, MASK = MASK]) is defined
+     by the semantics of S23 applied independently along each sequence of
+     ARRAY elements in dimension DIM. More specifically, the value of
+     result elements (i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1}, ..., i_n) of
+     SUM_PREFIX_EXCLUSIVE(ARRAY, DIM = DIM [, MASK = MASK]) is equal to
+     SUM_PREFIX_EXCLUSIVE(
+       ARRAY(i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1}, ..., i_n),
+       DIM = 1
+       [, MASK(i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1}, ..., i_n)])
+
+     Example:
+
+     If A is | 1 2 3 |
+             | 4 5 6 |,
+     SUM_PREFIX_EXCLUSIVE(A, DIM=2) is the array
+        | SUM_PREFIX_EXCLUSIVE(A(1,:)) |
+        | SUM_PREFIX_EXCLUSIVE(A(2,:)) |
+     which is
+        | 0 1 3 |
+        | 0 4 9 |
+
+3. REDUCE PREFIX
+================
+
+3.1 Syntax
+----------
+
+For reference, the syntax of the existing REDUCE intrinsic is:
+
+REDUCE(ARRAY, OPERATION [,MASK, IDENTITY, ORDERED]) or
+REDUCE(ARRAY, OPERATION, DIM [,MASK, IDENTITY, ORDERED])
+
+The new intrinsics are:
+
+REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION [, MASK, IDENTITY, ORDERED]) or
+REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION, DIM [, MASK, IDENTITY, ORDERED])
+REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, IDENTITY [, MASK, ORDERED]) or
+REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, IDENTITY, DIM [, MASK, ORDERED])
+
+Note that it is not possible to simultaneously preserve consistent
+argument order both between the prefix and non-prefix versions of
+REDUCE and between inclusive and exclusive definitions, with the
+constraint that IDENTITY be a non-optional argument for
+REDUCE_PREFIX_EXCLUSIVE.
+
+3.2 Specifications
+------------------
+
+3.2.1 Definitions
+-----------------
+
+D01. Generalized noncommutative reduction
+
+     The result of a generalized noncommutative reduction of a
+     non-empty sequence of elements with binary operation f
+     is the result of an iterative process.
+
+     0. If the reduction is "initialized by z", then z is inserted
+        as the first element of the sequence.
+
+     1. If the sequence contains a single element, the result is the
+        value of that element and the process is complete.
+
+     2. Select two adjacent elements x and y, with x immediately
+        preceding y. If the reduction is "ordered", x is the first
+        element in the sequence. Otherwise, the choice of x is
+        processor dependent.
+
+     3. Replace the two selected elements in the sequence with the
+        single value f(x, y), preserving order.
+
+     4. Repeat steps 1-4 until a single result is obtained.
+
+D02. Inclusive prefix reduction
+
+     The inclusive prefix reduction of a sequence S with n elements
+     s_1, s_2, ..., s_n, with binary operation f (and optional initial
+     value z), is the sequence R with n elements r_1, r_2, ..., r_n.
+     r_i is the generalized noncommutative reduction with f (and
+     initialized by z, if provided) of the sequence s_1, s_2, ..., s_i.
+
+D03. Exclusive prefix reduction
+
+     The exclusive prefix reduction of a sequence S with n elements
+     s_1, s_2, ..., s_n, with binary operation f and initial value z,
+     is the sequence R with n elements r_1, r_2, ...r_n.
+     r_1 is z, and for i>1, r_i is the generalized noncommutative
+     reduction with f initialized by z of the sequence
+     s_1, s_2, ..., s_{i-1}.
+
+D04. OPERATION=ADD
+
+     For all examples in this section, assume that ADD has been defined
+     as a compliant OPERATION implementing integer addition.
+
+3.2.2 Arguments
+---------------
+
+R01. ARRAY shall be an array of any type.
+
+R03. OPERATION shall be a pure function with exactly two arguments;
+     each argument shall be a scalar, nonallocatable, noncoarray,
+     nonpointer, nonpolymorphic, nonoptional dummy data object with
+     the same declared type and type parameters as ARRAY. If one
+     argument has the ASYNCHRONOUS, TARGET, or VALUE attribute, the
+     other shall have that attribute. Its result shall be a
+     nonpolymorphic scalar and have the same declared type and type
+     parameters as ARRAY. If ORDERED is absent or false, then OPERATION
+     should implement a mathematically associative operation. In any case,
+     OPERATION need not be commutative.
+
+R05. DIM shall be an integer scalar with a value in the range
+     1 <= DIM <= n, where n is the rank of ARRAY.
+
+R07. MASK (optional) shall be of type logical and shall be conformable
+     with ARRAY.
+
+R09. IDENTITY (optional for INCLUSIVE, required for EXCLUSIVE)
+     shall be scalar with the same declared type and type
+     parameters as ARRAY.
+
+R15. ORDERED (optional) shall be a logical scalar.
+
+3.2.2 Result Characteristics
+----------------------------
+
+R17. The result is of the same declared type, type parameters, rank,
+     and shape as ARRAY.
+
+3.2.3 Result Value: REDUCE_PREFIX_INCLUSIVE
+-------------------------------------------
+
+R31. The result of REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION) is the
+     inclusive prefix reduction (D02) of the sequence defined by
+     elements of ARRAY in array element order, with the result
+     sequence provided in array element order.
+
+     Example:
+
+     A = | 1 2 3 |
+     B = REDUCE_PREFIX_INCLUSIVE(A, ADD)
+     ! B = | 1 3 6 |
+
+R33. If the optional IDENTITY argument is present, then the
+     reduction process (D01) is initialized by IDENTITY.
+
+     Example:
+
+     A = | 1 2 3 |
+     B = REDUCE_PREFIX_INCLUSIVE(A, ADD, IDENTITY=42)
+     ! B = | 43 45 48 |
+
+R35. If the ORDERED argument is present with the value true, then the
+     reduction process (D01) is ordered.
+
+R37. If the MASK argument is present, only elements of ARRAY that
+     correspond to true elements of MASK contribute to the result. The
+     result is the inclusive prefix reduction (D02) of the elements
+     which correspond to true elements of MASK, initialized by
+     IDENTITY if present, in positions corresponding to true elements
+     of MASK. In positions where MASK is false, elements of the result
+     take their value from the preceding position in the result
+     sequence where MASK is true, or are equal to IDENTITY when there
+     are no such elements.  If IDENTITY is not present and the first
+     element of MASK is false, then error termination is initiated.
+
+     This rule is illustrated by the following pseudo code
+     (assuming ARRAY has rank 1):
+
+       if (MASK(1)) then
+         if (present(IDENTITY)) then
+           RESULT(1) = OPERATION(IDENTITY, ARRAY(1))
+         else
+           RESULT(1) = ARRAY(1)
+         end if
+       else ! MASK(1) == false
+         if (present(IDENTITY)) then
+           RESULT(1) = IDENTITY
+         else
+           ERROR STOP "missing IDENTITY"
+         end if
+       end if
+       do i = 2, size(ARRAY)
+         if (MASK(i)) then
+           RESULT(i) = OPERATION(RESULT(i-1), ARRAY(i))
+         else ! MASK(i) == false
+           RESULT(i) = RESULT(i-1)
+         endif
+       end do
+
+     Example 1:
+
+     A = | 1 2 3 4 |
+     M = | T T F T |
+
+     B = REDUCE_PREFIX_INCLUSIVE(A, ADD, MASK=M)
+     ! prefix reduction of | 1 2 _ 4 |
+     ! B = | 1 3 3 7 |
+
+     Example 2:
+
+     A = | 1 2 3 4 |
+     M = | T F F T |
+
+     B = REDUCE_PREFIX_INCLUSIVE(A, ADD, MASK=M)
+     ! prefix reduction of | 1 _ _ 4 |
+     ! B = | 1 1 1 5 |
+
+     Example 3:
+
+     A = | 1 2 3 4 |
+     M = | F T T T |
+     B = REDUCE_PREFIX_INCLUSIVE(A, ADD, MASK=M) ! Error termination
+
+     Example 4:
+
+     A = | 1 2 3 4 |
+     M = | F T T T |
+     B = REDUCE_PREFIX_INCLUSIVE(A, ADD, MASK=M, IDENTITY=100)
+     ! prefix reduction initialized by 100 of | _ 2 3 4 |
+     ! B = | 100 102 105 109 |
+
+R39. If ARRAY has rank one, the result of
+     REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION, DIM = DIM [, MASK,
+     IDENTITY, ORDERED]) has a value equal to
+     REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION[, MASK, IDENTITY, ORDERED]).
+
+     Otherwise, the result of REDUCE_PREFIX_INCLUSIVE(ARRAY,
+     OPERATION, DIM [, MASK, IDENTITY, ORDERED]) is defined by the
+     semantics of R37 applied independently along each sequence of
+     ARRAY elements in dimension DIM. More specifically, the value of
+     result elements (i_1,i_2,...,i_(DIM-1),:,i_(DIM+1),...,i_n) of
+     REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION, DIM = DIM [, MASK =
+     MASK, IDENTITY = IDENTITY, ORDERED = ORDERED]) is equal to:
+
+     REDUCE_PREFIX_INCLUSIVE(
+     ARRAY(i_1,i_2,...,i_(DIM-1),:,i_(DIM+1),...,i_n),
+       OPERATION = OPERATION, DIM = 1
+       [, MASK = MASK(i_1,i_2,...,i_(DIM-1),:,i_(DIM+1),...,i_n),
+       IDENTITY = IDENTITY, ORDERED = ORDERED] ).
+
+     Example:
+
+     A = | 1 2 3 4 |
+         | 1 1 2 3 |
+     M = | T T F T |
+         | T T T T |
+     B = REDUCE_PREFIX_INCLUSIVE(A, ADD, DIM = 2, MASK = M)
+     ! B = | 1 3 3 7 |
+           | 1 2 4 7 |
+
+
+3.2.4 Result Value: REDUCE_PREFIX_EXCLUSIVE
+-------------------------------------------
+
+R51. The result of REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION) is the
+     exclusive prefix reduction (D03) of the sequence defined by
+     elements of ARRAY in array element order, with the result
+     sequence provided in array element order.
+
+     Example:
+
+     A = | 1 2 3 |
+     B = REDUCE_PREFIX_EXCLUSIVE(A, ADD, IDENTITY=0)
+     ! B = | 0 1 3 |
+
+     Example:
+
+     A = | 1 2 3 |
+     B = REDUCE_PREFIX_EXCLUSIVE(A, ADD, IDENTITY=42)
+     ! B = | 42 43 45 |
+
+R55. If the ORDERED argument is present with the value true, then the
+     reduction process (D01) is ordered.
+
+R57. If the MASK argument is present, let r_i, a_i, m_i refer to the
+     i^{th} element in the result, ARRAY or MASK (respectively), in
+     array element order. Each element of the result, r_i, has the
+     value of the generalized noncommutative reduction initialized by
+     IDENTITY (D01) over the sequence defined by the elements a_j such
+     that m_j is true for j = 1 to i - 1: ${ a_j | m_j }_{j=1}^{i-1} $
+
+     This rule is illustrated by the following pseudo code
+     (assuming ARRAY has rank 1):
+
+       tmp = IDENTITY
+       do i = 1, size(ARRAY)
+         RESULT(i) = tmp
+         if (MASK(i)) then
+           tmp = OPERATION(tmp, ARRAY(i))
+         end if
+       end do
+
+     Example 1:
+
+     A = | 1 2 3 4 |
+     M = | T T F T |
+
+     B = REDUCE_PREFIX_EXCLUSIVE(A, ADD, IDENTITY=0, MASK=M)
+     ! prefix reduction of | 1 2 _ 4 |
+     ! B = | 0 1 3 3 |
+
+     Example 2:
+
+     A = | 1 2 3 4 |
+     M = | T F F T |
+
+     B = REDUCE_PREFIX_EXCLUSIVE(A, ADD, IDENTITY=0, MASK=M)
+     ! prefix reduction of | 1 _ _ 4 |
+     ! B = | 0 1 1 1 |
+
+     Example 3:
+
+     A = | 1 2 3 4 |
+     M = | F T T T |
+     B = REDUCE_PREFIX_EXCLUSIVE(A, ADD, IDENTITY=100, MASK=M)
+     ! prefix reduction initialized by 100 of | _ 2 3 4 |
+     ! B = | 100 100 102 105 |
+
+     R59. If ARRAY has rank one, the result of
+     REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, DIM = DIM [, MASK,
+     IDENTITY, ORDERED]) has a value equal to
+     REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION[, MASK, IDENTITY, ORDERED]).
+
+     Otherwise, the result of REDUCE_PREFIX_EXCLUSIVE(ARRAY,
+     OPERATION, DIM [, MASK, IDENTITY, ORDERED]) is defined by the
+     semantics of R57 applied independently along each sequence of
+     ARRAY elements in dimension DIM. More specifically, the value of
+     result elements (i_1,i_2,...,i_(DIM-1),:,i_(DIM+1),...,i_n) of
+     REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, DIM = DIM [, MASK =
+     MASK, IDENTITY = IDENTITY, ORDERED = ORDERED]) is equal to:
+
+     REDUCE_PREFIX_EXCLUSIVE(
+     ARRAY(i_1,i_2,...,i_(DIM-1),:,i_(DIM+1),...,i_n),
+        OPERATION = OPERATION, DIM = 1
+        [, MASK = MASK(i_1,i_2,...,i_(DIM-1),:,i_(DIM+1),...,i_n),
+        IDENTITY = IDENTITY, ORDERED = ORDERED] ).
+
+     Example:
+
+     A = | 1 2 3 4 |
+         | 1 1 2 3 |
+     M = | T T F T |
+         | T T T T |
+     B = REDUCE_PREFIX_EXCLUSIVE(A, ADD, IDENTITY=0, DIM=2, MASK=M)
+     ! B = | 0 1 3 3 |
+           | 0 1 2 4 |
+
+Straw poll
+==========
+
+The IDENTITY argument for prefix variants of REDUCE has slightly
+different behavior compared to the IDENTITY argument to
+REDUCE(). Alternative names for this argument can be considered:
+
+A. IDENTITY
+B. INIT
+C. INITIAL

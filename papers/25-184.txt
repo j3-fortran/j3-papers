@@ -1,0 +1,182 @@
+To: J3                                                     J3/25-184
+From: Mark LeAir & Jean Perier & Kate Rasmussen
+Subject: Flang Liaison Report
+Date: 2025-October-13
+
+#Reference: 25-151r1
+
+Flang Open Source Fortran Report
+================================
+
+Flang is an open-source compiler for Fortran. It is an official
+subproject of the LLVM Project (llvm.org). NVIDIA's portion of the work
+was partially sponsored by the US Department of Energy
+Exascale Computing Project (particularly, LLNL, Sandia and LANL).
+
+The current goals of the project are to
+    - Create  an open source Fortran compiler with
+      LLVM  licensing,
+    - that can be used for language and parallelization
+      experimentation,
+    - that exists as a peer in the LLVM community of languages,
+      like Clang,
+    - that can rely on LLVM code generation and parallelism
+      support for CPUs and GPUs.
+
+There is a Slack workspace for Flang and a number of conference calls
+related to Flang development.
+    - Flang biweekly sync call ("umbrella call")
+    - Flang biweekly technical call
+    - "Classic Flang" biweekly call
+    - OpenMP in Flang Technical Call
+
+Details can be found on the Getting Involved page
+http://flang.llvm.org/docs/GettingInvolved.html.
+
+The New LLVM Flang Compiler
+---------------------------
+
+The LLVM Fortran compiler is available at
+https://github.com/llvm/llvm-project (the LLVM monorepo) in the flang/
+directory.
+
+LLVM Flang is being developed under the Apache 2.0 license with LLVM
+exceptions (the same as LLVM, Clang, OpenMP, etc.).
+
+New features added between 10-June-2025 and 09-October-2025:
+
+- Added support for extension: TRANSFER(boz, integer or real scalar)
+- Added support for FNUM, MCLOCK, and SECNDS legacy extension routines.
+
+Improvements to existing features added between 10-June-2025 and
+09-October-2025:
+
+-  Preprocessor:
+  + Skip over fixed form spaces when pre-scanning exponents & kind
+  + Fix issues with concatenating tokens and logical-and in the
+    preprocessor.
+  + Fix spurious crash in the preprocessor with `#if defined` when there
+    are no definitions.
+  + Fix handling of identifier in column 1 of free form continuation
+
+- Semantic checks:
+  + Check for ultimate ALLOCATABLE component in LOCAL_INIT()
+  + Better error message for ambiguous ASSIGNMENT(=)
+  + Catch bad members of BIND(C) COMMON block
+  + Allow main program name to be the same as some module name.
+  + Check for BIND(C) name conflicts with alternate entries
+  + Don't warn on (0.,0.)**(nonzero non-integer)
+  + Check definability for logical INQUIRE specifiers
+  + fix issue with procedure interface equality checks when min/max
+    appear in specification expressions.
+  + Report conflicting EXTERNAL and INTRISIC attributes.
+  + Check SOURCE= conformability on ALLOCATE at runtime.
+  + Improve checking of I/O implied DO indices.
+  + Catch attempts to use assumed-rank as elemental argument.
+  + Catch calls to impure intrinsics from PURE subprograms
+
+- IO
+  + Allow -fdefault-integer-8 with defined I/O
+  + Allow INQUIRE(IOLENGTH=) in the presence of defined I/O
+  + Support fixed-width input field truncation for LOGICAL as an IO
+    extension.
+  + Reject bare exponent letter as valid real input to a formatted READ
+    statement outside of fixed-width input fields.
+  + Handle null list-directed fields in child input
+  + Allow for equivalent types in non-TBP defined I/O
+
+- Support equivalent SEQUENCE type arguments in array repacking option.
+- Support cases where a global name is used in a compilation unit both as
+  a common block and a BIND(C) module variable.
+- Fix pointer association with bounds remapping of non-polymorphic type
+  being associated to an extended type.
+- Do not duplicate impure calls when processing UBOUND into
+  SIZE + LBOUND - 1.
+- Reject scalars in LBOUND and UBOUND ARRAY= argument.
+- Generate copy-in/out when passing no- contiguous array to scalar with
+  DIR$ IGNORE_TKR
+- Set extents of pointers being remapped with reversed bounds to zero.
+- Support exponentiation of UNSIGNED extension type.
+- Ensure padding is done in ALLOCATE statement where SOURCE length is
+  shorter than the one of the allocate-object.
+- Improve hermetic module files generation
+- Restructure runtime to avoid recursion
+- Fixed bug with `allocatable = +x` where x was incorrectly taking the
+  lower bounds of x.
+- Give external linkage to BIND(C) module variables declared with the
+  CDEFINED extension, and warn in case an initial value is given in Fortran
+  to such variable.
+- Fix processing of structure constructor initial values of types with a
+  pointer component with a default value.
+
+Improvements to the Driver added between 10-June-2025 and
+09-October-2025:
+
+- When printing a warning also print the option to disable the warning.
+  All warnings that can be emitted can now be disabled by some option.
+- When both -Werror and -Wfatal-errors are provided, compilation now stops
+  at the first warning.
+
+Improvements to Codegen added between 10-June-2025 and
+09-October-2025:
+
+- Set low probability for array repacking code.
+- Add option to generate runtime type info as external to improve
+  compilation times.
+- Improved EOSHIFT code generation to avoid array temporaries.
+- Improved generated code for character comparisons and INDEX.
+- Improved alias analysis for common blocks by generating LLVM TBAA
+  subtrees.
+
+Updates to multi-image features between 10-June-2025 and 10-October-2025
+
+- Merged experimental support for lowering to Parallel Runtime Interface
+  for Fortran (PRIF) routines to support the following Fortran multi-image
+  features: this_image, num_images, co_sum, co_min, co_max, co_broadcast,
+  sync all, sync memory, sync images. A paper with details will be
+  presented at The Eleventh Workshop on the LLVM Compiler Infrastructure
+  for HPC, to be held at SC25
+  (https://llvm-in-hpc-workshop.github.io/LLVM-HPC-2025-Workshop.github.io)
+- Merged addition of `-fcoarray` flag, which supports linking to a
+  PRIF implementation.
+- PR is open to move experimental support for the above features to a new
+  MLIR Dialect, the Multi-Image Fortran (MIF) Dialect.
+- PRIF revision 0.6 published (https://go.lbl.gov/prif)
+- Caffeine (https://go.lbl.gov/caffeine) a PRIF implementation, now
+  supports nearly all of PRIF and thus nearly all multi-image features.
+
+Summary
+
+The current state of the LLVM Flang compiler:
+    - written in modern C++ following LLVM conventions
+    - over 200,000 lines of code, tests and scripts
+    - parses all of Fortran 2018 to abstract syntax trees (AST)
+    - parses  OpenMP 4.5 and some OpenMP 5.0
+    - parses OpenACC 3.0
+    - defines a "Fortran Intermediate Representation" (FIR) based on
+      LLVM's MLIR
+    - can analyze most OpenMP and OpenACC constructs
+    - can compile and correctly run Fortran 77 programs (passes FCVS
+      test suite), nearly all Fortran 95 programs, and many programs that
+      use Fortran 2003+ modern features.
+    - supports end-to-end compilation of all OpenMP 1.1 except for
+      reduction, privatization, and one atomic construct.
+    - for later versions of OpenMP, Flang has support for simd, task,
+      taskgroup etc.
+
+
+Classic Flang Compiler
+----------------------
+
+The previous version of Flang, now known as Classic Flang, is derived from
+the PGI Fortran compiler, with some proprietary features removed (e.g.,
+OpenACC support, Interprocedural Analysis). It is the basis for commercial
+Fortran compilers from AMD and Huawei. Previous commercial versions of
+the Arm Fortran compiler also used Classic Flang as its basis. Commercial
+Arm Fortran compilers are now based on LLVM Flang.
+
+Classic Flang is available for Linux on x86-64, OpenPOWER, and Arm
+processors. Also, experimental support for RISCV is available. OpenPower
+support is not currently being maintained but it is still available.
+
+More information is available at https://github.com/flang-compiler/flang.
