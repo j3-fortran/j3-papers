@@ -1,0 +1,163 @@
+To: J3                                                     J3/25-188
+From: Malcolm Cohen
+Subject: US25 complex/real association, specifications/syntax
+Date: 2025-October-15
+Reference: 24-129, 24-173
+
+
+1. Introduction
+
+Paper 24-129 suggests allowing real array pointers to complex targets,
+and complex pointers to real array targets. Paper 24-173 has the formal
+requirements for the feature.
+
+This paper has specifications and syntax.
+
+
+2. Additional technical issues
+
+(d) Rank-remapping already has conditions that would make real pointers to
+    complex targets work, but those conditions are insufficient for complex
+    pointers to real targets when the target is a vector. In that case, the
+    target must be contiguous, and maintaining the existing state which is
+    that the suitability must be compile-time-detectable, that means that
+    it must be simply contiguous.
+
+(e) The standard at present only has the contiguity/rank rule for
+    rank-remapping in plain normative text, not as a Constraint.
+    It is arguably easier for users and vendors alike to have these simple
+    rules listed as Constraints (less likely to be overlooked), and since
+    we are revising it anyway, this paper will propose making the revised
+    rule into a Constraint.
+
+(f) Not a technical issue, but the requirements did not specifically state
+    that a scalar pointer could be associated with an array
+    (that is, a complex pointer and a two-element contiguous real array),
+    nor that an array pointer could be associated with a scalar
+    (that is, a real array pointer of size two and a scalar complex),
+    the wording being deliberately vague.
+
+    We can already have such associations via EQUIVALENCE, for single
+    precision real and complex, so this would not be completely new; but
+    in any case, the specifications need to say clearly if we intend to
+    allow or disallow it.
+
+    The primary use case for the feature is for the array association.
+    Permitting scalar-array pointer association would reduce error
+    detection by a small amount, would complicate the description and the
+    standard, and would be inconsistent in that it would be the only case
+    where a scalar could be associated with an array.
+    Furthermore, there is little cost in making a scalar temporary, or a
+    two element array temp, so permitting such an association would not be
+    a significant benefit to the programmer.
+
+    Thus, the proposal is that such associations shall be for arrays only.
+
+
+3. Specifications (and syntax outline)
+
+(25S-1) That an array pointer of type complex may be associated with a
+        target array of type real, with the same kind.
+
+(25S-2) That an array pointer of type real may be associated with a target
+        that is an array of type complex, with the same kind.
+
+(25S-3) Consecutive elements of the real array are associated with the real
+        and imaginary parts, in order, of the complex array.
+
+(25S-4) Such a pointer assignment shall only be done with a rank-remapping
+        pointer assignment. That automatically requires the target to be
+        either simply contiguous or of rank one.
+
+(25S-5) When the pointer (on the LHS of the pointer assignment) is complex,
+        the target shall be simply contiguous. This should be a Constraint.
+
+(25S-6) Currently, the simply contiguous or rank one requirement is plain
+        normative text. This should become a Constraint.
+
+(25S-7) That no other association between real or complex is permitted,
+        beyond that already provided by storage association. This is to
+        maintain existing error detection capabilities. In particular,
+        pointer assignment between an array and a scalar is not permitted.
+
+
+4. Formal syntax
+
+Formally, the syntax is described by edits to the standard that will
+achieve it. Additional edits will be required. Also, the edits below could
+benefit from more wordsmithing; however, as is they should be sufficient to
+unambiguously describe the syntax and semantics.
+
+Change
+    "C1016 (R1034) If"
+to
+    "C1016 (R1034) If data-target is type real or complex, and either
+           bounds-remapping-list or upper-bounds-expr appears, data-
+           pointer-object shall be of type real or complex and the kind
+           type parameters shall be equal.
+           Otherwise, if"
+Note: the rest of the constraint is:
+                         "data-target is not unlimited polymorphic, data-
+           pointer-object shall be type compatible (7.3.3) with it and the
+           corresponding kind type parameters shall be equal."
+{The first sentence covers real=>real and complex=>complex as well as this
+ feature. This is simpler than having sentences that cover only the
+ real=>complex and complex=>real cases.}
+
+Before
+   "C1022 If neither bounds-remapping-list nor upper-bounds-expr appears"
+insert new constraint
+   "C1021a If data-target is of type real and data-pointer-object is of
+           type complex, data-target shall be simply contiguous (9.5.4).
+           Otherwise, if bounds-remapping-list or upper-bounds-expr appears
+           in a pointer-assignment-stmt, data-target shall be simply
+           contiguous or of rank one."
+{data-pointer-object only appears in pointer-assignment-stmt, so we don't
+ need the condition in the first sentence.}
+
+In paragraph 8, beginning "If bounds-remapping-list", delete
+    "shall be simply contiguous (9.5.4) or of rank one, and"
+{That part is now covered by the constraint.}
+
+Still in p8, sentence
+   "The number of elements of the pointer target shall not be less than
+    the number implied by the bounds-remapping-list."
+insert before the full stop:
+   ", multiplied by two if the pointer object is of type complex and the
+    target is of type real, or by half (and rounded up) if the pointer
+    object is of type real and the target is of type complex".
+
+Still in p8, sentence describing how the elements are associated, change
+   "specified for the pointer object"
+to
+   "required by the bounds-remapping-list",
+making that sentence read
+   "The elements of the pointer object are associated with those of the
+    pointer target, in array element order; if the pointer target has more
+    elements than required by the bounds-remapping-list, the remaining
+    elements are not associated with the pointer object."
+{The "required by the bounds-remapping-list" is to get the multiplication
+ by 0.5 or 2 included in the element count. The sentence is then correct,
+ but it does not explain that with real/complex two elements on one side
+ associated with one element on the other - we will do those next.}
+
+Still in p8, append sentence
+   "If the pointer object is of type real and the pointer target is of type
+    complex, this association has two consecutive elements of the pointer
+    object becoming associated with a single element of the pointer target,
+    first the real part then the imaginary part; if the pointer object has
+    an odd number of elements, the final element becomes associated with
+    the real part of the final affected element of the pointer target."
+{Semantics for real => complex.}
+
+Still in p8, append another sentence
+   "If the pointer object is of type complex and the pointer target is of
+    type real, this associated has each element of the pointer object
+    becoming associated with two consecutive elements of the pointer
+    target; the real part of the complex element becomes associated with
+    the first of the consecutive real elements, and the imaginary part of
+    the complex element becomes associated with the second of those
+    consecutive elements."
+{Semantics for complex => real.}
+
+===END===
