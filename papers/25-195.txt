@@ -1,0 +1,184 @@
+To: J3                                                     J3/25-195
+From: Malcolm Cohen
+Subject: Generalised reduction prefix (inclusive) semantics
+Date: 2025-October-22
+Reference: WG5/N2249, 25-145r1, 25-186r1
+
+
+1. Introduction
+
+There are several competing models for how the IDENTITY argument should
+work in a generalised reduction prefix operation. This paper attempts to
+describe those models succintly, with simple examples, to help us to decide
+which model we want to use.
+
+If the IDENTITY argument is a true identity, that is OPERATION(identity,x)
+has the value of x, and OPERATION(x,identity) has the value x, all three
+models act the same.
+
+The three models have different effects in different situations,
+in INCLUSIVE mode:
+(a) there is a MASK argument with first value FALSE, a later one TRUE;
+(b) there is a MASK argument with first value TRUE, a later one FALSE;
+(c) there is no MASK argument (or equivalently, all values TRUE).
+
+To keep the paper simple, we will do one example with no MASK, and one with
+a MASK that has both an initial FALSE and a later FALSE, and the rest TRUE.
+We will also have an example where the IDENTITY is palpably not any sort
+of identity, not even a mathematical one, with the 1st MASK element FALSE.
+
+Also to keep the paper simple, we will only discuss INCLUSIVE.
+(The EXCLUSIVE semantics follow straightforwardly from the INCLUSIVE.)
+
+Similarly, the results for higher ranks follow from the vector results.
+
+
+2. The examples
+
+Example 1: A = [ 1,2,3,4 ], IDENTITY = 100, no MASK
+
+    Pure Integer Function OPERATION(a,b)
+        Integer,Intent(In) :: a,b
+        OPERATION = a + b
+    End Function
+
+Example 2:
+    Type t
+        Integer res
+        Integer :: missing = 0
+    End Type
+    A = [ t(1),t(2),t(3),t(4) ], IDENTITY = t(0,1), MASK = [ F,T,F,T ]
+
+    Pure Type(t) Function OPERATION(a,b)
+        Type(t),Intent(In) :: a,b
+        OPERATION = t(a%res+b%res,a%missing+b%missing)
+    End Function
+
+
+Example 3: A = [ 1,2,3,4 ], IDENTITY = 100, MASK = [ F,T,F,T ]
+    That is, the A and IDENTIFY from Example 1, and MASK from Example 2.
+
+3. The Models
+
+Note: In all models, where MASK=TRUE, R(n+1) is OPERATION(R(n),R(n+1)).
+
+3.1 Model 1: Use IDENTITY only when necessary, that is
+             only for the first element when masked out;
+             later MASK=FALSE elements just copy the previous.
+
+This is the model described in REDUCE (and CO_REDUCE).
+
+Example 1 Result = [ 1,3,6,10 ]
+
+Example 2 Result = [ t(0,1), t(2,1), t(2,1), t(6,1) ]
+
+Example 3 Result = [ 100, 102, 102, 106 ]
+
+3.2 Model 2: Prefix the whole sequence with the IDENTITY value, skip the
+             result for it, and for later MASK=FALSE elements just copy
+             the previous.
+
+This is the model described in 25-186r1.
+
+Example 1 Result = [ 101,103,106,110 ]
+
+Example 2 Result = [ t(0,1),t(2,1),t(2,1),t(6,1) ]
+
+Example 3 Result = [ 100, 102, 102, 106 ]
+
+3.3 Model 3: Use the IDENTITY argument for all masked-out elements.
+
+This is the model described by some committee members during discussion.
+Example 2 is the motivating ("how many missing elements included in this
+value") use case.
+
+Example 1 Result = [ 1,3,6,10 ]
+
+Example 2 Result = [ t(0,1),t(2,1),t(2,2),t(6,1) ]
+
+Example 3 Result = [ 100, 102, 202, 206 ]
+
+Note that with this model, it would be an error for IDENTITY to be absent
+if MASK has any FALSE element, whereas models 1 and 2 it is only an error
+for IDENTITY to be absent if the first element of MASK is FALSE.
+
+
+4. Properties of the models
+
+When MASK is absent or MASK(1) is TRUE, model 1 is the only one that
+describes the actual semantics for a prefix reduction:
+that is, one that has the property
+
+    REDUCE_PREFIX_INCLUSIVE_model_1(A, [ MASK=M ] ...)
+    ==
+    (/ (REDUCE(A(:i), [ MASK=MASK(:i) ] ...), i=1,n) /)
+
+using here "..." to indicate all other arguments, which will be the same.
+WLOG, array bounds 1 to n.
+
+When IDENTITY is not an identity and MASK(1) is FALSE, that property does
+not hold for model 1 (or any other model).
+
+Model 2 has instead the property (always):
+
+    REDUCE_PREFIX_INCLUSIVE_model_2(A, IDENTITY=IDENTITY, [ MASK=M ] ...)
+    ==
+    (/ (REDUCE([IDENTITY,A(:i)], [ MASK=(/.True.,M(:i)/) ] ...), i=1,n) /)
+
+We can see here that IDENTITY is not functioning like an identity value,
+instead changing the function so that it computes the ordered set of
+reductions of a different array from the one specified, and with the first
+element of those omitted.
+
+Model 3 has the property (again, always):
+
+    REDUCE_PREFIX_INCLUSIVE_model_3(A, IDENTITY=IDENTITY, [ MASK=M ] ...)
+    ==
+    (/ (REDUCE(MERGE(A(:i),IDENTITY,M(:i)), ...), i=1,n) /)
+
+    === REDUCE_PREFIX_INCLUSIVE_model_1(MERGE(A,IDENTITY,M), ...)
+
+We can see here that model 3 can be expressed quite simply via model 1.
+If the processor optimises prefix reductions of elemental expressions to
+avoid unnecessary array temps, this formula should perform similarly to
+a native intrinsic version.
+
+
+5. Discussion and recommendation
+
+Desirable though it is to to have the property
+
+    REDUCE_PREFIX_INCLUSIVE(A, [ MASK=M ] ...)
+    ==
+    [ (REDUCE(A(:i), [ MASK=MASK(:i) ] ...), i=1,n) ]
+
+we can see from the above examples that this is not, in fact, possible,
+without inserting a requirement that IDENTITY is a true identity, or at
+least a mathematical identity. But that cannot be easily checked.
+
+However, if we remove the MASK and IDENTITY arguments from
+REDUCE_PREFIX_INCLUSIVE, there is no problem.
+
+We can still compute masked versions (by using MERGE for the model 3
+result or for models 1 and 2 when there is a true identity available,
+and PACK/UNPACK for the models 1 and 2 result).
+
+Therefore the recommendation is to remove the MASK and IDENTITY arguments
+from REDUCE_PREFIX_INCLUSIVE.
+
+
+6. Postscript
+
+The EXCLUSIVE version is equivalent to the INCLUSIVE version of a different
+array, viz with an initial value inserted at the beginning and the last
+element omitted. This initial value is best characterised by having the
+dummy argument called INITIAL (not IDENTITY).
+
+This is illustrated by the following formulae (for vectors):
+    REDUCE_PREFIX_EXCLUSIVE(A, INITIAL=INITIAL, ...)
+    ===
+    REDUCE_PREFIX_INCLUSIVE( (/ INITIAL,A(:n-1) /), ...)
+    ===
+    REDUCE_PREFIX_INCLUSIVE( EOSHIFT(A,1,INITIAL), ...)
+
+===END===

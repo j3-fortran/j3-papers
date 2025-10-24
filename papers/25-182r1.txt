@@ -1,0 +1,252 @@
+To: J3                                                     J3/25-182r1
+From: Malcolm Cohen
+Subject: US15 Readonly pointers, formal syntax
+Date: 2025-October-23
+Reference: 23-198, 24-167, 25-179, 25-007r1.
+
+1. Introduction
+
+23-198 is the background paper for US15; meeting 230, unanimous consent.
+24-167 is the estimate of effort involved (UK panel): level 4.
+25-179 contains the formal requirements and specifications.
+
+
+2. Choice of keyword
+
+The most contentious issue is the choice of keyword to use for the new
+attribute. Here is a list of keywords that were previously considered.
+
+    READONLY
+    IMMUTABLE
+    INDEFINABLE
+    UNASSIGNABLE
+
+These are all slightly problematic:
+    READONLY sounds like it is something to do with i/o, and indeed was a
+             i/o keyword in an ancient Fortran 77 extension. It would also
+             be ambiguous as a statement name in fixed form, viz
+                READONLY x, y
+             could be
+                READ onlyx, y
+             That could be avoided by making the optional double-colon
+             mandatory, but that does not seem like a great idea.
+    IMMUTABLE means that the value cannot be changed. It does not clearly
+              indicate that the value being referred to is that of the
+              target rather than the pointer, nor is it accurate: the
+              target can (sometimes/often) be changed, just not via the
+              pointer.
+    INDEFINABLE is understandable in standardese, but is hardly clear to
+                a casual reader.
+    UNASSIGNABLE is perhaps clearer in meaning to a casual reader, but it
+                 is still not particularly readable.
+
+Two other more recent suggestions are more verbose, but perhaps clearer:
+
+    PROTECTED_TARGET is perhaps the clearest description of what it means;
+                     the target is protected from the pointer, viz from
+                     being modified via the pointer. It is also the most
+                     verbose, but that is the price for clarity.
+
+    NON_ASSIGNABLE is a more readable version of UNASSIGNABLE.
+
+Subgroup recommendations are, in order of preference:
+    PROTECTED_TARGET
+    NON_ASSIGNABLE
+    READONLY (mandatory "::" needed in the statement form)
+
+The syntax section assumes that PROTECTED_TARGET is chosen as the keyword.
+In the event that the committee prefers a different keyword, production of
+a revised section is a simple matter of search-and-replace.
+
+
+3. Syntax
+
+The new syntax details are given by showing new productions, constraints,
+and subclauses, in the form of edits.
+
+There shall be an attribute, keyword PROTECTED_TARGET, that can be used for
+named data pointers and data pointer components. A function result may have
+the attribute (if it is a data pointer).
+
+Additional production for R738 component-attr-spec:
+    "or PROTECTED_TARGET".
+
+Additional constraint, after the other attribute-related constraints for
+components:
+    "C756a If the PROTECTED_TARGET attribute is specified in a
+           component-attr-spec-list, the POINTER attribute shall also be
+           specified in that list.".
+
+Additional production for R802 attr-spec (used in type-declaration-stmt):
+    "or PROTECTED_TARGET".
+
+New subclause for the attribute:
+
+   "8.5.15a PROTECTED_TARGET attribute
+
+     The PROTECTED_TARGET attribute imposes limitations on the usage of a
+     data pointer.
+
+     C860a A pointer with the PROTECTED_TARGET attribute shall not appear
+           in a variable definition context other than as an
+           allocate-object in an ALLOCATE statement.
+
+     C860b A pointer with the PROTECTED_TARGET attribute shall not be in a
+           common block.
+
+     C860c A pointer with the PROTECTED_TARGET attribute shall not be an
+           allocate-object in a DEALLOCATE statement.
+
+     C860d If a pointer with the PROTECTED_TARGET attribute appears as an
+           allocate-object in an ALLOCATE statement, that statement shall
+           have a SOURCE= clause.
+
+     C860e If a pointer with the PROTECTED_TARGET attribute, or a subobject
+           thereof, appears as the data-target in a pointer assignment
+           statement, the data-pointer-object in that statement shall have
+           the PROTECTED_TARGET attribute.
+
+     C860f If a pointer with the PROTECTED_TARGET attribute, or a subobject
+           thereof, appears as the data-target in a structure-constructor,
+           the corresponding component shall have the PROTECTED_TARGET
+           attribute.
+
+     C860g If a pointer with the PROTECTED_TARGET attribute, or a subobject
+           thereof, appears as an actual argument and the corresponding
+           dummy argument is a pointer, that dummy argument shall have the
+           PROTECTED_TARGET attribute.
+
+     C860h A pointer with the PROTECTED_TARGET attribute, or a subobject
+           thereof, shall not appear as an actual argument to a procedure
+           that has an implicit interface.
+
+     C860i If a pointer with the PROTECTED_TARGET attribute, or a subobject
+           thereof, appears as an actual argument and the corresponding
+           dummy argument is not a pointer, that dummy argument shall have
+           the INTENT (IN) attribute.
+
+     The target of a data pointer with the PROTECTED_TARGET attribute is
+     not definable via that pointer.".
+
+Notes: C860h is for specification S7, so should be removed if specification
+       S7 is not adopted.
+       Similarly, C860i is for specification S8, so should be removed if
+       that specification is not adopted.
+
+There shall be a PROTECTED_TARGET statement.
+This is a specification statement.
+
+New subclause for the statement:
+
+   "8.6.13a PROTECTED_TARGET statement
+
+    R859a protected-target-stmt is PROTECTED_TARGET [ :: ]
+                                   variable-name-list
+
+    C892a A variable-name in a protected-target-stmt shall have the POINTER
+          attribute.
+
+    The PROTECTED_TARGET statement specifies the PROTECTED_TARGET attribute
+    for a list of variables."
+
+Note: If we want the syntax to be more compatible, in fixed form source,
+      with the uncommon(?) extension of being able to begin a name with an
+      underscore, we could make the double-colon non-optional.
+      This paper does not recommend that.
+
+4. Examples
+
+These are the examples from the specifications paper, changed to use the
+recommended keyword, with additional explanation and references to any
+constraints that may be violated added.
+
+Consider module M; the examples assume this is accessed by use association.
+
+        MODULE m
+            REAL,PROTECTED,TARGET :: x, y
+            REAL,TARGET :: z
+        END MODULE
+
+        REAL,POINTER :: wp                  ! Writable Pointer
+        REAL,POINTER,PROTECTED_TARGET :: np  ! Nonwritable Pointer
+        wp => x ! Valid but unsafe, and we cannot change for two+ revisions
+        np => x ! Valid and safer
+
+        wp = 999 ! Invalid, but does not violate a constraint.
+        np = 999 ! Invalid, violates constraint C860a.
+
+The declaration:
+        COMMON/bad_idea/np      ! Invalid, violates constraint C860b.
+
+        DEALLOCATE(wp)  ! Invalid, hard to diagnose at compile time.
+        DEALLOCATE(np)  ! Invalid, violates constraint C860c.
+
+        ALLOCATE(np)    ! Invalid, violates constraint C860d.
+        ALLOCATE(np,SOURCE=43.0)    ! Valid, 43.0 cannot later be changed.
+
+        np => y     ! Valid to pointer-assign to another protected target.
+        np => z     ! Valid to pointer-assign to a definable target.
+        NULLIFY(np) ! Valid to nullify.
+
+        np => wp ! Valid, can pointer-assign from a non-PROTECTED_TARGET.
+        np => np ! Valid, can pointer-assign from a PROTECTED_TARGET.
+        wp => np ! Invalid, violates constraint C860e.
+
+With the derived type:
+        TYPE t
+            REAL,POINTER :: wpc ! Writeable Pointer Component
+        END TYPE
+        TYPE(t) u
+
+        u = t(wp) ! Valid.
+        u = t(np) ! Invalid, violates constraint C860f.
+
+With these two procedures, declared with the explicit interfaces:
+        INTERFACE
+            SUBROUTINE writeto_p(pd)
+                REAL,POINTER :: pd
+                ! If associated, pd will get assigned a value.
+            END SUBROUTINE
+            SUBROUTINE readfrom_p(pd)
+                REAL,POINTER,PROTECTED_TARGET :: pd
+            END SUBROUTINE
+        END INTERFACE
+then
+        CALL writeto_p(wp)  ! Valid (as long as the target is definable).
+        CALL readfrom_p(wp) ! Valid.
+        CALL writeto_p(np)  ! Invalid, violates constraint C860g.
+        CALL readfrom_p(np) ! Valid.
+
+With an implicit-interface procedure:
+        SUBROUTINE implicit_sub(out)
+            out = 999
+        END SUBROUTINE
+
+Declared here by:
+        EXTERNAL implicit_sub
+
+Then, if ASSOCIATED(wp,x) is true:
+        CALL implicit_sub(wp)   ! Invalid, hard to diagnose at compile time
+
+hard to diagnose because:
+        ALLOCATE(wp)            ! After this...
+        CALL implicit_sub(wp)   ! The call is Valid.
+
+but with the PROTECTED_TARGET pointer:
+        CALL implicit_sub(np)   ! Always Invalid, violates constraint C860h
+
+With an external (or dummy) procedure with the explicit interface:
+        INTERFACE
+            SUBROUTINE explicit(q)
+                REAL q ! Does Q get assigned to? Who knows. Could be.
+            END SUBROUTINE
+        END INTERFACE
+
+Then
+        ALLOCATE(wp)
+        CALL explicit(wp)   ! Valid.
+        CALL explicit(x)    ! Valid if and only if Q is not assigned to,
+                            ! which is hard to diagnose at compile time.
+        CALL explicit(np)   ! Invalid, violates constraint for S8.
+
+===END===
