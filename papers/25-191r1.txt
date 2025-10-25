@@ -1,0 +1,523 @@
+To: J3                                                     J3/25-191r1
+From: Malcolm Cohen
+Subject: US16 Default kinds, formal requirements, specs, syntax
+Date: 2025-October-24
+Reference: 23-199r1
+
+
+1. Introduction
+
+See 23-199r1 for an introduction to this feature.
+This paper has the formal requirements, specifications, and syntax.
+
+It can be noted that it a program is usually not required to be written
+using default kinds - it can be written using explicit kind specifiers
+instead. However,
+(a) most programs do not follow that style;
+(b) without compiler support with warnings, it is all too easy to leave off
+    the kind from a literal constant without noticing.
+
+Differences from the r0:
+    - (4.7) added straw vote for whether it should scope like IMPLICIT,
+      viz allow overriding, with alternative specs/syntax accordingly.
+    - (4.9) added optional named constants for standard range integer etc..
+
+
+2. Requirements
+
+R1. That the default kind for each intrinsic data-type can be controlled
+    by specifications within the source code of the program.
+
+R2. In principle, each program unit should be able to control this.
+
+R3. In principle, a nested scoping unit should inherit the default kind
+    settings from its host.
+
+Note: These requirements leave a lot unspecified, including whether the
+      settings can be overridden in nested scoping units. Those details
+      will be addressed in the specifications.
+
+Aspiration: The feature should be as simple and easy to use as possible.
+
+R4. Specifying the default kind shall not affect entities with specified
+    kind type parameters. That includes variables or components whose
+    declaration includes the KIND= specifier, and literal constants that
+    have an underscore and kind-param appended.
+
+R5. That the rules for the obsolete storage association feature will apply
+    to what would have been the default kinds when the feature is not being
+    used.
+
+
+3. Discussions on specific types (terminology and an extra requirement)
+
+3.1 REAL type
+
+We have an obvious term for the default "default real kind", and that would
+be "single precision real kind" with obvious variations (e.g. omitting
+"kind", or "real kind", when they are already implied).
+
+Then the subclause on REAL type says we have two kinds, single precision
+and double precision, and that the default, when not specified by the
+program unit, is single precision.
+
+3.1 COMPLEX type
+
+Default kind for COMPLEX is currently defined to be the default kind for
+REAL. We should keep to that, as making it separately specifiable would
+almost certainly cause surprise and confusion.
+
+This leads to the requirement:
+
+R6. Changing the default kind for REAL shall change the default kind for
+    COMPLEX accordingly.
+
+3.2 INTEGER type
+
+We will need a term to describe the current "default integer kind".
+At a pinch we could use the REAL term, viz "single precision", but that is
+suboptimal as integers don't have precision, they have range.
+
+A new term "default range integer kind", would work, with variations
+    "default range integer" (when we don't need to say "kind"),
+and "integer with default range" (when it sounds more natural)
+and even simply "default range" (e.g. when saying something like
+    "X shall be of type integer, with a decimal exponent range no smaller
+     than default range."
+
+3.3 LOGICAL type
+
+Similarly, we really cannot say "single precision LOGICAL".
+
+As it is the size that is the only obvious distinguishing characteristic
+for LOGICAL, it would seem that "default size logical kind" (with obvious
+variations) would work. Here, "default size" means "the size when there is
+no specification of what default kind LOGICAL is".
+
+3.4 CHARACTER type
+
+There are a handful of places where CHARACTER values/variables are
+required to be "default kind". These are most in interactions with the
+operating system, e.g. FILE= in OPEN and the COMMAND in GET_COMMAND and
+EXECUTE_COMMAND_LINE.
+
+That suggests using the term "system character kind" for default default
+character.
+
+
+4. Other technical issues
+
+4.1 DOUBLE PRECISION type specifier and the D exponent letter
+
+We need to handle double precision real kind "appropriately".
+That is, what kind is specified by DOUBLE PRECISION, and by the D exponent
+letter on a literal constant.
+
+However we decide to handle DOUBLE PRECISION, it seems clear that the
+exponent letter D must give the same kind. This will be spelled out in the
+specifications.
+
+There are three conflicting models for the effect of DOUBLE PRECISION:
+(1) that double precision should be twice the size of default real
+    (this is how some compilers treat their "-r8" option, or whatever
+     it is called);
+(2) that double precision should continue to be twice the size of
+    single precision, which is what default real is when the feature is
+    not being used (some compilers do this for their "-r8" option);
+(3) that double precision should be separately specifiable by the user.
+
+The problems with option (1) are:
+(a) if default real is specified to be half precision (e.g. IEEE binary16),
+    changing DOUBLE PRECISION to mean IEEE single precision (binary32) may
+    be surprising to some users;
+(b) if default real is specified to be a decimal kind (IEEE decimal32),
+    both changing DOUBLE PRECISION to decimal64 or leaving it as binary64
+    would be surprising to some users;
+(c) if default real is specified to be the kind with maximum precision,
+    there is no kind that can satisfy the requirements of "double the size,
+    and higher precision").
+
+The problem with option (2) is that some users may find it surprising for
+DOUBLE PRECISION to be unaffected when default REAL is changed.
+
+The problem with option (3) is that DOUBLE PRECISION could easily end up
+with more than twice the precision of single precision, or less precision
+than single precision, unless we made a constraint about that. Without such
+a constraint, option (3) would make programs even harder to understand than
+they are now. Of course, it also would not solve issue (c) viz if
+default real were the kind with maximum precision.
+
+There is also the issue that having DOUBLE PRECISION specify anything other
+than double precision kind would be somewhat counter-intuitive. We'd need
+terminology like "standard double precision kind" and "specified double
+precision kind" to make sure the standard is clear, but that is not an
+insurmountable problem, just a bit ugly.
+
+On balance, it seems least surprising to have DOUBLE PRECISION unaffected
+by any change to what default REAL is. This will be spelled out in the
+specifications.
+
+4.2 Specific intrinsic functions involving real kinds
+
+Similarly, there are two competing models for specific intrinsic functions;
+(1) functions that currently take default real arguments or have a default
+    real result should take and return single precision real
+    (this is how some -r8 or similar options work);
+(2) functions with default real argument(s) or result should take and
+    return the new default real
+    (this is how other -r8 or similar options work).
+
+It would be strange for the double precision intrinsics (DACOS et al) not
+to follow the decision for handling DOUBLE PRECISION. Thus, if we take the
+previous recommendation that DOUBLE PRECISION should be unaffected by
+changing what default real is, then DLOG et al should be unchanged, and so
+for consistency, ALOG et al should become single precision.
+
+4.3 Other specific intrinsic functions
+
+Similarly, default integer has two competing models, and we should choose
+the same as for default real. That is, either follow the specified default
+integer, or follow "default size integer".
+
+There are two unrestricted specific intrinsics that involve default
+character, INDEX and LEN; the restricted ones do not raise any issues from
+being specific (the issues that arise apply equally to the generics).
+
+On balance, the implementation effort to implement passing all the specific
+intrinsic functions as actual arguments for all possible kinds seems too
+much for what is, after all, an obsolescent feature.
+
+4.4 Generic intrinsic procedures
+
+A number of generic intrinsic functions have a result that is default
+real, complex, integer, logical, or character. Again, we have potentially
+competing models:
+(1) the result should be the user-specified default kind;
+(2) the result should be unaffected by this feature.
+
+An obvious advantage of model (1) is that for integer type, it would mean
+that the user could say "DEFAULT INTEGER IS INT64" (not actual proposed
+syntax!) instead of having to put ",INT64" at the end of all of the
+references to e.g. SHAPE, SIZE, LBOUND... There doesn't seem to be any
+significant advantage for type logical though, other than consistency with
+what unadorned LOGICAL means.
+
+For type character, model (1) works for e.g. NEW_LINE, but does not work
+for e.g. EXECUTE_COMMAND_LINE since the operating system is going to want
+system characters there. That is easily handled by having those procedures
+that interact with the operating system use system character, regardless of
+what other procedures that currently use default character will do.
+
+Accepting model (1) would not increase the implementation burden for type
+integer by very much, as the processor already has to be able to return
+different kinds for the functions that have KIND arguments. There would be
+a small burden for default logical functions though.
+
+Again, the simplest thing would be to have the generic intrinsics not be
+affected by this feature.
+
+However, consistency would be enhanced by having REAL return specified
+default real, similarly for INT, CMPLX, LOGICAL, and CHAR. That is, of
+course, unless a KIND argument appears.
+
+Apart from GET_COMMAND et al, there are a few intrinsics that may deserve
+special treatment: for example, DPROD would naturally be expected to
+accept single precision and return double precision, regardless of whether
+default real kind has been changed. These are easy enough to specify on a
+case-by-case basis.
+
+Straw Vote:
+    (a) change most generic intrinsics to return specified default kind?
+    (b) have generic intrinsics not be affected by default kind spec?
+    (c) undecided.
+
+4.5 Input/output
+
+Input/output is already largely kind-independent for type integer and
+logical, but nearly all of the specifiers that take type character are
+required to be default kind (with the notable exception of the UNIT=
+specifier, which also allows ASCII and ISO_10646, if those kinds are
+supported).
+
+For some specifiers, e.g. FILE= and IOMSG=, there is an operating system
+interaction, so it would be natural to require that those specifiers
+stay being "system character".
+
+But for others, e.g. ACCESS=, there seems to be no justification other than
+a reluctance to require the processor to duplicate the parsing (or output
+in the case of INQUIRE) logic for all supported character kinds.
+
+The correct "fix" for ACCESS= et al would not be to make those follow the
+specified default kind, but to require those specifiers to accept any kind
+of character.
+
+In the interests of keeping the implementation burden low, we will not
+propose that at this time.
+
+4.6 User-defined derived-type input/output procedures
+
+These are currently specified to have various arguments of default kind.
+
+It would certainly be possible for a processor to be able to handle
+specified kind here, but it would certainly be some work, and defined
+input/output is already complicated to use and implement. To minimise the
+burden on implementations, we will propose keeping these as default range
+integer and system character.
+
+4.7 Scoping
+
+The simplest scoping mechanism would be to only have the default kind
+specification appear in program units, and for that specification apply to
+all lexically nested scoping units.
+
+Another approach would be to have the specification apply via host
+association. The main difference here is that it would then apply to
+submodules and module procedure interface bodies.
+
+However, neither of those is how, for example, IMPLICIT works. The implicit
+mapping is not inherited into an interface body, not even into a module
+procedure interface body which has active host association (this may have
+been an oversight in submodule design, but it is too late to change now).
+As IMPLICIT is the most-closely-related feature in the language, following
+its lead could help to reduce user confusion.
+
+Furthermore, the implicit mapping can be overridden in a nested subprogram,
+though not in any other kind of nested scoping unit. Having the default
+kinds being overridable in a nested subprogram sounds like it would be more
+confusing than useful, but maybe not less confusing than poor usage of
+IMPLICIT.
+
+In the interests of simplicity, we could omit the override capability, i.e.
+only allow the default kinds to be specified in program units and interface
+bodies. Alternatively, we could have it slavishly follow IMPLICIT in the
+way that its scoping works (this would be the only difference).
+
+Straw Vote: (a) Disallow overriding?
+            (b) Allow overriding (the same as IMPLICIT)?
+            (u) Undecided.
+
+4,8 Use association
+
+It would be convenient for a program to be able to stick all of its desired
+default kind settings into a module, and just USE that module everywhere,
+with some indication that we are importing the default kind settings,
+rather than duplicate all the settings everywhere.
+
+R7. It should be possible, with appropriate syntax, to import the default
+    kind settings from a module.
+
+In hindsight, it might have been convenient to do this sort of thing for
+the implicit mapping table too. We will not propose that at this time.
+
+4.9 Named constants for the old default real etc.
+
+We have named constants in ISO_FORTRAN_ENV for various useful kinds of REAL
+and INTEGER, based on the number of bits they are stored in. It might be
+useful to similarly have named constants for the standard defaults, e.g.
+
+    SINGLE_PRECISION    - kind of single precision real
+    DOUBLE_PRECISION    - kind of double precision real
+    STANDARD_RANGE_INT  - kind of default range integer
+    STANDARD_SIZE_LOGICAL - kind of default size logical
+    SYSTEM_CHAR_KIND    - kind of system character
+
+I suspect these would be particularly useful if we allow overriding (see
+straw vote in 4.7).
+
+Straw Vote: (a) Add these named constants to ISO_FORTRAN_ENV?
+            (b) Do not add these?
+            (u) Undecided?
+
+
+5. Specifications
+
+S1. That the default kind of integer, real, logical, and character shall be
+    specifiable in a program unit.
+
+S2. That "default complex kind" shall continue to be be the same as default
+    real kind, and shall not be separately specifiable.
+
+S3. That the storage-association effects of default real be associated with
+    "single precision real kind".
+
+Note: This in effect suggests that "default real kind" be changed to
+      "single precision real kind" in storage association contexts, and
+      left as "default real kind" in other contexts.
+
+S4. That the DOUBLE PRECISION type specifier and the D exponent letter are
+    unaffected by this feature, viz specify the same kind as without it.
+
+ALTERNATIVES: (See discussion above.)
+
+S4a. DOUBLE PRECISION shall specify a processor-dependent real kind whose
+     storage size is twice the size of default real kind, and that has
+     greater precision than default real kind, if such a kind exists.
+     If such a kind does not exist, it shall specify default real kind.
+
+or
+
+S4b. A program unit can specify the kind of DOUBLE PRECISION independently
+     of default real kind, except that it shall not be specified to have a
+     smaller precision or storage size than default real kind.
+
+or
+
+S4c. A program unit can specify that the kind of DOUBLE PRECISION is the
+     same as default real kind, or that it is a kind whose precision is
+     greater and storage size is double that of default real kind.
+
+S5. That specific intrinsic procedures are unaffected by this feature.
+
+That means:
+  i. Specific intrinsic functions that accept or return default real in
+     F2023 shall accept and return single precision real in F2028.
+     Specific intrinsic functions that accept or return double precision in
+     F2023 shall accept and return standard double precision kind in F2028.
+     Specific intrinsic functions that accept or return default complex in
+     F2023 shall accept and return single precision complex in F2028.
+ ii. Specific intrinsic functions that accept or return default integer in
+     F2023 shall accept and return default range integer in F2028.
+iii. Specific intrinsic functions that accept or return default character
+     in F2023 shall accept and return system character in F2028.
+
+ALTERNATIVE: (See discussion above.)
+
+S5a.That specific intrinsic functions that accept or return default real
+    in F2023 shall accept and return specified default real in F2028.
+    Specific intrinsic functions that accept or return double precision in
+    F2023 shall accept and return specified double precision kind in F2028.
+    Specific intrinsic function that accept or return default complex in
+    F2023 shall accept and return specified default complex in F2028.
+    (ii) Specific intrinsic functions that accept or return default
+         integer in F2023 shall accept and return specified default
+         integer in F2028.
+    (iii) Specific intrinsic functions that accept or return default
+          character in F2023 shall accept and return system character in
+          F2028.
+
+S6. That the generic intrinsic procedures are unaffected by this feature.
+
+ALTERNATIVE: (See straw vote above.)
+
+S6a. Generic intrinsic procedures that accept or return default kind (of
+     some type) in F2023 shall accept or return specified default kind in
+     F2028, except for special cases such as EXECUTE_COMMAND_LINE.
+
+S7. That input/output specifiers are unaffected by this feature.
+
+OPTIONAL: (See discussion above.)
+S8. That input/output specifiers of type character, that have no direct
+    interaction with the operating system, should accept and return any
+    kind of character, not just system character.
+
+S9. That the arguments of defined input/output procedures shall be default
+    range integer and system character, as they are now.
+
+S10. That the default kinds can be specified by a constant expression that
+     does not depend on the properties of a default kind, as long as that
+     default is not specified after such usage.
+
+S11. The default kinds can be specified in a program unit or interface body
+     but not in any other kind of scoping unit. They are applicable in all
+     nested scoping units other than interface bodies.
+
+S12. The default kind settings can be imported from a single module into a
+     program unit or interface body. After such an import, they shall not
+     also be specified locally.
+
+ALTERNATIVE S11 and S12 (see straw vote in section 4.7):
+    "program unit or interface body"
+    -> "program unit, interface body, or nested subprogram"
+    (once in each spec).
+
+OPTIONAL (see straw vote in 4.9):
+
+S13. Named constants for the old standard default kinds shall be added to
+     ISO_FORTRAN_ENV.
+
+
+6. Example with illustrative syntax
+
+This is taken from the original proposal, and is clearly incomplete.
+
+    PROGRAM example
+        DEFAULT(REAL=SELECTED_REAL_KIND(30))
+        REAL :: x = 1.23456789012345678901234567890
+        PRINT '(F0.29)',x
+    END PROGRAM
+
+That would be expected to print a reasonably accurate approximation to the
+literal constant.
+
+
+7. Proposed syntax
+
+Y1. The form of the new statement shall be
+    default-kind-stmt is
+        DEFAULT KIND ( default-kind-spec-list )
+    default-kind-spec is
+        intrinsic-type-name = int-constant-expr
+    intrinsic-type-name is
+        REAL or INTEGER or LOGICAL or CHARACTER
+{The BNF intrinsic-type-name is not used at present, but could be confusing
+ in that COMPLEX is missing (DOUBLE PRECISION is not an intrinsic type name
+ just a keyword in a type specifier). Maybe we should call this
+    basic-intrinsic-type-name
+ instead.}
+
+A possible alternative syntax would be
+        DEFAULT KIND :: default-kind-spec-list
+
+Y2. The int-constant-expr in a default-kind-spec shall not depend on a
+    property of the default kind of a type, unless that type has its
+    default kind previously specified in the scoping unit or its default
+    kind is not specified in the scoping unit.
+
+Y3. A default-kind-stmt shall appear after any USE statement, but before
+    any IMPLICIT statement.
+
+Y4. Constraint: The same intrinsic-type-name in a default-kind-stmt shall
+                not appear more than once in a scoping unit.
+
+Y5. More than one default-kind-stmt may appear, subject to Y3.
+
+Y6. A default-kind-stmt shall appear only in the specification part of a
+    program unit or interface body, and applies to all nested scoping units
+    other than interface bodies.
+{This would mean there is no overriding of a host-specified default kind.}
+
+ALTERNATIVE Y6 (see straw vote in 4.7):
+
+Y6. A default-kind-stmt shall appear only in the specification part of a
+    program unit, interface body, or nested subprogram, and applies to all
+    nested scoping units other than interface bodies.
+
+
+Y7. The default kinds can be imported from a single module with a USE
+    statement that has the ", DEFAULT_KINDS" clause. Only one such import
+    is permitted, and if used, no default-kind-stmt shall appear in the
+    scoping unit.
+    The ", DEFAULT_KINDS" clause is only permitted in a scoping unit that
+    would otherwise be permitted to have a default-kind-stmt.
+
+    This changes the beginning of the USE statement syntax from
+        USE [ [ , module-nature ] :: ]
+    to
+        USE [ [ , module-nature ] [ , DEFAULT_KINDS ] :: ]
+
+Y8. The default kind when no default kind specification is in effect is:
+        default real kind = single precision real kind
+        default integer kind = default range integer kind
+        default logical kind = default size logical kind
+        default character kind = system character kind
+
+OPTIONAL: (See 4.9)
+
+Y9. ISO_FORTRAN_ENV shall have named constants as follows:
+        SINGLE_PRECISION    - kind of single precision real
+        DOUBLE_PRECISION    - kind of double precision real
+        STANDARD_RANGE_INT  - kind of default range integer
+        STANDARD_SIZE_LOGICAL - kind of default size logical
+        SYSTEM_CHAR_KIND    - kind of system character
+
+===END===
