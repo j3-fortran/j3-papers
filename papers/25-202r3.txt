@@ -1,0 +1,499 @@
+To: J3                                                     J3/25-202r3
+Subject: US04/DIN1: Edits for Asynchronous and Team Collective Subroutines
+From: Brandon Cook & Damian Rouson & Dan Bonachea & Reuben D. Budiardja
+Date: 2025-November-12
+References: 25-162r2, 25-165r1, 25-166r1, 25-127r1, 25-007r1, WG5/N2249
+
+1. Background
+-------------
+The current Fortran 202Y work list WG5/N2249 includes asynchronous
+collective subroutines as accepted work item US04 and execution of
+collective procedures on a specified team as accepted work item DIN1.
+
+Paper 25-162r2 "US04: Requirements for Asynchronous Collective
+Subroutines" presents an illustrative use case and a list of requirements.
+It passed at the Oct 2025 J3 meeting #237.
+
+Paper 25-165r1 "US04: Specifications for Asynchronous Collective
+Subroutines" presents the specifications and semantics for the new
+asynchronous collective subroutines feature. It passed at the Oct 2025 J3
+meeting #237.
+
+Paper 25-127r1 "DIN1: Collectives over a specified team,
+req/spec/syntax/edits" (passed at Jun 2025 J3 meeting #236), adds a new
+TEAM argument to the same collective subroutines impacted by work item
+US04.  The functionality of these two features (US04 and DIN1) is entirely
+orthogonal, but their effects must be merged in the final syntax.
+
+Paper 25-166r2 "US04: Syntax for Asynchronous Collective Subroutines"
+presents the syntax for the asynchronous collective subroutines feature
+and incorporates the syntactic changes from work item DIN1. It passed at
+the Oct 2025 J3 meeting #237
+
+This paper presents the combined edits for work items US04 and DIN1,
+and supersedes the edits previously passed in section 5 of 25-127r1.
+
+2. Edits Relative to 25-007r1
+=============================
+
+-------------------------------------------------------------------------
+[xv] Add to "Intrinsic procedures" the sentences:
+
+"A new TEAM argument has been added to the collective subroutines, enabling
+execution of a collective subroutine on a specified team. A new COMPLETION
+argument has been added to the collective subroutines; along with the new
+COMPLETE intrinsic, this enables explicitly asynchronous execution of
+collective subroutines.
+
+-------------------------------------------------------------------------
+3 Terms and definitions:
+
+[31:33-] Before 3.151.1 (event variable) insert new definition:
+
+"
+3.151.0a
+completion variable
+scalar variable of type COMPLETION_TYPE from the intrinsic module
+ISO_FORTRAN_ENV
+
+Note 1 to entry: See 16.10.2.7a.
+"
+
+-------------------------------------------------------------------------
+7.5.2.1 Syntax of a derived-type definition:
+
+[81:5-8, C742] Replace three occurrences of:
+
+"EVENT_TYPE,"
+
+with:
+
+"COMPLETION_TYPE, EVENT_TYPE,"
+
+-------------------------------------------------------------------------
+8.5.10 INTENT attribute:
+
+[123:1-3, C849] Replace:
+
+"EVENT_TYPE (16.10.2.10),"
+
+with:
+
+"COMPLETION_TYPE (16.10.2.7a), EVENT_TYPE (16.10.2.10),"
+
+-------------------------------------------------------------------------
+9.7.1.1 Form of the ALLOCATE statement:
+
+[158:16-18, C954] Replace two occurrences of:
+
+"EVENT_TYPE,"
+
+with:
+
+"COMPLETION_TYPE, EVENT_TYPE,"
+
+[158:26-29, paragraph 4] Replace two occurrences of:
+
+"EVENT_TYPE,"
+
+with:
+
+"COMPLETION_TYPE, EVENT_TYPE,"
+
+-------------------------------------------------------------------------
+16.6 Collective subroutines:
+
+[380:26] paragraph 1:
+ replace "the current team" with "the specified team"
+
+[380:28] paragraph 1:
+ replace "its current team" with "the specified team"
+
+[380:30-] after paragraph 1:
+ Insert new paragraph reading:
+
+"The team specified by an invocation of a collective subroutine is
+ the current team if the TEAM argument does not appear in that
+ invocation. Otherwise, it is the team identified by the value of
+ the TEAM argument. On all images participating in the same collective
+ computation, the specified team shall be the same team; either the
+ initial team, or a team created by corresponding executions of the same
+ FORM TEAM statement (11.7.9) with the same value for \si{team-number}."
+
+[380:32] paragraph 2:
+  replace "of a team" with "of the specified team".
+
+[381:2,7,13,15] paragraph 3, paragraph 4 bullet 4, paragraph 6 (twice):
+ replace "the current team" with "the specified team".
+
+[381:3-] after paragraph 3:
+ Insert new paragraphs reading:
+
+"
+If the COMPLETION argument appears in a reference to a collective
+subroutine, the reference initiates an asynchronous collective operation.
+This collective operation proceeds as an asynchronous input communication
+(18.10.4) and is associated with COMPLETION. The completion count of
+COMPLETION is incremented by one before the initiation call returns, and
+decremented by one after the collective operation finishes its computation
+with respect to the current image. The decrement occurs even if an error
+condition occurs. The decrement may occur before the initiation call
+returns.
+
+An asynchronous collective operation is outstanding on a given image during
+the period between subroutine invocation and when the completion count of
+COMPLETION next reaches zero. The A argument, and the STAT and ERRMSG
+arguments if present, are pending communication affectors (18.10.4) while
+the asynchronous collective operation remains outstanding.
+
+C1602a  If the COMPLETION argument appears in a reference to a collective
+        subroutine, then the A argument, and the STAT and ERRMSG arguments
+        if present, shall have the ASYNCHRONOUS attribute.
+
+NOTE
+A completion variable decrement on one image does not imply that other
+images participating in the same asynchronous collective operation have
+finished their computation.
+"
+
+[381:19+] append to paragraph 7:
+
+"If the COMPLETION argument appears in the initiation call, this error
+ termination is initiated while the asynchronous communication is
+ outstanding; the error termination need not occur during the initiation
+ call or a completion call to the COMPLETE subroutine."
+
+-------------------------------------------------------------------------
+[383] In 16.7 Standard generic intrinsic procedures, Table 16.1,
+replace the entry for CO_BROADCAST with the following:
+
+"
+CO_BROADCAST (A, SOURCE_IMAGE [, STAT, ERRMSG]) or \
+    C    Broadcast value to images.
+CO_BROADCAST (A, SOURCE_IMAGE, COMPLETION [, STAT, ERRMSG]) or
+CO_BROADCAST (A, SOURCE_IMAGE, TEAM [, STAT, ERRMSG]) or
+CO_BROADCAST (A, SOURCE_IMAGE, TEAM, COMPLETION [, STAT, ERRMSG])
+"
+
+-------------------------------------------------------------------------
+[383] In 16.7 Standard generic intrinsic procedures, Table 16.1,
+replace the entry for CO_MAX with the following:
+
+"
+CO_MAX (A [, RESULT_IMAGE, STAT, ERRMSG]) or \
+    C    Compute maximum value across images.
+CO_MAX (A [, RESULT_IMAGE], COMPLETION [, STAT, ERRMSG]) or
+CO_MAX (A [, RESULT_IMAGE], TEAM [, STAT, ERRMSG]) or
+CO_MAX (A [, RESULT_IMAGE], TEAM, COMPLETION [, STAT, ERRMSG])
+"
+
+-------------------------------------------------------------------------
+[383] In 16.7 Standard generic intrinsic procedures, Table 16.1,
+replace the entry for CO_MIN with the following:
+
+"
+CO_MIN (A [, RESULT_IMAGE, STAT, ERRMSG]) or \
+    C    Compute minimum value across images.
+CO_MIN (A [, RESULT_IMAGE], COMPLETION [, STAT, ERRMSG]) or
+CO_MIN (A [, RESULT_IMAGE], TEAM [, STAT, ERRMSG]) or
+CO_MIN (A [, RESULT_IMAGE], TEAM, COMPLETION [, STAT, ERRMSG])
+"
+
+-------------------------------------------------------------------------
+[383] In 16.7 Standard generic intrinsic procedures, Table 16.1,
+replace the entry for CO_REDUCE with the following:
+
+"
+CO_REDUCE (A, OPERATION [, RESULT_IMAGE, STAT, ERRMSG]) or \
+    C    Generalized reduction across images.
+CO_REDUCE (A, OPERATION [, RESULT_IMAGE], COMPLETION
+                                          [, STAT, ERRMSG]) or
+CO_REDUCE (A, OPERATION [, RESULT_IMAGE], TEAM
+                                          [, STAT, ERRMSG]) or
+CO_REDUCE (A, OPERATION [, RESULT_IMAGE], TEAM, COMPLETION
+                                          [, STAT, ERRMSG])
+"
+
+-------------------------------------------------------------------------
+[383] In 16.7 Standard generic intrinsic procedures, Table 16.1,
+replace the entry for CO_SUM with the following:
+
+"
+CO_SUM (A [, RESULT_IMAGE, STAT, ERRMSG]) or \
+    C   Compute sum across images.
+CO_SUM (A [, RESULT_IMAGE], COMPLETION [, STAT, ERRMSG]) or
+CO_SUM (A [, RESULT_IMAGE], TEAM [, STAT, ERRMSG]) or
+CO_SUM (A [, RESULT_IMAGE], TEAM, COMPLETION [, STAT, ERRMSG])
+"
+
+-------------------------------------------------------------------------
+[383] In 16.7 Standard generic intrinsic procedures, Table 16.1,
+after the entry for COMMAND_ARGUMENT_COUNT add a new entry:
+
+"
+COMPLETE( COMPLETION [, FINISHED ]) \
+    S   Wait for or query a completion variable.
+"
+
+-------------------------------------------------------------------------
+16.9.54 CO_BROADCAST:
+
+[408:29] Replace the heading with:
+
+"CO_BROADCAST (A, SOURCE_IMAGE [, STAT, ERRMSG]) or \
+ CO_BROADCAST (A, SOURCE_IMAGE, COMPLETION [, STAT, ERRMSG]) or \
+ CO_BROADCAST (A, SOURCE_IMAGE, TEAM [, STAT, ERRMSG]) or \
+ CO_BROADCAST (A, SOURCE_IMAGE, TEAM, COMPLETION [, STAT, ERRMSG])"
+
+[408:35-36] in the description of A:
+ replace "the current team" with "the specified team"
+
+[409:4] in the description of SOURCE_IMAGE:
+ replace "the current team" with "the specified team"
+
+[409:6-] before the description of STAT in paragraph 3, insert:
+
+"
+ TEAM shall be a scalar of type TEAM_TYPE from the intrinsic module
+      ISO_FORTRAN_ENV. It is an INTENT (IN) argument.
+
+ COMPLETION shall be a noncoindexed scalar of type COMPLETION_TYPE from the
+            intrinsic module ISO_FORTRAN_ENV. It is an INTENT (INOUT)
+            argument.
+"
+
+[409:9] replace paragraph 4 with:
+
+"The semantics of TEAM, COMPLETION, STAT and ERRMSG are described in 16.6."
+
+-------------------------------------------------------------------------
+16.9.55 CO_MAX:
+
+[409:13] Replace the heading with:
+
+"CO_MAX (A [, RESULT_IMAGE, STAT, ERRMSG]) or \
+ CO_MAX (A [, RESULT_IMAGE], COMPLETION [, STAT, ERRMSG]) or \
+ CO_MAX (A [, RESULT_IMAGE], TEAM [, STAT, ERRMSG]) or \
+ CO_MAX (A [, RESULT_IMAGE], TEAM, COMPLETION [, STAT, ERRMSG])"
+
+[409:27] in the description of RESULT_IMAGE:
+ replace "the current team" with "the specified team"
+
+[409:28-] before the description of STAT in paragraph 3, insert:
+
+"
+ TEAM shall be a scalar of type TEAM_TYPE from the intrinsic module
+      ISO_FORTRAN_ENV. It is an INTENT (IN) argument.
+
+ COMPLETION shall be a noncoindexed scalar of type COMPLETION_TYPE from the
+            intrinsic module ISO_FORTRAN_ENV. It is an INTENT (INOUT)
+            argument.
+"
+
+
+[409:31] replace paragraph 4 with:
+
+"The semantics of TEAM, COMPLETION, STAT and ERRMSG are described in 16.6."
+
+-------------------------------------------------------------------------
+16.9.56 CO_MIN:
+
+[409:35] Replace the heading with:
+
+"CO_MIN (A [, RESULT_IMAGE, STAT, ERRMSG]) or \
+ CO_MIN (A [, RESULT_IMAGE], COMPLETION [, STAT, ERRMSG]) or \
+ CO_MIN (A [, RESULT_IMAGE], TEAM [, STAT, ERRMSG]) or \
+ CO_MIN (A [, RESULT_IMAGE], TEAM, COMPLETION [, STAT, ERRMSG])"
+
+[410:11] in the description of RESULT_IMAGE:
+ replace "the current team" with "the specified team"
+
+[410:12-] before the description of STAT in paragraph 3, insert:
+
+"
+ TEAM shall be a scalar of type TEAM_TYPE from the intrinsic module
+      ISO_FORTRAN_ENV. It is an INTENT (IN) argument.
+
+ COMPLETION shall be a noncoindexed scalar of type COMPLETION_TYPE from the
+            intrinsic module ISO_FORTRAN_ENV. It is an INTENT (INOUT)
+            argument.
+"
+
+
+[410:15] replace paragraph 4 with:
+
+"The semantics of TEAM, COMPLETION, STAT and ERRMSG are described in 16.6."
+
+-------------------------------------------------------------------------
+16.9.56 CO_REDUCE:
+
+[410:19] Replace the heading with:
+
+"CO_REDUCE (A, OPERATION [, RESULT_IMAGE, STAT, ERRMSG]) or \
+ CO_REDUCE (A, OPERATION [, RESULT_IMAGE], COMPLETION \
+                                          [, STAT, ERRMSG]) or \
+ CO_REDUCE (A, OPERATION [, RESULT_IMAGE], TEAM \
+                                          [, STAT, ERRMSG]) or \
+ CO_REDUCE (A, OPERATION [, RESULT_IMAGE], TEAM, COMPLETION \
+                                          [, STAT, ERRMSG])"
+
+[411:3] in the description of RESULT_IMAGE:
+ replace "the current team" with "the specified team"
+
+[411:4-] before the description of STAT in paragraph 3, insert:
+
+"
+ TEAM shall be a scalar of type TEAM_TYPE from the intrinsic module
+      ISO_FORTRAN_ENV. It is an INTENT (IN) argument.
+
+ COMPLETION shall be a noncoindexed scalar of type COMPLETION_TYPE from the
+            intrinsic module ISO_FORTRAN_ENV. It is an INTENT (INOUT)
+            argument.
+"
+
+
+[411:7] replace paragraph 4 with:
+
+"The semantics of TEAM, COMPLETION, STAT and ERRMSG are described in 16.6."
+
+-------------------------------------------------------------------------
+16.9.56 CO_SUM:
+
+[411:20] Replace the heading with:
+
+"CO_SUM (A [, RESULT_IMAGE, STAT, ERRMSG]) or \
+ CO_SUM (A [, RESULT_IMAGE], COMPLETION [, STAT, ERRMSG]) or \
+ CO_SUM (A [, RESULT_IMAGE], TEAM [, STAT, ERRMSG]) or \
+ CO_SUM (A [, RESULT_IMAGE], TEAM, COMPLETION [, STAT, ERRMSG])"
+
+[411:35] in the description of RESULT_IMAGE:
+ replace "the current team" with "the specified team"
+
+[411:36-] before the description of STAT in paragraph 3, insert:
+
+"
+ TEAM shall be a scalar of type TEAM_TYPE from the intrinsic module
+      ISO_FORTRAN_ENV. It is an INTENT (IN) argument.
+
+ COMPLETION shall be a noncoindexed scalar of type COMPLETION_TYPE from the
+            intrinsic module ISO_FORTRAN_ENV. It is an INTENT (INOUT)
+            argument.
+"
+
+
+[411:39] replace paragraph 4 with:
+
+"The semantics of TEAM, COMPLETION, STAT and ERRMSG are described in 16.6."
+
+-------------------------------------------------------------------------
+[412:14-] In 16.9 Specifications of the standard intrinsic procedures,
+before the specification of CONJG, insert new section:
+
+"
+16.9.59a COMPLETE( COMPLETION [, FINISHED ])
+
+<<Description.>> Wait for or query a completion variable.
+
+<<Class.>> Subroutine.
+
+<<Arguments.>>
+
+COMPLETION shall be a noncoindexed variable of type COMPLETION_TYPE from
+           the intrinsic module ISO_FORTRAN_ENV. It is an INTENT (INOUT)
+           argument.
+
+FINISHED (optional) when present, shall be a variable of logical type with
+                    the same shape as COMPLETION. It is an INTENT (OUT)
+                    argument.
+
+The effect of calling COMPLETE depends on the presence of the FINISHED
+argument:
+
+<Case (i):>   CALL COMPLETE(COMPLETION) causes the executing image to wait
+              until the count of every completion variable in COMPLETION
+              reaches zero.
+
+<Case (ii):>  If FINISHED is present and scalar, then
+              CALL COMPLETE(COMPLETION, FINISHED) causes FINISHED to be
+              defined to the value true if the count of completion variable
+              COMPLETION is zero, and false otherwise.
+
+<Case (iii):> If FINISHED is present and an array, then
+              CALL COMPLETE(COMPLETION, FINISHED) causes each element of
+              FINISHED to be defined to the value true if the count of
+              completion variable in the corresponding element of
+              COMPLETION is zero, and false otherwise.
+
+<<Example.>> This example demonstrates how to initiate several asynchronous
+collective subroutines and overlap the latency of that communication with
+other unrelated work. In the example, there is asynchronous input
+communication; the variables X, Y and S are pending communication affectors
+between the collective subroutine initiation call where they are passed as
+arguments and the subsequent COMPLETE subroutine call that waits for the
+associated completion variable C.
+
+  SUBROUTINE simple_overlap
+     use ISO_FORTRAN_ENV, ONLY: COMPLETION_TYPE
+     INTEGER :: X, Y, S
+     ... <Code that initializes X and Y>
+     BLOCK
+       TYPE(COMPLETION_TYPE) :: C
+       ASYNCHRONOUS :: X, Y, S
+       CALL CO_SUM(x, COMPLETION=C)   ! initiate asynchronous collectives
+       CALL CO_MAX(y, COMPLETION=C, STAT=S)
+       ! no references to X,Y,S permitted while collectives are outstanding
+       CALL do_something_else
+       CALL COMPLETE ( C ) ! await completion of both collectives
+       PRINT *, X, Y, S
+     END BLOCK
+  END SUBROUTINE
+
+NOTE
+COMPLETE is not a collective subroutine. Execution of COMPLETE does not
+imply any synchronization between images, and a reference to COMPLETE is
+not an image control statement. Completion of an asynchronous collective
+operation by one image does not imply completion of the same collective
+operation by any other image.
+"
+
+------------------------------------------------------------------------
+[493:14-] Insert a new section in 16.10.2 before CURRENT_TEAM:
+
+"
+16.10.2.7a COMPLETION_TYPE
+
+COMPLETION_TYPE is a derived type with private components. It is an
+extensible type with no type parameters. Each nonallocatable component is
+fully default-initialized.
+
+A scalar variable of type COMPLETION_TYPE is a completion variable.
+A completion variable is a data abstraction for the completion status of
+zero or more asynchronous operations. The completion variable abstraction
+includes a completion count, which is a count of outstanding asynchronous
+operations associated with this variable. A completion variable shall be
+capable of representing at least 127 associated outstanding operations. The
+initial value of the completion count of a completion variable is zero. A
+completion variable shall not become undefined while its completion count
+is non-zero.
+
+C1602b A named entity with declared type COMPLETION_TYPE, or which has a
+       potential subobject component with declared type COMPLETION_TYPE,
+       shall be a variable. A component that is of such a type shall be a
+       data component.
+
+C1602c A completion variable shall not appear in a variable definition
+       context except as an <allocate-object>, or as an actual argument in
+       a reference to a procedure with an explicit interface if the
+       corresponding dummy argument has INTENT (INOUT).
+
+C1602d A variable with a nonpointer subobject of type COMPLETION_TYPE shall
+       not appear in a variable definition context except as an
+       <allocate-object> in an ALLOCATE statement without a SOURCE=
+       specifier, as an <allocate-object> in a DEALLOCATE statement, or as
+       an actual argument in a reference to a procedure with an explicit
+       interface if the corresponding dummy argument has INTENT (INOUT).
+"
+
+------------------------------------------------------------------------
+
+===END===
