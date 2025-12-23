@@ -1,0 +1,384 @@
+To: J3                                                     J3/26-103
+From: Brandon Cook & Dan Bonachea
+Subject: US20: Edits for Local Prefix Operation Intrinsics
+Date: 2025-December-19
+References: 25-145r1, 25-186r2, 25-195r1, WG5/N-2249, 25-196r1, 25-007r1
+
+1. Background
+=============
+
+The Fortran 202Y work list (WG5/N-2249) includes work item US20:
+"Add Intrinsic and collective subroutines for prefix operations"
+
+Paper 25-145r1 "Requirements for US20: Local Prefix Operation Intrinsics"
+presents illustrative use cases and requirements for local prefix operation
+intrinsics. That paper was passed at J3 meeting #236 in June 2025.
+
+The corresponding sum prefix intrinsics syntax and specifications were passed in
+25-186r2 at J3 meeting #237 in Oct 2025.  The general reduce prefix intrinsics
+syntax and specifications were passed in 25-196r1 at J3 meeting #237,
+incorporating the recommendations of 25-195r1.
+
+2. Edits Relative to 25-007r1
+=============================
+
+-------------------------------------------------------------------------
+
+[xv] Add to "Intrinsic procedures" the sentence:
+
+"The new intrinsic functions REDUCE_PREFIX_EXCLUSIVE, REDUCE_PREFIX_INCLUSIVE,
+SUM_PREFIX_EXCLUSIVE, and SUM_PREFIX_INCLUSIVE, perform prefix reduction
+operations."
+
+-------------------------------------------------------------------------
+
+[385] In 16.7 Standard generic intrinsic procedures, Table 16.1,
+after the entry for REDUCE add two new entries (with 2 forms each):
+
+"
+REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, INITIAL [, ORDERED]) or \
+    T    General exclusive prefix reduction of array
+REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, INITIAL, DIM [, ORDERED])
+"
+
+and
+
+"
+REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION [, ORDERED]) or \
+    T    General inclusive prefix reduction of array
+REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION, DIM [, ORDERED])
+"
+
+-------------------------------------------------------------------------
+
+[385] In 16.7 Standard generic intrinsic procedures, Table 16.1,
+after the entry for SUM add two new entries (with 2 forms each):
+
+"
+SUM_PREFIX_EXCLUSIVE(ARRAY [, MASK]) or    T    Exclusive prefix sum of array
+SUM_PREFIX_EXCLUSIVE(ARRAY, DIM [, MASK])
+"
+
+and
+
+"
+SUM_PREFIX_INCLUSIVE(ARRAY [, MASK]) or    T    Inclusive prefix sum of array
+SUM_PREFIX_INCLUSIVE(ARRAY, DIM [, MASK])
+"
+
+-------------------------------------------------------------------------
+
+[469:21+] In 16.9 Specifications of the standard intrinsic procedures,
+after the specification of REDUCE, add:
+
+16.9.173a \
+REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, INITIAL [, ORDERED]) or
+REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, INITIAL, DIM [, ORDERED])
+
+<<Description.>> General exclusive prefix reduction of array.
+
+<<Class.>> Transformational function.
+
+<<Arguments.>>
+
+ARRAY shall be an array of any nonpolymorphic type.
+
+OPERATION shall be a pure function with exactly two arguments; each argument
+          shall be a scalar, nonallocatable, noncoarray, nonpointer,
+          nonpolymorphic, nonoptional dummy data object with the same declared
+          type and type parameters as ARRAY. If one argument has the
+          ASYNCHRONOUS, TARGET, or VALUE attribute, the other shall have that
+          attribute. Its result shall be a nonpolymorphic scalar and have the
+          same declared type and type parameters as ARRAY. OPERATION need not be
+          commutative. If ORDERED is absent or false, then OPERATION should
+          implement a mathematically associative operation.
+
+DIM shall be an integer scalar with a value in the range 1 <= DIM <= n, where n
+    is the rank of ARRAY.
+
+INITIAL shall be scalar with the same declared type and type
+        parameters as ARRAY.
+
+ORDERED (optional) shall be a logical scalar.
+
+<<NOTE>> If OPERATION is not computationally associative,
+         REDUCE_PREFIX_EXCLUSIVE without ORDERED=.TRUE. with the same argument
+         values might not always produce the same result, as the processor can
+         apply the associative law to the evaluation. Additionally, the
+         computation of each element of the result may independently apply the
+         associative law.
+
+<<Result Characteristics.>>
+
+The result is of the same declared type, type parameters, rank,
+and shape as ARRAY.
+
+<<Result Value.>>
+
+Case (i): The result of REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, INITIAL) is
+          the exclusive prefix reduction, with initial value INITIAL, of the
+          sequence defined by elements of ARRAY in array element order, with the
+          result sequence provided in array element order.  The exclusive prefix
+          reduction of a sequence s_1, s_2, ..., s_n, with OPERATION and initial
+          value INITIAL, is the sequence r_1, r_2, ..., r_n.  r_1 is INITIAL,
+          and for i>1, r_i is the generalized noncommutative reduction with
+          OPERATION of the sequence INITIAL, s_1, s_2, ..., s_{i-1}.  The result
+          of a generalized noncommutative reduction of a sequence of items with
+          OPERATION is the result of an iterative process. While the sequence
+          has more than one item, each iteration involves the selection of two
+          adjacent items x and y, with x immediately preceding y, and the
+          subsequent replacement of the two selected items in the sequence with
+          the value OPERATION(x, y), preserving order. If the ORDERED argument
+          is present with the value true, then x is the first item in the
+          sequence. Otherwise, the choice of x is processor-dependent. When the
+          sequence has a single item, that is the result.
+
+Case (ii): If ARRAY has rank one, then the result of
+           REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, INITIAL, DIM [, ORDERED])
+           has a value equal to REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION,
+           INITIAL [, ORDERED]). Otherwise, the result of
+           REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, INITIAL, DIM [, ORDERED])
+           is defined by the semantics of Case (i) applied independently along
+           each sequence of ARRAY elements in dimension DIM. The value of result
+           elements (i_1,i_2,...,i_(DIM-1),:,i_(DIM+1),...,i_n) of
+           REDUCE_PREFIX_EXCLUSIVE(ARRAY, OPERATION, INITIAL, DIM [, ORDERED =
+           ORDERED]) is equal to REDUCE_PREFIX_EXCLUSIVE(
+           ARRAY(i_1,i_2,...,i_(DIM-1),:,i_(DIM+1),...,i_n), OPERATION =
+           OPERATION, INITIAL = INITIAL, DIM = 1 [, ORDERED = ORDERED] ).
+
+<<NOTE>> The generalized noncommutative reduction described above matches the
+         iterative process specified for REDUCE.
+
+<<Examples.>> The following examples use the function MULT, which returns the
+product of its two integer arguments.
+
+Case (i): The value of REDUCE_PREFIX_EXCLUSIVE([3, 2, 5], MULT, INITIAL=2)
+          is [2, 6, 12].
+
+Case (ii): If A is the array | 2 2 3 4 |
+                             | 2 1 2 3 |
+    then REDUCE_PREFIX_EXCLUSIVE(A, MULT, INITIAL=1, DIM=2) is | 1 2 4 12 |
+                                                               | 1 2 2 4  |.
+
+16.9.173b \
+REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION [, ORDERED]) or
+REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION, DIM [, ORDERED])
+
+<<Description.>> General inclusive prefix reduction of array.
+
+<<Class.>> Transformational function.
+
+<<Arguments.>>
+
+ARRAY shall be an array of any nonpolymorphic type.
+
+OPERATION shall be a pure function with exactly two arguments; each argument
+          shall be a scalar, nonallocatable, noncoarray, nonpointer,
+          nonpolymorphic, nonoptional dummy data object with the same declared
+          type and type parameters as ARRAY. If one argument has the
+          ASYNCHRONOUS, TARGET, or VALUE attribute, the other shall have that
+          attribute. Its result shall be a nonpolymorphic scalar and have the
+          same declared type and type parameters as ARRAY. OPERATION need not be
+          commutative. If ORDERED is absent or false, then OPERATION should
+          implement a mathematically associative operation.
+
+DIM shall be an integer scalar with a value in the range 1 <= DIM <= n, where n
+    is the rank of ARRAY.
+
+ORDERED (optional) shall be a logical scalar.
+
+<<NOTE>> If OPERATION is not computationally associative,
+         REDUCE_PREFIX_EXCLUSIVE without ORDERED=.TRUE. with the same argument
+         values might not always produce the same result, as the processor can
+         apply the associative law to the evaluation. Additionally, the
+         computation of each element of the result may independently apply the
+         associative law.
+
+<<Result Characteristics.>>
+
+The result is of the same declared type, type parameters, rank, and shape as
+ARRAY.
+
+<<Result Value.>>
+
+Case (i): The result of REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION) is the
+          inclusive prefix reduction of the sequence defined by elements of
+          ARRAY in array element order, with the result sequence provided in
+          array element order.  The inclusive prefix reduction of a sequence
+          s_1, s_2, ..., s_n, with OPERATION, is the sequence r_1, r_2, ...,
+          r_n.  r_i is the generalized noncommutative reduction with OPERATION
+          of the sequence s_1, s_2, ..., s_i.  The result of a generalized
+          noncommutative reduction of a sequence of items with OPERATION is the
+          result of an iterative process. While the sequence has more than one
+          item, each iteration involves the selection of two adjacent items x
+          and y, with x immediately preceding y, and the subsequent replacement
+          of the two selected items in the sequence with the value OPERATION(x,
+          y), preserving order. If the ORDERED argument is present with the
+          value true, then x is the first item in the sequence. Otherwise, the
+          choice of x is processor dependent. When the sequence has a single
+          item, that is the result.
+
+Case (ii): If ARRAY has rank one, then the result of
+           REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION, DIM [, ORDERED]) has a
+           value equal to REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION [, ORDERED]).
+           Otherwise, the result of REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION,
+           DIM [, ORDERED]) is defined by the semantics of Case (i) applied
+           independently along each sequence of ARRAY elements in dimension DIM.
+           The value of result elements
+           (i_1,i_2,...,i_(DIM-1),:,i_(DIM+1),...,i_n) of
+           REDUCE_PREFIX_INCLUSIVE(ARRAY, OPERATION, DIM [, ORDERED = ORDERED])
+           is equal to REDUCE_PREFIX_INCLUSIVE(
+           ARRAY(i_1,i_2,...,i_(DIM-1),:,i_(DIM+1),...,i_n), OPERATION =
+           OPERATION, DIM = 1 [, ORDERED = ORDERED] ).
+
+<<NOTE>> The generalized noncommutative reduction described above matches the
+         iterative process specified for REDUCE.
+
+<<Examples.>> The following examples use the function MULT, which
+returns the product of its two integer arguments.
+
+Case (i): The value of REDUCE_PREFIX_INCLUSIVE([2, 3, 4], MULT) is [2, 6, 24].
+
+Case (ii): If A is the array | 2 3 5 |
+                             | 2 4 6 |
+    then REDUCE_PREFIX_INCLUSIVE(A, MULT, DIM = 2) is | 2 6 30 |
+                                                      | 2 8 48 |.
+
+-------------------------------------------------------------------------
+
+[482:26+] In 16.9 Specifications of the standard intrinsic procedures,
+after the specification of SUM, add:
+
+16.9.201a \
+SUM_PREFIX_EXCLUSIVE(ARRAY [, MASK]) or \
+SUM_PREFIX_EXCLUSIVE(ARRAY, DIM [, MASK])
+
+<<Description.>> Exclusive prefix sum of array.
+
+<<Class.>> Transformational function.
+
+<<Arguments.>>
+
+ARRAY shall be an array of numeric type.
+
+DIM shall be an integer scalar with a value in the range
+    1 <= DIM <= n, where n is the rank of ARRAY.
+
+MASK (optional) shall be of type logical and shall be conformable with ARRAY.
+
+<<Result Characteristics.>>
+
+The result shall have the same type, rank, shape and kind parameter as ARRAY.
+
+<<Result Value.>>
+
+Case (i): The result of SUM_PREFIX_EXCLUSIVE(ARRAY) is the exclusive prefix sum
+          of the sequence of elements of ARRAY in array element order, with the
+          result sequence provided in array element order. The exclusive prefix
+          sum of a sequence s_1, s_2, ..., s_n, is the sequence r_1, r_2, ...,
+          r_n, where r_i = \sum_{j=0}^{i-1} s_j with s_0 = 0.
+
+Case (ii): The MASK argument affects the prefix sum as if ARRAY elements
+           corresponding to false elements of MASK had been replaced by 0.  The
+           result of SUM_PREFIX_EXCLUSIVE(ARRAY, MASK) is equal to
+           SUM_PREFIX_EXCLUSIVE(MERGE(ARRAY, 0, MASK)).
+
+Case (iii): If ARRAY has rank one, the result of SUM_PREFIX_EXCLUSIVE(ARRAY,
+            DIM = DIM [, MASK = MASK]) has a value equal to
+            SUM_PREFIX_EXCLUSIVE(ARRAY [, MASK = MASK]). Otherwise, the value of
+            SUM_PREFIX_EXCLUSIVE(ARRAY, DIM = DIM [, MASK = MASK]) is defined by
+            the semantics of Case (ii) applied independently along each sequence
+            of ARRAY elements in dimension DIM. The value of result elements
+            (i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1}, ..., i_n) of
+            SUM_PREFIX_EXCLUSIVE(ARRAY, DIM = DIM [, MASK = MASK]) is equal to
+            SUM_PREFIX_EXCLUSIVE(ARRAY(i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1},
+            ..., i_n), DIM = 1 [, MASK(i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1},
+            ..., i_n)])
+
+<<Examples.>>
+
+Case (i): The value of SUM_PREFIX_EXCLUSIVE([1,2,3]) is [0,1,3].
+
+Case (ii): The value of SUM_PREFIX_EXCLUSIVE([1,2,3],
+             MASK=[.TRUE., .FALSE., .TRUE.]) is [0,1,1].
+
+Case (iii):  If A is | 1 2 3 |
+                     | 4 5 6 |,
+             SUM_PREFIX_EXCLUSIVE(A, DIM=2) is the array
+              | SUM_PREFIX_EXCLUSIVE(A(1,:)) |
+              | SUM_PREFIX_EXCLUSIVE(A(2,:)) |
+             which is | 0 1 3 |
+                      | 0 4 9 |.
+
+16.9.201b \
+SUM_PREFIX_INCLUSIVE(ARRAY [, MASK]) or \
+SUM_PREFIX_INCLUSIVE(ARRAY, DIM [, MASK])
+
+<<Description.>> Inclusive prefix sum of array.
+
+<<Class.>> Transformational function.
+
+<<Arguments.>>
+
+ARRAY shall be an array of numeric type.
+
+DIM shall be an integer scalar with a value in the range 1 <= DIM <= n, where n
+    is the rank of ARRAY.
+
+MASK (optional) shall be of type logical and shall be conformable with ARRAY.
+
+<<Result Characteristics.>>
+
+The result shall have the same type, rank, shape and kind parameter as ARRAY.
+
+<<Result Value.>>
+
+Case (i): The result of SUM_PREFIX_INCLUSIVE(ARRAY) is the inclusive prefix sum
+          of the sequence of elements of ARRAY in array element order, with the
+          result sequence provided in array element order. The inclusive prefix
+          sum of a sequence s_1, s_2, ..., s_n, is the sequence r_1, r_2, ...,
+          r_n, where r_i = \sum_{j=1}^i s_j.
+
+Case (ii): The MASK argument affects the prefix sum as if ARRAY elements
+           corresponding to false elements of MASK had been replaced by 0.  The
+           result of SUM_PREFIX_INCLUSIVE(ARRAY, MASK) is equal to
+           SUM_PREFIX_INCLUSIVE(MERGE(ARRAY, 0, MASK)).
+
+Case (iii): If ARRAY has rank one, the result of SUM_PREFIX_INCLUSIVE(ARRAY,
+            DIM = DIM [, MASK = MASK]) has a value equal to
+            SUM_PREFIX_INCLUSIVE(ARRAY [, MASK = MASK]). Otherwise, the value of
+            SUM_PREFIX_INCLUSIVE(ARRAY, DIM = DIM [, MASK = MASK]) is defined by
+            the semantics of Case (ii) applied independently along each sequence
+            of ARRAY elements in dimension DIM. The value of result elements
+            (i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1}, ..., i_n) of
+            SUM_PREFIX_INCLUSIVE(ARRAY, DIM = DIM [, MASK = MASK]) is equal to
+            SUM_PREFIX_INCLUSIVE(ARRAY(i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1},
+            ..., i_n), DIM = 1 [, MASK(i_1, i_2, ..., i_{DIM-1}, :, i_{DIM+1},
+            ..., i_n)])
+
+<<Examples.>>
+
+Case (i): The value of SUM_PREFIX_INCLUSIVE([1,2,3]) is [1,3,6].
+
+Case (ii): The value of SUM_PREFIX_INCLUSIVE([1,2,3],
+             MASK=[.TRUE., .FALSE., .TRUE.]) is [1,1,4]
+
+Case (iii):  If A is | 1 2 3 |
+                     | 4 5 6 |,
+             SUM_PREFIX_INCLUSIVE(A, DIM=2) is the array
+              | SUM_PREFIX_INCLUSIVE(A(1,:)) |
+              | SUM_PREFIX_INCLUSIVE(A(2,:)) |
+             which is | 1 3 6  |
+                      | 4 9 15 |.
+
+-------------------------------------------------------------------------
+
+[596:41+] In Annex A.2 Processor dependencies, insert the following line:
+
+The computed value of the intrinsic subroutines REDUCE (16.9.173),
+REDUCE_PREFIX_EXCLUSIVE (16.9.173a) and REDUCE_PREFIX_INCLUSIVE
+(16.9.173b), when the ORDERED argument is absent or false.
+
+-------------------------------------------------------------------------
+
+===END===
