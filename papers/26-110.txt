@@ -1,0 +1,197 @@
+To: J3                                                     J3/26-110
+From: Malcolm Cohen
+Subject: US25 complex/real association, edits (passed).
+Date: 2026-January-13
+Reference: 24-129, 24-173, 24-188r1, 25-206
+
+
+1. Introduction
+
+24-129 Feature request (use case)
+24-173 Formal requirements
+24-188r1 Specifications and syntax
+
+This paper has an additional specification (syntax constraint),
+and edits for the feature.
+
+This paper was passed by amending 25-206 at meeting 238.
+
+2. Modified specifications/syntax
+
+(25S-5) When the pointer (on the LHS of the pointer assignment) is complex,
+        the target shall be simply contiguous. This should be a Constraint.
+
+However, when the pointer is real, having the target being rank one is also
+not sufficient: consider
+    real_pointer(1:10) => complex_target(1:20:2)
+Here, there would be a gap in between every two consecutive (contiguous)
+elements of the real array, which is not acceptable.
+
+Therefore, 25S-5 is modified to
+
+(25S-5) When the pointer and target are real and complex, or vice versa,
+        the target shall be simply contiguous. This should be a Constraint.
+
+And the syntax (new constraint) is modified to:
+
+   "C1021a If data-target is of type real and data-pointer-object is of
+           type complex, or vice-versa, data-target shall be simply
+           contiguous (9.5.4). Otherwise, if bounds-remapping-list or
+           upper-bounds-expr appears in a pointer-assignment-stmt,
+           data-target shall be simply contiguous or of rank one."
+
+
+3. Edits to 25-007r1
+
+[xv] Introduction, Data usage and computation bullet, add sentence
+   "A pointer of type real can be associated with a suitable complex
+    target, and vice versa."
+{Suitable mostly means "simply contiguous".}
+
+[193:9+] 10.2.2.2 Syntax of the pointer assignment statement,
+         insert new paragraph 1:
+   "If a pointer-assignment-stmt has a bounds-remapping-list or an
+    upper-bounds-expr, it is a \defn{rank-remapping} pointer assignment.".
+{This will simplify the later wording. We're only going to use it inside
+ this subclause, so not only would making it a defined term be unnecessary,
+ it would be worse as it would stick the definition miles away from where
+ we are using it. NB hyphenated because adjective.}
+{Editor: Consider hyper-linking "rank-remapping" in the other edits to
+         this paragraph.}
+
+[193:12] 10.2.2.2 Syntax of the pointer assignment statement,
+         first constraint C1016, beginning
+            "(R1034) If data-target is not unlimited polymorphic..."
+         change the first "If" to
+   "If data-pointer-object is type real or complex, and the pointer
+    assignment is rank-remapping, data-target shall be of type real or
+    complex and the kind type parameters shall be equal. Otherwise, if".
+Note: the rest of the constraint is:
+                         "data-target is not unlimited polymorphic, data-
+           pointer-object shall be type compatible (7.3.3) with it and the
+           corresponding kind type parameters shall be equal."
+
+[193:23+] Same subclause, before
+   "C1022 If neither bounds-remapping-list nor upper-bounds-expr appears"
+insert new constraint
+   "C1021a If one of data-target and data-pointer-object is of type real and
+           the other is of type complex, data-target shall be simply
+           contiguous (9.5.4). Otherwise, in a rank-remapping
+           pointer-assignment-stmt, data-target shall be simply contiguous or
+           of rank one.".
+
+[193:24] Same subclause, C1022,
+         change "If neither bounds-remapping-list nor upper-bounds-expr
+                 appears in a pointer-assignment-stmt"
+         to "If a pointer-assignment-stmt is not rank-remapping,"
+Note: the rest of the constraint is
+   "the ranks of data-pointer-object and data-target shall be the same.".
+{This is just an editorial improvement.}
+
+NOTE TO J3: The next six edits describe in excruciating detail how para 8
+            of this subclause will be changed. It may be easier to skip to
+            the bottom where there are two paragraphs that just replace
+            para 8 wholesale.
+
+[195:15] 10.2.2.3 Data pointer assignment, paragraph 8,
+         beginning "If bounds-remapping-list",
+         delete "shall be simply contiguous (9.5.4) or of rank one, and".
+{This is now a constraint.}
+
+[195:17] Same subclause, same paragraph, before the sentence beginning
+            "The number of elements..."
+         insert new sentence:
+   "The number of elements required by the pointer object is the number
+    specified by the bounds-remapping-list, multiplied by two if the
+    pointer object is of type complex and the target is of type real, or by
+    half (and rounded up) if the pointer object is of type real and the
+    target is of type complex.".
+
+[197:17] Same subclause, same paragraph, sentence
+   "The number of elements of the pointer target shall not be less than
+    the number implied by the bounds-remapping-list."
+change "implied by the bounds-remapping-list" to "required",
+and split the paragraph in two after the full stop.
+
+[197:17] Same subclause same paragraph 8 (but after the split so will be
+         the new paragraph 9), next sentence,
+         change "The elements of the pointer object are associated"
+         to "A rank-remapping pointer assignment associates elements of the
+             pointer object",
+         and change "specified for the pointer object"
+         to "required",
+         making the whole sentence read:
+   "A rank-remapping pointer assignment associates elements of the pointer
+    object with those of the pointer target, in array element order; if the
+    pointer target has more elements than required, the remaining elements
+    are not associated with the pointer object.".
+
+[195:19] Same subclause, same original paragraph 8 (now 9), append sentence
+   "If the pointer object is of type real and the pointer target is of type
+    complex, this association has two consecutive elements of the pointer
+    object becoming associated with a single element of the pointer target,
+    first the real part then the imaginary part; if the pointer object has
+    an odd number of elements, the final element becomes associated with
+    the real part of the final affected element of the pointer target."
+{Semantics for real => complex.}
+
+[195:19] Same subclause, same original paragraph 8 (now 9), append sentence
+   "If the pointer object is of type complex and the pointer target is of
+    type real, this association has each element of the pointer object
+    becoming associated with two consecutive elements of the pointer
+    target; the real part of the complex element becomes associated with
+    the first of the consecutive real elements, and the imaginary part of
+    the complex element becomes associated with the second of those
+    consecutive elements."
+{Semantics for complex => real.}
+
+This makes the entire paragraphs 8 and (new) 9 read:
+
+"
+If bounds-remapping-list appears, it specifies the upper and lower bounds
+of each dimension of the pointer, and thus the extents; the pointer target
+shall not be a disassociated or undefined pointer. The number of elements
+required by the pointer object is the number specified by the bounds-
+remapping-list, multiplied by two if the pointer object is of type complex
+and the target is of type real, or by half (and rounded up) if the pointer
+object is of type real and the target is of type complex. The number of
+elements of the pointer target shall not be less than the number required.
+
+A rank-remapping pointer assignment associates elements of the pointer
+object with those of the pointer target, in array element order; if the
+pointer target has more elements than required, the remaining elements are
+not associated with the pointer object. If the pointer object is of type
+real and the pointer target is of type complex, this association has two
+consecutive elements of the pointer object becoming associated with a
+single element of the pointer target, first the real part then the
+imaginary part; if the pointer object has an odd number of elements, the
+final element becomes associated with the real part of the final affected
+element of the pointer target. If the pointer object is of type complex and
+the pointer target is of type real, this association has each element of
+the pointer object becoming associated with two consecutive elements of the
+pointer target; the real part of the complex element becomes associated
+with the first of the consecutive real elements, and the imaginary part of
+the complex element becomes associated with the second of those consecutive
+elements.
+"
+{We could actually put the second paragraph after the existing p9 instead
+ of in between p8 and p9, but this way works fine.}
+
+[196:bottom-1] Insert at the end of NOTE 2:
+   "A rank-remapping pointer assignment can be used to associated a REAL
+    pointer with a simply contiguous COMPLEX target with the same kind type
+    parameter, or vice versa. For example,
+
+        COMPLEX(real64), TARGET :: cx(n)
+        REAL(real64), TARGET :: rx(m)
+        REAL(real64), POINTER :: r(:)
+        COMPLEX(real64), POINTER :: c(:)
+        ...\vdots
+        c(1:m/2) => rx      ! c(1) associated with rx(1) and rx(2), etc.
+        r(1:n*2) => cx      ! r(1:2) associated with cx(1), etc.
+        c(1:m) => r         ! Invalid, because r is not simply contiguous."
+{It's useful to draw attention to the invalid case, as when the data types
+ are the same, rank-remapping pointer assignment is fine with discontiguous
+ rank one targets.}
+
+===END===
