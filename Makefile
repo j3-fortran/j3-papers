@@ -1,6 +1,6 @@
 all:	meeting-docs index file-types.txt
 
-MEETINGS=237 238 239
+MEETINGS=$$(/bin/ls meetings | tail -3)
 meeting-docs:
 	bin/get-docs-for-meeting ${MEETINGS}
 
