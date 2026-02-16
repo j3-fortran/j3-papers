@@ -1,0 +1,229 @@
+To: J3                                                     J3/26-117
+From: Mark LeAir
+Subject: Flang Liaison Report
+Date: 2026-February-15
+
+#Reference: 25-184r1
+
+Flang Open Source Fortran Report
+================================
+
+Flang is an open-source compiler for Fortran. It is an official
+subproject of the LLVM Project (llvm.org). NVIDIA's portion of the work
+was partially sponsored by the US Department of Energy
+Exascale Computing Project (particularly, LLNL, Sandia and LANL).
+
+The current goals of the project are to
+    - Create  an open source Fortran compiler with
+      LLVM  licensing,
+    - that can be used for language and parallelization
+      experimentation,
+    - that exists as a peer in the LLVM community of languages,
+      like Clang,
+    - that can rely on LLVM code generation and parallelism
+      support for CPUs and GPUs.
+
+There is a Slack workspace for Flang and a number of conference calls
+related to Flang development.
+    - Flang biweekly sync call ("umbrella call")
+    - Flang biweekly technical call
+    - "Classic Flang" biweekly call
+    - OpenMP in Flang Technical Call
+
+Details can be found on the Getting Involved page
+http://flang.llvm.org/docs/GettingInvolved.html.
+
+The New LLVM Flang Compiler
+---------------------------
+
+The LLVM Fortran compiler is available at
+https://github.com/llvm/llvm-project (the LLVM monorepo) in the flang/
+directory.
+
+LLVM Flang is being developed under the Apache 2.0 license with LLVM
+exceptions (the same as LLVM, Clang, OpenMP, etc.).
+
+New features added between 09-October-2025 and 11-February-2026:
+
+(Updates provided by Jean Perier)
+
+- Added support for extension: Allow POINTER,INTENT(IN) passed objects
+
+Improvements to existing features added between 09-October-2025 and
+11-February-2026:
+
+(Updates provided by Jean Perier)
+
+-  Preprocessor:
+  + Recognize compiler directives after expansion in comment.
+  + Tokenize all -D macro bodies and do it better.
+
+- Semantic checks:
+  + Fix compiler crash resolving interface procedure type when generic
+    shadows specific with the same name.
+  + Fix interpretation of structure constructors without keywords where
+    the first component is an allocatable or a pointer with the same
+    type as a parent type.
+  + Fix kind parametrized derived type issue with some usages of the KIND
+    in constant expressions inside the type definition.
+  + Process legacy DATA-style /initializers/ for components sooner so
+    that structure constructors can be processed correctly.
+  + Make sure dynamic type inquiry functions take extensible or unlimited
+    polymorphic types.
+  + Refine checks for NULL() in expressions.
+  + Fix character length checking in ALLOCATE statement.
+  + Ensure non generic interfaces shadows generic interface from outer
+    scope.
+  + Do not warn just because a procedure is called with an explicit
+    interface in some context and via implicit interface in another
+    (only warn if the calls are inconsistent).
+  + Catch function result that is non-pointer procedure.
+  + Emit more information on generic resolution failures.
+  + Add semantic check that STAT and ERRMSG are not (de)allocated by same
+    statement.
+  +  Emit better folding warning due to hidden conversion.
+  +  Do not allow function calls to type bound procedures defined with
+     PROCEDURE()
+  + Allow external procedure declared in interface block to be used as
+    initial data target.
+  + Improved handling of IGNORE_TKR to avoid temporary CFI descriptors
+    with the P and C options.
+  + Relaxed warning for C_F_POINTER FPTR argument to avoid false
+    positives.
+  + Warn on invalid argument to SQRT.
+  + Do not emit bogus error when kind suffixes are used on indices in
+    EQUIVALENCE statements.
+  + Fix compiler crash when derived type with component default values is
+    used in EQUIVALENCE statement.
+  + Add default initializers for procedure pointer components to module
+    files.
+  + Accept useless NAMELIST statement in interface block
+  + Catch doubly nested internal subprograms.
+  + Allow multiple identical DATA initializations as an extension.
+  + Allow configuring flang to accept additional compiler directive
+    sentinel (not only "dir").
+  + Support array constructor containing structure constructor with
+    initial data targets in constant expressions.
+
+- IO
+  + Ensure defined IO dummies are not arrays.
+  + Slightly improve the performance of list directed IO.
+  + Allow some list-directed child output to advance.
+  + Advance output record after some char-string-edit-descs in defined
+    output subroutine called in NAMELIST IO context.
+  + Control stream truncation via runtime environment.
+  + Improve support for basic IO statement from GPU kernels.
+  + Allow missing space in some free-form keywords
+  + Better "out of memory" error for failure to allocate a unit.
+  + Ensure OPEN(STATUS='NEW') fails if the file already exists.
+
+- Driver
+  + Added support for support -f(no-)protect-parens to control whether
+    FMAs can be generated over Fortran parentheses.
+  + Added new -Wused-undefined-variable option and checks to detect
+    undefined variables (disabled by default as it may still raise false
+    positive).
+
+- Codegen:
+  + Fixed regression with linkage of BIND(C) variables with CDEFINED extension.
+  + Fixed regression in copy-in/copy-out with polymorphic arguments.
+  + Simplified pointer assignments (runtime calls were made in many cases
+    where simple inline code was sufficient).
+  + Improved code for character SELECT CASE (comparison done inline at
+    O1 and above).
+  + Add show_descriptor extension intrinsic in new flang_debug intrinsic
+    module file to allow printing the CFI descriptor for a variable.
+  + Add -funsafe-cray-pointers to cope with the fact that flang is now
+    more aggressively relying on the fact that a pointee and the target
+    are not allowed to be used at the same time.
+  + Improve alias analysis around TARGETs variables and to disambiguate
+    descriptor and data accesses.
+  + Improved side effects information in Fortran IR.
+  + Added experimental loop invariant code motion at higher level of
+    representation in the IR (off by default).
+  + Added experimental pass to convert Fortran IR to MLIR Memref dialect.
+  + Fixed block merging issue with SELECT CASE that caused a compiler
+    assert.
+  + Handle assigned goto with allocatable integer variable
+  + Mark array expression memory access as independent inside loops
+    carrying the IVDEP extension directive.
+  + Fix early free of allocatable function result in WHERE mask.
+  + Improve code generation for WHERE construct to avoid creating mask
+    temporaries for cases like "WHERE (x.gt.0) x = 0".
+  + Fixed CSHIFT optimization when the array has user defined lower bounds
+    that may be negative or zero.
+  + Improve LEN() code generation to avoid fully evaluating its argument
+    in cases like LEN(a//b).
+
+OpenMP Enhancements between 15-October-2025 and 12-February-2026:
+
+(Updates provided by Krzysztof Parzyszek)
+
+- Accept DISTRIBUTE constructs that are not lexically nested in TEAMS
+  region
+- Parsing and semantic checks for DEVICE_SAFESYNC clause
+- Parsing and semantic checks for ATTACH modifier
+- Accept optional boolean arguments to requirement clauses
+- Improve performance of local variable allocation on GPU
+- Initial support for ByRef reductions on GPU
+- Semantic checks for DYN_GROUPPRIVATE clause
+- Lowering support for TASKLOOP clauses
+- Support for DECLARE REDUCTION
+- Lowering support for IS_DEVICE_PTR clause
+- Parsing of THREADSET clause
+- Parsing and semantic checks for DIMS modifier
+- Parsing of OpenMP 6.0 syntax of INIT clause
+- Support for COMBINER clause
+- Parsing and semantic checks for INIT clause on DEPOBJ construct
+- Parsing and semantic checks for depinfo-modifier
+- Lowering of UNIFORM clause on DECLARE SIMD
+- Permit EXTERNAL on DECLARE TARGET
+- Lowering of INBRANCH and NOTINBRANCH clauses
+- Lowering of AFFINITY clause on TASK construct
+- Allow ALLOCATE clause on DO construct
+
+DO CONCURRENT CPU/GPU Support as of 12-February-2026:
+
+flang-compiler Slack user kareem reports that Flang's support for
+DO CONCURRENT parallelization has improved on both CPU and GPU targets.
+CPU support has been validated using FIATS inference and training codes.
+GPU support is currently basic and still in progress, with offload tests
+completed for 1D and 2D SAXPY and additional validation using customer
+codes that avoid heavy use of user-defined types. The implementation maps
+DO CONCURRENT to OpenMP under the hood.
+
+Summary
+
+The current state of the LLVM Flang compiler:
+    - written in modern C++ following LLVM conventions
+    - over 200,000 lines of code, tests and scripts
+    - parses all of Fortran 2018 to abstract syntax trees (AST)
+    - parses  OpenMP 4.5 and some OpenMP 5.0
+    - parses OpenACC 3.0
+    - defines a "Fortran Intermediate Representation" (FIR) based on
+      LLVM's MLIR
+    - can analyze most OpenMP and OpenACC constructs
+    - can compile and correctly run Fortran 77 programs (passes FCVS
+      test suite), nearly all Fortran 95 programs, and many programs that
+      use Fortran 2003+ modern features.
+    - supports end-to-end compilation of all OpenMP 1.1 except for
+      reduction, privatization, and one atomic construct.
+    - for later versions of OpenMP, Flang has support for simd, task,
+      taskgroup etc.
+
+
+Classic Flang Compiler
+----------------------
+
+The previous version of Flang, now known as Classic Flang, is derived from
+the PGI Fortran compiler, with some proprietary features removed (e.g.,
+OpenACC support, Interprocedural Analysis). It is the basis for commercial
+Fortran compilers from AMD and Huawei. Previous commercial versions of
+the Arm Fortran compiler also used Classic Flang as its basis. Commercial
+Arm Fortran compilers are now based on LLVM Flang.
+
+Classic Flang is available for Linux on x86-64, OpenPOWER, and Arm
+processors. Also, experimental support for RISCV is available. OpenPower
+support is not currently being maintained but it is still available.
+
+More information is available at https://github.com/flang-compiler/flang.
