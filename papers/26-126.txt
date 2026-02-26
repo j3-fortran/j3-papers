@@ -1,0 +1,59 @@
+To: J3                                                     J3/26-126
+From: Malcolm Cohen
+Subject: Integrity of parentheses
+Date: 2026-February-25
+Reference: 26-115r2, 24-007
+
+
+Paper 26-115r2 asks questions about what the rules mean for parentheses,
+and seems to deduce that being treated as a "data entity" means that the
+result of evaluating a parenthesised expression means that it will be
+rounded to the "storage format" of variables of that type and kind.
+
+This is not what being "treated as a data entity" means. It means that the
+value is computed before being used as part of a larger expression. This is
+explained by the NOTE in 10.1.8.
+
+Fortran has always permitted an expression to be evaluated entirely in a
+higher precision than required by the type and kind. This has advantages
+not only in obtaining a more accurate result, but also in performance.
+
+For example, the popular x86 processor with its x87 co-processor only had
+floating-point registers that were 80 bits wide. Rounding the result of an
+operation to single precision or double precision necessarily involved a
+round trip to memory along with the cost of the conversion itself (which
+was non-trivial, especially for subnormal values). Requiring rounding of
+intermediate results in an expression would thus have been prohibitively
+expensive.
+
+Nowadays, most processors have both single and double precision sized
+registers, so there is little cost for those precisions on those processors,
+but many do not have half precision sized registers. That means that rounding
+intermediate values to half precision is very expensive, and possibly without
+hardware support, which makes it even slower.
+So the performance implications have not gone away.
+
+A similar question was asked previously, about whether the REAL intrinsic
+function was required to round intermediate results to main memory format,
+and the answer was that because REAL of a floating-point expression is
+essentially an identity operation, it was not required to round anything.
+See interp F03/0121, paper 16-118r1.
+
+Fortran has always been about providing high performance for mathematical
+formulae evaluation. Thus the frequent mentions of "mathematically
+equivalent expressions" and "processor-dependent approximations".
+It would be astonishing if parentheses inserted rounding operations into the
+middle of an expression, especially considering our answer for REAL.
+
+However, sometimes people do want to round an intermediate result, and that is
+why the IEEE_REAL function was added to Fortran 2018. This is not an identity
+operation but a conversion that rounds an intermediate value to the specified
+IEEE format.
+
+Thus,
+        IEEE_REAL(B*C,KIND(B*C)) + A
+is guaranteed to round B*C to the specified precision (IEEE format), and so
+(for example) the IEEE FMA operation cannot be used to evaluate that
+expression, nor can it be evaluated entirely in a higher precision.
+
+===END===
