@@ -1,0 +1,180 @@
+To: J3                                                     J3/26-129
+From: Lorri Menard & Dan Bonachea & Jon Steidel
+Subject: US11 - Edits for intrinsics for source location
+Date: 2026-February-26
+
+References: 23-193r1, 26-124r3
+
+I  Introduction
+
+23-193r1 provided use cases for a way to get the source name, source line,
+and current procedure name in their programs. This paper passed at meeting
+m230 in June 2023.
+26-124r3 provided specifications and syntax for inquiry functions, and
+passed at meeting m239 in February 2026.
+
+II Edits
+
+[xv] Introduction
+Add to "Intrinsic modules" bullet the sentence:
+"The functions SOURCE_FILE, SOURCE_LINE and PROCEDURE_NAME
+in the intrinsic module ISO_FORTRAN_ENV provide source location
+information."
+
+10.1.11 Specification expression
+[197:9] Replace "COMPILER_VERSION or COMPILER_OPTIONS" with
+"COMPILER_OPTIONS, COMPILER_VERSION, SOURCE_FILE or SOURCE_LINE"
+and add appropriate section references, such that it reads
+     (5) the COMPILER_OPTIONS, COMPILER_VERSIONS, SOURCE_FILE,
+            SOURCE_LINE or PROCEDURE_NAME function from the intrinsic
+            module ISO_FORTRAN_ENV(17.10.2.6, 17.10.2.7, 17.10.2.28+,
+            17.10.2.31+,17.10.2.31++)
+**Note to editor: We sorted the list alphabetically
+
+17.10.2 The ISO_FORTRAN_ENV intrinsic module
+
+[554:35+] add one intrinsic (after PARENT_TEAM)
+
+17.10.2.28+ PROCEDURE_NAME([CONTEXT])
+<<Description.>> Name of the procedure or program unit where the reference
+appears.
+<<Class.>> Transformational function
+<<Argument.>>
+  CONTEXT(optional) Shall be a logical scalar.
+<<Result characteristics.>> System character scalar
+
+<<Result value.>>
+If CONTEXT is not present or has the value .FALSE., the result value is
+determined as follows:
+
+<<case (i):>>If the reference appears within a subprogram, the result value is
+the name of the subprogram.
+<<case (ii):>>If the reference appears in a named program unit that
+is not a subprogram, the result value is the name of the program unit.
+
+** Comment to committee:  The following is not recommended to be part of the
+ edits but left for clarifications
+(i.e. the <module-name> given in the <module-stmt>, the <submodule-name> given
+ in the <submodule-stmt>, the <program-name> given in the <program-stmt> or the
+ <block-data-name> given in the <block_data_stmt>).
+**
+<<case (iii):>>If the reference appears in an unnamed main program, but not
+a subprogram, the result value is "MAIN PROGRAM".
+<<case (iv):>>If the reference appears in an unnamed block data, the result
+value is "BLOCK DATA".
+
+If CONTEXT is present and has the value .TRUE., the result value depends on
+where the reference appears. In the following illustrations, the square
+brackets indicate components that conditionally appear if the reference is
+enclosed in such a unit, and <<or>> indicates an alternative.  The terms
+<subprogram-name> or <internal-subprogram-name> each correspond to
+either <subroutine-name> or <function-name>.  Other terms in italics represent
+the name corresponding to the syntax term.  All other characters are literal.
+
+<<case (i):>> If the reference appears in a module or submodule, the result
+value has the format:
+<module-name>[/<submodule-name>]:[<subprogram-name>][.<internal-subprogram-name>
+                                                        <<or>> =<binding-name>]
+
+**Note to editor:  If the above line requires a line break, add the square
+ "continuation" mark
+ Alternatively case(i) and case (iii) can each be exploded out into two specific
+ cases.
+**
+
+<<case (ii):>>If the reference appears in a main program, the result value has
+the format:
+<program-name>[.<internal-subprogram-name>]
+
+<<case (iii):>>If the reference appears in an external subprogram, the result
+value has the format:
+<subprogram-name>[.<internal-subprogram-name> <<or>> =<binding-name>]
+
+<<case (iv):>>If the reference appears in a block data, the result value has
+the format:
+<block-data-name>
+**Note to editor: Do the above regexps need to be in quotes?
+
+With the exception of a <binding-name>, the result value is in upper case.
+The "=<binding-name>" appears if and only if the subprogram has BIND(C) with a
+NAME= specifier, and has the value of the NAME= specifier.
+
+<<Example>>
+
+module A
+   character(*), parameter :: mod_name = procedure_name()            ! 'A'
+   character(*), parameter :: full_mod_name = procedure_name(.TRUE.) ! 'A:'
+contains
+   subroutine s()
+      print*, procedure_name() ! 'S'
+      print*, procedure_name(.TRUE.) ! 'A:S'
+   contains
+      subroutine inner()
+         print*, procedure_name(.TRUE.)! 'A:S.INNER'
+      end subroutine inner
+   end subroutine s
+   subroutine s2() bind(C,name='qQ')
+      print*, procedure_name(.TRUE.) ! 'A:S2=qQ'
+   end subroutine s2
+end module A
+
+submodule (A) B
+   character(*), parameter :: submod_name = procedure_name() ! 'B'
+   character(*), parameter :: full = procedure_name(.TRUE.) ! 'A/B:'
+contains
+   subroutine s3()
+      print*, procedure_name(.TRUE.) ! 'A/B:S3'
+   contains
+      subroutine inner2()
+         print*, procedure_name(.TRUE.) ! 'A/B:S3.INNER2'
+      end subroutine inner2
+   end subroutine s3
+end submodule B
+
+** Comment for editor: End of example
+
+[555:13+] Add two new intrinsics (note: after SINGLE_PRECISION)
+17.10.2.31+ SOURCE_FILE([CONTEXT])
+<<Description.>> Processor-dependent string describing the name of the
+ source text where the reference appears.
+<<Class.>> Transformational function
+<<Argument.>>
+  CONTEXT(optional)  Shall be a logical scalar.
+<<Result Characteristics.>>
+The result is a system character scalar with processor-dependent length.
+
+<<Result Value.>>
+If CONTEXT is not present or has the value .FALSE. the result shall be
+a processor-dependent value representing the name of the source text.
+If CONTEXT is present and has the value .TRUE. the result shall be a
+processor-dependent value representing a potentially more detailed
+name of the source text.
+If no information is available the result value is the empty string.
+
+<<Example.>>  SOURCE_FILE() might have the value 'program.F90' and
+SOURCE_FILE(.true.) might have the value '/usr/src/program.F90'.
+
+
+17.10.2.31++ SOURCE_LINE()
+<<Description.>> Current source line
+<<Class.>> Transformational function
+<<Argument.>> None
+
+<<Result characteristics.>> Standard integer.
+<<Result value.>>
+A positive value representing the index of the line where the reference appears
+within the Fortran source text, computed in a processor-dependent manner.
+If the processor includes a preprocessor, it is recommended that the value
+of SOURCE_LINE() matches the value reported by the preprocessor.
+
+**Note to committee: While we realize that there is no preprocessor in the
+Fortran standard, the reality is that most current implementations include
+one so we think it's valuable to provide this guidance.
+**
+
+Appendix A.2
+[657:4] Replace "COMPILER_OPTIONS and COMPILER_VERSION" with
+"COMPILER_OPTIONS, COMPILER_VERSION, SOURCE_FILE and SOURCE_LINE"
+such that it reads
+ "the values returned by the functions COMPILER_OPTIONS, COMPILER_VERSION,
+SOURCE_FILE and SOURCE_LINE in the intrinsic module ISO_FORTRAN_ENV (17.10.2);"
