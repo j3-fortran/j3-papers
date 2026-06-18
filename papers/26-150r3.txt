@@ -1,0 +1,124 @@
+To: J3                                                     J3/26-150r3
+From: Brad Richardson & Generics
+Subject: Response to UTI025
+Date: 2026-June-18
+
+Reference: 26-007r1
+
+UTI 025 states:
+
+    "Why is the that constraint needed?
+
+    One immediately wonders if a nonintrinsic procedure can appear
+    where it is not valid...
+
+    Perhaps a NOTE is in order explaining this, because otherwise
+    vendors might omit the checks it must be requiring.
+
+    This seems like a very ad-hoc extra requirement on the
+    instantiation argument, requiring analysis of the entire template
+    not just the declarations.
+
+    It contrasts strongly with the deferred types, where we have put
+    onerous limitations on the instantiation argument just so that the
+    compiler does not need to say something like "oh, you can't have
+    this type here, because an object of this type was assigned to
+    somewhere in the template"."
+
+Subgroup agrees that constraint C1635 is not correctly stated. The
+intent is to enable the use of intrinsic procedures as instantiation
+arguments, but it is not well defined what specifics exist, or what
+the interfaces of those specifics exactly are. It would also be
+convenient if we could use the intrinsics as instantiation arguments
+without needing the deferred procedure to specify the same optional
+arguments. This would naturally extend to user procedures as well.
+Based on discussions in subgroup, the following edits enable this.
+
+[412:1-413:1] Replace the paragraph with the following.
+
+    "The deferred procedure is treated as if it were a procedure with
+     a single reference to its instantiation argument, providing as
+     actual arguments to the instantiation argument the dummy
+     arguments of the deferred procedure in order. If the deferred
+     procedure is a function, the result of the reference is assigned
+     to the result of the deferred procedure. If the instantiation
+     argument is a generic-spec, this reference performs
+     generic resolution. If the INTENT of a dummy argument of the
+     deferred procedure is:
+     * IN, the corresponding dummy argument of the instantiation
+       argument shall be INTENT(IN),
+     * INOUT, the corresponding dummy argument of the instantiation
+       argument shall be INTENT(INOUT) or INTENT(OUT),
+     * OUT, the corresponding dummy argument of the instantiation
+       argument shall be INTENT(OUT),
+     * unspecified, the corresponding dummy argument of the instantiation
+       argument may have any INTENT."
+
+[413:1+] Insert the following as a NOTE.
+
+    "It is not necessary for an instantiation to actually include the
+     deferred procedure as described above. The references
+     to it within the template could be effectively replaced with
+     references to the instantiation argument."
+
+[413:2] Delete the constraint C1633.
+
+[413:3-7] Replace constraint C1634 with "If the instantiation
+          argument corresponding to a deferred procedure is a
+          procedure name, it shall not be a procedure pointer."
+
+[413:7+] Introduce a new constraint, "If the instantiation argument
+         corresponding to a deferred procedure is a generic-spec, the
+         procedure chosen by generic resolution shall not be a
+         procedure pointer."
+
+[413:7+] Introduce a new constraint, "If a deferred procedure is
+         elemental, then its corresponding effective instantiation
+         argument shall be elemental."
+
+[413:7+] Introduce a new constraint, "An optional argument of a
+         deferred procedure shall not correspond to a non-optional
+         argument of its instantiation argument."
+
+[413:8-10] Delete constraint C1635.
+
+[413:10+] Insert the following as a NOTE.
+
+          "The effect of the interpretation of deferred procedures and
+           their corresponding instantiation arguments is such that:
+           * trailing optional arguments of the instantiation
+             argument can be omitted from the interface of the
+             deferred procedure,
+           * a dummy argument of the instantiation argument that
+             is assumed rank can correspond to an assumed-shape,
+             assumed-size or scalar dummy argument of the deferred
+             procedure,
+           * an instantiation argument that is simple can correspond to a
+             deferred procedure that is not simple, and
+           * an instantiation argument that is pure can correspond to a
+             deferred procedure that is not pure.
+
+           The following is an example.
+
+           TEMPLATE DEMO{T, REDUCTION}
+               DEFERRED TYPE :: T
+               DEFERRED INTERFACE
+                   PURE FUNCTION REDUCTION(A)
+                       TYPE(T), INTENT(IN) :: A(:)
+                       TYPE(T) :: REDUCTION
+                   END FUNCTION
+               END INTERFACE
+           CONTAINS
+             SUBROUTINE DO_IT(A, B)
+               TYPE(T), INTENT(IN) :: A(:)
+               TYPE(T), INTENT(OUT) :: B
+               B = REDUCTION(A)
+             END SUBROUTINE
+           END TEMPLATE
+
+           INSTANTIATE DEMO{REAL, SUM}
+           INSTANTIATE DEMO{INTEGER, PRODUCT}"
+
+[413:10+] Delete UTI 025
+
+--END--
