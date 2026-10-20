@@ -1,0 +1,283 @@
+To: J3                                                     J3/26-212
+From: Mark LeAir
+Subject: Flang Liaison Report
+Date: 2026-October-20
+
+#Reference: 26-175r1
+
+Flang Open Source Fortran Report
+================================
+
+Flang is an open-source compiler for Fortran. It is an official
+subproject of the LLVM Project (llvm.org). NVIDIA's portion of the work
+was partially sponsored by the US Department of Energy
+Exascale Computing Project (particularly, LLNL, Sandia and LANL).
+
+The current goals of the project are to
+    - Create  an open source Fortran compiler with
+      LLVM  licensing,
+    - that can be used for language and parallelization
+      experimentation,
+    - that exists as a peer in the LLVM community of languages,
+      like Clang,
+    - that can rely on LLVM code generation and parallelism
+      support for CPUs and GPUs.
+
+There is a Slack workspace for Flang and a number of conference calls
+related to Flang development.
+    - Flang biweekly sync call ("umbrella call")
+    - Flang biweekly technical call
+    - "Classic Flang" biweekly call
+    - OpenMP in Flang Technical Call
+
+Details can be found on the Getting Involved page
+http://flang.llvm.org/docs/GettingInvolved.html.
+
+The New LLVM Flang Compiler
+---------------------------
+
+The LLVM Fortran compiler is available at
+https://github.com/llvm/llvm-project (the LLVM monorepo) in the flang/
+directory.
+
+LLVM Flang is being developed under the Apache 2.0 license with LLVM
+exceptions (the same as LLVM, Clang, OpenMP, etc.).
+
+New features added between 11-June-2026 and 16-October-2026:
+
+(Updates provided by Jean Perier)
+
++ Added -fimplicit-module-prefix: a submodule procedure definition that
+  matches a separate module procedure interface but omits the MODULE prefix is
+  bound to the interface (-Wportability/-pedantic diagnose the missing prefix).
++ Extension: accept a named COMMON block initialized identically in several
+  program units (portability warning).
++ References with out-of-range constant subscripts are now a warning instead of
+  an error, since they are only invalid when executed.
+  -fno-out-of-bounds-subscripts restores the error.
++ Warn when an INTENT(IN) dummy argument is passed to a dummy argument with no
+  INTENT, which may be modified (-Wintent-in-actual-for-default-intent).
++ Warn about BIND(C) interfaces with assumed-shape or assumed-rank dummy
+  arguments, since Fortran 2018 requires a C descriptor while older C code
+  expects a bare address.
+
+Improvements to existing features added between 11-June-2026 and
+16-October-2026:
+
+(Updates provided by Jean Perier)
+
+- Preprocessor/Parser:
++ Treat a bare carriage return as whitespace outside of literals.
++ Improve the error message for a data component declared after CONTAINS in a
+  derived type.
+
+- Semantic checks:
++ Reject COMMON blocks, EQUIVALENCE storage and derived types whose size does
+  not fit in a 64-bit integer.
++ Warn about NUMERIC_STORAGE_UNIT only when it is actually used.
++ Check SIMPLE for every IEEE_ARITHMETIC elemental function family.
++ Accept BOZ initializers for C enumerator values.
++ Accept forward-typed PARAMETER constants under IMPLICIT NONE.
++ DATA implied-DO indices now take their type from a type declaration that
+  follows the DATA statement (no more bogus error under IMPLICIT NONE, kind no
+  longer ignored).
++ Statement function dummy names no longer clash with host or unreferenced
+  global names, and no explicit interface is required for statement functions.
++ Fix host association of ASYNCHRONOUS/VOLATILE variables in submodules.
++ Fix overriding of private type-bound procedures of parameterized derived
+  types in the same module.
++ Relax IGNORE_TKR(C) checks for assumed-type BIND(C) dummy arguments so
+  derived types with type-bound procedures, FINAL or parameters can be passed.
++ Preserve ambiguous USE-association errors through whole-module USE.
+
+- Runtime library:
++ Report a fatal error for integer MOD/MODULO with a zero divisor instead of
+   producing an unpredictable value.
++ Fix empty namelist input of a scalar item (e.g. `l =`) aborting at runtime.
++ With -frepack-arrays and when temporaries are used for non-contiguous actual
+  arguments, copy back only the modified data (avoids writing into read-only
+  data such as named constants).
++ Fix uninitialized I/O unit state read on AArch64 (reported by memory
+  checkers).
+
+- Codegen:
++ Loop interchange is now enabled by default at -O1 and above
+  (-fno-loop-interchange disables it).
++ DO loops whose GO TOs stay inside the loop body (or that end with a CYCLE)
+  are now kept as regular counted loops instead of plain branches, and a
+  construct containing GO TOs no longer prevents the constructs around it from
+  being treated as regular loops and IFs. This keeps more loops visible to loop
+  analyses, optimizations and parallelization.
++ Plain DO loops no longer keep a redundant copy of the DO variable that hid
+  memory dependences from later loop analyses.
++ Loop versioning (fast path for contiguous arrays) now also handles array
+  sections with unit stride (about 12% faster SPEC CPU2000 187.facerec on
+  Grace).
++ Scalar INTENT(IN) dummy arguments of non-character intrinsic types are marked
+  read-only for the optimizer, enabling function specialization for constant
+  arguments.
++ Improved alias analysis: calls are analyzed using the INTENT of the dummy
+  arguments (no need to look at the called procedure body), better handling of
+  null addresses and host-associated allocatables, optional caching to reduce
+  compile time.
++ Better memory-to-register promotion of local scalars.
++ Named constants (PARAMETER) passed as actual arguments: whole arrays or array
+  elements are now associated with the constant storage (sequence association
+  works, no unnecessary temporary).
++ New experimental allocation placement pass (off by default) deciding in one
+  place whether temporaries go on the stack or the heap, so copy-in/copy-out
+  buffers also follow -fstack-arrays.
++ Continued work on the experimental conversion of Fortran IR to MLIR MemRef
+  (off by default): array sections, descriptor strides, storage association and
+  VOLATILE variables.
++ Fix IEEE intrinsics (e.g. IEEE_MIN_NUM_MAG) not preserving NaN semantics at
+  -Ofast.
++ Fix MINVAL/MAXVAL/MINLOC/MAXLOC and MIN/MAX reductions for INTEGER(16) (wrong
+  results for empty or fully masked arrays).
++ Fix possible wrong code from invalid integer overflow assumptions in array
+  indexing for RESHAPE and array sections with non-positive strides, while
+  keeping these assumptions where valid to help loop optimizations.
++ Mark visible Cray pointer associations (ptr = loc(x)) as aliasing, fixing
+  miscompilations at -O2.
++ Fix MVBITS on unsigned values.
++ Fix compiler failures with COSHAPE and THIS_IMAGE(coarray) results of non
+  64-bit integer kinds (including the default kind).
++ Fix stack growth with -fstack-arrays where the stack space of some
+  temporaries was never released.
++ Fix passing of large BIND(C) derived types with the VALUE attribute on
+  AArch64 (now follows the platform calling convention).
++ Speed up compilation of large CHARACTER DATA initializers (could take tens
+  of minutes).
++ Better source locations in debug info and diagnostics: programs starting with
+  INCLUDE, the generated main entry point, the start and end of constructs and
+  END DO statements (debuggers no longer step back to earlier lines at -O0).
+
+OpenMP activity since last report:
+
+(Updates provided by Krzysztof Parzyszek)
+
+- Implement MLIR lowering for GROUPPRIVATE directive.
+- Improve name resolution for user-defined reductions.
+- Handle user-defined operators in used-defined reductions.
+- Better diagnosis of repeated variables in COPYPRIVATE.
+- Diagnose attempts to apply IF clause to overlapping constituent directives.
+- Implement LLVM IR generation for "task" reduction modifier for PARALLEL,
+  worksharing-loop and SECTIONS directives.
+- Emit warning that REVERSE_OFFLOAD is not supported instead of quietly
+  ignoring it.
+- Implement parsing and semantic checks for locator list-items.
+- Emit a warning when mapping temporary descriptors without a corresponding
+  exit.
+- Improve matching of combined directives in construct trait.
+- Added more semantic checks for DECLARE_VARIANT directive.
+- Properly resolve CRITICAL construct names.
+- Detect non-rectangular collapsed loop nests, emit TODO message.
+- Implement collapse for imperfectly nested loops.
+- Fix visibility of globals in DECLARE_TARGET.
+- Add diagnostic for ORDERED THREADS SIMD inside plain SIMD region.
+- Implement semantic checks for metadirective loop nests.
+- Add support for mapping of zero-sized arrays.
+- Implement lowering of DECLARE_VARIANT.
+- Fix handling of automapped allocatable objects.
+- Diagnose DECLARE_SIMD directive placement errors.
+- Implement code generation of TARGET IN_REDUCTION.
+- Implement DEPEND clause for TASKWAIT directive.
+- Lower cross-module user-defined reduction.
+- Allow PARALLEL LOOP inside of TEAMS.
+- Add support for INTEROP construct.
+- Generate LLVM IR for ASSUME and ASSUMES directives.
+- Implement the ERROR directive.
+- Improve alias analysis of OpenMP private symbols.
+- Add -fopenmp-target-fast option.
+- Fix interop-var handling and diagnostics.
+- Add semantic checks in THREADPRIVATE/DECLARE_TARGET.
+- Remove "present" modifier application on descriptor.
+- Lower allocator-backed storage for ALLOCATE clause.
+- Lower "align" modifier on ALLOCATE clause.
+- Diagnose failed construct decomposition instead of falling through.
+- Fix wrong results for FORALL in a WORKSHARE construct.
+- Mark ALLOCATE clause as allowed since OpenMP 5.0.
+- Add support for ATOMIC COMPARE FAIL.
+- Add support for ATOMIC COMPARE CAPTURE.
+- Generate maps for allocatable components of privatized symbols for target
+  offload.
+- Support conditional LASTPRIVATE on host.
+- Add parsing and semantic checks for USES_ALLOCATORS.
+- Fix fixed-form OpenMP prescan for continuation lines.
+- Support the FULL clause on the UNROLL construct.
+- Fix nested OpenMP mapper composition.
+- Support certain directives in PURE procedures.
+- Do not emit barrier after SECTIONS with LASTPRIVATE and NOWAIT.
+- Remove forced "close" mapping for descriptor in unified-shared-memory.
+- Improve implicit DECLARE_TARGET propagation.
+- Stop emitting implicit mappers for allocatable derived types (and arrays of
+  them) unconditionally.
+- Allow 0 after directive sentinels.
+- Privatize descriptors for assumed shape array maps for performance increase.
+- Support omx/ompx extension sentinels.
+- Fix USE_DEVICE_ADDR handling for COMMON blocks in TARGET_DATA.
+- Skip unrelated passes in simd-only mode.
+- Accept trailing colon in DOACROSS(SOURCE:).
+- Lower DO, SIMD, and DO SIMD metadirective variants.
+- Fix handling of local variable in PARALLEL WORKSHARE FIRSTPRIVATE(array).
+- Fix integer kind handling for omp_lib.h entry points.
+- Implement modifier set and modifier group verification.
+- Do not emit an error for CRITICAL inside DEFAULT(NONE).
+- Optimize target updates of derived-type scalars.
+- Add lowering and translation for the THREADSET clause.
+- Show warning for -fdoconcurrent-to-openmp in SIMD only mode.
+- Prevent internal linkage on declarations for DECLARE_TARGET variables.
+- Support DECLARE_TARGET on interfaces local to procedures.
+- Support nested derived types in DO CONCURRENT device conversion.
+- Diagnose zero-length depend array sections.
+- Support DISPATCH construct.
+- Additional support for ALLOCATE clause on SCOPE construct.
+- Support NOWAIT clause on TASKWAIT.
+- Sink intervening code unguarded into collapsed loop body.
+- Improve check for LINEAR clause and ORDERED clause with argument.
+- Preserve absent OPTIONAL arguments in target mappings.
+- Limit scope of REQUIRES directive to a program unit.
+- Allow past/future clauses on a directive with a warning.
+- Privatize loop IVs in the innermost PARALLEL.
+- Diagnose array element references to special variables in user-defined
+  reductions.
+- Lower array-section WORKDISTRIBUTE assign to element loop.
+- Add diagnosis on invalid list items in DEPEND(DEPOBJ:) clauses.
+- Fix verification of REF modifier on LINEAR clause.
+- Ignore DECLARE_SIMD and warn about missing implementation.
+
+Summary
+
+The current state of the LLVM Flang compiler:
+    - written in modern C++ following LLVM conventions
+    - over 200,000 lines of code, tests and scripts
+    - parses all of Fortran 2018 to abstract syntax trees (AST)
+    - parses  OpenMP 4.5, some OpenMP 5.0, and some OpenMP 6.0.
+    - parses OpenACC 3.0
+    - defines a "Fortran Intermediate Representation" (FIR) based on
+      LLVM's MLIR
+    - can analyze most OpenMP and OpenACC constructs
+    - can compile and correctly run Fortran 77 programs (passes FCVS
+      test suite), nearly all Fortran 95 programs, and many programs that
+      use Fortran 2003+ modern features.
+    - supports end-to-end compilation of all OpenMP 1.1 except for
+      reduction, privatization, and one atomic construct.
+    - for later versions of OpenMP, Flang has support for simd, task,
+      taskgroup etc.
+
+
+Classic Flang Compiler
+----------------------
+
+The previous version of Flang, now known as Classic Flang, is derived from
+the PGI Fortran compiler, with some proprietary features removed (e.g.,
+OpenACC support, Interprocedural Analysis). It is the basis for commercial
+Fortran compilers from AMD and Huawei. Previous commercial versions of
+the Arm Fortran compiler also used Classic Flang as its basis. Commercial
+Arm Fortran compilers are now based on LLVM Flang.
+
+Classic Flang is available for Linux on x86-64, OpenPOWER, and Arm
+processors. Also, experimental support for RISCV is available. OpenPower
+support is not currently being maintained but it is still available.
+
+More information is available at https://github.com/flang-compiler/flang.

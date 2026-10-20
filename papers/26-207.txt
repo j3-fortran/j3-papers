@@ -1,0 +1,255 @@
+To: J3                                                     J3/26-207
+Subject: US-016: Mathematical Properties of CO_REDUCE*(OPERATION)
+From: Dan Bonachea & HPC
+Date: 2026-October-19
+References: 26-007r2, 25-199r2
+
+1. Background
+-------------
+
+The specification for the OPERATION argument to CO_REDUCE includes:
+
+"OPERATION shall implement a mathematically associative operation."
+
+The subclause includes a NOTE:
+
+  "If the OPERATION function is not mathematically commutative, the result of
+   calling CO_REDUCE can depend on the order of evaluations."
+
+25-199r2 added two new intrinsics CO_REDUCE_PREFIX_{EXCLUSIVE,INCLUSIVE}, which
+in 26-007r2 similarly specify:
+
+  "OPERATION shall implement a mathematically associative operation."
+
+All three intrinsics are listed in Annex A.2 as computing a processor-dependent
+value. Additionally, the subclauses for all three of these collective
+subroutines explicitly specify processor-dependent steps in the computation,
+for example, the CO_REDUCE subclause states: (emphasis added)
+
+  "The computed value of a reduction operation over a set of values is the
+   result of an iterative process. Each iteration involves the evaluation of
+   OPERATION(x, y) for x and y in the set, the removal of x and y from the set,
+   and the addition of the value of OPERATION(x, y) to the set.
+** The choice of x and y is processor dependent. **
+   The process terminates when the set has only one element; this is the
+   computed value."
+
+This operational definition makes it clear the collective subroutine calculation
+is permitted to apply the binary OPERATION to the provided operands in any
+arbitrary order. Nothing in this subclause or elsewhere establishes an
+expectation of operand or evaluation order. In particular, although a reader may
+have an naive expectation of operand ordering corresponding to the image index
+providing each value to the collective subroutine, *no such order* is
+specified.
+
+The subclauses for CO_REDUCE_PREFIX_{EXCLUSIVE,INCLUSIVE} similarly include an
+operational definition of the computed value with explicitly processor-dependent
+ordering of operations. For example, from CO_REDUCE_PREFIX_INCLUSIVE (the
+corresponding text for EXCLUSIVE differs only in details orthogonal to this
+discussion):
+
+  "The computed value for an inclusive prefix reduction of a list of scalar
+   values is the result of an iterative process over the specified team. Let A_i
+   be the (scalar) value of A on image i on invocation, and S_i the ordered list
+   whose initial value is [A_1, A_2, ..., A_i]. While S_i has more than one
+   item, each iteration involves the
+** processor-dependent selection of two adjacent items x and y, **
+   with x preceding y, the replacement of x by the result of evaluating
+   OPERATION(x, y), and the removal of y from the list. When S_i has only one
+   item remaining, that value is assigned to A on image i."
+
+Unlike CO_REDUCE, these intrinsics *do* impose a strict ordering of operands
+corresponding to the image index providing each value, and the computation is
+forbidden from commuting the operands. However the order of OPERATION evaluation
+is still explicitly processor-dependent, allowing for arbitrary reassociation of
+the operations.
+
+2. Aside on mathematical properties of operators
+------------------------------------------------
+
+A binary operator is *commutative* if, for all possible operand values, it
+produces the same result regardless of the order of the operands. For example,
+integer addition is mathematically commutative because the value of A + B
+equals the value of B + A, for all values of A and B. Conversely, integer
+subtraction is a noncommutative operator because the value of A - B generally
+differs from the value of B - A. Changing the order of operands changes the
+resulting value produced by a noncommutative operator.
+
+A binary operator is *associative* if, for all possible operand values, an
+equation consisting of two or more instances of the operator produces the same
+result regardless of the order of evaluation. For example, integer addition is
+mathematically associative because the value of (A + B) + C equals the value of
+A + (B + C), for all values of A, B, and C. Conversely, integer subtraction is
+a nonassociative operator because the value of (A - B) - C generally differs
+from the value of A - (B - C). Changing the order of operator evaluation changes
+the resulting value produced by a nonassociative operator.
+
+Commutativity and associativity are often coupled, but they are distinct
+properties and some operators exhibit one but not the other. For example, matrix
+multiplication and string concatenation are both mathematically associative and
+noncommutative.  There also exist operators that are mathematically commutative
+and nonassociative, such as logical NAND.
+
+Some operators are mathematically commutative and/or associative, but not
+computationally so. This most often arises in floating point arithmetic, where
+(for example) computational round-off can break the associativity of addition.
+
+Note that both properties are defined by sensitivity to order: commutativity is
+an insensitivity to operand order, and associativity is an insensitivity to
+operation evaluation order. As such, it makes little sense to consider
+noncommutative operators in the reduction of an unordered set of operands, just
+as it makes little sense to consider nonassociative operators for a reduction
+involving an unordered set of operations.
+
+3. Current behavior of CO_REDUCE implementations
+------------------------------------------------
+
+It's relatively straightforward to probe the processor-dependent behavior of
+CO_REDUCE, at least sufficiently to determine whether current implementations
+evaluate operands and operations in a strictly left-to-right order by
+increasing image index (the unspecified, naive expectation), or whether
+operands are commuted and operations reassociated relative to this order.
+
+Here is a conforming program that does exactly that:
+
+program co_reduce_order_check
+  implicit none
+  integer :: val
+
+  val = this_image() ! Each image passes the value of this_image()
+  call co_reduce(val, my_max)
+
+  sync all
+
+  if (this_image() == 1) then
+    print '(A, I0)', &
+      "No commutation or reassociation detected. Reduction result: ", val
+  end if
+contains
+  pure function my_max(a, b) result(res)
+    integer, intent(in) :: a, b
+    integer :: res
+
+    if (a >= b) then
+      error stop &
+       "a >= b: operands have been commuted relative to image order"
+    end if
+
+    if (b > a + 1) then
+      error stop &
+        "b > a + 1: operations have been reassociated relative to image order"
+    end if
+
+    res = max(a, b)
+  end function my_max
+end program
+
+Informal experiments with current implementations indicate the following:
+
+* GFortran 16.2.0 with caf_shmem seems to never commute operands. However it
+  does reassociate operations, seemingly deterministically, whenever there are
+  four or more images.
+
+* GFortran 15.2 with OpenCoarrays 2.10.3 and MPICH 4.3.2 seems to
+  deterministically commute operands (with two or more images), and reassociate
+  operations whenever there are four or more images.
+
+* ifx 2026.1.1 in shared memory seems to never commute operands. However it does
+  reassociate operations, seemingly deterministically, whenever there are four
+  or more images.
+
+* HPE CCE 21.0.0 on HPE Cray EX seems to deterministically commute operands when
+  there are ten or more images per node. It sometimes reassociates operations,
+  seemingly sensitive to job layout, whenever there are four or more images.
+
+* NAG 7.2(7251) appears to have fully timing-dependent behavior, evaluating
+  operands in roughly first-come/first-served order. This results in commuting
+  of operands and operation reassociation with rapidly increasing probability
+  whenever there are three or more images.
+
+So in summary, some current implementations appear to allow commutation of
+CO_REDUCE operands (relative to image index order), and others appear to never
+commute operands. As such, passing a noncommutative OPERATION to CO_REDUCE
+should not be expected to portably provide deterministic behavior.
+
+All implementations tested exhibited some reassociation of operation evaluation
+(relative to image index order). As such, passing a nonassociative OPERATION
+to CO_REDUCE should not be expected to provide deterministic behavior.
+
+
+4. Edits (relative to 26-007r2)
+--------
+
+The following edits resolve CD comment US-016, clarifying that the computation
+of CO_REDUCE may freely commute operands and reassociate operations. They also
+make minor clarifications to the closely related CO_REDUCE_PREFIX_{EX,IN}CLUSIVE
+intrinsics to improve symmetry of specification for the analogous argument.
+
+-------------------------------------------------------------------------
+[451:38-39] 17.9.57 CO_REDUCE
+
+Replace:
+
+ "OPERATION shall implement a mathematically associative operation."
+
+with:
+
+ "OPERATION should implement a mathematically associative and commutative
+  operation."
+
+Note to committee: the change from "shall" to "should" emphasizes this is a
+recommendation, and in particular not a property that can/should be checked by
+the processor.  This change establishes consistency with analogous wording in
+the REDUCE, REDUCE_PREFIX_{EX,IN}CLUSIVE intrinsics, where in all three
+instances 26-007r2 uses "should" in the wording:
+
+ "OPERATION should implement a mathematically associative operation."
+
+The six general reduction intrinsics are believed to be the only intrinsics in
+26-007r2 that accept a function argument and state a requirement or
+recommendation regarding the mathematical properties of the provided function,
+and these edits establish phrasing consistency across those subclauses.
+
+-------------------------------------------------------------------------
+[452:30+] Delete the NOTE.
+
+The current note is incomplete and adds confusion.
+After applying the edit above, HPC subgroup believes the note is unnecessary.
+
+-------------------------------------------------------------------------
+[453:16-17] 17.9.58 CO_REDUCE_PREFIX_EXCLUSIVE
+
+Replace:
+
+ "OPERATION shall implement a mathematically associative operation."
+
+with:
+
+ "OPERATION should implement a mathematically associative operation. It need not
+  be commutative."
+
+Note to committee: the second sentence establishes consistency with analogous
+wording in the REDUCE, REDUCE_PREFIX_{EX,IN}CLUSIVE intrinsics, where in all
+three instances 26-007r2 uses wording of the form:
+
+ "{It,OPERATION} need not be commutative."
+
+This property can already be inferred from the operational definition of each
+prefix reduction, and is highlighted by the CO_REDUCE_PREFIX_INCLUSIVE example.
+However HPC subgroup believes it improves clarity to state it directly.
+
+-------------------------------------------------------------------------
+[454:28-29] 17.9.59 CO_REDUCE_PREFIX_INCLUSIVE
+
+Replace:
+
+ "OPERATION shall implement a mathematically associative operation."
+
+with:
+
+ "OPERATION should implement a mathematically associative operation. It need not
+  be commutative."
+
+-------------------------------------------------------------------------
+
+===END===

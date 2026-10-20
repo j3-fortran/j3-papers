@@ -1,0 +1,173 @@
+To: J3                                                     J3/26-206
+Subject: US-011/014/015: Edits for team queries of invariant state
+From: Dan Bonachea & HPC
+Date: 2026-October-19
+References: 26-007r2, 25-127r1, 25-202r3, 26-170r1
+
+1. Background
+-------------
+
+In Fortran, a team is an abstraction representing an ordered set of images. A
+value of TEAM_TYPE (from ISO_FORTRAN_ENV) is essentially a handle-like reference
+identifying a particular team. The initial team is created implicitly at program
+startup, before any user code executes. All other teams are created as a result
+of executing the FORM TEAM statement. Any given image can only have valid
+TEAM_TYPE values identifying teams where that image is a member.
+
+2. Team queries of invariant state
+----------------------------------
+
+Every team includes the following three pieces of invariant abstract state,
+which can by queried by invoking an intrinsic transformational function:
+
+1. The team number, which is the *team-number* value provided to the FORM TEAM
+   statement, or the value -1 for the initial team. Queried by the
+   TEAM_NUMBER([TEAM]) intrinsic.
+2. The number of images in the team. Queried by the NUM_IMAGES([TEAM])
+   intrinsic.
+3. The index of the executing image in the team. Queried by the
+   THIS_IMAGE([TEAM]) intrinsic.
+
+In all three cases mentioned above, this immutable team state is established at
+team creation and never changes during the lifetime of the team (which extends
+from team creation to program termination). The result value of these queries is
+determined entirely by the identified team and is not affected by system state.
+In particular, the result is unaffected by image termination, image failure or
+CHANGE TEAM / END TEAM (which determines the current team).
+
+All three query functions mentioned above provide a single-argument form that
+accepts a scalar TEAM_TYPE value to query the state from the identified team.
+When the TEAM argument does not appear (or is absent), all three instead query
+the current team.  Currently all three of these intrinsics require a provided
+TEAM argument to identify the current or an ancestor team. CD comments
+US-011/014/015 contend that this is an unnecessary restriction; the value
+returned in these cases is entirely independent of the current team, thus the
+current team should not affect the validity of the query.
+
+This paper addresses CD comments US-011/014/015 by relaxing the requirements on
+the TEAM argument for TEAM_NUMBER(TEAM), NUM_IMAGES(TEAM) and THIS_IMAGE(TEAM)
+to allow invocations identifying any valid team, instead of requiring the TEAM
+argument to indicate the current or an ancestor team.
+
+3. Survey of current implementations
+------------------------------------
+
+A survey of current implementations supporting multi-image team features show
+most compilers already appear to allow the proposed semantic relaxation, as
+tested by the following program:
+
+  program team_query
+    use iso_fortran_env, only: team_type
+    implicit none
+    type(team_type) :: T
+
+    FORM TEAM(mod(this_image(),2)+1, T)
+    if (this_image() == num_images()) then
+      print *, "TEAM_NUMBER(T): ", TEAM_NUMBER(T)
+      print *, "THIS_IMAGE(T): ", THIS_IMAGE(T)
+      print *, "NUM_IMAGES(T): ", NUM_IMAGES(T)
+    end if
+  end program
+
+This program creates a child team (T) and then invokes each of the three query
+functions on that team, while it is neither the current nor an ancestor team.
+
+This program compiles and successfully executes with recent versions of four
+major Fortran compilers. One compiler surveyed rejected each of the three query
+invocations at runtime, with a fatal error message citing the nonconforming
+invocation. Two other compilers surveyed both appear to lack support for the
+TEAM forms of these intrinsics (i.e. they do not yet implement these F2018
+features at all).
+
+4. Why now
+----------
+
+Papers 25-127r1/25-202r3 enhanced collective subroutines to allow execution over
+a specified team, which need not be the current or an ancestor team (as
+clarified in 26-170r1). This decouples collective subroutine invocation from
+CHANGE TEAM and the current team abstraction (a language feature which exists
+primarily to enable storage management for coarrays over subset teams). This
+recent improvement enables a programming idiom where a program may create
+several teams and perform collective subroutines over each of them, without
+invoking CHANGE TEAM in the steady state (or possibly ever). In order to better
+support such programs, it now makes sense to similarly remove unnecessary
+semantic restrictions on team queries, decoupling them from the current team
+abstraction.
+
+5. Edits (relative to 26-007r2)
+--------
+
+The following edits resolve CD comments US-011, US-014, and US-015.
+
+US-011 and US-014 are accepted as provided.
+
+US-015 is accepted with modification.
+
+-------------------------------------------------------------------------
+[507:20-21] 17.9.162 NUM_IMAGES, para 3, TEAM argument
+
+Delete:
+
+ ", with a value that identifies the current or an ancestor team"
+
+{US-011}
+
+-------------------------------------------------------------------------
+[536:15] 17.9.219 TEAM_NUMBER, para 3, TEAM argument
+
+Delete:
+
+ ", whose value identifies the current or an ancestor team"
+
+{US-014}
+
+-------------------------------------------------------------------------
+[537:5-7] 17.9.220 THIS_IMAGE, para 3, TEAM argument
+
+Delete:
+
+ ", whose value identifies the current or an ancestor team"
+
+Replace:
+
+ "it shall be established in that team."
+
+with:
+
+ "the value of TEAM shall identify the current or an ancestor team, and COARRAY
+  shall be established in that team."
+
+Such that the entire argument reads:
+
+ "TEAM (optional) shall be a scalar of type TEAM_TYPE from the intrinsic module
+                  ISO_FORTRAN_ENV. If COARRAY appears, the value of TEAM shall
+                  identify the current or an ancestor team, and COARRAY shall be
+                  established in that team."
+
+{US-015 modified}
+
+-------------------------------------------------------------------------
+
+6. Asides
+---------
+
+This paper is not proposing changes to the IMAGE_INDEX(COARRAY, SUB, TEAM)
+transformational function, which also requires the TEAM to identify the current
+or an ancestor team. The result value of that function depends on the provided
+COARRAY and SUB arguments, and not solely upon invariant team state.
+
+The edits above deliberately preserve the current TEAM restrictions for
+THIS_IMAGE forms where COARRAY appears (this is the modification to US-015).
+Despite sharing an intrinsic name, these forms actually query very different
+information that depends on the provided COARRAY argument (similar to
+IMAGE_INDEX(COARRAY,SUB,TEAM)). Also, the provided COARRAY must be established
+in the specified team, so for COARRAY forms it makes sense to continue requiring
+that TEAM identify the current or an ancestor team.
+
+Finally, this paper is not proposing any changes to the intrinsics:
+IMAGE_STATUS, STOPPED_IMAGES, FAILED_IMAGES.  All of these transformational
+functions accept a TEAM_TYPE argument whose value must identify the current or
+an ancestor team. However their result value depends on dynamic program state
+(the status of other images), and not solely upon invariant team state.
+
+===END===

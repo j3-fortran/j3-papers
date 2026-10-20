@@ -1,0 +1,221 @@
+To: J3                                                     J3/26-208r1
+Subject: US-017: Edits to replace the CO_REDUCE example
+From: Dan Bonachea & Damian Rouson & HPC
+Date: 2026-October-19
+References: 26-007r2
+
+1. Background
+-------------
+
+In 26-007r2, the current Example for the CO_REDUCE collective subroutine in
+subclause 17.9.57, para 5 reads:
+
+"**Example.** The subroutine below demonstrates how to use CO_REDUCE to create a
+ collective counterpart to the intrinsic function ALL:
+
+  SUBROUTINE co_all(boolean)
+    LOGICAL, INTENT(INOUT) :: boolean
+    CALL CO_REDUCE(boolean,both)
+  CONTAINS
+    PURE FUNCTION both(lhs,rhs) RESULT(lhs_and_rhs)
+      LOGICAL, INTENT(IN) :: lhs,rhs
+      LOGICAL :: lhs_and_rhs
+      lhs_and_rhs = lhs .AND. rhs
+    END FUNCTION both
+  END SUBROUTINE co_all
+"
+
+As noted in CD comment US-017, this example is unfortunately an anti-pattern:
+there are more concise and efficient standard-conforming ways to accomplish the
+same collective computation. For example, using CO_MIN:
+
+  SUBROUTINE co_all(boolean)
+    LOGICAL, INTENT(INOUT) :: boolean
+    INTEGER :: int_bool
+    int_bool = MERGE(1,0,boolean)
+    CALL CO_MIN(int_bool)
+    boolean = (int_bool == 1)
+  END SUBROUTINE co_all
+
+or using CO_SUM:
+
+  SUBROUTINE co_all(boolean)
+    LOGICAL, INTENT(INOUT) :: boolean
+    INTEGER :: int_bool
+    int_bool = MERGE(0,1,boolean)
+    CALL CO_SUM(int_bool)
+    boolean = (int_bool == 0)
+  END SUBROUTINE co_all
+
+Either replacement accomplishes the same mathematical computation in (slightly)
+fewer lines of code, eliminating the need to introduce an internal procedure.
+
+More importantly, the potential replacements each utilize a collective
+subroutine with a built-in operation that is easily amenable to collective
+hardware acceleration (e.g. via offload to an ASIC in a smart network fabric),
+rather than a user-provided OPERATION function that will usually only execute on
+a general-purpose processor. This algorithmic difference could impact the
+performance and scalability of the overall collective operation.
+
+Finally, because an equivalent computation is easily expressed using other
+collective subroutines, the current example fails to justify the existence of
+the CO_REDUCE intrinsic, or suggest an appropriate use case. One of the defining
+features of CO_REDUCE that sets it apart from the other three computational
+collective subroutines specified in F2023 (CO_SUM, CO_MIN, CO_MAX), is that
+CO_REDUCE can express a collective computation over arguments of derived type.
+Unfortunately the current example also fails to highlight this powerful feature.
+It has been observed that some modern implementations of CO_REDUCE neglect to
+support arguments of derived type (a lack of standard-conformance), a situation
+which is potentially exacerbated by the weakness of the current example.
+
+Examples should be exemplary, and the HPC subgroup contends that users should
+not be encouraged to write the code in the current example. This paper proposes
+alternative replacements for the CO_REDUCE example that are not trivially
+amenable to expression using other collective subroutines, and that seek to
+convey a more compelling use case.
+
+2. Edits (relative to 26-007r2)
+--------
+
+Below are two alternative replacements for the CO_REDUCE example, for discussion
+and straw poll. Adopting either option will resolve CD comment US-017.
+
+2.1 Example Option A:
+====================
+
+-------------------------------------------------------------------------
+[452:19-20] 17.9.57 CO_REDUCE, para 5
+
+Replace the current example prose with the following:
+
+  "**Example.** The subroutine below demonstrates how to use CO_REDUCE to create
+     a collective counterpart to the intrinsic functions MINLOC and MINVAL."
+
+-------------------------------------------------------------------------
+[452:21-30] 17.9.57 CO_REDUCE, para 5
+
+Replace the current example code with the following:
+
+"
+  SUBROUTINE co_minloc(value, image)
+    REAL, INTENT(INOUT) :: value
+    INTEGER, INTENT(OUT) :: image
+    TYPE :: tuple
+      REAL :: value
+      INTEGER :: image
+    END TYPE
+    TYPE(tuple) :: t
+    t = tuple(value, THIS_IMAGE())
+    CALL CO_REDUCE(t, find_minloc)
+    value = t%value ! The smallest value provided by any image
+    image = t%image ! ... and the index of the first image providing it
+  CONTAINS
+    PURE FUNCTION find_minloc(lhs,rhs) RESULT(minloc)
+      TYPE(tuple), INTENT(IN) :: lhs,rhs
+      TYPE(tuple) :: minloc
+      IF (lhs%value == rhs%value) THEN ! resolve ties, ensuring commutativity
+        minloc = MERGE(lhs, rhs, lhs%image < rhs%image)
+      ELSE
+        minloc = MERGE(lhs, rhs, lhs%value < rhs%value)
+      END IF
+    END FUNCTION find_minloc
+  END SUBROUTINE co_minloc
+"
+
+-------------------------------------------------------------------------
+
+Notes for committee discussion:
+
+* The example as formatted above is 23 lines.
+* The "next best" scalable algorithm for this computation that avoids invoking
+  CO_REDUCE* requires two CO_MIN collective invocations, executed in series.
+* The computation is similar to the example for CO_REDUCE_PREFIX_EXCLUSIVE in
+  subclause 17.9.58 para 5, which demonstrates a collective exclusive prefix
+  MAXLOC/MAXVAL. However the differences in these examples are also somewhat
+  instructive, because of the difference in commutativity requirements between
+  the two collective subroutine intrinsics.
+
+2.2 Example Option B:
+====================
+
+-------------------------------------------------------------------------
+[452:19-20] 17.9.57 CO_REDUCE, para 5
+
+Replace the current example prose with the following:
+
+  "**Example.** The subroutine below demonstrates how to use CO_REDUCE to create
+     a collective function that accepts an array of reals from each image and
+     returns a sorted list of the top $k$ maximal values provided by any image."
+
+-------------------------------------------------------------------------
+[452:21-30] 17.9.57 CO_REDUCE, para 5
+
+Replace the current example code with the following:
+
+"
+  MODULE topk_m
+    INTEGER, PARAMETER :: k = 10
+  CONTAINS
+    FUNCTION co_topk(r) RESULT(global_topk)
+      REAL, INTENT(IN) :: r(:)
+      REAL             :: global_topk(k)
+      TYPE topk_t
+        REAL :: vals(k)
+      END TYPE
+      TYPE(topk_t)     :: t
+      INTEGER          :: i, j
+      t%vals = -HUGE(0.)
+      DO i = 1, SIZE(r) ! insertion sort k local maxima into t
+        IF (r(i) > t%vals(k)) THEN
+          j = COUNT(t%vals >= r(i)) + 1  ! find insertion point
+          IF (j < k) t%vals(j+1:k) = t%vals(j:k-1) ! shift vals
+          t%vals(j) = r(i)  ! insert new val
+        END IF
+      END DO
+      CALL CO_REDUCE(t, merge_topk)
+      global_topk = t%vals  ! return the k global maxima
+    CONTAINS
+      PURE FUNCTION merge_topk(a, b) RESULT(c)
+        TYPE(topk_t), INTENT(IN) :: a, b
+        TYPE(topk_t) :: c
+        INTEGER :: i, ia
+        ia = 1
+        DO i = 1, k ! merge the top k vals from a and b
+          ASSOCIATE (x => a%vals(ia), y => b%vals(i+1-ia))
+            c%vals(i) = MERGE(x, y, x > y)
+            IF (x > y) ia = ia + 1
+          END ASSOCIATE
+        END DO
+      END FUNCTION
+    END FUNCTION
+  END MODULE
+"
+
+-------------------------------------------------------------------------
+
+Notes for committee discussion:
+
+* The example as formatted above is 36 lines.
+* The "next best" scalable algorithm for this computation without CO_REDUCE*
+  requires k collective invocations of CO_MAX, executed in series (but only
+  provides the top k unique values); preserving duplicate values as in the
+  example above requires one additional collective invocation (k+1 total).
+
+2.3 Straw Polls
+===============
+
+Poll 1: Which example should we use for CO_REDUCE:
+
+1. Adopt Example A (co_minloc)
+2. Adopt Example B (co_topk)
+3. Something else
+
+(Assuming Poll 1 favors Example A: co_minloc)
+Poll 2: Should HPC subgroup pursue a separate paper to replace the collective
+        exclusive prefix MAXLOC/MAXVAL example in CO_REDUCE_PREFIX_EXCLUSIVE?
+
+1. Yes, replace the now-similar CO_REDUCE_PREFIX_EXCLUSIVE example with
+   something entirely different.
+2. No, the example is sufficiently different or the similarity is unimportant.
+
+===END===

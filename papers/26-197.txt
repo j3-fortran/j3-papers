@@ -1,0 +1,201 @@
+To: J3                                                     J3/26-197
+From: Brad Richardson & Generics
+Subject: Fixing Deferred Kind and Rank Equivalence
+Date: 2026-October-14
+
+Reference: N2258-1, 26-190
+
+
+1. Background
+==============
+
+When introducing templates, some way of determining whether two
+entities have the same rank or kind was needed in the case the rank
+or kind depends on a deferred constant. The current wording uses
+the term "syntactically equivalent." The editor points out this
+term is not defined, and is likely not the correct term to use.
+
+Additionally, an entity declared to have the same rank as a deferred
+rank entity is explicitly said to have the same rank, but the same
+is not true of deferred kind. This is inconsistent.
+
+
+2. Design
+=========
+
+We still need some way of saying whether two expressions depending on
+one or more deferred constants are the same, in order to be able to
+say whether two entities whose rank or kind depend on those
+expressions have the same rank and kind. A new term is introduced
+with a definition that allows expressions that are instantiation
+associated to be considered the same, but that does not require a
+processor to perform algebraic manipulations to solve the general
+case of whether two expresssions are equivalent.
+
+Additionally, we expand the definition of when two entities have the
+same deferred-kind type parameter value to include the case of one
+entity's kind type parameter being declared as a reference to the
+other entity's kind type parameter, analogous to how it is already
+done for deferred rank with RANK (RANK (x)). Such a reference can be
+written either as the argument of the intrinsic function KIND or as a
+type-param-inquiry (e.g. x%k) accessing a named kind type parameter of
+a derived-type entity, so that this also covers derived types with
+multiple kind type parameters.
+
+
+3. Edits
+========
+
+In Clause 3 Terms and definitions
+
+[24:15+] 3 Terms and definitions, after 3.119.4 procedure reference,
+         insert new term
+
+    "same deferred constant expressions
+
+    expressions that depend on deferred constants where each can be
+    obtained from a common expression by replacing, zero or more
+    times, a reference to a deferred constant with the instantiation
+    argument (3.87) that corresponds to it by instantiation
+    association (3.7.5), with no other change
+
+    Note 1 to entry: This relation does not make two expressions the
+    same merely because they would always compute equal values."
+
+In Subclause 8.5.8.8 Deferred and implied-rank entities
+
+[129:7-13] Replace the paragraph with the following.
+
+    "2 An entity with deferred rank has the same rank as another
+    entity if and only if
+
+    * both entities are declared by the same RANK clause (8.5.17),
+    * the entities are both declared by a RANK clause that contains a
+      single scalar-int-constant-expr, and the expressions are the
+      same deferred constant expressions,
+    * both entities are declared with an array-spec, the array-specs
+      have the same number of bounds with an omitted lower bound being
+      treated as the literal 1, and corresponding scalar-int-exprs of
+      the two array-specs are, pairwise, the same deferred constant
+      expressions, or
+    * the first entity is declared by a RANK clause with a single
+      expression that is a reference to the intrinsic function RANK
+      with either the second entity or another entity that has the
+      same rank as the second entity, as its argument."
+
+[130:1-] Immediately before 8.5.9 EXTERNAL attribute, insert new NOTE
+
+    "NOTE 3
+
+    In the following example, the REQUIREMENT rank_example declares a
+    deferred interface whose dummy argument x has deferred rank
+    RANK(n). The TEMPLATE outer associates its own deferred constant
+    sz with rank_example's deferred argument n via the REQUIRE
+    statement. Because n and sz are associated by instantiation
+    association, "n" and "sz" are the same deferred constant
+    expressions, so x and y have the same rank, and the call to impl is
+    valid without requiring assumed-shape argument association.
+
+    REQUIREMENT rank_example {n, proc}
+        DEFERRED INTEGER, PARAMETER :: n
+        DEFERRED INTERFACE
+            SUBROUTINE proc (x)
+                INTEGER, RANK (n) :: x
+            END SUBROUTINE
+        END INTERFACE
+    END REQUIREMENT
+
+    TEMPLATE outer {sz, impl}
+        DEFERRED INTEGER, PARAMETER :: sz
+        REQUIRE rank_example {sz, impl}
+    CONTAINS
+        SUBROUTINE wrapper (y)
+            INTEGER, RANK (sz) :: y
+            CALL impl (y) ! valid, rank expressions are the same
+                          ! deferred constant expression
+        END SUBROUTINE
+    END TEMPLATE
+
+    The same rule applies when the instantiation argument is a more
+    complex expression: had the REQUIRE statement instead been
+    REQUIRE rank_example {sz+1, impl}, then "n" and "sz+1" would be
+    the same deferred constant expressions, so a dummy argument
+    declared RANK(sz+1) in outer would have the same rank as x."
+
+In Subclause 16.4.3 Deferred constants
+
+[400:5-7] Replace the sentence "A deferred-kind type parameter of an
+entity has the same value as the corresponding type parameter of
+another entity if and only if both kind type parameters are declared
+with syntactically equivalent expressions." with the following.
+
+    "A deferred-kind type parameter of an entity has the same value as
+    the corresponding type parameter of another entity if and only if
+
+    * both kind type parameters are declared with expressions that are
+      the same deferred constant expressions, or
+    * the kind type parameter of the first entity is declared by an
+      expression that is either a reference to the intrinsic function
+      KIND with E as its sole argument, or a type-param-inquiry (R916),
+      accessing the corresponding named kind type parameter, whose
+      designator designates E, where E is either the second entity or
+      an entity whose corresponding kind type parameter has the same
+      value as the kind type parameter of the second entity."
+
+[400-401, NOTE 3] Make the following changes to the example.
+
+    - Change the line "! CALL sub_k3 (l) ! Invalid, different
+      expressions" to "CALL sub_k3 (l) ! Valid, same kind type
+      parameter".
+    - Change each remaining occurrence of "equivalent expressions" to
+      "the same deferred constant expressions" (2 places).
+    - Change each remaining occurrence of "different expressions" to
+      "not same kinds" (5 places).
+
+    such that the example is now:
+
+  TEMPLATE example {k1, k2}
+    DEFERRED INTEGER, PARAMETER :: k1, k2
+    INTEGER PARAMETER :: k3 = k1 + 1
+  CONTAINS
+    SUBROUTINE sub ()
+      INTEGER (k1) :: i
+      INTEGER (k2) :: j
+      INTEGER (k3) :: k
+      INTEGER (KIND (k)) :: l
+      INTEGER (k1+1) :: m
+      INTEGER (1+k1) :: n
+
+      CALL sub_k1 (i) ! Valid, same kind
+      ! CALL sub_k2 (i) ! Invalid, different kinds
+
+      ! CALL sub_k1 (j) ! Invalid, different kinds
+      CALL sub_k2 (j) ! Valid, same kind
+
+      CALL sub_k3 (k) ! Valid, same kind
+      CALL sub_k3 (l) ! Valid, same kind type parameter
+      ! CALL sub_k3 (m) ! Invalid, not same kinds
+      ! CALL sub_k3 (n) ! Invalid, not same kinds
+
+      ! CALL sub_k1p1 (k) ! Invalid, not same kinds
+      ! CALL sub_k1p1 (l) ! Invalid, not same kinds
+      CALL sub_k1p1 (m) ! Valid, same deferred constant expressions
+      ! CALL sub_k1p1 (n) ! Invalid, not same kinds
+  END SUBROUTINE
+
+  SUBROUTINE sub_k1 (a)
+    INTEGER (k1) :: a
+  END SUBROUTINE
+  SUBROUTINE sub_k2 (b)
+    INTEGER (k2) :: b
+  END SUBROUTINE
+  SUBROUTINE sub_k3 (c)
+    INTEGER (k3) :: c
+  END SUBROUTINE
+  SUBROUTINE sub_k1p1 (d)
+    INTEGER (k1+1) :: d
+  END SUBROUTINE
+END TEMPLATE
+
+
+--END--
