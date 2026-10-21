@@ -1,6 +1,7 @@
 all:	meeting-docs index file-types.txt
 
-MEETINGS=$$(/bin/ls meetings | tail -3)
+MEETINGS=$$(/bin/ls meetings | tail -3) $$(($$(/bin/ls meetings | tail -1) + 1))
+
 meeting-docs:
 	bin/get-docs-for-meeting ${MEETINGS}
 
