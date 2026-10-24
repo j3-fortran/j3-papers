@@ -1,0 +1,70 @@
+To: J3                                                     J3/26-219
+From: Malcolm Cohen
+Subject: Interp F23/028 on NOTIFY_TYPE pointers
+Date: 2026-October-23
+
+
+----------------------------------------------------------------------
+
+NUMBER: F23/029
+TITLE: Can a variable of type NOTIFY_TYPE be a pointer?
+KEYWORDS: NOTIFY_TYPE, POINTER
+DEFECT TYPE: Erratum
+STATUS: J3 consideration in progress
+REFERENCES: 24-007
+
+QUESTION:
+
+A named variable of type NOTIFY_TYPE cannot be a pointer, as it is
+required to be a coarray (C854 says pointers cannot be coarrays).
+
+However, a component of type NOTIFY_TYPE is apparently permitted to be
+a pointer. This is problematic, as in:
+
+    TYPE t
+        TYPE(notify_type),POINTER :: p
+    END TYPE
+    TYPE(t) x[*]
+    REAL y[*]
+
+    ... assume that x%p becomes associated on the executing image,
+    ... whether by allocation or pointer assignment
+
+    y[n,NOTIFY=x%p] = 999
+
+The assignment statement
+   "increments the count of the corresponding notify variable on the
+    image specified by the image selector"
+
+But there is no corresponding notify variable, because x%p is not a
+subobject of X, and therefore is not a coarray. That renders any use
+of x%p for synchronisation non-conforming.
+
+And that renders NOTIFY_TYPE pointer components useless, quite apart
+from the inconsistency with not allowing them for named variables of
+type NOTIFY_TYPE.
+
+Should components of type NOTIFY_TYPE be required to be nonpointer?
+
+ANSWER:
+
+Yes, such components should not be pointers.
+
+An edit is supplied to correct this oversight.
+
+EDIT to 24-007.
+
+[462:14] 16.10.2.22 NOTIFY_TYPE, C1612 "A named entity...",
+         before "data component"
+         insert "nonpointer".
+That makes the whole constraint read:
+   "C1612 A named entity with declared type NOTIFY_TYPE, or which has
+          a noncoarray potential subobject component with declared
+          type NOTIFY_TYPE, shall be a variable. A component that is
+          of such a type shall be a nonpointer data component."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 26-nnn   m241  Submitted
+
+----------------------------------------------------------------------
