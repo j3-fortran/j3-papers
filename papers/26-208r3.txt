@@ -1,0 +1,195 @@
+To: J3                                                     J3/26-208r3
+Subject: US-017: Edits to replace the CO_REDUCE example
+From: Dan Bonachea & Damian Rouson & HPC
+Date: 2026-October-26
+References: 26-007r2
+
+1. Background
+-------------
+
+In 26-007r2, the current Example for the CO_REDUCE collective subroutine in
+subclause 17.9.57, para 5 reads:
+
+"**Example.** The subroutine below demonstrates how to use CO_REDUCE to create a
+ collective counterpart to the intrinsic function ALL:
+
+  SUBROUTINE co_all(boolean)
+    LOGICAL, INTENT(INOUT) :: boolean
+    CALL CO_REDUCE(boolean,both)
+  CONTAINS
+    PURE FUNCTION both(lhs,rhs) RESULT(lhs_and_rhs)
+      LOGICAL, INTENT(IN) :: lhs,rhs
+      LOGICAL :: lhs_and_rhs
+      lhs_and_rhs = lhs .AND. rhs
+    END FUNCTION both
+  END SUBROUTINE co_all
+"
+
+As noted in CD comment US-017, this example is unfortunately an anti-pattern:
+there are more concise and efficient standard-conforming ways to accomplish the
+same collective computation. For example, using CO_MIN:
+
+  SUBROUTINE co_all(boolean)
+    LOGICAL, INTENT(INOUT) :: boolean
+    INTEGER :: int_bool
+    int_bool = MERGE(1,0,boolean)
+    CALL CO_MIN(int_bool)
+    boolean = (int_bool == 1)
+  END SUBROUTINE co_all
+
+or using CO_SUM:
+
+  SUBROUTINE co_all(boolean)
+    LOGICAL, INTENT(INOUT) :: boolean
+    INTEGER :: int_bool
+    int_bool = MERGE(0,1,boolean)
+    CALL CO_SUM(int_bool)
+    boolean = (int_bool == 0)
+  END SUBROUTINE co_all
+
+Either replacement accomplishes the same mathematical computation in (slightly)
+fewer lines of code, eliminating the need to introduce an internal procedure.
+
+More importantly, the potential replacements each utilize a collective
+subroutine with a built-in operation that is easily amenable to collective
+hardware acceleration (e.g. via offload to an ASIC in a smart network fabric),
+rather than a user-provided OPERATION function that will usually only execute on
+a general-purpose processor. This algorithmic difference could impact the
+performance and scalability of the overall collective operation.
+
+Finally, because an equivalent computation is easily expressed using other
+collective subroutines, the current example fails to justify the existence of
+the CO_REDUCE intrinsic, or suggest an appropriate use case. One of the defining
+features of CO_REDUCE that sets it apart from the other three computational
+collective subroutines specified in F2023 (CO_SUM, CO_MIN, CO_MAX), is that
+CO_REDUCE can express a collective computation over arguments of derived type.
+Unfortunately the current example also fails to highlight this powerful feature.
+It has been observed that some modern implementations of CO_REDUCE neglect to
+support arguments of derived type (a lack of standard-conformance), a situation
+which is potentially exacerbated by the weakness of the current example.
+
+Examples should be exemplary, and the HPC subgroup contends that users should
+not be encouraged to write the code in the current example. This paper proposes
+replacements for the CO_REDUCE example that are not trivially amenable to
+expression using other collective subroutines, and that seek to convey more
+compelling use cases.
+
+2. Edits (relative to 26-007r2)
+--------
+
+This paper resolves CD comment US-017, by replacing the Example in the
+CO_REDUCE subclause with a more compelling computation over values of intrinsic
+type, and adding a (slightly longer) example to Annex C that demonstrates a
+compelling use of CO_REDUCE over values of derived type.
+
+-------------------------------------------------------------------------
+[452:19-20] 17.9.57 CO_REDUCE, para 5
+
+Replace the current example prose with the following:
+
+  "**Example.** The subroutine below demonstrates how to use CO_REDUCE to
+   compute a collective product of complex numbers."
+
+-------------------------------------------------------------------------
+[452:21-30] 17.9.57 CO_REDUCE, para 5
+
+Replace the current example code with the following:
+
+"
+  SUBROUTINE co_product(value)
+    COMPLEX, INTENT(INOUT) :: value
+    CALL CO_REDUCE(value, complex_multiply)
+  CONTAINS
+    PURE FUNCTION complex_multiply(lhs,rhs) RESULT(product)
+      COMPLEX, INTENT(IN) :: lhs,rhs
+      COMPLEX :: product
+      product = lhs * rhs
+    END FUNCTION complex_multiply
+  END SUBROUTINE co_product
+"
+
+-------------------------------------------------------------------------
+[452:30+] 17.9.57 CO_REDUCE, para 5
+
+Immediately after the example code above and before the existing NOTE, insert a
+new NOTE:
+
+"**NOTE 1**
+ For a more elaborate example see C.11.3.
+"
+
+{hyperlink subclause number}
+
+{renumber the existing NOTE as NOTE 2}
+
+-------------------------------------------------------------------------
+[714:27+] C.11.3 Collective subroutine examples, para 3+
+
+After the find_max example, add the following new paragraphs:
+
+"
+   The subroutine below demonstrates how to create a collective counterpart to
+   the intrinsic functions MINLOC and MINVAL using CO_REDUCE. This computation
+   is analogous to the preceding find_max example; however instead of invoking
+   two collective subroutines in series, this example uses a derived type
+   to compute an analogous result with a single collective subroutine
+   invocation.
+
+   Each image initializes a tuple variable with the local
+   information then invokes CO_REDUCE, passing this variable and the OPERATION
+   function find_minloc. This function is invoked iteratively by CO_REDUCE to
+   reduce all the tuple values provided by images in corresponding references.
+
+   Each invocation of the function compares a pair of tuples and produces a
+   tuple result representing the pairwise result of the computation. If the real
+   values are equal, the function result is equal to the tuple value provided by
+   the lesser image index. Otherwise, the result is equal to the tuple value
+   containing the lesser real value.
+
+   After CO_REDUCE completes execution, each
+   image copies the resulting minimum value and the image index that provided it
+   into the dummy arguments.
+"
+
+{hyperlink intrinsic names MINLOC, MINVAL, CO_REDUCE}
+
+{The editor is welcome to trim down this prose if it seems too pedantic.}
+
+Revision 3 changes, relative to revision 2:
+  1. Broke the long paragraph into four separate paragraphs
+  2. Replaced the word "leverages" -> "uses"
+
+-------------------------------------------------------------------------
+[714:27++] C.11.3 Collective subroutine examples, para 3+
+
+After the edit above, insert the following example code:
+
+"
+  SUBROUTINE co_minloc(value, image)
+    REAL, INTENT(INOUT) :: value
+    INTEGER, INTENT(OUT) :: image
+    TYPE :: tuple
+      REAL :: value
+      INTEGER :: image
+    END TYPE
+    TYPE(tuple) :: t
+    t = tuple(value, THIS_IMAGE())
+    CALL CO_REDUCE(t, find_minloc)
+    value = t%value ! The smallest value provided by any image
+    image = t%image ! ... and the index of the first image providing it
+  CONTAINS
+    PURE FUNCTION find_minloc(lhs,rhs) RESULT(minloc)
+      TYPE(tuple), INTENT(IN) :: lhs,rhs
+      TYPE(tuple) :: minloc
+      IF (lhs%value == rhs%value) THEN ! resolve ties, ensuring commutativity
+        minloc = MERGE(lhs, rhs, lhs%image < rhs%image)
+      ELSE
+        minloc = MERGE(lhs, rhs, lhs%value < rhs%value)
+      END IF
+    END FUNCTION find_minloc
+  END SUBROUTINE co_minloc
+"
+
+-------------------------------------------------------------------------
+
+===END===

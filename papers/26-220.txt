@@ -1,0 +1,161 @@
+To: J3                                                     J3/26-220
+From: Malcolm Cohen
+Subject: Correcting and improving PROCEDURE_NAME
+Date: 2026-October-25
+
+
+1. Introduction
+
+The editor's attempts to repair PROCEDURE_NAME while inputting 26-184r1 appear
+to be insufficient - there are a couple of problematic cases that are not
+correctly handled by the current specification.
+
+The editor also recommended reviewing the first list (CONTEXT absent or false).
+This paper attempts to improve the readability and robustness of that list.
+
+Note that this paper does have technical effect, it is not purely editorial.
+
+
+2. The problematic cases
+
+2.1 Wrong ordering?
+
+The first three cases as specified are:
+
+Case (i) re interface body
+Case (ii) Otherwise, if the reference appears within a subprogram,
+Case (iii): Otherwise, if the reference appears in the scoping unit of a
+            TEMPLATE construct,
+
+Handling subprograms before even considering templates is probably wrong.
+
+Consider:
+
+    SUBROUTINE sub
+
+        TEMPLATE container_te { t }
+            USE iso_fortran_env,ONLY:procedure_name
+            DEFERRED TYPE :: t
+            TYPE t_container
+                TYPE(t) value
+            END TYPE
+            CHARACTER(*),PARAMETER :: where = procedure_name()
+        END TEMPLATE
+
+        INSTANTIATE container_te { INTEGER }, integer_container=>t_container,&
+                                              integer_container_where=>where
+
+        INSTANTIATE container_te { REAL }, real_container=>t_container,&
+                                           real_container_where=>where
+
+        PRINT *,'Hello integer where = ',integer_container_where
+        PRINT *,'Hello real where = ',real_container_where
+
+    END SUBROUTINE
+
+The reference appears within the subprogram sub, therefore this defines the
+named constants to have the value SUB - it does not get to the template case.
+
+Thus the template case can only activate for a template defined within a
+program unit that is not a subprogram, that is: a main program, module,
+submodule, or block data.
+
+Therefore, unless we don't want the template name when the template is defined
+in a subprogram, Case (iii) needs to be swapped with Case (ii).
+
+
+2.2 Wrong specification
+
+Case (iii) is
+    "the reference appears in the scoping unit of a TEMPLATE construct"
+
+The "scoping unit" part was inserted by the editor so that nested templates
+would be handled correctly, but that does not seem to be completely right.
+
+Consider
+
+    MODULE module
+
+        TEMPLATE one { n }
+            USE iso_fortran_env
+            DEFERRED INTEGER, PARAMETER :: n
+            CHARACTER(*),PARAMETER :: one_name = procedure_name()
+        END TEMPLATE
+
+        TEMPLATE two { n }
+            USE iso_fortran_env
+            DEFERRED INTEGER, PARAMETER :: n
+            TYPE t
+                REAL :: v(n) = 0.0
+                CHARACTER(len(procedure_name())) :: name = procedure_name()
+            END TYPE
+            TYPE(t),PARAMETER,PRIVATE :: ugh
+            CHARACTER(*),PARAMETER :: two_name = ugh%name
+        END TEMPLATE
+    END MODULE
+
+    PROGRAM test
+        USE module
+        INSTANTIATE one { 17 }
+        INSTANTIATE two { 13 }
+        PRINT *,one_name            ! prints "ONE"
+        PRINT *,two_name            ! prints "MODULE"
+    END PROGRAM
+
+As the reference to procedure_name in template "two" does not appear in the
+scoping unit of a template (it appears in the scoping unit of a derived type),
+the result is rather strange. Especially strange because otherwise, being in
+the scoping unit of a derived type has no effect on procedure_name.
+
+If we want the reference to procedure_name in template two to return "TWO",
+that case should be changed to "the specification part of a template", and to
+handle nested templates, it should be "the name of the innermost template".
+
+
+3. Word smithing
+
+Cases (i), (ii), and (iii) refer to things that can be nested in other things,
+and in all cases we should prefer the name of the "innermost such thing".
+That suggests combining those three cases into a single case. This also gets
+rid of the ordering glitches without over-complicating the text.
+
+Cases (iv), (v), and (vi) refer to things that cannot be nested. These could
+also be combined into a single case.
+
+
+4. Ambiguously incomplete specification
+
+The specification of the result value being in upper case is immediately
+followed by
+    The "=binding-name" appears if and only if ...
+which is only true for CONTEXT=true, thus implying that the result value is
+only required to be in upper case for that situation.
+
+
+5. Edits to N2258
+
+[550:17-23] 17.10.2.29 PROCEDURE_NAME, p5 Result Value,
+            replace the existing cases (i) to (iii) with:
+   "Case (i): If the reference appears within an interface-body, subprogram, or
+              TEMPLATE construct, the result value is the name of the innermost
+              such syntactic unit. The name of an interface-body is that of the
+              procedure whose interface is being declared. The name of a
+              generic subprogram is the generic name."
+{We have not previously used the phrase "syntactic unit", but it seems to be
+ the best way to describe those three things.}
+
+OPTIONAL:
+[550:24-29] Replace existing cases (iv) to (vi) with:
+   "Case (ii): Otherwise if the reference appears in a named program unit,
+               unnamed main program, or unnamed block data program unit, the
+               result has a value equal to the name of the program unit,
+               'MAIN PROGRAM', or 'BLOCK DATA', respectively."
+{Optional edit because those cases seem unproblematic and easy to understand
+ already. I think this is just as readable, plus shorter.}
+
+[550:29+] Insert new unnumbered paragraph after the list
+   "If CONTEXT is not present or has the value false, the result value is in
+    upper case."
+{Remove ambiguity.}
+
+===END===

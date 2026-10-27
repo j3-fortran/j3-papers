@@ -1,0 +1,61 @@
+To: J3                                                     J3/26-223
+From: Soren Rasmussen & HPC
+Subject: Edits to replace the SYNC ALL example
+Date: 2026-October-26
+
+1. Introduction
+---------------
+
+This paper contains edits to 11.7.3 SYNC ALL statement, paragraph 2, NOTE.
+
+The issues with this example are
+  1. Oversynchronizes, no obvious necessity for the first SYNC ALL.
+  2. Performs a naive/non-scalable push-broadcast through a coarray, instead
+     of calling CO_BROADCAST.
+
+
+2. Edits to 26-007r2
+--------------------
+
+[248:12+] 11.7.3 SYNC ALL statement, paragraph 2, NOTE.
+
+Replace the current example paragraph and code in the NOTE:
+
+"
+Here is a simple example of its use. Image 1 reads data and broadcasts it to
+other images:
+  REAL :: P[*]
+  ...
+  SYNC ALL
+  IF (THIS_IMAGE()==1) THEN
+    READ (*,*) P
+    DO I = 2, NUM_IMAGES()
+      P[I] = P
+    END DO
+  END IF
+  SYNC ALL
+"
+
+The (unrelated) first paragraph of the Note should be preserved, or possibly
+split into a separate Note.
+
+with:
+
+"
+Here is a simple example of its use to synchronize a parallel halo exchange,
+a common algorithm in scientific computing. Each image copies boundary values
+from its two neighbors in a periodic one-dimensional decomposition. The first
+SYNC ALL ensures that the neighbors have defined P(1:N) before the values are
+copied; the second SYNC ALL ensures that all images have finished copying
+before any image redefines P(1:N).
+
+  REAL :: P(0:N+1)[*]    ! P(0) and P(N+1) hold copies of neighbor data
+  INTEGER :: LEFT, RIGHT
+  RIGHT = MOD (THIS_IMAGE(), NUM_IMAGES()) + 1   ! Periodic neighbors
+  LEFT = MOD (THIS_IMAGE() - 2 + NUM_IMAGES(), NUM_IMAGES()) + 1
+  ... ! Initialize the local data in P(1:N)
+  SYNC ALL
+  P(0) = P(N)[LEFT]
+  P(N+1) = P(1)[RIGHT]
+  SYNC ALL
+"
