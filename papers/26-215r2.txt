@@ -1,0 +1,97 @@
+To: J3                                                     J3/26-215r2
+Subject: Edits to repair PROCEDURE_NAME
+From: Dan Bonachea & Lorri Menard & JoR
+Date: 2026-October-27
+References: 26-007r2, 26-184r1, 26-215r1
+
+1. Introduction
+---------------
+
+The module procedure PROCEDURE_NAME is new in Fortran 2028, and there
+are a few typos in the description of the procedure.
+
+Paper 26-215r1 (an earlier revision of this paper) was discussed and passed by
+J3 on 2026-10-26, after which defects were found in the same subclause whose
+resolution involves overlapping edits.  This paper supersedes prior revisions.
+
+2. Updates in Revision 2
+------------------------
+
+The support for adding a procedure's binding-name into the contextual
+output has shown some potential technical problems.  It was originally
+added by subgroup because it was considered "free", but further
+examples, and in fact original edits promoted by this paper, have
+shown that not to be true.
+
+One area of potential confusion is with procedures contained within a
+routine that has a binding name.  For example:
+
+SUBROUTINE S() BIND(C, NAME="S")
+CONTAINS
+    SUBROUTINE INNER()
+        USE ISO_FORTRAN_ENV
+        PRINT *, PROCEDURE_NAME(.TRUE.)
+    END SUBROUTINE
+END SUBROUTINE
+
+Should it return S=S.INNER, or simply S.INNER?  We suggest that it
+should be subprogram-name.internal-subprogram-name, but it is not
+unlikely there could still be questions.
+
+The more egregious issue is with deferred parameters and templates,
+as shown below:
+
+MODULE EXAMPLE2
+    TEMPLATE TMPL{C}
+        DEFERRED CHARACTER(*), PARAMETER :: C
+    CONTAINS
+        SUBROUTINE S() BIND(NAME=C)
+            PRINT *, PROCEDURE_NAME(.TRUE.)
+        END SUBROUTINE
+    END TEMPLATE
+END MODULE
+
+In this case the value for "C" is only known at template instantiation time,
+not at compile-time of the template. This implies the result of a PROCEDURE_NAME
+invocation within a template *might* be a deferred constant, but only in this
+corner case. In all other cases the result of a PROCEDURE_NAME invocation within
+a template is constant at template declaration time (which was the intent).
+
+With this all in mind subgroup recommends that we remove the output
+of binding-name from the CONTEXT=.TRUE. return value.
+
+This simplifies the edits requested in original 26-215
+
+3. Edits
+--------
+17.10.2.29 PROCEDURE_NAME ([CONTEXT])
+
+[550:16] After the **Result Value."" and before "If CONTEXT is not ..." add
+"The result value is in upper case."
+making this line read:
+"**Result Value.** The result value is in upper case.  If CONTEXT is not
+present or has the value false, the result value is determined as follows:"
+
+[551:10-12] Remove case(ii), and renumber the remaining cases.
+
+[551:15] One bracket is slightly misplaced, as cannot have
+internal-subprogram-name without a subprogram name
+module-name[/submodule-name]:[subprogram-name][.internal-subprogram-name]
+Move the right bracket after "subprogram-name" to the end of the line as:
+module-name[/submodule-name]:[subprogram-name[.internal-subprogram-name]]
+
+[551:21] Remove the "**or** =binding-name" from the syntax, resulting in:
+subprogram-name[.internal-subprogram-name]
+
+[551:25] Using "enclosing scope unit" seems too broad
+Replace "enclosing scope unit" with "innermost scoping unit that contains
+the templated subprogram or TEMPLATE construct".
+
+[551:30-31] Remove these two lines; binding-name has been removed, and the
+statement that the result value is in upper case is at the beginning, not
+buried here at the end.
+
+[552.4] Modify the comment to remove the Qq binding-name, resulting in:
+PRINT *, procedure_name(.TRUE.) ! 'A:S2'
+
+--END--
