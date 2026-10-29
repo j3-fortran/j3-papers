@@ -1,0 +1,105 @@
+To: J3                                                     J3/26-219r1
+From: Malcolm Cohen
+Subject: Interp F23/028 on NOTIFY_TYPE pointers
+Date: 2026-October-28
+
+
+----------------------------------------------------------------------
+
+NUMBER: F23/029
+TITLE: Can a variable of type NOTIFY_TYPE be a pointer?
+KEYWORDS: NOTIFY_TYPE, POINTER
+DEFECT TYPE: Erratum
+STATUS: Passed by J3 meeting
+REFERENCES: 24-007
+
+QUESTION:
+
+A named variable of type NOTIFY_TYPE cannot be a pointer, as it is
+required to be a coarray (C854 says pointers cannot be coarrays).
+
+However, a component of type NOTIFY_TYPE is apparently permitted to be
+a pointer. This is problematic, as in:
+
+    TYPE t
+        TYPE(notify_type),POINTER :: p
+    END TYPE
+    TYPE(t) x[*]
+    REAL y[*]
+
+    ... assume that x%p becomes associated on the executing image,
+    ... whether by allocation or pointer assignment
+
+    y[n,NOTIFY=x%p] = 999
+
+The assignment statement
+   "increments the count of the corresponding notify variable on the
+    image specified by the image selector"
+
+But there is no corresponding notify variable, because x%p is not a
+subobject of X, and therefore is not a coarray. That renders any use
+of x%p for synchronisation non-conforming.
+
+And that renders NOTIFY_TYPE pointer components useless, quite apart
+from the inconsistency with not allowing them for named variables of
+type NOTIFY_TYPE.
+
+Another problematic case is:
+
+    TYPE t
+        TYPE(notify_type),POINTER :: p
+    END TYPE
+    TYPE(t) x
+    TYPE(notify_type) :: z[*]
+    REAL y[*]
+    x%p => z
+
+    y[n,NOTIFY=x%p] = 999
+
+Is it the corresponding variable Z?
+
+Are either of these examples supposed to be conforming?
+
+ANSWER:
+
+Yes, the first example should be conforming, but the second example
+should not be conforming.
+
+Edits are supplied to correct the situation.
+
+EDIT to 24-007.
+
+[145:10+] 9.6 Image selectors, after C934 "TEAM and TEAM_NUMBER...",
+          insert new constraint:
+   "C933a In a NOTIFY= image-selector-spec, the notify-variable shall
+          be a coarray or a structure-component where one part-ref has
+          a part-name that is a coarray."
+
+[145:25-27] Same subclause, p4 "Execution of an assignment...",
+            after "specified by the image selector" end the sentence,
+            deleting the ", and" and capitalising the following "the",
+            and insert a new sentence before that "The":
+               "The indicated notify variable is the one that would be
+                designated by a coindexed reference with an image
+                selector applied to the coarray notify-variable, or to
+                the part-ref of the notify-variable whose part-name is
+                a coarray; where the image selector specifies the same
+                image as the image selector on the variable.".
+            This makes the whole paragraph read:
+   "Execution of an assignment statement whose variable has a NOTIFY=
+    specifier atomically increments the count of the indicated notify
+    variable on the image specified by the image selector. The
+    indicated notify variable is the one that would be designated by a
+    coindexed reference with an image selector applied to the coarray
+    notify-variable, or to the part-ref of the notify-variable whose
+    part-name is a coarray; where the image selector specifies the
+    same image as the image selector on the variable. The statement
+    does not wait for that image to execute a corresponding NOTIFY
+    WAIT statement."
+
+SUBMITTED BY: Malcolm Cohen
+
+HISTORY: 26-219   m241  Submitted
+         26-219r1 m241  Passed as amended by J3 meeting 241.
+
+----------------------------------------------------------------------
