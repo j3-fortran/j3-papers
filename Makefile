@@ -1,6 +1,7 @@
 all:	meeting-docs index file-types.txt
 
-MEETINGS=$$(/bin/ls meetings | tail -3) $$(($$(/bin/ls meetings | tail -1) + 1))
+# Fetch notes for three current meetings and one future meeting.
+MEETINGS=$$(/bin/ls meetings | tail -3 | awk '{ print; n=$1; } END {printf "%d\n", n+1; }')
 
 meeting-docs:
 	bin/get-docs-for-meeting ${MEETINGS}
